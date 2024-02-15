@@ -1,0 +1,10 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+authors = ["ChenRuiwei <1982833213@qq.com>"]
+edition = "2021"
+
+[dependencies]
+log = "0.4"
+riscv-rt = "0.12.2"
+sbi-rt = { version = "0.0.3", features = ["legacy"] }
