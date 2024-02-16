@@ -5,6 +5,10 @@ authors = ["ChenRuiwei <1982833213@qq.com>"]
 edition = "2021"
 
 [dependencies]
+config = { path = "../lib/config/" }
 log = "0.4"
 riscv-rt = "0.12.2"
 sbi-rt = { version = "0.0.3", features = ["legacy"] }
+
+[build-dependencies]
+config = { path = "../lib/config/" }

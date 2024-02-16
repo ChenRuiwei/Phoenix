@@ -3,7 +3,7 @@ PACKAGE_NAME=kernel
 TARGET := riscv64gc-unknown-none-elf
 MODE := debug
 KERNEL_ELF := target/$(TARGET)/$(MODE)/$(PACKAGE_NAME)
-DISASM_ARGS_TMP := target/$(TARGET)/$(MODE)/asm
+DISASM_TMP := target/$(TARGET)/$(MODE)/asm
 
 # Building mode argument
 ifeq ($(MODE), release)
@@ -40,9 +40,7 @@ env:
 PHONY += build
 build: env
 	@echo Platform: $(BOARD)
-	@cp src/linker-$(BOARD).ld src/linker.ld
 	@cargo build $(MODE_ARG)
-	@rm src/linker.ld
 
 PHONY += run
 run: build
@@ -53,17 +51,17 @@ clean:
 	@cargo clean
 
 PHONY += disasm
-disasm: build
+disasm:
 	@$(OBJDUMP) $(DISASM_ARGS) $(KERNEL_ELF) | less
 
 PHONY += disasm-nvim
-disasm-nvim: build
+disasm-nvim:
 	@$(OBJDUMP) $(DISASM_ARGS) $(KERNEL_ELF) > $(DISASM_TMP)
 	@nvim $(DISASM_TMP)
 	@rm $(DISASM_TMP)
 
 PHONY += gdbserver
-gdbserver: build
+gdbserver:
 	@$(QEMU) $(QEMU_ARGS) -s -S
 
 PHONY += gdbclient
