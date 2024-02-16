@@ -1,34 +1,6 @@
-# Building
-PACKAGE_NAME=kernel
-TARGET := riscv64gc-unknown-none-elf
-MODE := debug
-KERNEL_ELF := target/$(TARGET)/$(MODE)/$(PACKAGE_NAME)
-DISASM_TMP := target/$(TARGET)/$(MODE)/asm
-
-# Building mode argument
 ifeq ($(MODE), release)
-	MODE_ARG := --release
+	MODE_ARG = --release
 endif
-
-# Board
-BOARD := qemu
-BOOTLOADER := default
-
-# Tools
-TOOLPREFIX := riscv64-elf-
-QEMU := qemu-system-riscv64
-GDB := $(TOOLPREFIX)gdb
-OBJDUMP := rust-objdump --arch-name=riscv64
-OBJCOPY := rust-objcopy --binary-architecture=riscv64
-
-DISASM_ARGS := -x
-
-QEMU_ARGS := -machine virt \
-			 -nographic \
-			 -bios $(BOOTLOADER) \
-			 -kernel $(KERNEL_ELF)
-
-$(KERNEL_ELF): build
 
 PHONY := all
 all: build
@@ -39,35 +11,6 @@ env:
 
 PHONY += build
 build: env
-	@echo Platform: $(BOARD)
 	@cargo build $(MODE_ARG)
-
-PHONY += run
-run: build
-	@$(QEMU) $(QEMU_ARGS)
-
-PHONY += clean
-clean:
-	@cargo clean
-
-PHONY += disasm
-disasm:
-	@$(OBJDUMP) $(DISASM_ARGS) $(KERNEL_ELF) | less
-
-PHONY += disasm-nvim
-disasm-nvim:
-	@$(OBJDUMP) $(DISASM_ARGS) $(KERNEL_ELF) > $(DISASM_TMP)
-	@nvim $(DISASM_TMP)
-	@rm $(DISASM_TMP)
-
-PHONY += gdbserver
-gdbserver:
-	@$(QEMU) $(QEMU_ARGS) -s -S
-
-PHONY += gdbclient
-gdbclient:
-	@$(GDB) -ex 'file $(KERNEL_ELF)' \
-		-ex 'set arch riscv:rv64' \
-		-ex 'target remote localhost:1234'
 
 .PHONY: $(PHONY)
