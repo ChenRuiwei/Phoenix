@@ -3,10 +3,13 @@
 
 mod boot;
 mod console;
+mod logging;
 mod sbi;
 
 use core::arch::{asm, global_asm};
 use core::panic::PanicInfo;
+
+use log::{debug, error, info, trace, warn};
 
 global_asm!(include_str!("entry.S"));
 
@@ -25,8 +28,10 @@ fn panic(_info: &PanicInfo) -> ! {
 #[no_mangle]
 pub fn rust_main() -> ! {
     boot::clear_bss();
-    println!("==================================================");
-    println!("hello world");
+    boot::print_boot_message();
+    logging::init();
+    logging::show_examples();
+
     loop {
         wfi()
     }

@@ -1,17 +1,30 @@
 use core::arch::asm;
 
-use crate::rust_main;
+use crate::{println, rust_main};
 use config::mm::VIRT_RAM_OFFSET;
+
+const BOOT_MSG: &str = r#"
+===============================================================
+  __________  ________ _______  __  _____________   ___  ______
+ / ___/ __/ |/ / __/ // /  _/ |/ / / __/_  __/ _ | / _ \/_  __/
+/ (_ / _//    /\ \/ _  // //    / _\ \  / / / __ |/ , _/ / /
+\___/___/_/|_/___/_//_/___/_/|_/ /___/ /_/ /_/ |_/_/|_| /_/
+===============================================================
+"#;
+
+pub fn print_boot_message() {
+    println!("{}", BOOT_MSG);
+}
 
 #[no_mangle]
 unsafe fn fake_main() {
     asm!(
         "add sp, sp, {0}",
-        "la t0, {_rust_main}",
+        "la t0, {_main}",
         "add t0, t0, {0}",
         "jr t0",
         in(reg) VIRT_RAM_OFFSET,
-        _rust_main = sym rust_main,
+        _main = sym rust_main
     );
 }
 

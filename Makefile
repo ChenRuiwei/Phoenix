@@ -5,6 +5,7 @@ BOOTLOADER = default
 TARGET = riscv64gc-unknown-none-elf
 export BOARD = qemu
 export MODE = debug
+export LOG = trace
 
 # Tools
 QEMU = qemu-system-riscv64
