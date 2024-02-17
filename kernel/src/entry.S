@@ -2,7 +2,6 @@
     .globl _start
 _start:
     la sp, boot_stack_top
-
     la t0, boot_pagetable
     # set mode to sv39
     li t1, 8 << 60
@@ -11,14 +10,11 @@ _start:
     or t0, t0, t1
     csrw satp, t0
     sfence.vma
-
-    lla t2, rust_main
-    jalr zero, 0(t2)
-
+    call fake_main
 
     .section .bss.stack
-    .globl boot_stack_lower_bound
-boot_stack_lower_bound:
+    .globl boot_stack_bottom
+boot_stack_bottom:
     .space 4096 * 16
     .globl boot_stack_top
 boot_stack_top:

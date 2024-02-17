@@ -1,10 +1,11 @@
 #![no_std]
 #![no_main]
 
+mod boot;
 mod console;
 mod sbi;
 
-use core::arch::global_asm;
+use core::arch::{asm, global_asm};
 use core::panic::PanicInfo;
 
 global_asm!(include_str!("entry.S"));
@@ -23,6 +24,7 @@ fn panic(_info: &PanicInfo) -> ! {
 
 #[no_mangle]
 pub fn rust_main() -> ! {
+    boot::clear_bss();
     println!("==================================================");
     println!("hello world");
     loop {

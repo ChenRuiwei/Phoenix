@@ -24,13 +24,14 @@ SECTIONS
 
     . = ALIGN(4K);
     .bss : {
+        _sbss = .;
         *(.bss.stack)
         *(.bss .bss.*)
         *(.sbss .sbss.*)
+        _ebss = .;
     } > VIRT AT> RAM
 
     . = ALIGN(4K);
-
     /DISCARD/ : {
         *(.eh_frame)
     }
