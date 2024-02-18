@@ -42,10 +42,35 @@ pub fn init() {
     });
 }
 
+#[allow(dead_code)]
 pub fn show_examples() {
-    error!("error");
-    warn!("warn");
-    info!("info");
-    debug!("debug");
-    trace!("trace");
+    extern "C" {
+        fn _stext();
+        fn _etext();
+        fn _srodata();
+        fn _erodata();
+        fn _sdata();
+        fn _edata();
+        fn _sstack();
+        fn _estack();
+        fn _sbss();
+        fn _ebss();
+    }
+    error!(
+        "stext: {:#x}, etext: {:#x}",
+        _stext as usize, _etext as usize
+    );
+    warn!(
+        "srodata: {:#x}, erodata: {:#x}",
+        _srodata as usize, _erodata as usize
+    );
+    info!(
+        "sdata: {:#x}, edata: {:#x}",
+        _sdata as usize, _edata as usize
+    );
+    debug!(
+        "sstack: {:#x}, estack: {:#x}",
+        _sstack as usize, _estack as usize
+    );
+    trace!("sbss: {:#x}, ebss: {:#x}", _sbss as usize, _ebss as usize);
 }

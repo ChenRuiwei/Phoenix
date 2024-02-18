@@ -2,6 +2,7 @@ use core::arch::asm;
 
 use crate::{println, rust_main};
 use config::mm::VIRT_RAM_OFFSET;
+use log::trace;
 
 const BOOT_MSG: &str = r#"
 ===============================================================
@@ -31,10 +32,11 @@ unsafe fn fake_main() {
 /// Clear BSS segment at start up
 pub fn clear_bss() {
     extern "C" {
-        static _sbss: usize;
-        static _ebss: usize;
+        fn _sbss();
+        fn _ebss();
     }
     unsafe {
-        (_sbss.._ebss).for_each(|a| (a as *mut u8).write_volatile(0));
+        core::slice::from_raw_parts_mut(_sbss as usize as *mut u8, _ebss as usize - _sbss as usize)
+            .fill(0);
     }
 }
