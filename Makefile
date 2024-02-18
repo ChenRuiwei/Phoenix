@@ -47,8 +47,12 @@ PHONY += docker
 docker:
 	@docker run --rm -it --network="host" -v ${PWD}:/mnt -w /mnt ${DOCKER_NAME} bash
 
+PHONY += env
+env:
+	@(cargo install --list | grep "cargo-binutils" > /dev/null 2>&1) || cargo install cargo-binutils
+
 PHONY += build
-build:
+build: env
 	@echo Platform: $(BOARD)
 	@cd kernel && make build
 	@echo "Updated: $(KERNEL_ELF)"
