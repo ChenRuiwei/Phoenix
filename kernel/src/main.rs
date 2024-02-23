@@ -1,10 +1,15 @@
 #![no_std]
 #![no_main]
+#![feature(alloc_error_handler)]
+
+extern crate alloc;
 
 mod boot;
 mod console;
 mod logging;
+mod mm;
 mod sbi;
+mod sync;
 
 use core::arch::{asm, global_asm};
 use core::panic::PanicInfo;
@@ -31,6 +36,9 @@ pub fn rust_main() -> ! {
     boot::print_boot_message();
     logging::init();
     logging::show_examples();
+
+    mm::heap_allocator::init_heap();
+    mm::heap_allocator::heap_test();
 
     loop {
         wfi()
