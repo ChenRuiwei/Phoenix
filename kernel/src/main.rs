@@ -20,7 +20,7 @@ global_asm!(include_str!("entry.S"));
 
 // Wait for interrupt, allows the CPU to go into a power saving mode
 pub fn wfi() {
-    unsafe { core::arch::asm!("wfi") }
+    unsafe { asm!("wfi") }
 }
 
 #[panic_handler]

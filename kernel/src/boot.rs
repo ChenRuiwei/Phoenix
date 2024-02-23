@@ -2,7 +2,6 @@ use core::arch::asm;
 
 use crate::{println, rust_main};
 use config::mm::VIRT_RAM_OFFSET;
-use log::trace;
 
 const BOOT_MSG: &str = r#"
 ===============================================================
