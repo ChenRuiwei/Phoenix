@@ -2,6 +2,4 @@
 target = "riscv64gc-unknown-none-elf"
 
 [target.riscv64gc-unknown-none-elf]
-rustflags = [
-    "-Cforce-frame-pointers=yes"
-]
+rustflags = ["-Cforce-frame-pointers=yes"]

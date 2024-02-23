@@ -1,4 +1,4 @@
-use riscv::register::sstatus;
+use crate::arch::interrupts;
 
 /// A spin-based lock providing mutually exclusive access to data.
 pub struct Mutex<T: ?Sized> {
@@ -32,10 +32,10 @@ impl<T> Mutex<T> {
     /// tries to acquire a lock that will never become free. Thus, locking interrupts is useful for
     /// volatile operations where we might be interrupted.
     pub fn lock_irq(&self) -> MutexGuard<T> {
-        let irq_lock = sstatus::read().sie();
+        let irq_lock = interrupts::is_enabled();
 
         unsafe {
-            sstatus::clear_sie();
+            interrupts::disable();
         }
 
         MutexGuard {
@@ -86,7 +86,7 @@ impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
 
         if self.irq_lock {
             unsafe {
-                sstatus::set_sie();
+                interrupts::enable();
             }
         }
     }

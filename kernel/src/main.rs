@@ -4,6 +4,7 @@
 
 extern crate alloc;
 
+mod arch;
 mod boot;
 mod console;
 mod logging;
