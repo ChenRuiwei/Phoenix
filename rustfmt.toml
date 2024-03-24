@@ -1,0 +1,13 @@
+max_width = 100
+normalize_comments = true
+wrap_comments = true
+
+condense_wildcard_suffixes = true
+format_macro_matchers = true
+use_try_shorthand = true
+use_field_init_shorthand = true
+
+group_imports = "StdExternalCrate"
+imports_granularity = "Crate"
+reorder_imports = true
+reorder_modules = true
