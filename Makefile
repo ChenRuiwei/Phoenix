@@ -1,44 +1,59 @@
 # Building variables
 DOCKER_NAME = my-os
 PACKAGE_NAME = kernel
-BOOTLOADER = default
 TARGET = riscv64gc-unknown-none-elf
-export BOARD = qemu
 export MODE = debug
 export LOG = trace
 
+
 # Tools
 QEMU = qemu-system-riscv64
-GDB = riscv64-elf-gdb
+RISCV_GDB ?= riscv64-unknown-elf-gdb
 OBJDUMP = rust-objdump --arch-name=riscv64
 OBJCOPY = rust-objcopy --binary-architecture=riscv64
 PAGER ?= less
 
-# Args
-DISASM_ARGS = -d
-QEMU_ARGS = -machine virt \
-			 -nographic \
-			 -bios $(BOOTLOADER) \
-			 -kernel $(KERNEL_ELF)
-	
+
 # Target files
 TARGET_DIR := target/$(TARGET)/$(MODE)
 KERNEL_ELF := $(TARGET_DIR)/$(PACKAGE_NAME)
 # be aware that make has implict rule on .S suffix
 KERNEL_ASM := $(TARGET_DIR)/$(PACKAGE_NAME).asm
 
-# Default target
-PHONY := all
-all: $(KERNEL_ELF) $(KERNEL_ASM)
 
-# Target file dependencies
-$(KERNEL_ELF): build
+# Args
+DOCKER_RUN_ARGS := run
+DOCKER_RUN_ARGS += --rm
+DOCKER_RUN_ARGS += -it
+DOCKER_RUN_ARGS += --privileged
+DOCKER_RUN_ARGS += --network="host"
+DOCKER_RUN_ARGS += -v $(PWD):/mnt
+DOCKER_RUN_ARGS += -v /dev:/dev
+DOCKER_RUN_ARGS += -w /mnt
+DOCKER_RUN_ARGS += $(DOCKER_NAME)
+DOCKER_RUN_ARGS += bash
 
-$(KERNEL_ASM): $(KERNEL_ELF)
-	@$(OBJDUMP) $(DISASM_ARGS) $(KERNEL_ELF) > $(KERNEL_ASM)
-	@echo "Updated: $(KERNEL_ASM)"
+CPUS := 2
+BOOTLOADER = default
+QEMU_ARGS :=
+QEMU_ARGS += -m 128M
+QEMU_ARGS += -machine virt
+QEMU_ARGS += -nographic
+QEMU_ARGS += -smp $(CPUS)
+QEMU_ARGS += -bios $(BOOTLOADER)
+QEMU_ARGS += -kernel $(KERNEL_ELF)
 
+GDB_ARGS := -ex 'file $(KERNEL_ELF)'
+GDB_ARGS += -ex 'set arch riscv:rv64'
+GDB_ARGS += -ex 'target remote localhost:1234'
+
+DISASM_ARGS = -d
+
+	
 # Phony targets
+PHONY := all
+all: build run
+
 PHONY += build_docker
 build_docker:
 	@docker build -t ${DOCKER_NAME} .
@@ -52,13 +67,13 @@ env:
 	@(cargo install --list | grep "cargo-binutils" > /dev/null 2>&1) || cargo install cargo-binutils
 
 PHONY += build
-build: env
+build:
 	@echo Platform: $(BOARD)
 	@cd kernel && make build
 	@echo "Updated: $(KERNEL_ELF)"
 
 PHONY += run
-run: build
+run:
 	@$(QEMU) $(QEMU_ARGS)
 
 PHONY += clean
@@ -67,8 +82,8 @@ clean:
 	@rm -rf $(TARGET_DIR)/*
 
 PHONY += disasm
-disasm: $(KERNEL_ASM)
-	@cat $(KERNEL_ASM) | $(PAGER)
+disasm:
+	@$(PAGER) $(KERNEL_ASM)
 
 PHONY += gdbserver
 gdbserver:
@@ -76,8 +91,6 @@ gdbserver:
 
 PHONY += gdbclient
 gdbclient:
-	@$(GDB) -ex 'file $(KERNEL_ELF)' \
-			-ex 'set arch riscv:rv64' \
-			-ex 'target remote localhost:1234'
+	@$(RISCV_GDB) -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'
 
 .PHONY: $(PHONY)
