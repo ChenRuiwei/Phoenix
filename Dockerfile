@@ -8,10 +8,10 @@ ARG HOME=/root
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -y \
-        curl \
-        git \
-        python3 \
-        wget
+    curl \
+    git \
+    python3 \
+    wget
 
 # 1. Set up QEMU RISC-V
 # - https://learningos.github.io/rust-based-os-comp2022/0setup-devel-env.html#qemu
@@ -21,16 +21,18 @@ RUN apt-get update && \
 
 # 1.1. Download source
 WORKDIR ${HOME}
-RUN wget https://download.qemu.org/qemu-${QEMU_VERSION}.tar.xz && \
+RUN wget --progress=dot:giga https://download.qemu.org/qemu-${QEMU_VERSION}.tar.xz && \
     tar xvJf qemu-${QEMU_VERSION}.tar.xz
 
 # 1.2. Install dependencies
 # - https://risc-v-getting-started-guide.readthedocs.io/en/latest/linux-qemu.html#prerequisites
-RUN apt-get install -y \
-        autoconf automake autotools-dev curl libmpc-dev libmpfr-dev libgmp-dev \
-        gawk build-essential bison flex texinfo gperf libtool patchutils bc \
-        zlib1g-dev libexpat-dev git \
-        ninja-build pkg-config libglib2.0-dev libpixman-1-dev libsdl2-dev
+RUN apt-get update && \
+    apt-get install -y \
+    autoconf automake autotools-dev curl libmpc-dev libmpfr-dev libgmp-dev \
+    gawk build-essential bison flex texinfo gperf libtool patchutils bc \
+    zlib1g-dev libexpat-dev git \
+    ninja-build pkg-config libglib2.0-dev libpixman-1-dev libsdl2-dev \
+    dosfstools
 
 # 1.3. Build and install from source
 WORKDIR ${HOME}/qemu-${QEMU_VERSION}
@@ -56,9 +58,9 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
     RUST_VERSION=nightly-2024-02-01 \
-    PROFILE=default
+    PROFILE=minimal
 RUN set -eux; \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init; \
+    wget --progress=dot:giga https://sh.rustup.rs -O rustup-init; \
     chmod +x rustup-init; \
     ./rustup-init -y --no-modify-path --profile $PROFILE --default-toolchain $RUST_VERSION; \
     rm rustup-init; \
@@ -72,6 +74,8 @@ RUN rustup --version && \
 # 3. Build env for labs
 RUN rustup target add riscv64gc-unknown-none-elf && \
     rustup component add rust-src && \
+    rustup component add rustfmt && \
+    rustup component add clippy && \
     rustup component add llvm-tools && \
     cargo install cargo-binutils
 
