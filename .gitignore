@@ -1,3 +1,4 @@
 target/
+vendor/
 
 .gdb_history
