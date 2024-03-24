@@ -2,7 +2,8 @@
 DOCKER_NAME = my-os
 PACKAGE_NAME = kernel
 TARGET = riscv64gc-unknown-none-elf
-export MODE = debug
+export BOARD = qemu
+export MODE = release
 export LOG = trace
 
 
@@ -16,6 +17,7 @@ PAGER ?= less
 
 # Target files
 TARGET_DIR := target/$(TARGET)/$(MODE)
+VENDOR_DIR := ./third-party/vendor
 KERNEL_ELF := $(TARGET_DIR)/$(PACKAGE_NAME)
 # be aware that make has implict rule on .S suffix
 KERNEL_ASM := $(TARGET_DIR)/$(PACKAGE_NAME).asm
@@ -65,6 +67,7 @@ docker:
 PHONY += env
 env:
 	@(cargo install --list | grep "cargo-binutils" > /dev/null 2>&1) || cargo install cargo-binutils
+	@cargo vendor $(VENDOR_DIR)
 
 PHONY += build
 build:

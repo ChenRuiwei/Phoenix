@@ -1,12 +1,13 @@
 //! The global allocator
-use crate::sync::mutex::Mutex;
-use buddy_system_allocator::Heap;
-use config::mm::KERNEL_HEAP_SIZE;
 use core::{
     alloc::{GlobalAlloc, Layout},
     ptr::NonNull,
 };
+
+use buddy_system_allocator::Heap;
+use config::mm::KERNEL_HEAP_SIZE;
 use log::{debug, error, info};
+use sync::mutex::SpinNoIrqLock;
 
 /// heap allocator instance
 #[global_allocator]
@@ -22,18 +23,18 @@ pub fn handle_alloc_error(layout: core::alloc::Layout) -> ! {
     panic!("Heap allocation error, layout = {:?}", layout);
 }
 
-struct GlobalHeap(Mutex<Heap<32>>);
+struct GlobalHeap(SpinNoIrqLock<Heap<32>>);
 
 impl GlobalHeap {
     const fn empty() -> Self {
-        Self(Mutex::new(Heap::empty()))
+        Self(SpinNoIrqLock::new(Heap::empty()))
     }
 }
 
 unsafe impl GlobalAlloc for GlobalHeap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         self.0
-            .lock_irq()
+            .lock()
             .alloc(layout)
             .ok()
             .map_or(core::ptr::null_mut::<u8>(), |allocation| {
@@ -42,9 +43,7 @@ unsafe impl GlobalAlloc for GlobalHeap {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.0
-            .lock_irq()
-            .dealloc(NonNull::new_unchecked(ptr), layout)
+        self.0.lock().dealloc(NonNull::new_unchecked(ptr), layout)
     }
 }
 
@@ -65,8 +64,7 @@ pub fn init_heap() {
 #[allow(unused)]
 pub fn heap_test() {
     info!("heap_test start...");
-    use alloc::boxed::Box;
-    use alloc::vec::Vec;
+    use alloc::{boxed::Box, vec::Vec};
     extern "C" {
         fn _sbss();
         fn _ebss();

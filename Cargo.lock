@@ -3,6 +3,19 @@
 version = 3
 
 [[package]]
+name = "arch"
+version = "0.1.0"
+dependencies = [
+ "riscv",
+]
+
+[[package]]
+name = "async-task"
+version = "4.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbb36e985947064623dbd357f727af08ffd077f93d696782f3c56365fa2e2799"
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -34,9 +47,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 
 [[package]]
+name = "executor"
+version = "0.1.0"
+dependencies = [
+ "async-task",
+ "sync",
+]
+
+[[package]]
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "arch",
  "buddy_system_allocator",
  "config",
  "log",
@@ -44,6 +66,7 @@ dependencies = [
  "riscv-rt",
  "sbi-rt",
  "spin",
+ "sync",
 ]
 
 [[package]]
@@ -150,6 +173,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "sync"
+version = "0.1.0"
+dependencies = [
+ "arch",
 ]
 
 [[package]]

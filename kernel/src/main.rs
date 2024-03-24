@@ -4,16 +4,16 @@
 
 extern crate alloc;
 
-mod arch;
 mod boot;
 mod console;
 mod logging;
 mod mm;
 mod sbi;
-mod sync;
 
-use core::arch::{asm, global_asm};
-use core::panic::PanicInfo;
+use core::{
+    arch::{asm, global_asm},
+    panic::PanicInfo,
+};
 
 use log::{debug, error, info, trace, warn};
 
@@ -32,7 +32,7 @@ fn panic(_info: &PanicInfo) -> ! {
 }
 
 #[no_mangle]
-pub fn rust_main() -> ! {
+pub fn rust_main() {
     boot::clear_bss();
     boot::print_boot_message();
     logging::init();
@@ -41,7 +41,5 @@ pub fn rust_main() -> ! {
     mm::heap_allocator::init_heap();
     mm::heap_allocator::heap_test();
 
-    loop {
-        wfi()
-    }
+    sbi::shutdown(true);
 }
