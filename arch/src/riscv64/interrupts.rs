@@ -28,6 +28,13 @@ pub fn enable_timer_interrupt() {
 }
 
 #[inline]
+pub fn enable_external_interrupt() {
+    unsafe {
+        sie::set_sext();
+    }
+}
+
+#[inline]
 pub fn set_trap_handler(handler_addr: usize) {
     unsafe {
         stvec::write(handler_addr, TrapMode::Direct);
