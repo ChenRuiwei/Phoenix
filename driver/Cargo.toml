@@ -1,0 +1,31 @@
+[package]
+name = "driver"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arch = { path = "../arch/" }
+config = { path = "../config/" }
+sync = { path = "../modules/sync/" }
+memory = { path = "../modules/memory/" }
+systype = { path = "../modules/systype/" }
+irq_count = { path = "../modules/irq_count/" }
+
+log = "0.4"
+virtio-drivers = { version = "0.7" }
+smoltcp = { version = "0.11", default-features = false, features = [
+    "alloc",
+    "log",
+    "medium-ethernet",
+    "medium-ip",
+    "proto-ipv4",
+    "proto-ipv6",
+    "proto-dhcpv4",
+    "proto-ipv4-fragmentation",
+    "socket-udp",
+    "socket-tcp",
+    "socket-dhcpv4",
+    "async",
+] }
