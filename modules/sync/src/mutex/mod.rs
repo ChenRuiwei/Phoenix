@@ -1,14 +1,15 @@
-use arch::interrupts::InterruptGuard;
+use self::{interrupts::InterruptGuard, sleep_mutex::SleepMutex, spin_mutex::SpinMutex};
 
-use self::spin::SpinMutex;
-
+mod interrupts;
+pub mod sleep_mutex;
 /// SpinMutex
-pub mod spin;
+pub mod spin_mutex;
 
 /// SpinLock
 pub type SpinLock<T> = SpinMutex<T, Spin>;
 /// SpinNoIrqLock(Cannot be interrupted)
 pub type SpinNoIrqLock<T> = SpinMutex<T, SpinNoIrq>;
+pub type SleepLock<T> = SleepMutex<T, SpinNoIrq>;
 
 /// Low-level support for mutex(spinlock, sleeplock, etc)
 pub trait MutexSupport {

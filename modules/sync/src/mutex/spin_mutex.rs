@@ -5,6 +5,8 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use async_utils::SendWrapper;
+
 use super::MutexSupport;
 
 struct MutexGuard<'a, T: ?Sized, S: MutexSupport> {
@@ -69,6 +71,16 @@ impl<T, S: MutexSupport> SpinMutex<T, S> {
             mutex: self,
             support_guard,
         }
+    }
+
+    /// # SAFETY
+    ///
+    /// This is highly unsafe.
+    /// You should ensure that context switch won't happen during
+    /// the locked data's lifetime.
+    #[inline(always)]
+    pub unsafe fn sent_lock(&self) -> impl DerefMut<Target = T> + '_ {
+        SendWrapper::new(self.lock())
     }
 }
 
