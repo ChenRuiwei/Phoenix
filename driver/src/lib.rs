@@ -8,15 +8,10 @@ use core::{
     task::Waker,
 };
 
-use arch::interrupts;
 use memory::PageTable;
 use sync::{cell::SyncUnsafeCell, mutex::SpinNoIrqLock};
 
-use self::{
-    plic::{initplic, PLIC},
-    qemu::virtio_blk::VirtIOBlock,
-    sbi::console_putchar,
-};
+use self::{plic::PLIC, sbi::console_putchar};
 
 pub mod plic;
 pub mod qemu;

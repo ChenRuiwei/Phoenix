@@ -9,7 +9,7 @@ use memory::{FrameTracker, MapPermission};
 use sync::mutex::{SleepLock, SpinLock};
 use systype::{GeneralRet, SyscallErr};
 
-use crate::{fs::Inode};
+use crate::fs::Inode;
 
 type Mutex<T> = SleepLock<T>;
 

@@ -1,13 +1,8 @@
-use alloc::vec::Vec;
-use core::ptr::NonNull;
-
-use config::mm::{PAGE_SIZE, VIRT_RAM_OFFSET};
-use log::debug;
+use config::mm::VIRT_RAM_OFFSET;
 use sync::mutex::SpinNoIrqLock;
 use virtio_drivers::{
     device::blk::VirtIOBlk,
     transport::mmio::{MmioTransport, VirtIOHeader},
-    BufferDirection, Hal,
 };
 
 use super::VirtioHal;

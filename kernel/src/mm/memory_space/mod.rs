@@ -12,8 +12,8 @@ use config::{
 };
 use log::{debug, error, info, trace, warn};
 use memory::{
-    address::SimpleRange, page_table::PTEFlags, MapPermission, VPNRange, VirtAddr,
-    VirtPageNum, MMIO,
+    address::SimpleRange, page_table::PTEFlags, MapPermission, VPNRange, VirtAddr, VirtPageNum,
+    MMIO,
 };
 use riscv::register::scause::Scause;
 use sync::cell::SyncUnsafeCell;

@@ -49,13 +49,11 @@ mod trap;
 mod utils;
 
 use core::{
-    arch::{global_asm},
+    arch::global_asm,
     hint::{self},
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
-
-
 
 global_asm!(include_str!("trampoline.S"));
 global_asm!(include_str!("link_app.S"));
