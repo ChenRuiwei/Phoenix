@@ -58,7 +58,7 @@ use core::{
 
 use config::mm::{KERNEL_DIRECT_OFFSET, PAGE_SIZE_BITS};
 
-global_asm!(include_str!("entry.S"));
+global_asm!(include_str!("trampoline.S"));
 global_asm!(include_str!("link_app.S"));
 
 static FIRST_HART: AtomicBool = AtomicBool::new(true);
@@ -83,17 +83,6 @@ fn hart_start(hart_id: usize) {
         if status == 0 {
             has_another = true;
         }
-    }
-}
-
-#[no_mangle]
-fn fake_main(hart_id: usize) {
-    unsafe {
-        asm!("add sp, sp, {}", in(reg) KERNEL_DIRECT_OFFSET << PAGE_SIZE_BITS);
-        asm!("la t0, rust_main");
-        asm!("add t0, t0, {}", in(reg) KERNEL_DIRECT_OFFSET << PAGE_SIZE_BITS);
-        asm!("mv a0, {}", in(reg) hart_id);
-        asm!("jalr zero, 0(t0)");
     }
 }
 
