@@ -16,11 +16,11 @@ pub fn print_boot_message() {
 /// Clear BSS segment at start up
 pub fn clear_bss() {
     extern "C" {
-        fn sbss();
-        fn ebss();
+        fn _sbss();
+        fn _ebss();
     }
     unsafe {
-        core::slice::from_raw_parts_mut(sbss as usize as *mut u8, ebss as usize - sbss as usize)
+        core::slice::from_raw_parts_mut(_sbss as usize as *mut u8, _ebss as usize - _sbss as usize)
             .fill(0);
     }
 }

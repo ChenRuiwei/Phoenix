@@ -35,8 +35,6 @@ all: build
 
 PHONY += build
 build:
-	@cp src/linker64.ld src/linker.ld
 	cargo build $(CARGO_BUILD_ARGS)
-	@rm src/linker.ld
 
 .PHONY: $(PHONY)

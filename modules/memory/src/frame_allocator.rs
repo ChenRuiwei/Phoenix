@@ -115,15 +115,15 @@ pub static FRAME_ALLOCATOR: Mutex<FrameAllocatorImpl> = Mutex::new(FrameAllocato
 /// initiate the frame allocator using `ekernel` and `MEMORY_END`
 pub fn init_frame_allocator() {
     extern "C" {
-        fn ekernel();
+        fn _ekernel();
     }
     FRAME_ALLOCATOR.lock().init(
-        PhysAddr::from(KernelAddr::from(ekernel as usize)).ceil(),
+        PhysAddr::from(KernelAddr::from(_ekernel as usize)).ceil(),
         PhysAddr::from(KernelAddr::from(MEMORY_END)).floor(),
     );
     info!(
         "frame allocator init finshed, start {:#x}, end {:#x}",
-        ekernel as usize, MEMORY_END
+        _ekernel as usize, MEMORY_END
     );
 }
 /// allocate a frame

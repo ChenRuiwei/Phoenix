@@ -45,20 +45,20 @@ pub mod vm_area;
 mod cow;
 
 extern "C" {
-    fn stext();
-    fn strampoline();
+    fn _stext();
+    fn _strampoline();
     fn sigreturn_trampoline();
-    fn etrampoline();
-    fn etext();
-    fn srodata();
-    fn erodata();
-    fn sdata();
-    fn edata();
-    fn sstack();
-    fn estack();
-    fn sbss();
-    fn ebss();
-    fn ekernel();
+    fn _etrampoline();
+    fn _etext();
+    fn _srodata();
+    fn _erodata();
+    fn _sdata();
+    fn _edata();
+    fn _sstack();
+    fn _estack();
+    fn _sbss();
+    fn _ebss();
+    fn _ekernel();
 }
 
 /// Kernel Space for all processes
@@ -409,35 +409,38 @@ impl MemorySpace {
         // map kernel sections
         info!(
             "[kernel].text [{:#x}, {:#x}) [{:#x}, {:#x})",
-            stext as usize, strampoline as usize, etrampoline as usize, etext as usize
+            _stext as usize, _strampoline as usize, _etrampoline as usize, _etext as usize
         );
         info!(
             "[kernel].text.trampoline [{:#x}, {:#x})",
-            strampoline as usize, etrampoline as usize,
+            _strampoline as usize, _etrampoline as usize,
         );
         info!(
             "[kernel].rodata [{:#x}, {:#x})",
-            srodata as usize, erodata as usize
+            _srodata as usize, _erodata as usize
         );
         info!(
             "[kernel].data [{:#x}, {:#x})",
-            sdata as usize, edata as usize
+            _sdata as usize, _edata as usize
         );
         info!(
             "[kernel].stack [{:#x}, {:#x})",
-            sstack as usize, estack as usize
+            _sstack as usize, _estack as usize
         );
-        info!("[kernel].bss [{:#x}, {:#x})", sbss as usize, ebss as usize);
+        info!(
+            "[kernel].bss [{:#x}, {:#x})",
+            _sbss as usize, _ebss as usize
+        );
         info!(
             "[kernel]physical mem [{:#x}, {:#x})",
-            ekernel as usize, MEMORY_END as usize
+            _ekernel as usize, MEMORY_END as usize
         );
 
         info!("[kernel]mapping .text section");
         memory_space.push(
             VmArea::new(
-                (stext as usize).into(),
-                (strampoline as usize).into(),
+                (_stext as usize).into(),
+                (_strampoline as usize).into(),
                 MapType::Direct,
                 MapPermission::R | MapPermission::X,
                 None,
@@ -450,8 +453,8 @@ impl MemorySpace {
         );
         memory_space.push(
             VmArea::new(
-                (etrampoline as usize).into(),
-                (etext as usize).into(),
+                (_etrampoline as usize).into(),
+                (_etext as usize).into(),
                 MapType::Direct,
                 MapPermission::R | MapPermission::X,
                 None,
@@ -465,8 +468,8 @@ impl MemorySpace {
         info!("[kernel]mapping .rodata section");
         memory_space.push(
             VmArea::new(
-                (srodata as usize).into(),
-                (erodata as usize).into(),
+                (_srodata as usize).into(),
+                (_erodata as usize).into(),
                 MapType::Direct,
                 MapPermission::R,
                 None,
@@ -480,8 +483,8 @@ impl MemorySpace {
         info!("[kernel]mapping .data section");
         memory_space.push(
             VmArea::new(
-                (sdata as usize).into(),
-                (edata as usize).into(),
+                (_sdata as usize).into(),
+                (_edata as usize).into(),
                 MapType::Direct,
                 MapPermission::R | MapPermission::W,
                 None,
@@ -496,8 +499,8 @@ impl MemorySpace {
         info!("[kernel]mapping .stack section");
         memory_space.push(
             VmArea::new(
-                (sstack as usize).into(),
-                (estack as usize).into(),
+                (_sstack as usize).into(),
+                (_estack as usize).into(),
                 MapType::Direct,
                 MapPermission::R | MapPermission::W,
                 None,
@@ -511,8 +514,8 @@ impl MemorySpace {
         info!("[kernel]mapping .bss section");
         memory_space.push(
             VmArea::new(
-                (sbss as usize).into(),
-                (ebss as usize).into(),
+                (_sbss as usize).into(),
+                (_ebss as usize).into(),
                 MapType::Direct,
                 MapPermission::R | MapPermission::W,
                 None,
@@ -526,8 +529,8 @@ impl MemorySpace {
         info!("[kernel]mapping signal-return trampoline");
         memory_space.push(
             VmArea::new(
-                (strampoline as usize).into(),
-                (etrampoline as usize).into(),
+                (_strampoline as usize).into(),
+                (_etrampoline as usize).into(),
                 MapType::Direct,
                 MapPermission::R | MapPermission::X | MapPermission::U,
                 None,
@@ -542,7 +545,7 @@ impl MemorySpace {
         info!("[kernel]mapping physical memory");
         memory_space.push(
             VmArea::new(
-                (ekernel as usize).into(),
+                (_ekernel as usize).into(),
                 MEMORY_END.into(),
                 MapType::Direct,
                 MapPermission::R | MapPermission::W,
@@ -1138,10 +1141,10 @@ pub fn remap_test() {
     info!("remap_test start...");
     let kernel_space = unsafe { KERNEL_SPACE.as_ref().unwrap() };
     // let mid_text: VirtAddr = ((stext as usize + etext as usize) / 2).into();
-    let mid_text: VirtAddr = (stext as usize + (etext as usize - stext as usize) / 2).into();
+    let mid_text: VirtAddr = (_stext as usize + (_etext as usize - _stext as usize) / 2).into();
     let mid_rodata: VirtAddr =
-        (srodata as usize + (erodata as usize - srodata as usize) / 2).into();
-    let mid_data: VirtAddr = (sdata as usize + (edata as usize - sdata as usize) / 2).into();
+        (_srodata as usize + (_erodata as usize - _srodata as usize) / 2).into();
+    let mid_data: VirtAddr = (_sdata as usize + (_edata as usize - _sdata as usize) / 2).into();
     debug!(
         "mid text {:#x}, mid rodata {:#x}, mid data {:#x}",
         mid_text.0, mid_rodata.0, mid_data.0
