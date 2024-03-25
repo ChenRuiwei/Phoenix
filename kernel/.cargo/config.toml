@@ -2,4 +2,4 @@
 target = "riscv64gc-unknown-none-elf"
 
 [target.riscv64gc-unknown-none-elf]
-rustflags = ["-Cforce-frame-pointers=yes"]
+rustflags = ["-Clink-args=-Tkernel/src/linker.ld", "-Cforce-frame-pointers=yes"]

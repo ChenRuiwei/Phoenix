@@ -66,10 +66,10 @@ pub fn heap_test() {
     info!("heap_test start...");
     use alloc::{boxed::Box, vec::Vec};
     extern "C" {
-        fn _sbss();
-        fn _ebss();
+        fn sbss();
+        fn ebss();
     }
-    let bss_range = _sbss as usize.._ebss as usize;
+    let bss_range = sbss as usize..ebss as usize;
     let a = Box::new(5);
     assert_eq!(*a, 5);
     assert!(bss_range.contains(&(a.as_ref() as *const _ as usize)));

@@ -1,0 +1,346 @@
+use core::time::Duration;
+
+use async_utils::{Select2Futures, SelectOutput};
+use log::{debug, info, trace};
+use sync::Event;
+use systype::{SyscallErr, SyscallRet};
+
+use crate::{
+    mm::user_check::UserCheck,
+    process::{thread::spawn_kernel_thread, PROCESS_MANAGER},
+    processor::{current_process, current_task, SumGuard},
+    signal::SIGALRM,
+    stack_trace,
+    timer::{
+        current_time_duration, current_time_ms,
+        ffi::{current_time_spec, ITimerVal, TimeSpec, TimeVal, Tms},
+        timed_task::TimedTaskFuture,
+        timeout_task::ksleep,
+        CLOCK_MANAGER, CLOCK_PROCESS_CPUTIME_ID, CLOCK_REALTIME, TIMER_ABSTIME,
+    },
+};
+
+pub fn sys_get_time(time_val_ptr: *mut TimeVal) -> SyscallRet {
+    stack_trace!();
+    UserCheck::new()
+        .check_writable_slice(time_val_ptr as *mut u8, core::mem::size_of::<TimeVal>())?;
+    let _sum_guard = SumGuard::new();
+    let current_time = current_time_ms();
+    let time_val = TimeVal {
+        sec: current_time / 1000,
+        usec: current_time % 1000 * 1000,
+    };
+    // debug!("get time of day, time(ms): {}", current_time);
+    unsafe {
+        time_val_ptr.write_volatile(time_val);
+    }
+    Ok(0)
+}
+
+pub fn sys_clock_settime(clock_id: usize, time_spec_ptr: *const TimeSpec) -> SyscallRet {
+    stack_trace!();
+    UserCheck::new()
+        .check_readable_slice(time_spec_ptr as *const u8, core::mem::size_of::<TimeSpec>())?;
+    let _sum_guard = SumGuard::new();
+    let time_spec = unsafe { &*time_spec_ptr };
+    if (time_spec.sec as isize) < 0 {
+        debug!("Cannot set time. sec is negative");
+        return Err(SyscallErr::EINVAL);
+    } else if (time_spec.nsec as isize) < 0 || time_spec.nsec > 999999999 {
+        debug!("Cannot set time. nsec is invalid");
+        return Err(SyscallErr::EINVAL);
+    } else if clock_id == CLOCK_REALTIME && time_spec.sec < current_time_ms() / 1000 {
+        debug!("set the time to a value less than the current value of the CLOCK_MONOTONIC clock.");
+        return Err(SyscallErr::EINVAL);
+    } else if clock_id == CLOCK_PROCESS_CPUTIME_ID {
+        debug!("Cannot set this clock");
+        return Err(SyscallErr::EPERM);
+    }
+
+    // calculate the diff
+    // arg_timespec - device_timespec = diff
+    let dev_spec = current_time_spec();
+    let diff_time = Duration::from(*time_spec) - current_time_duration();
+    // let diff_spec = TimeDiff {
+    //     sec: time_spec.sec   - dev_spec.sec  ,
+    //     nsec: time_spec.nsec   - dev_spec.nsec  ,
+    // };
+    log::info!(
+        "[sys_clock_settime] arg time spec {:?}, dev curr time spec {:?}",
+        Duration::from(*time_spec),
+        Duration::from(dev_spec)
+    );
+
+    let mut manager_unlock = CLOCK_MANAGER.lock();
+    manager_unlock.0.insert(clock_id, diff_time);
+
+    Ok(0)
+}
+
+pub fn sys_clock_gettime(clock_id: usize, time_spec_ptr: *mut TimeSpec) -> SyscallRet {
+    stack_trace!();
+    UserCheck::new()
+        .check_writable_slice(time_spec_ptr as *mut u8, core::mem::size_of::<TimeSpec>())?;
+    let _sum_guard = SumGuard::new();
+    if clock_id == CLOCK_PROCESS_CPUTIME_ID {
+        let cpu_time = current_process().inner_handler(|proc| {
+            let mut user_time = Duration::ZERO;
+            let mut sys_time = Duration::ZERO;
+            for (_, thread) in proc.threads.iter() {
+                if let Some(thread) = thread.upgrade() {
+                    // TODO: is it ok to just read the other thread's unsafe cell data?
+                    user_time += unsafe { (*thread.inner.get()).time_info.user_time };
+                    sys_time += unsafe { (*thread.inner.get()).time_info.sys_time };
+                }
+            }
+            user_time + sys_time
+        });
+        debug!("[sys_clock_gettime] get process cpu time: {:?}", cpu_time);
+        unsafe {
+            time_spec_ptr.write_volatile(cpu_time.into());
+        }
+        return Ok(0);
+    }
+    let manager_locked = CLOCK_MANAGER.lock();
+    let clock = manager_locked.0.get(&clock_id);
+    match clock {
+        Some(clock) => {
+            trace!("[sys_clock_gettime] find the clock, clock id {}", clock_id);
+            let dev_time = current_time_duration();
+            let clock_time = dev_time + *clock;
+            log::debug!("[sys_clock_gettime] get time {:?}", clock_time);
+            unsafe {
+                time_spec_ptr.write_volatile(clock_time.into());
+            }
+            Ok(0)
+        }
+        None => {
+            trace!("[sys_clock_gettime] Cannot find the clock: {}", clock_id);
+            Err(SyscallErr::EINVAL)
+        }
+    }
+}
+
+pub fn sys_clock_getres(clock_id: usize, res: *mut TimeSpec) -> SyscallRet {
+    stack_trace!();
+    let _sum_guard = SumGuard::new();
+    UserCheck::new().check_writable_slice(res as *mut u8, core::mem::size_of::<TimeSpec>())?;
+    let manager_locked = CLOCK_MANAGER.lock();
+    let clock = manager_locked.0.get(&clock_id);
+    match clock {
+        Some(_clock) => {
+            trace!("[sys_clock_getres] find the clock, clock id {}", clock_id);
+            let resolution = Duration::from_nanos(1);
+            info!("[sys_clock_getres] get time {:?}", resolution);
+            unsafe {
+                res.write_volatile(resolution.into());
+            }
+            Ok(0)
+        }
+        None => {
+            trace!("[sys_clock_getres] Cannot find the clock: {}", clock_id);
+            Err(SyscallErr::EINVAL)
+        }
+    }
+}
+
+pub async fn sys_clock_nanosleep(
+    _clock_id: usize,
+    flags: u32,
+    request: usize,
+    remain: usize,
+) -> SyscallRet {
+    stack_trace!();
+    let _sum_guard = SumGuard::new();
+    let size = core::mem::size_of::<TimeSpec>();
+    UserCheck::new().check_readable_slice(request as *const u8, size)?;
+    let request: Duration = unsafe { *(request as *const TimeSpec) }.into();
+    let has_remain = if (remain as *mut TimeSpec).is_null() {
+        false
+    } else {
+        true
+    };
+    let current = current_time_duration();
+    if flags as usize == TIMER_ABSTIME {
+        // request time is absolutely
+        if request.le(&current) {
+            return Ok(0);
+        }
+        let sleep = request - current;
+        ksleep(sleep).await;
+        return Ok(0);
+    } else {
+        // request time is relative
+        match Select2Futures::new(
+            ksleep(request),
+            current_task().wait_for_events(Event::all()),
+        )
+        .await
+        {
+            SelectOutput::Output1(_) => {}
+            SelectOutput::Output2(intr) => {
+                log::warn!("[sys_nanosleep] interrupt by event {:?}", intr);
+                return Err(SyscallErr::EINTR);
+            }
+        };
+        // ksleep(request).await;
+        if has_remain {
+            UserCheck::new().check_writable_slice(remain as *mut u8, size)?;
+            unsafe {
+                *(remain as *mut TimeSpec) = Duration::ZERO.into();
+            }
+        }
+        return Ok(0);
+    }
+}
+
+pub fn sys_times(buf: *mut Tms) -> SyscallRet {
+    stack_trace!();
+    UserCheck::new().check_writable_slice(buf as *mut u8, core::mem::size_of::<Tms>())?;
+    let _sum_guard = SumGuard::new();
+    let tms = unsafe { &mut *buf };
+    // TODO: need to modify
+    tms.stime = 1;
+    tms.utime = 1;
+    tms.cstime = 1;
+    tms.cutime = 1;
+    Ok(0)
+}
+
+pub async fn sys_nanosleep(time_val_ptr: usize) -> SyscallRet {
+    stack_trace!();
+    let sleep_ms = {
+        UserCheck::new()
+            .check_readable_slice(time_val_ptr as *const u8, core::mem::size_of::<TimeVal>())?;
+        let _sum_guard = SumGuard::new();
+
+        let time_val_ptr = time_val_ptr as *const TimeSpec;
+        let time_val = unsafe { &(*time_val_ptr) };
+        time_val.sec * 1000 + time_val.nsec / 1000000
+    };
+    match Select2Futures::new(
+        ksleep(Duration::from_millis(sleep_ms as u64)),
+        current_task().wait_for_events(Event::all()),
+    )
+    .await
+    {
+        SelectOutput::Output1(_) => Ok(0),
+        SelectOutput::Output2(intr) => {
+            log::info!("[sys_nanosleep] interrupt by event {:?}", intr);
+            Err(SyscallErr::EINTR)
+        }
+    }
+    // ksleep().await;
+    // Ok(0)
+}
+
+const ITIMER_REAL: i32 = 0;
+const ITIMER_VIRTUAL: i32 = 1;
+const ITIMER_PROF: i32 = 2;
+
+pub fn sys_setitimer(
+    which: i32,
+    new_value: *const ITimerVal,
+    old_value: *mut ITimerVal,
+) -> SyscallRet {
+    stack_trace!();
+
+    let current_pid = current_process().pid();
+
+    UserCheck::new()
+        .check_readable_slice(new_value as *const u8, core::mem::size_of::<ITimerVal>())?;
+
+    let _sum_guard = SumGuard::new();
+
+    let new_value = unsafe { &*new_value };
+    let interval = Duration::from(new_value.it_interval);
+    let next_timeout = Duration::from(new_value.it_value);
+    info!(
+        "[sys_settimer]: which {}, new_value{{ interval:{:?}, value:{:?} }}",
+        which, interval, next_timeout
+    );
+
+    let idx = match which {
+        ITIMER_REAL => which,
+        _ => todo!(),
+    };
+    if old_value as usize != 0 {
+        UserCheck::new()
+            .check_writable_slice(old_value as *mut u8, core::mem::size_of::<ITimerVal>())?;
+        let old_value = unsafe { &mut *old_value };
+        *old_value = current_process().inner_handler(|proc| {
+            let next_trigger_ts = Duration::from(proc.timers[idx as usize].it_value);
+            let mut value = next_trigger_ts;
+            if !value.is_zero() {
+                let current_ts = current_time_duration();
+                if value > current_ts {
+                    value -= current_time_duration();
+                } else {
+                    value = Duration::ZERO;
+                }
+            }
+            proc.timers[idx as usize].it_value = value.into();
+            proc.timers[idx as usize]
+        });
+        log::debug!("[sys_settimer] old timer {:?}", old_value);
+    }
+
+    match which {
+        ITIMER_REAL => {
+            let callback = move || {
+                stack_trace!();
+                if let Some(process) = PROCESS_MANAGER.get(current_pid) {
+                    if process.inner_handler(|proc| {
+                        let mut timer = proc.timers[ITIMER_REAL as usize];
+                        if Duration::from(timer.it_value).is_zero() {
+                            timer.it_value = Duration::ZERO.into();
+                            false
+                        } else {
+                            let expired_time = current_time_duration() + interval;
+                            timer.it_value = expired_time.into();
+                            true
+                        }
+                    }) {
+                        process.recv_signal(SIGALRM).unwrap()
+                    } else {
+                        return false;
+                    }
+                    if interval.is_zero() {
+                        false
+                    } else {
+                        true
+                    }
+                } else {
+                    false
+                }
+            };
+            if next_timeout.is_zero() {
+                // Disarm the old timer
+                current_process().inner_handler(|proc| {
+                    proc.timers[ITIMER_REAL as usize].it_value = Duration::ZERO.into();
+                });
+            } else {
+                current_process().inner_handler(|proc| {
+                    proc.timers[ITIMER_REAL as usize].it_value =
+                        (current_time_duration() + next_timeout).into();
+                });
+                spawn_kernel_thread(async move {
+                    TimedTaskFuture::new(interval, callback, next_timeout + current_time_duration())
+                        .await
+                });
+            }
+            which
+        }
+        ITIMER_VIRTUAL => {
+            todo!()
+        }
+        ITIMER_PROF => {
+            todo!()
+        }
+        _ => {
+            return Err(SyscallErr::EINVAL);
+        }
+    };
+
+    Ok(0)
+}
