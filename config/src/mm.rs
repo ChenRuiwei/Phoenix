@@ -8,4 +8,5 @@ pub const KERNEL_OFFSET: usize = 0x20_0000;
 pub const KERNEL_START_PHYS: usize = RAM_START + KERNEL_OFFSET;
 pub const KERNEL_START: usize = VIRT_START + KERNEL_OFFSET;
 
+pub const KERNEL_STACK_SIZE: usize = 4096 * 16;
 pub const KERNEL_HEAP_SIZE: usize = 32 * 1024 * 1024;

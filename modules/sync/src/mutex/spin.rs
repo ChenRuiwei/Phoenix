@@ -27,7 +27,7 @@ impl<'a, T: ?Sized, S: MutexSupport> !Send for MutexGuard<'a, T, S> {}
 unsafe impl<T: ?Sized + Send, S: MutexSupport> Sync for SpinMutex<T, S> {}
 unsafe impl<T: ?Sized + Send, S: MutexSupport> Send for SpinMutex<T, S> {}
 
-impl<'a, T, S: MutexSupport> SpinMutex<T, S> {
+impl<T, S: MutexSupport> SpinMutex<T, S> {
     /// Construct a SpinMutex
     pub const fn new(user_data: T) -> Self {
         SpinMutex {

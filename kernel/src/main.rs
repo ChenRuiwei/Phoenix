@@ -10,14 +10,7 @@ mod logging;
 mod mm;
 mod sbi;
 
-use core::{
-    arch::{asm, global_asm},
-    panic::PanicInfo,
-};
-
-use log::{debug, error, info, trace, warn};
-
-global_asm!(include_str!("entry.S"));
+use core::{arch::asm, panic::PanicInfo};
 
 // Wait for interrupt, allows the CPU to go into a power saving mode
 pub fn wfi() {
@@ -32,7 +25,7 @@ fn panic(_info: &PanicInfo) -> ! {
 }
 
 #[no_mangle]
-pub fn rust_main() {
+pub fn rust_main(hart_id: usize) {
     boot::clear_bss();
     boot::print_boot_message();
     logging::init();

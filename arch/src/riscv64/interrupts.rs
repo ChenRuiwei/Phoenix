@@ -10,7 +10,6 @@ pub fn is_interrupt_enabled() -> bool {
 
 #[inline]
 pub fn enable_interrupt() {
-    #[cfg(feature = "kernel_interrupt")]
     unsafe {
         sstatus::set_sie();
     }
@@ -18,10 +17,7 @@ pub fn enable_interrupt() {
 
 #[inline]
 pub fn disable_interrupt() {
-    #[cfg(feature = "kernel_interrupt")]
-    unsafe {
-        sstatus::clear_sie()
-    }
+    unsafe { sstatus::clear_sie() }
 }
 
 #[inline]

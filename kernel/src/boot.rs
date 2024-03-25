@@ -1,7 +1,4 @@
-use core::arch::asm;
-
-use crate::{println, rust_main};
-use config::mm::VIRT_RAM_OFFSET;
+use crate::println;
 
 const BOOT_MSG: &str = r#"
 ===============================================================
@@ -14,18 +11,6 @@ const BOOT_MSG: &str = r#"
 
 pub fn print_boot_message() {
     println!("{}", BOOT_MSG);
-}
-
-#[no_mangle]
-unsafe fn fake_main() {
-    asm!(
-        "add sp, sp, {0}",
-        "la t0, {_main}",
-        "add t0, t0, {0}",
-        "jr t0",
-        in(reg) VIRT_RAM_OFFSET,
-        _main = sym rust_main
-    );
 }
 
 /// Clear BSS segment at start up
