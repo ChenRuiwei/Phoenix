@@ -8,14 +8,11 @@ use alloc::{
 
 use config::{
     board::MEMORY_END,
-    mm::{
-        DL_INTERP_OFFSET, KERNEL_DIRECT_OFFSET, MMAP_TOP, PAGE_SIZE, PAGE_SIZE_BITS,
-        USER_STACK_SIZE,
-    },
+    mm::{DL_INTERP_OFFSET, MMAP_TOP, PAGE_SIZE, USER_STACK_SIZE, VIRT_RAM_OFFSET},
 };
 use log::{debug, error, info, trace, warn};
 use memory::{
-    address::SimpleRange, frame_alloc, page_table::PTEFlags, MapPermission, VPNRange, VirtAddr,
+    address::SimpleRange, page_table::PTEFlags, MapPermission, VPNRange, VirtAddr,
     VirtPageNum, MMIO,
 };
 use riscv::register::scause::Scause;
@@ -564,8 +561,8 @@ impl MemorySpace {
             info!("permission: {:?}", pair.2);
             memory_space.push(
                 VmArea::new(
-                    (pair.0 + (KERNEL_DIRECT_OFFSET << PAGE_SIZE_BITS)).into(),
-                    (pair.0 + pair.1 + (KERNEL_DIRECT_OFFSET << PAGE_SIZE_BITS)).into(),
+                    (pair.0 + VIRT_RAM_OFFSET).into(),
+                    (pair.0 + pair.1 + VIRT_RAM_OFFSET).into(),
                     MapType::Direct,
                     pair.2,
                     None,

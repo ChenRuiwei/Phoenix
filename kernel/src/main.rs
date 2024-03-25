@@ -49,14 +49,13 @@ mod trap;
 mod utils;
 
 use core::{
-    arch::{asm, global_asm},
-    hint::{self, spin_loop},
-    panic::PanicInfo,
+    arch::{global_asm},
+    hint::{self},
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
-use config::mm::{KERNEL_DIRECT_OFFSET, PAGE_SIZE_BITS};
+
 
 global_asm!(include_str!("trampoline.S"));
 global_asm!(include_str!("link_app.S"));

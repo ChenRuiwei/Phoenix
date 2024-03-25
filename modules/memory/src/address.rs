@@ -1,7 +1,7 @@
 //! Implementation of physical and virtual address and page number.
 use core::fmt::{self, Debug, Formatter};
 
-use config::mm::{KERNEL_DIRECT_OFFSET, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM};
+use config::mm::{PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, VIRT_RAM_OFFSET};
 
 use crate::page_table::PageTableEntry;
 /// physical address
@@ -62,13 +62,13 @@ impl From<usize> for KernelAddr {
 }
 impl From<PhysAddr> for KernelAddr {
     fn from(pa: PhysAddr) -> Self {
-        Self(pa.0 + (KERNEL_DIRECT_OFFSET << PAGE_SIZE_BITS))
+        Self(pa.0 + VIRT_RAM_OFFSET)
     }
 }
 
 impl From<KernelAddr> for PhysAddr {
     fn from(ka: KernelAddr) -> Self {
-        Self(ka.0 - (KERNEL_DIRECT_OFFSET << PAGE_SIZE_BITS))
+        Self(ka.0 - VIRT_RAM_OFFSET)
     }
 }
 

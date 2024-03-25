@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
-use config::mm::{KERNEL_DIRECT_OFFSET, PAGE_SIZE};
+use config::mm::{PAGE_SIZE, VIRT_RAM_OFFSET};
 use log::debug;
 use sync::mutex::SpinNoIrqLock;
 use virtio_drivers::{
@@ -15,7 +15,7 @@ use crate::BlockDevice;
 
 #[allow(unused)]
 // const VIRTIO0: usize = 0x10001000;
-const VIRTIO0: usize = 0x10001000 + KERNEL_DIRECT_OFFSET * PAGE_SIZE;
+const VIRTIO0: usize = 0x10001000 + VIRT_RAM_OFFSET;
 
 pub struct VirtIOBlock(SpinNoIrqLock<VirtIOBlk<VirtioHal, MmioTransport>>);
 

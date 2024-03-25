@@ -16,8 +16,8 @@ pub const HART_START_ADDR: usize = 0x80200000;
 
 pub const USER_STACK_SIZE: usize = 1024 * 1024 * 8; // 8M
 
-pub const PAGE_SIZE: usize = 0x1000;
-pub const PAGE_SIZE_BITS: usize = 0xc;
+pub const PAGE_SIZE: usize = 1 << PAGE_SIZE_BITS;
+pub const PAGE_SIZE_BITS: usize = 12;
 
 pub const PAGE_TABLE_LEVEL_NUM: usize = 3;
 
