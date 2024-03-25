@@ -1,4 +1,7 @@
+.github
+.gdb_history
 target/
 vendor/
-
-.gdb_history
+fs-img/
+kernel/src/link_app.S
+kernel/src/linker.ld
