@@ -18,6 +18,7 @@ pub fn init() {
         Some("trace") => LevelFilter::Trace,
         _ => LevelFilter::Error,
     });
+    println!("{}", option_env!("LOG").unwrap());
 }
 
 /// Add escape sequence to print with color in Linux console
@@ -29,7 +30,7 @@ macro_rules! with_color {
 
 /// Print msg with color
 pub fn print_in_color(args: fmt::Arguments, color_code: u8) {
-    crate::driver::print(with_color!(args, color_code));
+    driver::print(with_color!(args, color_code));
 }
 
 struct SimpleLogger;
@@ -42,7 +43,7 @@ impl Log for SimpleLogger {
         if !self.enabled(record.metadata()) {
             return;
         }
-
+        // Note that log feature mut start after hart called `init_local_ctx`
         if hart_idle_now() {
             print_in_color(
                 format_args!(

@@ -52,7 +52,7 @@ pub fn init_heap() {
     unsafe {
         let start = HEAP_SPACE.as_ptr() as usize;
         HEAP_ALLOCATOR.0.lock().init(start, KERNEL_HEAP_SIZE);
-        debug!(
+        println!(
             "[kernel] heap start {:#x}, end {:#x}",
             start,
             start + KERNEL_HEAP_SIZE
@@ -63,7 +63,6 @@ pub fn init_heap() {
 /// heap test
 #[allow(unused)]
 pub fn heap_test() {
-    info!("heap_test start...");
     use alloc::{boxed::Box, vec::Vec};
     extern "C" {
         fn _sbss();
@@ -84,5 +83,5 @@ pub fn heap_test() {
     }
     assert!(bss_range.contains(&(v.as_ptr() as usize)));
     drop(v);
-    info!("heap_test passed!");
+    println!("heap_test passed!");
 }

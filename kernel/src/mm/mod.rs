@@ -18,8 +18,6 @@ pub use shm::SHARED_MEMORY_MANAGER;
 ///
 pub mod user_check;
 
-// pub use page_cache::page_cache_test;
-// pub use page_cache::PageCache;
 use log::info;
 pub use memory::page_table::{PageTable, PageTableEntry};
 pub use memory_space::{activate_kernel_space, remap_test, MemorySpace, KERNEL_SPACE};
@@ -30,7 +28,8 @@ use crate::{mm, processor::hart::HARTS};
 /// initiate heap allocator, frame allocator and kernel space
 pub fn init() {
     heap_allocator::init_heap();
-    heap_allocator::heap_test();
+    // heap_allocator::heap_test();
+    // Note that it is since here that can we use log!
     unsafe {
         for hart in HARTS.iter() {
             hart.init_local_ctx();
@@ -38,7 +37,7 @@ pub fn init() {
     }
     frame_allocator::init_frame_allocator();
     memory_space::init_kernel_space();
-    info!("KERNEL SPACE init finish1");
+    info!("KERNEL SPACE init finished");
     mm::activate_kernel_space();
-    info!("KERNEL SPACE init finish2");
+    info!("KERNEL SPACE activated");
 }

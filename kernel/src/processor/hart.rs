@@ -34,9 +34,11 @@ impl Hart {
         self.local_ctx_mut().env_mut()
     }
     pub fn local_ctx(&self) -> &LocalContext {
+        debug_assert!(self.local_ctx.is_completed());
         self.local_ctx.get().unwrap()
     }
     pub fn local_ctx_mut(&mut self) -> &mut LocalContext {
+        debug_assert!(self.local_ctx.is_completed());
         self.local_ctx.get_mut().unwrap()
     }
     pub fn current_task(&self) -> &Arc<Thread> {

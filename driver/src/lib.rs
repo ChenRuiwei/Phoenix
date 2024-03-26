@@ -111,7 +111,7 @@ pub fn print(args: fmt::Arguments<'_>) {
 #[macro_export]
 macro_rules! print {
     ($fmt: literal $(, $($arg: tt)+)?) => {
-        driver::print(format_args!($fmt $(, $($arg)+)?));
+        $crate::print(format_args!($fmt $(, $($arg)+)?));
     }
 }
 
@@ -119,7 +119,7 @@ macro_rules! print {
 #[macro_export]
 macro_rules! println {
     ($fmt: literal $(, $($arg: tt)+)?) => {
-        driver::print(format_args!(concat!($fmt, "\n") $(, $($arg)+)?));
+        $crate::print(format_args!(concat!($fmt, "\n") $(, $($arg)+)?));
     }
 }
 
