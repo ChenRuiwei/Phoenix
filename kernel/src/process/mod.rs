@@ -72,7 +72,6 @@ pub struct ProcessInner {
     pub parent: Option<Weak<Process>>,
     /// Children processes
     pub children: Vec<Arc<Process>>,
-    // pub children: Vec<Weak<Process>>,
     /// File descriptor table
     pub fd_table: FdTable,
     /// Socket table

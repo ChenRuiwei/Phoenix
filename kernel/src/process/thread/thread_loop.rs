@@ -1,7 +1,5 @@
 use alloc::sync::Arc;
 
-use log::debug;
-
 use super::Thread;
 use crate::{
     process::thread::exit::handle_exit,
@@ -9,9 +7,9 @@ use crate::{
     trap::{self, TrapContext},
 };
 
-pub async fn threadloop(thread: Arc<Thread>) {
+pub async fn user_loop(thread: Arc<Thread>) {
     thread.set_waker(async_utils::take_waker().await);
-    debug!(
+    log::debug!(
         "into thread loop, sepc {:#x}, trap cx addr {:#x}",
         current_task().trap_context_ref().sepc,
         current_task().trap_context_ref() as *const TrapContext as usize
@@ -23,7 +21,7 @@ pub async fn threadloop(thread: Arc<Thread>) {
         trap::user_trap::trap_handler().await;
 
         if thread.is_zombie() {
-            debug!("thread {} terminated", current_task().tid());
+            log::debug!("thread {} terminated", current_task().tid());
             break;
         }
     }

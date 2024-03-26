@@ -313,7 +313,6 @@ impl VmArea {
     /// one bound that equals to the old vpn range.
     fn do_unmap_area(&mut self, removed_vpn_range: VPNRange) {
         stack_trace!();
-        stack_trace!();
         trace!("[do_unmap_area] removed vpn range {:?}", removed_vpn_range);
         // Free phyical page frames
         self.data_frames

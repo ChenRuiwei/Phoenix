@@ -12,6 +12,12 @@ use systype::GeneralRet;
 use super::Process;
 use crate::stack_trace;
 
+/// Process manager that used for looking for a given process
+pub static PROCESS_MANAGER: ProcessManager = ProcessManager::new();
+
+/// Process group manager that used for a given pgid
+pub static PROCESS_GROUP_MANAGER: ProcessGroupManager = ProcessGroupManager::new();
+
 type Tid = usize;
 type Pid = usize;
 type Gid = usize;
@@ -48,6 +54,7 @@ impl ProcessManager {
         self.0.lock().get(&INITPROC_PID).unwrap().upgrade().unwrap()
     }
 
+    /// Total num of processes
     pub fn total_num(&self) -> usize {
         stack_trace!();
         let mut cnt = 0;
@@ -79,9 +86,6 @@ impl ProcessManager {
         Ok(())
     }
 }
-
-/// Process manager that used for looking for a given process
-pub static PROCESS_MANAGER: ProcessManager = ProcessManager::new();
 
 /// gid -> pid
 pub struct ProcessGroupManager(pub SpinNoIrqLock<BTreeMap<Gid, Vec<Pid>>>);
@@ -131,6 +135,3 @@ impl ProcessGroupManager {
         }
     }
 }
-
-/// Process group manager that used for a given pgid
-pub static PROCESS_GROUP_MANAGER: ProcessGroupManager = ProcessGroupManager::new();

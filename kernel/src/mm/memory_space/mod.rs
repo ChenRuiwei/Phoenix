@@ -96,8 +96,8 @@ impl PageManager {
 /// memory space structure, controls virtual-memory space
 pub struct MemorySpace {
     /// we should ensure modifying page table exclusively(e.g. through
-    /// process_inner's lock) TODO: optimization: decrease the lock
-    /// granularity when handling page fault
+    /// process_inner's lock)
+    // TODO: optimization: decrease the lock granularity when handling page fault
     pub page_table: Arc<SyncUnsafeCell<PageTable>>,
     /// start vpn -> vm_area
     areas: SyncUnsafeCell<BTreeMap<VirtPageNum, VmArea>>,

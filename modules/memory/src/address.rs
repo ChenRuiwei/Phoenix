@@ -29,7 +29,6 @@ pub struct PhysPageNum(pub usize);
 pub struct VirtPageNum(pub usize);
 
 /// Debugging
-
 impl Debug for VirtAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("VA:{:#x}", self.0))
@@ -240,7 +239,7 @@ impl PhysPageNum {
         let kernel_pa = KernelAddr::from(pa).0;
         unsafe { core::slice::from_raw_parts_mut(kernel_pa as *mut PageTableEntry, 512) }
     }
-    ///
+    /// Get bytes array of a physical page
     pub fn bytes_array(&self) -> &'static mut [u8] {
         let pa: PhysAddr = (*self).into();
         let kernel_pa = KernelAddr::from(pa).0;

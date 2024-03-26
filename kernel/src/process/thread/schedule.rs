@@ -7,7 +7,7 @@ use core::{
 
 use log::trace;
 
-use super::{thread_loop::threadloop, Thread};
+use super::{thread_loop::user_loop, Thread};
 use crate::processor::{
     self,
     ctx::{LocalContext, UserTaskContext},
@@ -123,7 +123,7 @@ pub async fn yield_now() {
 
 /// Spawn a new async user task
 pub fn spawn_user_thread(thread: Arc<Thread>) {
-    let future = UserTaskFuture::new(thread.clone(), threadloop(thread));
+    let future = UserTaskFuture::new(thread.clone(), user_loop(thread));
     let (runnable, task) = executor::spawn(future);
     runnable.schedule();
     task.detach();

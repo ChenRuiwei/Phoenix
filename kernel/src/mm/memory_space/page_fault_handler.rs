@@ -10,8 +10,6 @@ use crate::{
     mm::page::PageBuilder, process::Process, processor::SumGuard, stack_trace, syscall::MmapFlags,
 };
 
-// type Mutex<T> = SpinNoIrqLock<T>;
-
 /// General page fault handler
 pub trait PageFaultHandler: Send + Sync {
     /// Handle the specific virtual page fault synchronously.

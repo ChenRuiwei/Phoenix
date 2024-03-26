@@ -49,5 +49,6 @@ config = { path = "../config" }
 [features]
 stack_trace = []
 strace = []
+submit = []
 multi_hart = []
 async_flush = [] # flush dirty blocks to disk asynchronously

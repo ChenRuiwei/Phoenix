@@ -22,6 +22,7 @@ impl RecycleAllocator {
             recycled: BinaryHeap::new(),
         }
     }
+
     /// Allocate an id
     pub fn alloc(&mut self) -> usize {
         if let Some(Reverse(id)) = self.recycled.pop() {
@@ -31,6 +32,7 @@ impl RecycleAllocator {
             self.current - 1
         }
     }
+
     /// Recycle an id
     pub fn dealloc(&mut self, id: usize) {
         assert!(id < self.current);

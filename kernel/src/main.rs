@@ -45,7 +45,6 @@ mod signal;
 mod syscall;
 mod timer;
 mod trap;
-#[macro_use]
 mod utils;
 
 use core::{
@@ -168,17 +167,6 @@ fn rust_main(hart_id: usize) {
     );
     loop {
         executor::run_until_idle();
-        // #[cfg(feature = "multi_hart")]
-        // {
-        //     use crate::timer::current_time_duration;
-        //     let start_ts = current_time_duration();
-        //     loop {
-        //         let current_ts = current_time_duration();
-        //         if current_ts - start_ts > Duration::from_millis(2) {
-        //             break;
-        //         }
-        //     }
-        // }
     }
 }
 

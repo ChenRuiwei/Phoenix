@@ -11,7 +11,7 @@ use crate::address::{KernelAddr, PhysAddr, PhysPageNum};
 
 /// manage a frame which has the same lifecycle as the tracker
 pub struct FrameTracker {
-    ///
+    /// ppn of the frame
     pub ppn: PhysPageNum,
 }
 

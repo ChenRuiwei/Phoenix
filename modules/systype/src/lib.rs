@@ -57,7 +57,7 @@ pub enum SyscallErr {
     ENOSYS = 38,
     ENOTEMPTY = 39,
     ELOOP = 40,
-    // EWOULDBLOCK = 11,
+    // EWOULDBLOCK = 41,
     ENOMSG = 42,
     EIDRM = 43,
     ECHRNG = 44,

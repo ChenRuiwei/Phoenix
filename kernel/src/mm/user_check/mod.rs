@@ -17,14 +17,15 @@ use crate::{
 };
 
 global_asm!(include_str!("check.S"));
+
 ///
 pub struct UserCheck {
     _sum_guard: SumGuard,
     _sie_guard: InterruptGuard,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy)]
+#[repr(C)]
 struct TryOpRet {
     is_err: usize,
     scause: Scause,
@@ -66,6 +67,7 @@ impl UserCheck {
         let buf_start: VirtAddr = VirtAddr::from(buf as usize).floor().into();
         let mut buf_end: VirtAddr = VirtAddr::from(buf as usize + len).ceil().into();
         if buf_end.0 == 0 && buf_start.0 > 0 {
+            log::error!("buf0");
             buf_end.0 = usize::MAX;
         }
         let mut va = buf_start;
