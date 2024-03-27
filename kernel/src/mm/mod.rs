@@ -6,8 +6,6 @@
 //!
 //! Every task or process has a memory_space to control its virtual memory.
 
-mod buf;
-
 pub(crate) mod heap_allocator;
 ///
 pub mod memory_space;

@@ -13,6 +13,7 @@ use crate::{
 /// General page fault handler
 pub trait PageFaultHandler: Send + Sync {
     /// Handle the specific virtual page fault synchronously.
+    ///
     /// Return true if no async handler should be invoked
     fn handle_page_fault(
         &self,
@@ -125,7 +126,6 @@ impl PageFaultHandler for SBrkPageFaultHandler {
         page_table.map(vpn, ppn, pte_flags);
         page_table.activate();
         Ok(true)
-        // })
     }
 
     fn arc_clone(&self) -> Arc<dyn PageFaultHandler> {

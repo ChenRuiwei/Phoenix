@@ -6,7 +6,6 @@ use core::{
 
 use buddy_system_allocator::Heap;
 use config::mm::KERNEL_HEAP_SIZE;
-use log::{debug, error, info};
 use sync::mutex::SpinNoIrqLock;
 
 /// heap allocator instance
@@ -19,7 +18,7 @@ static mut HEAP_SPACE: [u8; KERNEL_HEAP_SIZE] = [0; KERNEL_HEAP_SIZE];
 /// panic when heap allocation error occurs
 #[alloc_error_handler]
 pub fn handle_alloc_error(layout: core::alloc::Layout) -> ! {
-    error!("heap alloc err!!");
+    log::error!("heap alloc err!!");
     panic!("Heap allocation error, layout = {:?}", layout);
 }
 

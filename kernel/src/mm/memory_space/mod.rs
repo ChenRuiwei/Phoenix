@@ -377,7 +377,7 @@ impl MemorySpace {
         }
     }
 
-    /// Add the map area to memory set and map the map area(allocating physical
+    /// Add the map area to memory set and map the map area (allocating physical
     /// frames)
     fn push(&mut self, mut vm_area: VmArea, data_offset: usize, data: Option<&[u8]>) {
         stack_trace!();

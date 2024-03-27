@@ -66,10 +66,11 @@ impl UserCheck {
         stack_trace!();
         let buf_start: VirtAddr = VirtAddr::from(buf as usize).floor().into();
         let mut buf_end: VirtAddr = VirtAddr::from(buf as usize + len).ceil().into();
-        if buf_end.0 == 0 && buf_start.0 > 0 {
-            log::error!("buf0");
-            buf_end.0 = usize::MAX;
-        }
+        // crw: what is this code for, for overflow?
+        // if buf_end.0 == 0 && buf_start.0 > 0 {
+        //     log::error!("crw: maybe overflow");
+        //     buf_end.0 = usize::MAX;
+        // }
         let mut va = buf_start;
         while va < buf_end {
             if let Some(scause) = self.try_read_u8(va.into()) {

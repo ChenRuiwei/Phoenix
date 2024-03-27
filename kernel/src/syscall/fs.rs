@@ -706,9 +706,10 @@ pub async fn sys_writev(fd: usize, iov: usize, iovcnt: usize) -> SyscallRet {
         trace!("current iov: {}", current);
         UserCheck::new().check_readable_slice(current as *const u8, iovec_size)?;
         trace!("pass readable check");
-        let iov_base = unsafe { &*(current as *const Iovec) }.iov_base;
+        let iovec = unsafe { &*(current as *const Iovec) };
+        let iov_base = iovec.iov_base;
         trace!("get iov_base: {}", iov_base);
-        let iov_len = unsafe { &*(current as *const Iovec) }.iov_len;
+        let iov_len = iovec.iov_len;
         trace!("get iov_len: {}", iov_len);
         UserCheck::new().check_readable_slice(iov_base as *const u8, iov_len)?;
         let buf = unsafe { core::slice::from_raw_parts(iov_base as *const u8, iov_len) };

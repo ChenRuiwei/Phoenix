@@ -18,7 +18,6 @@ pub fn init() {
         Some("trace") => LevelFilter::Trace,
         _ => LevelFilter::Error,
     });
-    println!("{}", option_env!("LOG").unwrap());
 }
 
 /// Add escape sequence to print with color in Linux console

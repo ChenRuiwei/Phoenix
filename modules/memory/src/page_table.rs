@@ -4,7 +4,7 @@ use core::arch::asm;
 
 use bitflags::*;
 use config::mm::KERNEL_DIRECT_OFFSET;
-use log::{debug, error, info};
+use log::{error, info};
 use riscv::register::satp;
 
 // use crate::config::MMIO;
@@ -14,10 +14,11 @@ use crate::{
     frame_allocator::frame_alloc, frame_allocator::FrameTracker,
 };
 
+/// Write `page_table_token` into satp and sfence.vma
 #[inline]
-pub fn switch_pagetable(pagetable_addr: usize) {
+pub fn activate_page_table(page_table_token: usize) {
     unsafe {
-        satp::write(pagetable_addr);
+        satp::write(page_table_token);
         asm!("sfence.vma");
     }
 }
@@ -177,7 +178,7 @@ impl PageTable {
     }
     /// Switch to this pagetable
     pub fn activate(&self) {
-        switch_pagetable(self.token());
+        activate_page_table(self.token());
     }
     /// Dump page table
     #[allow(unused)]
@@ -275,7 +276,7 @@ impl PageTable {
             (aligned_pa_usize + offset).into()
         })
     }
-    /// satp token with rv39 enabled
+    /// satp token with sv39 enabled
     pub fn token(&self) -> usize {
         8usize << 60 | self.root_ppn.0
     }
