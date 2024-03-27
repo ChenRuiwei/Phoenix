@@ -8,6 +8,8 @@ Rust编写的宏内核操作系统，基于RISC-V64硬件平台，支持多核
 
 ## 运行
 
+确保在项目 `my_os` 根目录下
+
 如果不在根用户下，先进入根用户
 
 ```sh
@@ -40,7 +42,27 @@ make env
 make all
 ```
 
-单独构建内核, 输入
+### `Makefile` 其他参数介绍
+
+编译内核，输入
+
+```sh
+make kernel
+```
+
+编译应用代码，输入
+
+```sh
+make user
+```
+
+烧录文件系统镜像，输入
+
+```sh
+make fs-img
+```
+
+格式化代码&编译应用代码&烧录文件系统镜像&编译内核, 输入
 
 ```sh
 make build
@@ -50,4 +72,34 @@ make build
 
 ```sh
 make run
+```
+
+或输入
+
+```sh
+make qemu
+```
+
+清除项目编译的二进制文件和烧录的文件镜像，输入
+
+```sh
+make clean
+```
+
+启动GDB服务器端, 输入
+
+```sh
+make gdbserver
+```
+
+启动GDB用户端，输入
+
+```sh
+make gdbclient
+```
+
+按照Rust官方推荐风格格式化项目代码，输入
+
+```sh
+make fmt
 ```
