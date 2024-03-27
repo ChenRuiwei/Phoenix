@@ -153,9 +153,7 @@ impl Inode for FAT32Inode {
             let inode = FAT32Inode::from_dentry(Arc::clone(&fat), Some(Arc::clone(&this)), &dentry);
             let inode_rc: Arc<dyn Inode> = Arc::new(inode);
             inode_rc.create_page_cache_if_needed();
-            meta_inner
-                .children
-                .insert(dentry.fname(), Arc::clone(&inode_rc));
+            meta_inner.children.insert(fname, inode_rc);
         }
     }
 
