@@ -187,7 +187,7 @@ impl Dirent {
 pub const STATFS_SIZE: usize = size_of::<Statfs>();
 #[repr(C)]
 #[allow(unused)]
-pub struct Fsid_t {
+pub struct FsidT {
     val: [i32; 2],
 }
 
@@ -209,7 +209,7 @@ pub struct Statfs {
     /// Free inodes in filesystem.
     f_ffree: u64,
     /// Filesystem ID.
-    f_fsid: Fsid_t,
+    f_fsid: FsidT,
     /// Maximum length of filenames.
     f_namelen: i64,
     /// Fragment size (since Linux 2.6).
@@ -231,7 +231,7 @@ impl Statfs {
             f_bavail: 1 << 20,
             f_files: 1 << 10,
             f_ffree: 1 << 9,
-            f_fsid: Fsid_t { val: [0; 2] },
+            f_fsid: FsidT { val: [0; 2] },
             f_namelen: 1 << 8,
             f_frsize: 1 << 9,
             f_flags: StatFlags::bits(&StatFlags::ST_NOSUID) as i64,
