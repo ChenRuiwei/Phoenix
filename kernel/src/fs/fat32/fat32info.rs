@@ -3,15 +3,25 @@ use crate::stack_trace;
 
 #[derive(Copy, Clone, Default)]
 pub struct FAT32Info {
+    /// 备份引导扇区号。真正的引导扇区为0扇区
     pub bk_bootsector_id: usize,
+    /// FSInfo 扇区号。用于存储和簇分配有关的信息
     pub fsinfo_sector_id: usize,
+    /// FAT 表初始位置。这在引导扇区记录中对应保留扇区数量
     pub fat_start_sector: usize,
+    /// 单个 FAT 表占用扇区数
     pub fat_sector_count: usize,
+    /// FAT 表的个数
     pub fat_count: usize,
+    /// 数据区起始位置。在挂载过程中计算出来
     pub data_start_sector: usize,
+    /// 一个簇的扇区数。这个数为2的次幂
     pub sector_per_cluster: usize,
+    /// 磁盘的总扇区数
     pub tot_sector_count: usize,
+    /// 磁盘的总簇数，计算得出
     pub tot_cluster_count: usize,
+    /// 根目录的簇号
     pub root_cluster_id: usize,
 }
 
