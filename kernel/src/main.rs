@@ -46,6 +46,7 @@ mod syscall;
 mod timer;
 mod trap;
 mod utils;
+mod task;
 
 use core::{
     arch::global_asm,

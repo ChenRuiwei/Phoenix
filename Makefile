@@ -2,7 +2,7 @@
 DOCKER_NAME = titanix
 BOARD := qemu
 export TARGET = riscv64gc-unknown-none-elf
-export MODE = release
+export MODE = debug
 export LOG = error
 
 
