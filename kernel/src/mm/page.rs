@@ -126,12 +126,12 @@ impl PageBuilder {
 impl Page {
     /// Reinterpret this page
     pub fn reinterpret<T>(&self) -> &'static T {
-        self.data_frame.ppn.reinterpret()
+        self.data_frame.vpn.reinterpret()
     }
 
     /// Reinterpret this page
     pub fn reinterpret_mut<T>(&self) -> &'static mut T {
-        self.data_frame.ppn.reinterpret_mut()
+        self.data_frame.vpn.reinterpret_mut()
     }
 
     /// Read this page.
@@ -145,7 +145,7 @@ impl Page {
                 end = PAGE_SIZE;
             }
             self.load_buffer_if_needed(offset, end).await?;
-            buf.copy_from_slice(&self.data_frame.ppn.bytes_array()[offset..end]);
+            buf.copy_from_slice(&self.data_frame.vpn.bytes_array()[offset..end]);
             Ok(end - offset)
         }
     }
@@ -165,7 +165,7 @@ impl Page {
                 end = PAGE_SIZE;
             }
             self.mark_buffer_dirty_if_needed(offset, end).await?;
-            self.data_frame.ppn.bytes_array()[offset..end].copy_from_slice(buf);
+            self.data_frame.vpn.bytes_array()[offset..end].copy_from_slice(buf);
             Ok(end - offset)
         }
     }
@@ -220,12 +220,12 @@ impl Page {
 
     /// Get the raw pointer of this page
     pub fn bytes_array_ptr(&self) -> *const u8 {
-        self.data_frame.ppn.bytes_array().as_ptr()
+        self.data_frame.vpn.bytes_array().as_ptr()
     }
 
     /// Get the bytes array of this page
     pub fn bytes_array(&self) -> &'static [u8] {
-        self.data_frame.ppn.bytes_array()
+        self.data_frame.vpn.bytes_array()
     }
 
     async fn load_buffer_if_needed(&self, start_off: usize, end_off: usize) -> GeneralRet<()> {
@@ -250,7 +250,7 @@ impl Page {
                     .unwrap()
                     .read(
                         file_offset,
-                        &mut self.data_frame.ppn.bytes_array()
+                        &mut self.data_frame.vpn.bytes_array()
                             [page_offset..page_offset + BLOCK_SIZE],
                     )
                     .await?;
@@ -281,7 +281,7 @@ impl Page {
                     .unwrap()
                     .read(
                         file_offset,
-                        &mut self.data_frame.ppn.bytes_array()
+                        &mut self.data_frame.vpn.bytes_array()
                             [page_offset..page_offset + BLOCK_SIZE],
                     )
                     .await?;

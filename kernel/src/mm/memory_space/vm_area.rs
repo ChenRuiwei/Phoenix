@@ -189,7 +189,7 @@ impl VmArea {
                             .build(),
                     ),
                 };
-                ppn = frame.data_frame.ppn;
+                ppn = frame.data_frame.vpn;
                 self.data_frames.get_mut().0.insert(vpn, frame);
             }
             MapType::Direct => {

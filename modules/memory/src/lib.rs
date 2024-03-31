@@ -9,12 +9,7 @@ pub mod address;
 pub mod frame_allocator;
 pub mod page_table;
 
-// use address::StepByOne;
-pub use address::{
-    KernelAddr, PhysAddr, PhysPageNum, StepByOne, VPNRange, VirtAddr, VirtPageNum, VA_WIDTH_SV39,
-};
-// pub use page_cache::page_cache_test;
-// pub use page_cache::PageCache;
+pub use address::{PhysAddr, PhysPageNum, StepByOne, VPNRange, VirtAddr, VirtPageNum};
 pub use frame_allocator::{frame_alloc, frame_alloc_contig, frame_dealloc, FrameTracker};
 pub use page_table::{PageTable, PageTableEntry};
 

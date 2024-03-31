@@ -29,7 +29,7 @@ impl CowPageManager {
             log::trace!(
                 "[CowPageManager::from_another]: map vpn {:#x}, ppn {:#x}, map perm {:?}",
                 vpn.0,
-                page.data_frame.ppn.0,
+                page.data_frame.vpn.0,
                 *page.permission.lock()
             );
             let mut pte_flags: PTEFlags = (*page.permission.lock()).into();
@@ -37,7 +37,7 @@ impl CowPageManager {
             pte_flags.remove(PTEFlags::W);
             page_table
                 .get_unchecked_mut()
-                .map(*vpn, page.data_frame.ppn, pte_flags);
+                .map(*vpn, page.data_frame.vpn, pte_flags);
         }
         // page_table.get_unchecked_mut().activate();
         Self {

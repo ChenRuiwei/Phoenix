@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 config = { path = "../../config/" }
+sync = { path = "../sync/" }
 
 riscv = "0.11"
 spin = "0.9"

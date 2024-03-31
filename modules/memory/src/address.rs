@@ -1,34 +1,35 @@
 //! Implementation of physical and virtual address and page number.
-use core::fmt::{self, Debug, Formatter};
+use core::{
+    fmt::{self, Debug, Formatter},
+    mem::size_of,
+};
 
-use config::mm::{PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, VIRT_RAM_OFFSET};
+use config::mm::{
+    PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, PTE_NUM_ONE_PAGE, VIRT_RAM_OFFSET,
+};
 
 use crate::page_table::PageTableEntry;
-/// physical address
 const PA_WIDTH_SV39: usize = 56;
-///
-pub const VA_WIDTH_SV39: usize = 39;
+const VA_WIDTH_SV39: usize = 39;
 const PPN_WIDTH_SV39: usize = PA_WIDTH_SV39 - PAGE_SIZE_BITS;
 const VPN_WIDTH_SV39: usize = VA_WIDTH_SV39 - PAGE_SIZE_BITS;
 
-/// kernel address
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub struct KernelAddr(pub usize);
-
-/// physical address
+/// Physical address
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysAddr(pub usize);
-/// virtual address
+
+/// Virtual address
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtAddr(pub usize);
-/// physical page number
+
+/// Physical page number
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysPageNum(pub usize);
-/// virtual page number
+
+/// Virtual page number
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtPageNum(pub usize);
 
-/// Debugging
 impl Debug for VirtAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("VA:{:#x}", self.0))
@@ -50,36 +51,8 @@ impl Debug for PhysPageNum {
     }
 }
 
-/// T: {PhysAddr, VirtAddr, PhysPageNum, VirtPageNum}
-/// T -> usize: T.0
-/// usize -> T: usize.into()
-
-impl From<usize> for KernelAddr {
-    fn from(v: usize) -> Self {
-        Self(v)
-    }
-}
-impl From<PhysAddr> for KernelAddr {
-    fn from(pa: PhysAddr) -> Self {
-        Self(pa.0 + VIRT_RAM_OFFSET)
-    }
-}
-
-impl From<KernelAddr> for PhysAddr {
-    fn from(ka: KernelAddr) -> Self {
-        Self(ka.0 - VIRT_RAM_OFFSET)
-    }
-}
-
-impl From<KernelAddr> for VirtAddr {
-    fn from(ka: KernelAddr) -> Self {
-        Self(ka.0)
-    }
-}
-
 impl From<usize> for PhysAddr {
     fn from(v: usize) -> Self {
-        // Self(v & ((1 << PA_WIDTH_SV39) - 1))
         let tmp = v as isize >> PA_WIDTH_SV39;
         assert!(tmp == 0 || tmp == -1);
         Self(v)
@@ -87,40 +60,22 @@ impl From<usize> for PhysAddr {
 }
 impl From<usize> for PhysPageNum {
     fn from(v: usize) -> Self {
-        // Self(v & ((1 << PPN_WIDTH_SV39) - 1))
         let tmp = v as isize >> PPN_WIDTH_SV39;
         assert!(tmp == 0 || tmp == -1);
         Self(v)
     }
 }
-impl From<KernelAddr> for PhysPageNum {
-    fn from(ka: KernelAddr) -> Self {
-        let pa = PhysAddr::from(ka);
-        pa.floor()
-    }
-}
-
 impl From<usize> for VirtAddr {
     fn from(v: usize) -> Self {
-        // Self(v & ((1 << VA_WIDTH_SV39) - 1))
         let tmp = v as isize >> VA_WIDTH_SV39;
-        if tmp != 0 && tmp != -1 {
-            log::error!("v {:#x}, tmp {:#x}", v, tmp);
-        }
         assert!(tmp == 0 || tmp == -1, "invalid va: {:#x}", v);
         Self(v)
     }
 }
 impl From<usize> for VirtPageNum {
     fn from(v: usize) -> Self {
-        // Self(v & ((1 << VPN_WIDTH_SV39) - 1))
         let tmp = v >> (VPN_WIDTH_SV39 - 1);
         assert!(tmp == 0 || tmp == (1 << (52 - VPN_WIDTH_SV39 + 1)) - 1);
-        // let tmp = ((v  ) >> VPN_WIDTH_SV39)  ;
-        // if tmp != 0 && tmp != -1 {
-        //     error!("tmp {:#x}, v {:#x}", tmp, v);
-        // }
-        // assert!(tmp == 0 || tmp == -1);
         Self(v)
     }
 }
@@ -148,7 +103,7 @@ impl From<VirtPageNum> for usize {
         v.0
     }
 }
-///
+
 impl VirtAddr {
     /// `VirtAddr`->`VirtPageNum`
     pub fn floor(&self) -> VirtPageNum {
@@ -209,6 +164,12 @@ impl From<PhysPageNum> for PhysAddr {
     }
 }
 
+impl PhysPageNum {
+    pub fn kernel_offset(&self) -> VirtPageNum {
+        (self.0 + VIRT_RAM_OFFSET).into()
+    }
+}
+
 impl VirtPageNum {
     /// Return VPN 3 level indices
     pub fn indices(&self) -> [usize; PAGE_TABLE_LEVEL_NUM] {
@@ -220,44 +181,46 @@ impl VirtPageNum {
         }
         indices
     }
-}
-
-impl KernelAddr {
-    /// Get mutable reference to `PhysAddr` value
-    pub fn reinterpret<T>(&self) -> &'static T {
-        unsafe { (self.0 as *mut T).as_ref().unwrap() }
-    }
-    /// Get mutable reference to `PhysAddr` value
-    pub fn reinterpret_mut<T>(&self) -> &'static mut T {
-        unsafe { (self.0 as *mut T).as_mut().unwrap() }
-    }
-}
-impl PhysPageNum {
-    /// Get `PageTableEntry` on `PhysPageNum`
+    /// Get `PageTableEntry` on `VirtPageNum`
     pub fn pte_array(&self) -> &'static mut [PageTableEntry] {
-        let pa: PhysAddr = (*self).into();
-        let kernel_pa = KernelAddr::from(pa).0;
-        unsafe { core::slice::from_raw_parts_mut(kernel_pa as *mut PageTableEntry, 512) }
+        let va: VirtAddr = (*self).into();
+        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut PageTableEntry, PTE_NUM_ONE_PAGE) }
     }
     /// Get bytes array of a physical page
     pub fn bytes_array(&self) -> &'static mut [u8] {
-        let pa: PhysAddr = (*self).into();
-        let kernel_pa = KernelAddr::from(pa).0;
-        unsafe { core::slice::from_raw_parts_mut(kernel_pa as *mut u8, 4096) }
+        let va: VirtAddr = (*self).into();
+        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, PAGE_SIZE) }
     }
-
+    /// Get usize array of a physical page
+    pub fn usize_array(&self) -> &'static mut [usize] {
+        let va: VirtAddr = (*self).into();
+        unsafe {
+            core::slice::from_raw_parts_mut(va.0 as *mut usize, PAGE_SIZE / size_of::<usize>())
+        }
+    }
+    pub fn kernel_offset(&self) -> PhysPageNum {
+        (self.0 - VIRT_RAM_OFFSET).into()
+    }
     ///
     pub fn reinterpret<T>(&self) -> &'static T {
-        let pa: PhysAddr = (*self).into();
-        let kernel_pa = KernelAddr::from(pa);
-        kernel_pa.reinterpret()
+        let va: VirtAddr = (*self).into();
+        va.reinterpret()
     }
-
     ///
     pub fn reinterpret_mut<T>(&self) -> &'static mut T {
-        let pa: PhysAddr = (*self).into();
-        let kernel_pa = KernelAddr::from(pa);
-        kernel_pa.reinterpret_mut()
+        let va: VirtAddr = (*self).into();
+        va.reinterpret_mut()
+    }
+}
+
+impl VirtAddr {
+    /// Get mutable reference to `VirtAddr` value
+    pub fn reinterpret<T>(&self) -> &'static T {
+        unsafe { (self.0 as *mut T).as_ref().unwrap() }
+    }
+    /// Get mutable reference to `VirtAddr` value
+    pub fn reinterpret_mut<T>(&self) -> &'static mut T {
+        unsafe { (self.0 as *mut T).as_mut().unwrap() }
     }
 }
 
@@ -327,13 +290,6 @@ where
     }
 }
 
-// impl<T> Iterator for SimpleRange<T>
-// where
-//     T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
-// {
-
-// }
-
 /// iterator for the simple range structure
 pub struct SimpleRangeIterator<T>
 where
@@ -365,5 +321,6 @@ where
         }
     }
 }
+
 /// a simple range structure for virtual page number
 pub type VPNRange = SimpleRange<VirtPageNum>;

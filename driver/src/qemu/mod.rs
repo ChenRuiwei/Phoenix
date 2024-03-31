@@ -28,7 +28,7 @@ unsafe impl Hal for VirtioHal {
         for i in 0..pages {
             let frame = frames.pop().unwrap();
             if i == pages - 1 {
-                ppn_base = frame.ppn;
+                ppn_base = frame.vpn;
             }
             // println!("ppn {}", frame.ppn.0);
             // assert_eq!(frame.ppn.0, ppn_base.0 + i);

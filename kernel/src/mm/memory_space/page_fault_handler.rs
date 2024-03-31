@@ -237,13 +237,13 @@ impl PageFaultHandler for MmapPageFaultHandler {
 
             debug!(
                 "[MmapPageFaultHandler]: va {:#x}, ppn {:#x}, map perm {:?}",
-                va.0, page.data_frame.ppn.0, map_perm
+                va.0, page.data_frame.vpn.0, map_perm
             );
             // trace!("[MmapPageFaultHandler] content {:?}", page.bytes_array());
 
             process.inner_handler(|proc| {
                 let page_table = proc.memory_space.page_table.get_unchecked_mut();
-                page_table.map(va.floor(), page.data_frame.ppn, pte_flags);
+                page_table.map(va.floor(), page.data_frame.vpn, pte_flags);
                 page_table.activate();
                 let vma = proc.memory_space.find_vm_area_by_vpn(va.floor()).unwrap();
                 vma.data_frames

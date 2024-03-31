@@ -37,7 +37,7 @@ impl RecycleAllocator {
     pub fn dealloc(&mut self, id: usize) {
         assert!(id < self.current);
         assert!(
-            !self.recycled.iter().any(|iid| (*iid).0 == id),
+            !self.recycled.iter().any(|iid| iid.0 == id),
             "id {} has been deallocated!",
             id
         );

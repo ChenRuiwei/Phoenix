@@ -129,7 +129,7 @@ impl MemorySpace {
                 .expect("KERNEL SPACE not init yet")
                 .page_table
                 .get())
-            .root_ppn
+            .root_vpn
         });
         let page_table = Arc::new(SyncUnsafeCell::new(new_page_table));
         Self {
@@ -909,7 +909,7 @@ impl MemorySpace {
                     trace!(
                         "change vpn {:#x} to cow page, ppn {:#x}, pte flags {:?}",
                         vpn.0,
-                        ph_frame.data_frame.ppn.0,
+                        ph_frame.data_frame.vpn.0,
                         pte.flags()
                     );
 
@@ -924,7 +924,7 @@ impl MemorySpace {
                                 .get_unchecked_mut()
                                 .0
                                 .insert(vpn, ph_frame.clone());
-                            (pte.flags(), ph_frame.data_frame.ppn)
+                            (pte.flags(), ph_frame.data_frame.vpn)
                         }
                         _ => {
                             // Else,
@@ -946,7 +946,7 @@ impl MemorySpace {
                                 .get_unchecked_mut()
                                 .0
                                 .insert(vpn, ph_frame.clone());
-                            let ppn = ph_frame.data_frame.ppn;
+                            let ppn = ph_frame.data_frame.vpn;
                             area.data_frames.get_unchecked_mut().0.remove(&vpn);
                             (new_flags, ppn)
                         }

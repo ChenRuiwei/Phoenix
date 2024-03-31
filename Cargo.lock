@@ -257,6 +257,7 @@ dependencies = [
  "log",
  "riscv",
  "spin",
+ "sync",
 ]
 
 [[package]]
