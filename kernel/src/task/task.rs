@@ -7,7 +7,7 @@ use alloc::{
 };
 use core::{
     cell::SyncUnsafeCell,
-    sync::atomic::{AtomicI8, AtomicUsize},
+    sync::atomic::{AtomicI8, AtomicUsize, Ordering},
     task::Waker,
 };
 
@@ -40,17 +40,20 @@ pub struct Task {
     /// Exit code of the current process
     pub exit_code: AtomicI8,
     pub trap_context: SyncUnsafeCell<TrapContext>,
-    pub waker: Option<Waker>,
+    pub waker: SyncUnsafeCell<Option<Waker>>,
     pub ustack_top: usize,
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum TaskState {
     Running,
     Zombie,
 }
 
 impl Task {
-    pub fn new() -> Self {}
+    pub fn new() -> Self {
+        todo!()
+    }
     pub fn pid(&self) -> usize {
         stack_trace!();
         self.pid.0
@@ -58,11 +61,11 @@ impl Task {
 
     pub fn exit_code(&self) -> i8 {
         stack_trace!();
-        self.exit_code
+        self.exit_code.load(Ordering::Relaxed)
     }
 
     /// Get the mutable ref of trap context
-    pub fn trap_context_mut(&mut self) -> &mut TrapContext {
+    pub fn trap_context_mut(&self) -> &mut TrapContext {
         stack_trace!();
         unsafe { &mut *self.trap_context.get() }
     }
@@ -71,8 +74,12 @@ impl Task {
     pub fn set_waker(&self, waker: Waker) {
         stack_trace!();
         unsafe {
-            *self.waker = Some(waker);
+            (*self.waker.get()) = Some(waker);
         }
+    }
+
+    pub fn is_zombie(&self) -> bool {
+        self.state == TaskState::Zombie
     }
 }
 

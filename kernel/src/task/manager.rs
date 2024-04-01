@@ -2,17 +2,18 @@ use alloc::sync::{Arc, Weak};
 
 use config::process::INITPROC_PID;
 use hashbrown::HashMap;
+use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 
 use super::task::Task;
 use crate::stack_trace;
 
-pub static TASK_MANAGER: TaskManager = TaskManager::new();
+pub static TASK_MANAGER: Lazy<TaskManager> = Lazy::new(|| TaskManager::new());
 
 pub struct TaskManager(SpinNoIrqLock<HashMap<usize, Weak<Task>>>);
 
 impl TaskManager {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self(SpinNoIrqLock::new(HashMap::new()))
     }
 

@@ -114,28 +114,16 @@ use memory::MapPermission;
 use sync::*;
 use systype::SyscallRet;
 
-use crate::{strace, utils::stack_trace};
+use crate::stack_trace;
 
 macro_rules! sys_handler {
     ($handler: ident, $args: tt) => {
         {
-            strace!(
-                "{}, args: {:?}, sepc: {:#x}",
-                stringify!($handler),
-                $args,
-                crate::processor::current_trap_cx().sepc
-            );
             $handler$args
         }
     };
     ($handler: ident, $args: tt, $await: tt) => {
         {
-            strace!(
-                "{}, args: {:?}, sepc: {:#x}",
-                stringify!($handler),
-                $args,
-                crate::processor::current_trap_cx().sepc
-            );
             $handler$args.$await
         }
     };

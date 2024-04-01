@@ -1,17 +1,17 @@
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{borrow::ToOwned, boxed::Box, sync::Arc};
 use core::arch::asm;
 
 use arch::interrupts::{disable_interrupt, enable_interrupt};
 use config::processor::HART_NUM;
 use riscv::register::sstatus::{self, FS};
 use spin::Once;
-use sync::cell::SyncUnsafeCell;
 
 use super::ctx::EnvContext;
 use crate::{
     mm::{self, PageTable},
     stack_trace,
     task::Task,
+    trap::TrapContext,
 };
 
 const HART_EACH: Hart = Hart::new();
@@ -33,7 +33,7 @@ impl Hart {
     }
     pub fn current_task(&self) -> &Arc<Task> {
         stack_trace!();
-        self.task
+        self.task.as_ref().unwrap()
     }
 }
 
@@ -52,20 +52,20 @@ impl Hart {
         self.hart_id
     }
 
-    /// Change thread(task) context,
+    /// Change thread context,
     /// Now only change page table temporarily
     pub fn enter_user_task_switch(&mut self, task: &mut Arc<Task>, env: &mut EnvContext) {
         // self can only be an executor running
         disable_interrupt();
         let old_env = self.env();
         let sie = EnvContext::env_change(env, old_env);
-        self.task = Some(task);
+        set_current_task(Arc::clone(task));
         core::mem::swap(self.env_mut(), env);
         if sie {
             enable_interrupt();
         }
     }
-    pub fn leave_user_task_switch(&mut self, task: &mut Arc<Task>, env: &mut EnvContext) {
+    pub fn leave_user_task_switch(&mut self, env: &mut EnvContext) {
         disable_interrupt();
         let old_env = self.env();
         let sie = EnvContext::env_change(env, old_env);
@@ -118,4 +118,20 @@ pub fn init(hart_id: usize) {
         sstatus::set_fs(FS::Initial);
     }
     println!("init hart {} finished", hart_id);
+}
+
+pub fn local_env_mut() -> &'static mut EnvContext {
+    local_hart().env_mut()
+}
+
+pub fn current_task() -> &'static Arc<Task> {
+    local_hart().current_task()
+}
+
+pub fn set_current_task(task: Arc<Task>) {
+    local_hart().task = Some(task);
+}
+
+pub fn current_trap_cx() -> &'static mut TrapContext {
+    current_task().trap_context_mut()
 }

@@ -1,7 +1,7 @@
 use arch::interrupts::{disable_interrupt, enable_interrupt};
 use irq_count::IRQ_COUNTER;
 use log::warn;
-use memory::{VirtAddr, VA_WIDTH_SV39};
+use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
     sepc,

@@ -5,16 +5,24 @@
 #![feature(let_chains)]
 #![feature(trait_upcasting)]
 #![feature(panic_info_message)]
+#![feature(const_trait_impl)]
+#![feature(effects)]
 #![feature(sync_unsafe_cell)]
 
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{boxed::Box, fmt, sync::Arc};
 
 use arch::interrupts;
 use config::mm::HART_START_ADDR;
 use driver::{sbi, BLOCK_DEVICE, CHAR_DEVICE, KERNEL_PAGE_TABLE};
+use logging::{SimpleLogger, LOGGING};
 use mm::KERNEL_SPACE;
+use processor::local_hart;
+use spin::lazy::Lazy;
 
 use crate::processor::hart;
+
+#[macro_use]
+mod utils;
 
 extern crate alloc;
 
@@ -24,6 +32,9 @@ extern crate bitflags;
 #[macro_use]
 extern crate driver;
 
+#[macro_use]
+extern crate logging;
+
 mod boot;
 mod loader;
 mod mm;
@@ -32,11 +43,10 @@ mod processor;
 mod syscall;
 mod task;
 mod trap;
-mod utils;
 
 use core::{
     arch::global_asm,
-    hint::{self},
+    default, hint,
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
@@ -82,7 +92,7 @@ fn rust_main(hart_id: usize) {
         boot::print_boot_message();
 
         hart::init(hart_id);
-        utils::logging::init();
+        logging::init::<Logger>(&LOGGER);
 
         println!(
             "[kernel] ---------- main hart {} started ---------- ",
@@ -90,7 +100,6 @@ fn rust_main(hart_id: usize) {
         );
 
         mm::init();
-        mm::remap_test();
         trap::init();
         loader::init();
 
@@ -128,5 +137,29 @@ fn rust_main(hart_id: usize) {
     );
     loop {
         executor::run_until_idle();
+    }
+}
+
+/// Print msg with color
+pub fn print_in_color(args: fmt::Arguments, color_code: u8) {
+    driver::print(with_color!(args, color_code));
+}
+
+static LOGGER: SimpleLogger<Logger> = SimpleLogger::new();
+#[derive(Default)]
+pub struct Logger;
+impl LOGGING for Logger {
+    fn print_log(record: &log::Record) {
+        print_in_color(
+            format_args!(
+                "[{:>5}][{}:{}][{},-,-] {}\n",
+                record.level(),
+                record.file().unwrap(),
+                record.line().unwrap(),
+                local_hart().hart_id(),
+                record.args()
+            ),
+            logging::level_to_color_code(record.level()),
+        );
     }
 }

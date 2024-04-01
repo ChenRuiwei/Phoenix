@@ -46,7 +46,7 @@ unsafe impl GlobalAlloc for GlobalHeap {
 }
 
 /// initiate heap allocator
-pub fn init_heap() {
+pub fn init_heap_allocator() {
     unsafe {
         let start = HEAP_SPACE.as_ptr() as usize;
         HEAP_ALLOCATOR.0.lock().init(start, KERNEL_HEAP_SIZE);

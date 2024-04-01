@@ -9,7 +9,7 @@ pub struct StackTracker {
 }
 
 impl StackTracker {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             stack_info_trace: Vec::new(),
         }
