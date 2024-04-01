@@ -6,7 +6,7 @@ use core::fmt::{self, Debug, Formatter};
 use sync::mutex::SpinNoIrqLock;
 
 use crate::PhysPageNum;
-
+use once_cell::sync::Lazy;
 /// Manage a frame which has the same lifecycle as the tracker
 pub struct FrameTracker {
     /// PPN of the frame
@@ -34,80 +34,20 @@ impl Drop for FrameTracker {
     }
 }
 
-trait FrameAllocator {
-    fn init(&mut self, start: PhysPageNum, end: PhysPageNum);
-    fn alloc(&mut self) -> Option<PhysPageNum>;
-    fn dealloc(&mut self, ppn: PhysPageNum);
-    fn alloc_contig(&mut self, count: usize) -> Vec<PhysPageNum>;
-}
+use bitmap_allocator::BitAlloc;
 
-/// an implementation for frame allocator
-pub struct StackFrameAllocator {
-    current: usize,
-    end: usize,
-    recycled: Vec<usize>,
-}
+pub type FrameAllocator = bitmap_allocator::BitAlloc16M;
 
-impl StackFrameAllocator {
-    const fn new() -> Self {
-        Self {
-            current: 0,
-            end: 0,
-            recycled: Vec::new(),
-        }
-    }
-}
+pub static FRAME_ALLOCATOR: SpinNoIrqLock<FrameAllocator> =
+    SpinNoIrqLock::new(FrameAllocator::DEFAULT);
 
-impl FrameAllocator for StackFrameAllocator {
-    fn init(&mut self, start: PhysPageNum, end: PhysPageNum) {
-        self.current = start.into();
-        self.end = end.into();
-    }
-
-    fn alloc(&mut self) -> Option<PhysPageNum> {
-        if let Some(ppn) = self.recycled.pop() {
-            Some(ppn.into())
-        } else if self.current == self.end {
-            panic!("cannot alloc!!!!!!! current {:#x}", self.current)
-        } else {
-            self.current += 1;
-            Some((self.current - 1).into())
-        }
-    }
-
-    fn dealloc(&mut self, ppn: PhysPageNum) {
-        // ppn.bytes_array().fill(0);
-        let ppn = ppn.0;
-        // validity check
-        if ppn >= self.current || self.recycled.iter().any(|&v| v == ppn) {
-            panic!("Frame ppn={:#x} has not been allocated!", ppn);
-        }
-        // recycle
-        self.recycled.push(ppn);
-    }
-
-    fn alloc_contig(&mut self, count: usize) -> Vec<PhysPageNum> {
-        let mut ret = Vec::with_capacity(count);
-        for _ in 0..count {
-            if self.current == self.end {
-                panic!("cannot alloc!!!!!!! current {:#x}", self.current)
-            } else {
-                self.current += 1;
-                ret.push((self.current - 1).into());
-            }
-        }
-        ret
-    }
-}
-
-type FrameAllocatorImpl = StackFrameAllocator;
-
-pub static FRAME_ALLOCATOR: SpinNoIrqLock<FrameAllocatorImpl> =
-    SpinNoIrqLock::new(FrameAllocatorImpl::new());
-
+static START_PPN: Lazy<PhysPageNum> = Lazy::new(|| PhysPageNum(0));
+static END_PPN: Lazy<PhysPageNum> = Lazy::new(|| PhysPageNum(0));
 /// Initiate the frame allocator, using `VPNRange`
 pub fn init_frame_allocator(start: PhysPageNum, end: PhysPageNum) {
-    FRAME_ALLOCATOR.lock().init(start, end);
+    START_PPN = start;
+    END_PPN = end;
+    FRAME_ALLOCATOR.lock().insert(0..(START_PPN.0 - END_PPN.0));
     log::info!(
         "frame allocator init finshed, start {:#x}, end {:#x}",
         usize::from(start),
@@ -124,23 +64,21 @@ pub fn frame_alloc() -> FrameTracker {
     FRAME_ALLOCATOR
         .lock()
         .alloc()
-        .map(|u| FrameTracker::new(u.into()))
+        .map(|u| FrameTracker::new((u + START_PPN.0).into()))
         .expect("frame space not enough")
 }
 
 /// Allocate contiguous frames
-pub fn frame_alloc_contig(count: usize) -> Vec<FrameTracker> {
+pub fn frame_alloc_contig(size: usize, align_log2: usize) -> Option<FrameTracker> {
     FRAME_ALLOCATOR
         .lock()
-        .alloc_contig(count)
-        .iter()
-        .map(|p| FrameTracker::new(*p))
-        .collect()
+        .alloc_contiguous(size, align_log2)
+        .map(|u| FrameTracker::new((u + START_PPN.0).into()))
 }
 
 /// Deallocate a frame
 pub fn frame_dealloc(ppn: PhysPageNum) {
-    FRAME_ALLOCATOR.lock().dealloc(ppn);
+    FRAME_ALLOCATOR.lock().dealloc(ppn.0-START_PPN.0);
 }
 
 /// a simple test for frame allocator
