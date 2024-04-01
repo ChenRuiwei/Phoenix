@@ -9,16 +9,6 @@ use alloc::sync::Arc;
 
 pub use env::SumGuard;
 
-pub use self::hart::{local_hart, HARTS};
-
-pub fn local_env() -> &'static mut EnvContext {
-    local_hart().env_mut()
-}
-
-pub fn current_task() -> &'static Arc<Task> {
-    local_hart().current_task()
-}
-
-pub fn current_trap_cx() -> &'static mut TrapContext {
-    current_task().trap_context_mut()
-}
+pub use self::hart::{
+    current_task, current_trap_cx, local_env_mut, local_hart, set_current_task, HARTS,
+};

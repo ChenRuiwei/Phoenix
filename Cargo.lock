@@ -189,10 +189,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "heap_allocator"
-version = "0.1.0"
-
-[[package]]
 name = "heapless"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -225,9 +221,9 @@ dependencies = [
  "hashbrown",
  "irq_count",
  "log",
+ "logging",
  "managed",
  "memory",
- "once_cell",
  "rand_core",
  "recycle_allocator",
  "riscv",
@@ -254,6 +250,13 @@ name = "log"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
+
+[[package]]
+name = "logging"
+version = "0.1.0"
+dependencies = [
+ "log",
+]
 
 [[package]]
 name = "managed"

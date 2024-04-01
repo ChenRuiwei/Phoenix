@@ -123,6 +123,10 @@ impl VirtAddr {
     pub fn aligned(&self) -> bool {
         self.page_offset() == 0
     }
+    pub fn to_pa(&self) -> PhysAddr {
+        debug_assert!(self.0 >= VIRT_RAM_OFFSET);
+        (self.0 - VIRT_RAM_OFFSET).into()
+    }
 }
 impl From<VirtAddr> for VirtPageNum {
     fn from(v: VirtAddr) -> Self {

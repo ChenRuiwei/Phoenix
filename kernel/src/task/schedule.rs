@@ -62,10 +62,8 @@ impl<F: Future + Send + 'static> Future for UserTaskFuture<F> {
         let this = unsafe { self.get_unchecked_mut() };
         let hart = processor::local_hart();
         hart.enter_user_task_switch(&mut this.task, &mut this.env);
-
         let ret = unsafe { Pin::new_unchecked(&mut this.future).poll(cx) };
-        hart.leave_user_task_switch(&mut this.task, &mut this.env);
-
+        hart.leave_user_task_switch(&mut this.env);
         ret
     }
 }
@@ -105,18 +103,17 @@ pub async fn task_loop(task: Arc<Task>) {
         // next time when user traps into kernel, it will come back here
         trap::user_trap::trap_handler().await;
 
-        // if task.is_zombie() {
-        //     log::debug!("thread {} terminated", current_task().tid());
-        //     break;
-        // }
+        if task.is_zombie() {
+            log::debug!("thread {} terminated", current_task().pid());
+            break;
+        }
     }
 
-    // When the process becomes zombie, all of its threads should exit too
     handle_exit(task);
 }
 
 pub fn handle_exit(task: Arc<Task>) {
-    todo!()
+    panic!()
 }
 
 /// Spawn a new async user task

@@ -6,11 +6,9 @@ use bitflags::*;
 use config::mm::VIRT_RAM_OFFSET;
 use riscv::register::satp;
 
-// use crate::config::MMIO;
-// use crate::driver::block::MMIO_VIRT;
 use crate::{
-    address::PhysAddr, address::PhysPageNum, address::VirtAddr, address::VirtPageNum,
-    frame::frame_alloc, frame::FrameTracker,
+    address::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum},
+    frame::{frame_alloc, FrameTracker},
 };
 
 /// Write `page_table_token` into satp and sfence.vma
@@ -34,6 +32,8 @@ bitflags! {
         const X = 1 << 3;
         /// Accessible in U mode
         const U = 1 << 4;
+        const RW = Self::R.bits() | Self::W.bits();
+        const RX = Self::R.bits() | Self::X.bits();
     }
 }
 

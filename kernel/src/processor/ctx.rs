@@ -15,7 +15,7 @@ pub struct EnvContext {
 }
 
 impl EnvContext {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             sie_disabled: 0,
             sum_enabled: 0,

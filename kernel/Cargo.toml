@@ -9,6 +9,7 @@ arch = { path = "../arch" }
 config = { path = "../config" }
 sync = { path = "../modules/sync/" }
 driver = { path = "../driver/" }
+logging = { path = "../modules/logging/" }
 executor = { path = "../modules/executor/" }
 systype = { path = "../modules/systype/" }
 memory = { path = "../modules/memory/" }
@@ -16,7 +17,6 @@ async_utils = { path = "../modules/async_utils/" }
 irq_count = { path = "../modules/irq_count/" }
 recycle_allocator = { path = "../modules/recycle_allocator/" }
 
-once_cell = "1.19"
 buddy_system_allocator = "0.9"
 bitflags = "2.5"
 bit_field = "0.10"
@@ -40,7 +40,7 @@ smoltcp = { version = "0.11", default-features = false, features = [
 ] }
 async-task = { version = "4.7", default-features = false }
 managed = { version = "0.8", default-features = false, features = ["map"] }
-spin = "0.9"
+spin = { version = "0.9", features = ["lazy"] }
 riscv = "0.11"
 virtio-drivers = { version = "0.7" }
 
