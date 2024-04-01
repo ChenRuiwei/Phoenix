@@ -30,10 +30,10 @@ pub fn init() {
         fn _ekernel();
     }
     heap_allocator::init_heap();
-    frame::init_frame_allocator(VPNRange::new(
+    frame::init_frame_allocator(
         (_ekernel as usize).into(),
         MEMORY_END.into(),
-    ));
+    );
     memory_space::init_kernel_space();
     info!("KERNEL SPACE init finished");
     mm::activate_kernel_space();
