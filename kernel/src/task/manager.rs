@@ -1,12 +1,14 @@
-use alloc:: sync::{Arc, Weak};
+use alloc::sync::{Arc, Weak};
+
 use config::process::INITPROC_PID;
+use hashbrown::HashMap;
 use sync::mutex::SpinNoIrqLock;
 
+use super::task::Task;
 use crate::stack_trace;
 
-use super::task::Task;
-use hashbrown::HashMap;
 pub static TASK_MANAGER: TaskManager = TaskManager::new();
+
 pub struct TaskManager(SpinNoIrqLock<HashMap<usize, Weak<Task>>>);
 
 impl TaskManager {
@@ -14,12 +16,12 @@ impl TaskManager {
         Self(SpinNoIrqLock::new(HashMap::new()))
     }
 
-    pub fn add_task(&self, pid: usize, task:&Arc<Task>){
+    pub fn add_task(&self, pid: usize, task: &Arc<Task>) {
         stack_trace!();
         self.0.lock().insert(pid, Arc::downgrade(task));
     }
 
-    pub fn remove_task(&self, pid: usize){
+    pub fn remove_task(&self, pid: usize) {
         stack_trace!();
         self.0.lock().remove(&pid);
     }
@@ -43,4 +45,3 @@ impl TaskManager {
         self.0.lock().len()
     }
 }
-

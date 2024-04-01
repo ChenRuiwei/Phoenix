@@ -5,24 +5,16 @@
 #![feature(let_chains)]
 #![feature(trait_upcasting)]
 #![feature(panic_info_message)]
+#![feature(sync_unsafe_cell)]
 
 use alloc::{boxed::Box, sync::Arc};
 
 use arch::interrupts;
 use config::mm::HART_START_ADDR;
-use driver::{
-    plic::initplic,
-    qemu::{self, virtio_blk::VirtIOBlock},
-    sbi, BLOCK_DEVICE, CHAR_DEVICE, KERNEL_PAGE_TABLE,
-};
+use driver::{sbi, BLOCK_DEVICE, CHAR_DEVICE, KERNEL_PAGE_TABLE};
 use mm::KERNEL_SPACE;
 
-use crate::{
-    fs::TTY,
-    process::{thread, PROCESS_MANAGER},
-    processor::hart,
-    timer::{timeout_task::ksleep, POLL_QUEUE},
-};
+use crate::processor::hart;
 
 extern crate alloc;
 
@@ -33,20 +25,14 @@ extern crate bitflags;
 extern crate driver;
 
 mod boot;
-mod fs;
-mod futex;
 mod loader;
 mod mm;
-mod net;
 mod panic;
-mod process;
 mod processor;
-mod signal;
 mod syscall;
-mod timer;
+mod task;
 mod trap;
 mod utils;
-mod task;
 
 use core::{
     arch::global_asm,
@@ -106,40 +92,17 @@ fn rust_main(hart_id: usize) {
         mm::init();
         mm::remap_test();
         trap::init();
-        driver_init();
         loader::init();
-        fs::init();
-        timer::init();
-        net::config::init();
 
-        thread::spawn_kernel_thread(async move {
-            process::add_initproc();
-        });
-
-        #[cfg(not(feature = "submit"))]
-        thread::spawn_kernel_thread(async move {
-            loop {
-                log::info!("[daemon] process cnt {}", PROCESS_MANAGER.total_num());
-                ksleep(Duration::from_secs(3)).await;
-            }
-        });
-
-        #[cfg(not(feature = "submit"))]
-        thread::spawn_kernel_thread(async move {
-            loop {
-                POLL_QUEUE.poll();
-                ksleep(Duration::from_millis(30)).await;
-            }
-        });
+        // task::spawn_kernel_task(async move {
+        //     process::add_initproc();
+        // });
 
         // barrier
         INIT_FINISHED.store(true, Ordering::SeqCst);
 
-        #[cfg(feature = "multi_hart")]
+        #[cfg(feature = "smp")]
         hart_start(hart_id);
-
-        arch::interrupts::enable_timer_interrupt();
-        timer::set_next_trigger();
     } else {
         // The other harts
         hart::init(hart_id);
@@ -157,9 +120,6 @@ fn rust_main(hart_id: usize) {
         trap::init();
         mm::activate_kernel_space();
         println!("[kernel] ---------- hart {} started ----------", hart_id);
-
-        arch::interrupts::enable_timer_interrupt();
-        timer::set_next_trigger();
     }
 
     println!(
@@ -169,37 +129,4 @@ fn rust_main(hart_id: usize) {
     loop {
         executor::run_until_idle();
     }
-}
-
-fn init_block_device() {
-    {
-        *BLOCK_DEVICE.lock() = Some(Arc::new(VirtIOBlock::new()));
-    }
-}
-
-fn init_char_device() {
-    {
-        *CHAR_DEVICE.get_unchecked_mut() = Some(Box::new(qemu::uart::UART::new(
-            0xffff_ffc0_1000_0000,
-            Box::new(|ch| {
-                TTY.get_unchecked_mut().as_ref().unwrap().handle_irq(ch);
-            }),
-        )));
-    }
-}
-
-pub fn driver_init() {
-    unsafe {
-        KERNEL_PAGE_TABLE = Some(
-            KERNEL_SPACE
-                .as_ref()
-                .expect("KERENL SPACE not init yet")
-                .page_table
-                .clone(),
-        )
-    };
-    initplic(0xffff_ffc0_0c00_0000);
-    init_char_device();
-    init_block_device();
-    interrupts::enable_external_interrupt();
 }

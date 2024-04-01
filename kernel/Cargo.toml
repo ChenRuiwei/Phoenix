@@ -16,6 +16,7 @@ async_utils = { path = "../modules/async_utils/" }
 irq_count = { path = "../modules/irq_count/" }
 recycle_allocator = { path = "../modules/recycle_allocator/" }
 
+once_cell = "1.19"
 buddy_system_allocator = "0.9"
 bitflags = "2.5"
 bit_field = "0.10"
@@ -49,6 +50,4 @@ config = { path = "../config" }
 [features]
 stack_trace = []
 strace = []
-submit = []
-multi_hart = []
-async_flush = [] # flush dirty blocks to disk asynchronously
+smp = []

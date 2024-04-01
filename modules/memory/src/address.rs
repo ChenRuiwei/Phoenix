@@ -9,6 +9,7 @@ use config::mm::{
 };
 
 use crate::page_table::PageTableEntry;
+
 const PA_WIDTH_SV39: usize = 56;
 const VA_WIDTH_SV39: usize = 39;
 const PPN_WIDTH_SV39: usize = PA_WIDTH_SV39 - PAGE_SIZE_BITS;
@@ -151,6 +152,20 @@ impl PhysAddr {
     pub fn aligned(&self) -> bool {
         self.page_offset() == 0
     }
+    #[inline]
+    pub fn to_va(&self) -> VirtAddr {
+        (self.0 + VIRT_RAM_OFFSET).into()
+    }
+    /// Get mutable reference to `VirtAddr` value
+    pub fn reinterpret<T>(&self) -> &'static T {
+        let va: VirtAddr = self.to_va();
+        unsafe { (va.0 as *mut T).as_ref().unwrap() }
+    }
+    /// Get mutable reference to `VirtAddr` value
+    pub fn reinterpret_mut<T>(&self) -> &'static mut T {
+        let va: VirtAddr = self.to_va();
+        unsafe { (va.0 as *mut T).as_mut().unwrap() }
+    }
 }
 impl From<PhysAddr> for PhysPageNum {
     fn from(v: PhysAddr) -> Self {
@@ -165,8 +180,30 @@ impl From<PhysPageNum> for PhysAddr {
 }
 
 impl PhysPageNum {
-    pub fn kernel_offset(&self) -> VirtPageNum {
-        (self.0 + VIRT_RAM_OFFSET).into()
+    /// Get `PageTableEntry` on `VirtPageNum`
+    pub fn pte_array(&self) -> &'static mut [PageTableEntry] {
+        let va: VirtAddr = PhysAddr::from(*self).to_va();
+        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut PageTableEntry, PTE_NUM_ONE_PAGE) }
+    }
+    /// Get bytes array of a physical page
+    pub fn bytes_array(&self) -> &'static mut [u8] {
+        let va: VirtAddr = PhysAddr::from(*self).to_va();
+        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, PAGE_SIZE) }
+    }
+    /// Get usize array of a physical page
+    pub fn usize_array(&self) -> &'static mut [usize] {
+        let va: VirtAddr = PhysAddr::from(*self).to_va();
+        unsafe {
+            core::slice::from_raw_parts_mut(va.0 as *mut usize, PAGE_SIZE / size_of::<usize>())
+        }
+    }
+    ///
+    pub fn reinterpret<T>(&self) -> &'static T {
+        PhysAddr::from(*self).reinterpret()
+    }
+    ///
+    pub fn reinterpret_mut<T>(&self) -> &'static mut T {
+        PhysAddr::from(*self).reinterpret_mut()
     }
 }
 
@@ -180,47 +217,6 @@ impl VirtPageNum {
             vpn >>= 9;
         }
         indices
-    }
-    /// Get `PageTableEntry` on `VirtPageNum`
-    pub fn pte_array(&self) -> &'static mut [PageTableEntry] {
-        let va: VirtAddr = (*self).into();
-        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut PageTableEntry, PTE_NUM_ONE_PAGE) }
-    }
-    /// Get bytes array of a physical page
-    pub fn bytes_array(&self) -> &'static mut [u8] {
-        let va: VirtAddr = (*self).into();
-        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, PAGE_SIZE) }
-    }
-    /// Get usize array of a physical page
-    pub fn usize_array(&self) -> &'static mut [usize] {
-        let va: VirtAddr = (*self).into();
-        unsafe {
-            core::slice::from_raw_parts_mut(va.0 as *mut usize, PAGE_SIZE / size_of::<usize>())
-        }
-    }
-    pub fn kernel_offset(&self) -> PhysPageNum {
-        (self.0 - VIRT_RAM_OFFSET).into()
-    }
-    ///
-    pub fn reinterpret<T>(&self) -> &'static T {
-        let va: VirtAddr = (*self).into();
-        va.reinterpret()
-    }
-    ///
-    pub fn reinterpret_mut<T>(&self) -> &'static mut T {
-        let va: VirtAddr = (*self).into();
-        va.reinterpret_mut()
-    }
-}
-
-impl VirtAddr {
-    /// Get mutable reference to `VirtAddr` value
-    pub fn reinterpret<T>(&self) -> &'static T {
-        unsafe { (self.0 as *mut T).as_ref().unwrap() }
-    }
-    /// Get mutable reference to `VirtAddr` value
-    pub fn reinterpret_mut<T>(&self) -> &'static mut T {
-        unsafe { (self.0 as *mut T).as_mut().unwrap() }
     }
 }
 

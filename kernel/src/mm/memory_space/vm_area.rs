@@ -67,15 +67,6 @@ pub struct VmArea {
     pub map_type: MapType,
     /// Map permission
     pub map_perm: MapPermission,
-    /// Mmap flags
-    pub mmap_flags: Option<MmapFlags>,
-    /// Page fault handler that is invoked when page fault
-    pub handler: Option<Arc<dyn PageFaultHandler>>,
-    /// Backup file(only used for mmap)
-    pub backup_file: Option<BackupFile>,
-    /// Page table.
-    /// Note that this member must be visited with process lock holding
-    pub page_table: Arc<SyncUnsafeCell<PageTable>>,
     /// Vm area type
     pub vma_type: VmAreaType,
 }
@@ -189,7 +180,7 @@ impl VmArea {
                             .build(),
                     ),
                 };
-                ppn = frame.data_frame.vpn;
+                ppn = frame.data_frame.ppn;
                 self.data_frames.get_mut().0.insert(vpn, frame);
             }
             MapType::Direct => {

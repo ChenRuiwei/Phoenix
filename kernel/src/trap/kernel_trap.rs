@@ -4,10 +4,7 @@ use riscv::register::{
     sepc, stval,
 };
 
-use crate::{
-    processor::local_hart,
-    timer::{handle_timeout_events, set_next_trigger},
-};
+use crate::processor::local_hart;
 
 /// Kernel trap handler
 #[no_mangle]
@@ -17,13 +14,11 @@ pub fn kernel_trap_handler() {
     match scause.cause() {
         Trap::Interrupt(Interrupt::SupervisorExternal) => {
             log::info!("[kernel] receive externel interrupt");
-            driver::intr_handler(local_hart().hart_id());
+            todo!()
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            // log::trace!("[kernel] receive timer interrupt");
             IRQ_COUNTER.add1(1);
-            handle_timeout_events();
-            set_next_trigger();
+            todo!()
         }
         _ => {
             log::error!(

@@ -181,6 +181,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "heap_allocator"
+version = "0.1.0"
+
+[[package]]
 name = "heapless"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -215,6 +219,7 @@ dependencies = [
  "log",
  "managed",
  "memory",
+ "once_cell",
  "rand_core",
  "recycle_allocator",
  "riscv",
@@ -253,6 +258,7 @@ name = "memory"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.5.0",
+ "buddy_system_allocator",
  "config",
  "log",
  "riscv",

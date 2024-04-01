@@ -1,16 +1,18 @@
 #![no_std]
 #![no_main]
+#![feature(alloc_error_handler)]
 
 extern crate alloc;
 
 pub use page_table::MapPermission;
 
 pub mod address;
-pub mod frame_allocator;
+pub mod frame;
+pub mod heap;
 pub mod page_table;
 
 pub use address::{PhysAddr, PhysPageNum, StepByOne, VPNRange, VirtAddr, VirtPageNum};
-pub use frame_allocator::{frame_alloc, frame_alloc_contig, frame_dealloc, FrameTracker};
+pub use frame::{frame_alloc, frame_alloc_contig, frame_dealloc, FrameTracker};
 pub use page_table::{PageTable, PageTableEntry};
 
 pub const PERMISSION_RW: MapPermission = MapPermission::union(MapPermission::R, MapPermission::W);

@@ -5,40 +5,40 @@ use core::fmt::{self, Debug, Formatter};
 
 use sync::mutex::SpinNoIrqLock;
 
-use crate::{VPNRange, VirtPageNum};
+use crate::PhysPageNum;
 
 /// Manage a frame which has the same lifecycle as the tracker
 pub struct FrameTracker {
-    /// VPN of the frame
-    pub vpn: VirtPageNum,
+    /// PPN of the frame
+    pub ppn: PhysPageNum,
 }
 
 impl FrameTracker {
     /// Create an empty `FrameTracker`
-    pub fn new(vpn: VirtPageNum) -> Self {
+    pub fn new(ppn: PhysPageNum) -> Self {
         // page cleaning
-        vpn.usize_array().fill(0);
-        Self { vpn }
+        ppn.usize_array().fill(0);
+        Self { ppn }
     }
 }
 
 impl Debug for FrameTracker {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("FrameTracker:PPN={:#x}", self.vpn.0))
+        f.write_fmt(format_args!("FrameTracker:PPN={:#x}", self.ppn.0))
     }
 }
 
 impl Drop for FrameTracker {
     fn drop(&mut self) {
-        frame_dealloc(self.vpn);
+        frame_dealloc(self.ppn);
     }
 }
 
 trait FrameAllocator {
-    fn init(&mut self, vpn_range: VPNRange);
-    fn alloc(&mut self) -> Option<VirtPageNum>;
-    fn dealloc(&mut self, vpn: VirtPageNum);
-    fn alloc_contig(&mut self, count: usize) -> Vec<VirtPageNum>;
+    fn init(&mut self, start: PhysPageNum, end: PhysPageNum);
+    fn alloc(&mut self) -> Option<PhysPageNum>;
+    fn dealloc(&mut self, ppn: PhysPageNum);
+    fn alloc_contig(&mut self, count: usize) -> Vec<PhysPageNum>;
 }
 
 /// an implementation for frame allocator
@@ -59,14 +59,14 @@ impl StackFrameAllocator {
 }
 
 impl FrameAllocator for StackFrameAllocator {
-    fn init(&mut self, vpn_range: VPNRange) {
-        self.current = vpn_range.start().into();
-        self.end = vpn_range.end().into()
+    fn init(&mut self, start: PhysPageNum, end: PhysPageNum) {
+        self.current = start.into();
+        self.end = end.into();
     }
 
-    fn alloc(&mut self) -> Option<VirtPageNum> {
-        if let Some(vpn) = self.recycled.pop() {
-            Some(vpn.into())
+    fn alloc(&mut self) -> Option<PhysPageNum> {
+        if let Some(ppn) = self.recycled.pop() {
+            Some(ppn.into())
         } else if self.current == self.end {
             panic!("cannot alloc!!!!!!! current {:#x}", self.current)
         } else {
@@ -75,18 +75,18 @@ impl FrameAllocator for StackFrameAllocator {
         }
     }
 
-    fn dealloc(&mut self, vpn: VirtPageNum) {
+    fn dealloc(&mut self, ppn: PhysPageNum) {
         // ppn.bytes_array().fill(0);
-        let vpn = vpn.0;
+        let ppn = ppn.0;
         // validity check
-        if vpn >= self.current || self.recycled.iter().any(|&v| v == vpn) {
-            panic!("Frame ppn={:#x} has not been allocated!", vpn);
+        if ppn >= self.current || self.recycled.iter().any(|&v| v == ppn) {
+            panic!("Frame ppn={:#x} has not been allocated!", ppn);
         }
         // recycle
-        self.recycled.push(vpn);
+        self.recycled.push(ppn);
     }
 
-    fn alloc_contig(&mut self, count: usize) -> Vec<VirtPageNum> {
+    fn alloc_contig(&mut self, count: usize) -> Vec<PhysPageNum> {
         let mut ret = Vec::with_capacity(count);
         for _ in 0..count {
             if self.current == self.end {
@@ -106,13 +106,17 @@ pub static FRAME_ALLOCATOR: SpinNoIrqLock<FrameAllocatorImpl> =
     SpinNoIrqLock::new(FrameAllocatorImpl::new());
 
 /// Initiate the frame allocator, using `VPNRange`
-pub fn init_frame_allocator(vpn_range: VPNRange) {
-    FRAME_ALLOCATOR.lock().init(vpn_range);
+pub fn init_frame_allocator(start: PhysPageNum, end: PhysPageNum) {
+    FRAME_ALLOCATOR.lock().init(start, end);
     log::info!(
         "frame allocator init finshed, start {:#x}, end {:#x}",
-        usize::from(vpn_range.start()),
-        usize::from(vpn_range.end())
+        usize::from(start),
+        usize::from(end)
     );
+    debug_assert!({
+        frame_allocator_test();
+        true
+    });
 }
 
 /// Allocate a frame
@@ -135,8 +139,8 @@ pub fn frame_alloc_contig(count: usize) -> Vec<FrameTracker> {
 }
 
 /// Deallocate a frame
-pub fn frame_dealloc(vpn: VirtPageNum) {
-    FRAME_ALLOCATOR.lock().dealloc(vpn);
+pub fn frame_dealloc(ppn: PhysPageNum) {
+    FRAME_ALLOCATOR.lock().dealloc(ppn);
 }
 
 /// a simple test for frame allocator

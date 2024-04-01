@@ -9,6 +9,7 @@ edition = "2021"
 config = { path = "../../config/" }
 sync = { path = "../sync/" }
 
+buddy_system_allocator = "0.9"
 riscv = "0.11"
 spin = "0.9"
 bitflags = "2.5"

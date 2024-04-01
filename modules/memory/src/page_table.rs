@@ -10,7 +10,7 @@ use riscv::register::satp;
 // use crate::driver::block::MMIO_VIRT;
 use crate::{
     address::PhysAddr, address::PhysPageNum, address::VirtAddr, address::VirtPageNum,
-    frame_allocator::frame_alloc, frame_allocator::FrameTracker,
+    frame::frame_alloc, frame::FrameTracker,
 };
 
 /// Write `page_table_token` into satp and sfence.vma
@@ -23,19 +23,17 @@ pub fn activate_page_table(page_table_token: usize) {
 }
 
 bitflags! {
-    /// map permission corresponding to that in pte: `R W X U`
+    /// Map permission corresponding to that in pte: `R W X U`
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct MapPermission: u16 {
-        ///Readable
+        /// Readable
         const R = 1 << 1;
-        ///Writable
+        /// Writable
         const W = 1 << 2;
-        ///Excutable
+        /// Excutable
         const X = 1 << 3;
-        ///Accessible in U mode
+        /// Accessible in U mode
         const U = 1 << 4;
-        // /// COW when fork
-        // const COW = 1 << 8;
     }
 }
 
@@ -128,7 +126,7 @@ impl PageTableEntry {
 
 ///
 pub struct PageTable {
-    pub root_vpn: VirtPageNum,
+    pub root_ppn: PhysPageNum,
     /// Note that these are all internal pages
     frames: Vec<FrameTracker>,
 }
@@ -139,14 +137,14 @@ impl PageTable {
     pub fn new() -> Self {
         let root_frame = frame_alloc();
         PageTable {
-            root_vpn: root_frame.vpn,
+            root_ppn: root_frame.ppn,
             frames: vec![root_frame],
         }
     }
     /// # Safety
     ///
     /// There is only mapping from `VIRT_RAM_OFFSET`, but no MMIO mapping
-    pub fn from_global(global_root_vpn: VirtPageNum) -> Self {
+    pub fn from_global(global_root_ppn: PhysPageNum) -> Self {
         let root_frame = frame_alloc();
 
         // Map kernel space
@@ -158,12 +156,12 @@ impl PageTable {
             level_1_index,
             kernel_start_vpn.0
         );
-        root_frame.vpn.pte_array()[level_1_index..]
-            .copy_from_slice(&global_root_vpn.pte_array()[level_1_index..]);
+        root_frame.ppn.pte_array()[level_1_index..]
+            .copy_from_slice(&global_root_ppn.pte_array()[level_1_index..]);
 
         // the new pagetable only owns the ownership of its own root ppn
         PageTable {
-            root_vpn: root_frame.vpn,
+            root_ppn: root_frame.ppn,
             frames: vec![root_frame],
         }
     }
@@ -175,9 +173,9 @@ impl PageTable {
     #[allow(unused)]
     pub fn dump(&self) {
         log::info!("----- Dump page table -----");
-        self._dump(self.root_vpn, 0);
+        self._dump(self.root_ppn, 0);
     }
-    fn _dump(&self, vpn: VirtPageNum, level: usize) {
+    fn _dump(&self, ppn: PhysPageNum, level: usize) {
         if level >= 3 {
             return;
         }
@@ -185,37 +183,37 @@ impl PageTable {
         for _ in 0..level {
             prefix += "-";
         }
-        for pte in vpn.pte_array() {
+        for pte in ppn.pte_array() {
             if pte.is_valid() {
                 log::info!("{} ppn {:#x}, flags {:?}", prefix, pte.ppn().0, pte.flags());
-                self._dump(pte.ppn().kernel_offset(), level + 1);
+                self._dump(pte.ppn(), level + 1);
             }
         }
     }
     fn find_pte_create(&mut self, vpn: VirtPageNum) -> &mut PageTableEntry {
         let idxs = vpn.indices();
-        let mut vpn = self.root_vpn;
+        let mut ppn = self.root_ppn;
         for (i, idx) in idxs.iter().enumerate() {
-            let pte = &mut vpn.pte_array()[*idx];
+            let pte = &mut ppn.pte_array()[*idx];
             if i == 2 {
                 return pte;
             }
             if !pte.is_valid() {
                 let frame = frame_alloc();
-                *pte = PageTableEntry::new(frame.vpn.kernel_offset(), PTEFlags::V);
+                *pte = PageTableEntry::new(frame.ppn, PTEFlags::V);
                 self.frames.push(frame);
             }
-            vpn = pte.ppn().kernel_offset();
+            ppn = pte.ppn();
         }
         unreachable!()
     }
     ///
     pub fn find_pte(&self, vpn: VirtPageNum) -> Option<&mut PageTableEntry> {
         let idxs = vpn.indices();
-        let mut vpn = self.root_vpn;
+        let mut ppn = self.root_ppn;
         let mut result: Option<&mut PageTableEntry> = None;
         for (i, idx) in idxs.iter().enumerate() {
-            let pte = &mut vpn.pte_array()[*idx];
+            let pte = &mut ppn.pte_array()[*idx];
             if !pte.is_valid() {
                 return None;
             }
@@ -224,7 +222,7 @@ impl PageTable {
                 result = Some(pte);
                 break;
             }
-            vpn = pte.ppn().kernel_offset();
+            ppn = pte.ppn();
         }
         result
     }
@@ -237,31 +235,16 @@ impl PageTable {
         assert!(!pte.is_valid(), "vpn {:?} is mapped before mapping", vpn);
         *pte = PageTableEntry::new(ppn, flags | PTEFlags::V | PTEFlags::D | PTEFlags::A);
     }
-    /// Unmap a vpn but won't panic if not valid
-    pub fn unmap_nopanic(&mut self, vpn: VirtPageNum) {
-        if let Some(pte) = self.find_pte(vpn) {
-            if pte.is_valid() {
-                *pte = PageTableEntry::empty();
-            }
-        }
-    }
     /// Unmap a vpn
     pub fn unmap(&mut self, vpn: VirtPageNum) {
         let pte = self.find_pte(vpn).unwrap();
         assert!(pte.is_valid(), "vpn {:?} is invalid before unmapping", vpn);
         *pte = PageTableEntry::empty();
-        // self.frames.remove(&vpn);
-    }
-    ///
-    pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
-        self.find_pte(vpn).map(|pte| *pte)
     }
     ///
     pub fn translate_va(&self, va: VirtAddr) -> Option<PhysAddr> {
         self.find_pte(va.clone().floor()).map(|pte| {
-            // println!("translate_va:va = {:?}", va);
             let aligned_pa: PhysAddr = pte.ppn().into();
-            // println!("translate_va:pa_align = {:?}", aligned_pa);
             let offset = va.page_offset();
             let aligned_pa_usize: usize = aligned_pa.into();
             (aligned_pa_usize + offset).into()
@@ -269,6 +252,6 @@ impl PageTable {
     }
     /// Satp token with sv39 enabled
     pub fn token(&self) -> usize {
-        8usize << 60 | self.root_vpn.kernel_offset().0
+        8usize << 60 | self.root_ppn.0
     }
 }

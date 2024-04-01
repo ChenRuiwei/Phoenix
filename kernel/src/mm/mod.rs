@@ -11,7 +11,8 @@ pub(crate) mod heap_allocator;
 pub mod memory_space;
 mod page;
 mod shm;
-use memory::frame_allocator;
+use config::board::MEMORY_END;
+use memory::{frame, VPNRange};
 pub use shm::SHARED_MEMORY_MANAGER;
 ///
 pub mod user_check;
@@ -25,15 +26,14 @@ use crate::{mm, processor::hart::HARTS};
 
 /// initiate heap allocator, frame allocator and kernel space
 pub fn init() {
-    heap_allocator::init_heap();
-    // heap_allocator::heap_test();
-    // Note that it is since here that can we use log!
-    unsafe {
-        for hart in HARTS.iter() {
-            hart.init_local_ctx();
-        }
+    extern "C" {
+        fn _ekernel();
     }
-    frame_allocator::init_frame_allocator();
+    heap_allocator::init_heap();
+    frame::init_frame_allocator(VPNRange::new(
+        (_ekernel as usize).into(),
+        MEMORY_END.into(),
+    ));
     memory_space::init_kernel_space();
     info!("KERNEL SPACE init finished");
     mm::activate_kernel_space();

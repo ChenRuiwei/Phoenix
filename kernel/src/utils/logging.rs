@@ -43,35 +43,17 @@ impl Log for SimpleLogger {
             return;
         }
         // Note that log feature mut start after hart called `init_local_ctx`
-        if hart_idle_now() {
-            print_in_color(
-                format_args!(
-                    "[{:>5}][{}:{}][{},-,-][{:?}] {}\n",
-                    record.level(),
-                    record.file().unwrap(),
-                    record.line().unwrap(),
-                    local_hart().hart_id(),
-                    current_time_duration(),
-                    record.args()
-                ),
-                level_to_color_code(record.level()),
-            );
-        } else {
-            print_in_color(
-                format_args!(
-                    "[{:>5}][{}:{}][{},{},{}][{:?}] {}\n",
-                    record.level(),
-                    record.file().unwrap(),
-                    record.line().unwrap(),
-                    local_hart().hart_id(),
-                    current_process().pid(),
-                    current_task().tid(),
-                    current_time_duration(),
-                    record.args()
-                ),
-                level_to_color_code(record.level()),
-            );
-        }
+        print_in_color(
+            format_args!(
+                "[{:>5}][{}:{}][{},-,-] {}\n",
+                record.level(),
+                record.file().unwrap(),
+                record.line().unwrap(),
+                local_hart().hart_id(),
+                record.args()
+            ),
+            level_to_color_code(record.level()),
+        );
     }
     fn flush(&self) {}
 }

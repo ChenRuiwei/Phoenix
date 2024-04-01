@@ -11,46 +11,13 @@ use core::{
 use memory::PageTable;
 use sync::{cell::SyncUnsafeCell, mutex::SpinNoIrqLock};
 
-use self::{plic::PLIC, sbi::console_putchar};
+use self::sbi::console_putchar;
 
-pub mod plic;
-pub mod qemu;
 pub mod sbi;
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
 static PRINT_MUTEX: Mutex<()> = Mutex::new(());
-
-pub fn intr_handler(hart_id: usize) {
-    let mut plic = PLIC::new(0xffff_ffc0_0c00_0000);
-    let context_id = hart_id * 2;
-    let intr = plic.claim(context_id);
-    use qemu::IntrSource;
-
-    if intr != 0 {
-        match intr.into() {
-            IntrSource::UART0 => {
-                // uart
-                log::info!("receive uart0 intr");
-                CHAR_DEVICE
-                    .get_unchecked_mut()
-                    .as_ref()
-                    .unwrap()
-                    .handle_irq();
-            }
-            IntrSource::VIRTIO0 => {
-                // sdcard
-                log::info!("receive virtio0 intr");
-            }
-            _ => {
-                panic!("unexpected interrupt {}", intr);
-            }
-        }
-        plic.complete(context_id, intr);
-    } else {
-        log::info!("didn't claim any intr");
-    }
-}
 
 // Block Device
 pub trait BlockDevice: Send + Sync {

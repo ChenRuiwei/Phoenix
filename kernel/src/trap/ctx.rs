@@ -14,17 +14,10 @@ pub struct TrapContext {
     /// user-to-kernel should save:
     /// general regs[0..31]
     pub user_x: [usize; 32],
-    /// CSR sstatus      
+    /// CSR sstatus
     pub sstatus: Sstatus, // 32
-    // pub sstatus: usize, // 32
     /// CSR sepc
     pub sepc: usize, // 33
-
-    /// Unlike rCore-tutorial, we don't need to save
-    /// trap_handler here, since we will trap back to kernel
-    /// and go to trap handler by reloading kernel's ra(through
-    /// __trap_from_user).
-    // pub trap_handler: usize,
 
     /// kernel-to-user should save:
     pub kernel_sp: usize, // 34

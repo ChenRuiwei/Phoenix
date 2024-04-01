@@ -1,70 +1,8 @@
 use alloc::sync::Arc;
 
 use riscv::register::sstatus;
-use sync::cell::SyncUnsafeCell;
 
-use crate::{
-    mm::PageTable, process::thread::Thread, utils::stack_trace::stack_tracker::StackTracker,
-};
-
-/// Owned by `Hart` to hold some context.
-///
-/// There are three types of LocalContext.
-///
-/// The first one is initialized in `rust_main`, and the Hart owning it will
-/// keep running in `rust_main` as an executor, it is not an async task, let's
-/// just call it IDLE context, this hart not only runs a executor, but
-/// also handles kernel interrupts.
-///
-/// The second one is async kernel task spawned by `spawn_kernel_thread`. Let's
-/// call it Kernel Task context.
-///
-/// The third one is async user task spawned by `spawn_user_thread`. Let's call
-/// it User Task context.
-///
-/// Both the first two types are running in kernel, they have no
-/// UserTaskContext. And will not trap into user.
-pub struct LocalContext {
-    /// Only be None if it is an executor or kernel task running
-    user_task_ctx: Option<UserTaskContext>,
-    env: EnvContext,
-}
-
-impl LocalContext {
-    pub fn new(user_task_ctx: Option<UserTaskContext>) -> Self {
-        let env = EnvContext::new();
-        Self { user_task_ctx, env }
-    }
-    pub fn task_ctx_mut(&mut self) -> &mut UserTaskContext {
-        match self.user_task_ctx.as_mut() {
-            Some(user_ctx) => user_ctx,
-            None => panic!("Idle LocalContext"),
-        }
-    }
-    pub fn task_ctx(&self) -> &UserTaskContext {
-        match self.user_task_ctx.as_ref() {
-            Some(user_ctx) => user_ctx,
-            None => panic!("Idle LocalContext"),
-        }
-    }
-    pub fn env_mut(&mut self) -> &mut EnvContext {
-        &mut self.env
-    }
-    pub fn env(&self) -> &EnvContext {
-        &self.env
-    }
-    /// Whether there is no user task now(i.e. kernel thread is running)
-    pub fn is_idle(&self) -> bool {
-        self.user_task_ctx.is_none()
-    }
-}
-
-pub struct UserTaskContext {
-    pub thread: Arc<Thread>,
-    /// Although we can get pagetable from the thread's process's memory space,
-    /// it needs lock, which reduces performance.
-    pub page_table: Arc<SyncUnsafeCell<PageTable>>,
-}
+use crate::utils::stack_trace::stack_tracker::StackTracker;
 
 /// Store some permission flags
 pub struct EnvContext {
@@ -84,24 +22,6 @@ impl EnvContext {
             stack_tracker: StackTracker::new(),
         }
     }
-
-    // pub fn sie_dec(&mut self) {
-    //     if self.sie_disabled == 0 {
-    //         unsafe {
-    //             sstatus::clear_sie();
-    //         }
-    //     }
-    //     self.sie_disabled += 1;
-    // }
-
-    // pub fn sie_inc(&mut self) {
-    //     if self.sie_disabled == 1 {
-    //         unsafe {
-    //             sstatus::set_sie();
-    //         }
-    //     }
-    //     self.sie_disabled -= 1;
-    // }
 
     pub fn sum_inc(&mut self) {
         if self.sum_enabled == 0 {
@@ -131,13 +51,6 @@ impl EnvContext {
                     sstatus::clear_sum();
                 }
             }
-            // if (new.sie > 0) != (old.sie > 0) {
-            //     if new.sie > 0 {
-            //         EnvContext::enable_sie();
-            //     } else {
-            //         sstatus::clear_sie();
-            //     }
-            // }
         }
         new.sie_disabled == 0
     }

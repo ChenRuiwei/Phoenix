@@ -1,3 +1,6 @@
+#![no_std]
+#![no_main]
+
 //! The global allocator
 use core::{
     alloc::{GlobalAlloc, Layout},
