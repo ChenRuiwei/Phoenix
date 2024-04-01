@@ -5,7 +5,7 @@ use core::fmt::{self, Debug, Formatter};
 
 use sync::mutex::SpinNoIrqLock;
 
-use crate::PhysPageNum;
+use crate::{PhysAddr, PhysPageNum};
 
 /// Manage a frame which has the same lifecycle as the tracker
 pub struct FrameTracker {
@@ -110,8 +110,8 @@ pub fn init_frame_allocator(start: PhysPageNum, end: PhysPageNum) {
     FRAME_ALLOCATOR.lock().init(start, end);
     log::info!(
         "frame allocator init finshed, start {:#x}, end {:#x}",
-        usize::from(start),
-        usize::from(end)
+        usize::from(PhysAddr::from(start)),
+        usize::from(PhysAddr::from(end))
     );
     debug_assert!({
         frame_allocator_test();

@@ -147,6 +147,9 @@ qemu:
 PHONY += run
 run: qemu
 
+PHONY += brun
+brun: kernel run
+
 PHONY += clean
 clean:
 	@cargo clean
@@ -156,12 +159,12 @@ PHONY += disasm
 disasm: $(KERNEL_ASM)
 	@$(PAGER) $(KERNEL_ASM)
 
-PHONY += gdbserver
-gdbserver:
+PHONY += drun
+drun:
 	$(QEMU) $(QEMU_ARGS) -s -S
 
-PHONY += gdbclient
-gdbclient:
+PHONY += gdb
+gdb:
 	$(RISCV_GDB) -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'
 
 .PHONY: $(PHONY)
