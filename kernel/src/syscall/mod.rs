@@ -6,7 +6,7 @@ use core::panic;
 
 pub use id::*;
 use log::error;
-use systype::SyscallRet;
+use systype::SyscallResult;
 
 use crate::{
     processor::{
@@ -30,7 +30,7 @@ macro_rules! sys_handler {
 }
 
 /// Handle syscall exception with `syscall_id` and other arguments.
-pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallRet {
+pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
     match syscall_id {
         SYSCALL_EXIT => sys_handler!(sys_exit, (args[0] as i8)),
         SYSCALL_WRITE => sys_handler!(sys_write, (args[0], args[1], args[2]), await),
@@ -41,7 +41,7 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallRet {
     }
 }
 
-pub async fn sys_write(fd: usize, buf: usize, len: usize) -> SyscallRet {
+pub async fn sys_write(fd: usize, buf: usize, len: usize) -> SyscallResult {
     stack_trace!();
     assert!(fd == 1);
     let guard = SumGuard::new();
@@ -52,7 +52,7 @@ pub async fn sys_write(fd: usize, buf: usize, len: usize) -> SyscallRet {
     Ok(0)
 }
 
-pub fn sys_exit(exit_code: i8) -> SyscallRet {
+pub fn sys_exit(exit_code: i8) -> SyscallResult {
     stack_trace!();
     log::info!(
         "[sys_exit]: exit code {}, sepc {:#x}",
