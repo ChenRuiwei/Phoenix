@@ -4,7 +4,7 @@ mod id;
 
 use core::panic;
 
-pub use id::*;
+use id::*;
 use log::error;
 use systype::SyscallResult;
 
@@ -52,6 +52,15 @@ pub async fn sys_write(fd: usize, buf: usize, len: usize) -> SyscallResult {
     Ok(0)
 }
 
+/// _exit() terminates the calling process "immediately". Any open file
+/// descriptors belonging to the process are closed. The process's parent is
+/// sent a SIGCHLD signal.
+///
+/// The value status & 0xFF is returned to the parent process as the process's
+/// exit status, and can be collected by the parent using one of the wait(2)
+/// family of calls.
+///
+/// The function _Exit() is equivalent to _exit().
 pub fn sys_exit(exit_code: i8) -> SyscallResult {
     stack_trace!();
     log::info!(

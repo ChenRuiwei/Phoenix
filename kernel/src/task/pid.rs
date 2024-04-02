@@ -4,11 +4,13 @@ use sync::mutex::SpinNoIrqLock;
 
 use crate::stack_trace;
 
-#[derive(Debug)]
-pub struct PidHandle(pub usize);
-
 static PID_ALLOCATOR: SpinNoIrqLock<RecycleAllocator> =
     SpinNoIrqLock::new(RecycleAllocator::new(INITPROC_PID));
+
+pub type Pid = usize;
+
+#[derive(Debug)]
+pub struct PidHandle(pub Pid);
 
 impl Drop for PidHandle {
     fn drop(&mut self) {
