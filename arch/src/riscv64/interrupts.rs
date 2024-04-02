@@ -10,14 +10,18 @@ pub fn is_interrupt_enabled() -> bool {
 
 #[inline]
 pub fn enable_interrupt() {
-    // unsafe {
-    //     sstatus::set_sie();
-    // }
+    #[cfg(feature = "irq")]
+    unsafe {
+        sstatus::set_sie();
+    }
 }
 
 #[inline]
 pub fn disable_interrupt() {
-    // unsafe { sstatus::clear_sie() }
+    #[cfg(feature = "irq")]
+    unsafe {
+        sstatus::clear_sie()
+    }
 }
 
 #[inline]
@@ -41,7 +45,7 @@ pub fn set_trap_handler(handler_addr: usize) {
     }
 }
 
-/// Disable interrupt and resume to the intertupt state before when it gets
+/// Disable interrupt and resume to the interrupt state before when it gets
 /// dropped
 pub struct InterruptGuard {
     interrupt_before: bool,
