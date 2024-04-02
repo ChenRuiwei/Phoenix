@@ -36,13 +36,15 @@ extern "C" {
     fn _ekernel();
 }
 
-/// Kernel Space for all processes
-pub static KERNEL_SPACE: Lazy<SpinNoIrqLock<MemorySpace>> =
-    Lazy::new(|| SpinNoIrqLock::new(MemorySpace::new_kernel()));
+/// Kernel Space for all processes.
+///
+/// There is no need to lock `KERNEL_SPACE` since we won't change it after
+/// initialization.
+pub static KERNEL_SPACE: Lazy<MemorySpace> = Lazy::new(|| MemorySpace::new_kernel());
 
 pub fn activate_kernel_space() {
     unsafe {
-        KERNEL_SPACE.lock().activate();
+        KERNEL_SPACE.activate();
     }
 }
 
@@ -104,7 +106,7 @@ impl MemorySpace {
 
     pub fn new_from_global() -> Self {
         Self {
-            page_table: PageTable::from_global(&KERNEL_SPACE.lock().page_table),
+            page_table: PageTable::from_global(&KERNEL_SPACE.page_table),
             areas: Vec::new(),
         }
     }

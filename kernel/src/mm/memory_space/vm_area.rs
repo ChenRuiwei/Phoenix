@@ -14,9 +14,9 @@ use crate::{
 pub enum VmAreaType {
     /// Segments from user elf file, e.g. text, rodata, data, bss
     Elf,
-    /// Stack
+    /// User Stack
     Stack,
-    /// Heap
+    /// User Heap
     Heap,
     /// Mmap
     Mmap,
