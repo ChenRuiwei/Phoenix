@@ -112,7 +112,6 @@ const SYSCALL_COPY_FILE_RANGE: usize = 285;
 use core::panic;
 
 use log::error;
-use riscv::register::mhpmevent21::write;
 use systype::SyscallRet;
 
 use crate::{
@@ -167,6 +166,6 @@ pub fn sys_exit(exit_code: i8) -> SyscallRet {
         current_trap_cx().sepc
     );
     let tid = current_task().pid();
-    panic!();
+    todo!();
     Ok(0)
 }

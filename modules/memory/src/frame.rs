@@ -3,9 +3,10 @@
 use alloc::vec::Vec;
 use core::fmt::{self, Debug, Formatter};
 
+use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 
-use crate::PhysPageNum;
+use crate::{PhysAddr, PhysPageNum};
 
 /// Manage a frame which has the same lifecycle as the tracker
 pub struct FrameTracker {
@@ -41,13 +42,16 @@ pub type FrameAllocator = bitmap_allocator::BitAlloc16M;
 pub static FRAME_ALLOCATOR: SpinNoIrqLock<FrameAllocator> =
     SpinNoIrqLock::new(FrameAllocator::DEFAULT);
 
-static START_PPN: Lazy<PhysPageNum> = Lazy::new(|| PhysPageNum(0));
-static END_PPN: Lazy<PhysPageNum> = Lazy::new(|| PhysPageNum(0));
+static START_PPN: Once<PhysPageNum> = Once::new();
+static END_PPN: Once<PhysPageNum> = Once::new();
+
 /// Initiate the frame allocator, using `VPNRange`
 pub fn init_frame_allocator(start: PhysPageNum, end: PhysPageNum) {
-    START_PPN = start;
-    END_PPN = end;
-    FRAME_ALLOCATOR.lock().insert(0..(START_PPN.0 - END_PPN.0));
+    START_PPN.call_once(|| start);
+    END_PPN.call_once(|| end);
+    FRAME_ALLOCATOR
+        .lock()
+        .insert(0..(END_PPN.get().unwrap().0 - START_PPN.get().unwrap().0));
     log::info!(
         "frame allocator init finshed, start {:#x}, end {:#x}",
         usize::from(PhysAddr::from(start)),
@@ -64,21 +68,25 @@ pub fn frame_alloc() -> FrameTracker {
     FRAME_ALLOCATOR
         .lock()
         .alloc()
-        .map(|u| FrameTracker::new((u + START_PPN.0).into()))
+        .map(|u| FrameTracker::new((u + START_PPN.get().unwrap().0).into()))
         .expect("frame space not enough")
 }
 
 /// Allocate contiguous frames
+// Error: this function is wrong, alloc_contiguous returns only one usize which
+// is not what we want
 pub fn frame_alloc_contig(size: usize, align_log2: usize) -> Option<FrameTracker> {
     FRAME_ALLOCATOR
         .lock()
         .alloc_contiguous(size, align_log2)
-        .map(|u| FrameTracker::new((u + START_PPN.0).into()))
+        .map(|u| FrameTracker::new((u + START_PPN.get().unwrap().0).into()))
 }
 
 /// Deallocate a frame
 pub fn frame_dealloc(ppn: PhysPageNum) {
-    FRAME_ALLOCATOR.lock().dealloc(ppn.0-START_PPN.0);
+    FRAME_ALLOCATOR
+        .lock()
+        .dealloc(ppn.0 - START_PPN.get().unwrap().0);
 }
 
 /// a simple test for frame allocator

@@ -251,13 +251,7 @@ impl MemorySpace {
                 map_offset,
                 &elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize],
             );
-
-            for b in &elf.input[ph.offset() as usize..(ph.offset() + 16) as usize] {
-                log::trace!("{:#x}", *b);
-            }
             self.areas.push(vm_area);
-
-            self.page_table.print_page(start_va.into());
 
             log::info!(
                 "[map_elf] [{:#x}, {:#x}], map_perm: {:?}",
