@@ -1,31 +1,23 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::vec::Vec;
 
 use config::mm::PAGE_SIZE;
-use log::{trace, warn};
-use memory::{
-    address::StepByOne,
-    frame_alloc,
-    page_table::{self, PTEFlags},
-    MapPermission, PhysPageNum, VPNRange, VirtAddr, VirtPageNum,
-};
-use sync::cell::SyncUnsafeCell;
-use systype::{GeneralRet, SyscallErr};
+use memory::{MapPermission, StepByOne, VPNRange, VirtAddr, VirtPageNum};
 
 use crate::{
-    mm::{page, Page, PageTable},
-    processor::SumGuard,
-    stack_trace, syscall,
+    mm::{Page, PageTable},
+    processor::env::SumGuard,
+    stack_trace,
 };
 
 /// Vm area type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum VmAreaType {
-    /// Segments from elf file, e.g. text, rodata, data, bss
+    /// Segments from user elf file, e.g. text, rodata, data, bss
     Elf,
     /// Stack
     Stack,
-    /// Brk
-    Brk,
+    /// Heap
+    Heap,
     /// Mmap
     Mmap,
     /// Shared memory
@@ -81,7 +73,7 @@ impl VmArea {
         self.vpn_range.end()
     }
 
-    pub fn map(&self, page_table: &mut PageTable) {
+    pub fn map(&mut self, page_table: &mut PageTable) {
         if self.vma_type == VmAreaType::Physical {
             for vpn in self.vpn_range {
                 page_table.map(
@@ -90,6 +82,41 @@ impl VmArea {
                     self.map_perm.into(),
                 )
             }
+        } else {
+            for vpn in self.vpn_range {
+                let page = Page::new();
+                page_table.map(vpn, page.ppn(), self.map_perm.into());
+                self.frames.push(page);
+            }
+        }
+    }
+
+    /// Data: at the `offset` of the start va.
+    /// Assume that all frames were cleared before.
+    pub fn copy_data_with_offset(&mut self, page_table: &PageTable, offset: usize, data: &[u8]) {
+        stack_trace!();
+        assert_eq!(self.vma_type, VmAreaType::Elf);
+        let _sum_guard = SumGuard::new();
+
+        let mut offset = offset;
+        let mut start: usize = 0;
+        let mut current_vpn = self.vpn_range.start();
+        let len = data.len();
+        loop {
+            let src = &data[start..len.min(start + PAGE_SIZE - offset)];
+            let dst = &mut page_table
+                .find_pte(current_vpn)
+                .unwrap()
+                .ppn()
+                .bytes_array()[offset..offset + src.len()];
+            dst.fill(0);
+            dst.copy_from_slice(src);
+            start += PAGE_SIZE - offset;
+            offset = 0;
+            if start >= len {
+                break;
+            }
+            current_vpn.step();
         }
     }
 }

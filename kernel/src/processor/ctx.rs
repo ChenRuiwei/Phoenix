@@ -1,5 +1,3 @@
-use alloc::sync::Arc;
-
 use riscv::register::sstatus;
 
 use crate::utils::stack_trace::stack_tracker::StackTracker;

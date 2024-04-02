@@ -112,7 +112,7 @@ pub async fn task_loop(task: Arc<Task>) {
     handle_exit(task);
 }
 
-pub fn handle_exit(task: Arc<Task>) {
+pub fn handle_exit(_task: Arc<Task>) {
     panic!()
 }
 

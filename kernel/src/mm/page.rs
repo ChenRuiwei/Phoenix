@@ -1,16 +1,7 @@
-use alloc::sync::Weak;
-
-use config::{
-    board::BLOCK_SIZE,
-    mm::{PAGE_SIZE, PAGE_SIZE_BITS},
-};
-use log::{info, trace};
-use memory::{frame_alloc, FrameTracker, MapPermission};
-use sync::mutex::{SleepLock, SpinLock};
-use systype::{GeneralRet, SyscallErr};
+use memory::{frame_alloc, FrameTracker, PhysPageNum};
 
 pub struct Page {
-    frame: FrameTracker,
+    pub frame: FrameTracker,
 }
 
 impl Page {
@@ -18,5 +9,9 @@ impl Page {
         Self {
             frame: frame_alloc(),
         }
+    }
+
+    pub fn ppn(&self) -> PhysPageNum {
+        self.frame.ppn
     }
 }

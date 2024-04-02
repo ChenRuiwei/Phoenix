@@ -10,14 +10,14 @@ pub fn is_interrupt_enabled() -> bool {
 
 #[inline]
 pub fn enable_interrupt() {
-    unsafe {
-        sstatus::set_sie();
-    }
+    // unsafe {
+    //     sstatus::set_sie();
+    // }
 }
 
 #[inline]
 pub fn disable_interrupt() {
-    unsafe { sstatus::clear_sie() }
+    // unsafe { sstatus::clear_sie() }
 }
 
 #[inline]

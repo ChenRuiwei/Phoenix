@@ -273,7 +273,6 @@ dependencies = [
  "buddy_system_allocator",
  "config",
  "log",
- "once_cell",
  "riscv",
  "spin",
  "sync",

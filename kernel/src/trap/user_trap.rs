@@ -1,22 +1,11 @@
 use arch::interrupts::{disable_interrupt, enable_interrupt};
-use irq_count::IRQ_COUNTER;
-use log::warn;
-use memory::VirtAddr;
 use riscv::register::{
-    scause::{self, Exception, Interrupt, Trap},
-    sepc,
-    sstatus::FS,
-    stval,
+    scause::{self, Exception, Trap},
+    sepc, stval,
 };
 
 use super::{set_kernel_trap_entry, TrapContext};
-use crate::{
-    mm::memory_space,
-    processor::{current_task, current_trap_cx, hart::local_hart},
-    stack_trace,
-    syscall::syscall,
-    trap::set_user_trap_entry,
-};
+use crate::{processor::current_trap_cx, stack_trace, syscall::syscall, trap::set_user_trap_entry};
 
 #[no_mangle]
 /// handle an interrupt, exception, or system call from user space

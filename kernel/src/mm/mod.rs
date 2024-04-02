@@ -12,12 +12,12 @@ mod page;
 
 use config::board::MEMORY_END;
 use log::info;
-pub use memory::page_table::{PageTable, PageTableEntry};
-use memory::{frame, heap, VPNRange, VirtAddr};
-pub use memory_space::{activate_kernel_space, MemorySpace, KERNEL_SPACE};
+pub use memory::page_table::PageTable;
+use memory::{frame, heap, VirtAddr};
+pub use memory_space::{activate_kernel_space, MemorySpace};
 pub use page::Page;
 
-use crate::{mm, processor::hart::HARTS};
+use crate::mm;
 
 /// initiate heap allocator, frame allocator and kernel space
 pub fn init() {

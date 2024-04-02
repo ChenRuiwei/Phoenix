@@ -9,15 +9,12 @@
 #![feature(effects)]
 #![feature(sync_unsafe_cell)]
 
-use alloc::{boxed::Box, fmt, sync::Arc};
+use alloc::fmt;
 
-use arch::interrupts;
 use config::mm::HART_START_ADDR;
-use driver::{sbi, BLOCK_DEVICE, CHAR_DEVICE, KERNEL_PAGE_TABLE};
+use driver::sbi;
 use logging::{SimpleLogger, LOGGING};
-use mm::KERNEL_SPACE;
 use processor::local_hart;
-use spin::lazy::Lazy;
 
 use crate::processor::hart;
 
@@ -46,9 +43,8 @@ mod trap;
 
 use core::{
     arch::global_asm,
-    default, hint,
+    hint,
     sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
 };
 
 global_asm!(include_str!("trampoline.S"));
@@ -103,9 +99,9 @@ fn rust_main(hart_id: usize) {
         trap::init();
         loader::init();
 
-        // task::spawn_kernel_task(async move {
-        //     process::add_initproc();
-        // });
+        task::spawn_kernel_task(async move {
+            task::add_init_proc();
+        });
 
         // barrier
         INIT_FINISHED.store(true, Ordering::SeqCst);

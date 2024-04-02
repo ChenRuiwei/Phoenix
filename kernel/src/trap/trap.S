@@ -55,7 +55,7 @@ __trap_from_user:
     ld tp, 49*8(sp)
     ld sp, 34*8(sp)
     # return to kernel ra
-    ret  
+    ret
 
 # kernel -> user
 __return_to_user:

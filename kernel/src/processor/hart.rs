@@ -1,14 +1,13 @@
-use alloc::{borrow::ToOwned, boxed::Box, sync::Arc};
+use alloc::sync::Arc;
 use core::arch::asm;
 
 use arch::interrupts::{disable_interrupt, enable_interrupt};
 use config::processor::HART_NUM;
 use riscv::register::sstatus::{self, FS};
-use spin::Once;
 
 use super::ctx::EnvContext;
 use crate::{
-    mm::{self, PageTable},
+    mm::{self},
     stack_trace,
     task::Task,
     trap::TrapContext,
@@ -61,6 +60,7 @@ impl Hart {
         let sie = EnvContext::env_change(env, old_env);
         set_current_task(Arc::clone(task));
         core::mem::swap(self.env_mut(), env);
+        task.activate();
         if sie {
             enable_interrupt();
         }

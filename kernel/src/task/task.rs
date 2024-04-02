@@ -1,24 +1,25 @@
 use alloc::{
-    boxed::Box,
-    collections::BTreeMap,
-    string::{String, ToString},
+    string::String,
     sync::{Arc, Weak},
     vec::Vec,
 };
 use core::{
     cell::SyncUnsafeCell,
-    sync::atomic::{AtomicI8, AtomicUsize, Ordering},
+    sync::atomic::{AtomicI8, Ordering},
     task::Waker,
 };
 
-use log::debug;
 use sync::mutex::SpinNoIrqLock;
 
 use super::pid::PidHandle;
 use crate::{
     mm::MemorySpace,
     stack_trace,
-    task::{manager::TASK_MANAGER, pid::alloc_pid},
+    task::{
+        manager::TASK_MANAGER,
+        pid::{self, alloc_pid},
+        schedule,
+    },
     trap::TrapContext,
 };
 
@@ -27,8 +28,8 @@ type Shared<T> = Arc<SpinNoIrqLock<T>>;
 /// User task, a.k.a. process control block
 pub struct Task {
     pub pid: PidHandle,
-    /// command
-    pub comm: String,
+    // /// command
+    // pub comm: String,
     /// Whether this process is a zombie process
     pub state: TaskState,
     /// The process's address space
@@ -51,8 +52,28 @@ pub enum TaskState {
 }
 
 impl Task {
-    pub fn new() -> Self {
-        todo!()
+    pub fn new(elf_data: &[u8]) {
+        stack_trace!();
+        let (memory_space, user_sp_top, entry_point, _auxv) = MemorySpace::from_elf(elf_data);
+
+        let trap_context = TrapContext::app_init_context(entry_point, user_sp_top);
+        // Alloc a pid
+        let pid = alloc_pid();
+        let task = Arc::new(Self {
+            pid,
+            state: TaskState::Running,
+            parent: None,
+            children: Vec::new(),
+            exit_code: AtomicI8::new(0),
+            trap_context: SyncUnsafeCell::new(trap_context),
+            memory_space: Arc::new(SpinNoIrqLock::new(memory_space)),
+            waker: SyncUnsafeCell::new(None),
+            ustack_top: user_sp_top,
+        });
+
+        TASK_MANAGER.add_task(task.pid(), &task);
+        log::debug!("create a new process, pid {}", task.pid());
+        schedule::spawn_user_task(task);
     }
     pub fn pid(&self) -> usize {
         stack_trace!();
@@ -80,6 +101,10 @@ impl Task {
 
     pub fn is_zombie(&self) -> bool {
         self.state == TaskState::Zombie
+    }
+
+    pub fn activate(&self) {
+        self.memory_space.lock().activate()
     }
 }
 

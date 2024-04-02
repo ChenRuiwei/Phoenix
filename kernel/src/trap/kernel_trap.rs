@@ -4,8 +4,6 @@ use riscv::register::{
     sepc, stval,
 };
 
-use crate::processor::local_hart;
-
 /// Kernel trap handler
 #[no_mangle]
 pub fn kernel_trap_handler() {

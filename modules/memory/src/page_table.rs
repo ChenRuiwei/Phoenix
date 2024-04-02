@@ -34,6 +34,12 @@ bitflags! {
         const U = 1 << 4;
         const RW = Self::R.bits() | Self::W.bits();
         const RX = Self::R.bits() | Self::X.bits();
+        const WX = Self::W.bits() | Self::X.bits();
+        const RWX = Self::R.bits() | Self::W.bits() | Self::X.bits();
+        const URW = Self::U.bits() | Self::RW.bits();
+        const URX = Self::U.bits() | Self::RX.bits();
+        const UWX = Self::U.bits() | Self::WX.bits();
+        const URWX = Self::U.bits() | Self::RWX.bits();
     }
 }
 
@@ -144,7 +150,7 @@ impl PageTable {
     /// # Safety
     ///
     /// There is only mapping from `VIRT_RAM_OFFSET`, but no MMIO mapping
-    pub fn from_global(global_root_ppn: PhysPageNum) -> Self {
+    pub fn from_global(global_page_table: &Self) -> Self {
         let root_frame = frame_alloc();
 
         // Map kernel space
@@ -157,7 +163,7 @@ impl PageTable {
             kernel_start_vpn.0
         );
         root_frame.ppn.pte_array()[level_1_index..]
-            .copy_from_slice(&global_root_ppn.pte_array()[level_1_index..]);
+            .copy_from_slice(&global_page_table.root_ppn.pte_array()[level_1_index..]);
 
         // the new pagetable only owns the ownership of its own root ppn
         PageTable {
@@ -253,5 +259,39 @@ impl PageTable {
     /// Satp token with sv39 enabled
     pub fn token(&self) -> usize {
         8usize << 60 | self.root_ppn.0
+    }
+
+    /// only for debug
+    pub fn print_page(&self, vpn: VirtPageNum) {
+        use alloc::format;
+
+        let ppn: PhysPageNum = self.find_pte(vpn).unwrap().ppn();
+        log::warn!(
+            "==== print page: {:x?} (in pgt {:x?}, phy: {:x?}) ====",
+            vpn,
+            self.root_ppn,
+            ppn,
+        );
+
+        // print it 16 byte pre line
+        //       0  1  2 ... f
+        // 00   AC EE 12 ... 34
+        // ...
+
+        let slice = unsafe { ppn.bytes_array() };
+
+        // we can only print a whole line using log::debug,
+        // so we manually write it for 16 times
+
+        log::info!("      0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f");
+        for i in 0..256 {
+            let mut line = format!("{:03x}   ", i * 16);
+            for j in 0..16 {
+                line.push_str(&format!("{:02x} ", slice[i * 16 + j]));
+            }
+            log::info!("{}", line);
+        }
+
+        log::warn!("==== print page done ====");
     }
 }

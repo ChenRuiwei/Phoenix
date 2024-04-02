@@ -29,4 +29,4 @@ fn set_user_trap_entry() {
     set_trap_handler(__trap_from_user as usize);
 }
 
-pub use ctx::{TrapContext, UserContext};
+pub use ctx::TrapContext;
