@@ -8,6 +8,8 @@
 #![feature(const_trait_impl)]
 #![feature(effects)]
 #![feature(sync_unsafe_cell)]
+#![feature(stdsimd)]
+#![feature(riscv_ext_intrinsics)]
 
 use alloc::fmt;
 

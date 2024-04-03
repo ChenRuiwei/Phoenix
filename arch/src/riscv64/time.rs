@@ -17,10 +17,9 @@ pub fn get_time_us() -> usize {
     time::read() * 1_000_000 / CLOCK_FREQ
 }
 
-pub fn get_next_trigger() -> usize {
-    (get_time() + CLOCK_FREQ / INTERRUPTS_PER_SEC)
-}
-
 pub fn set_next_timer_irq() {
-    sbi_rt::set_timer(get_next_trigger());
+    let next_trigger: u64 = (get_time() + CLOCK_FREQ / INTERRUPTS_PER_SEC)
+        .try_into()
+        .unwrap();
+    sbi_rt::set_timer(next_trigger);
 }

@@ -1,9 +1,11 @@
 #![no_std]
 #![no_main]
 
-use core::{default, marker::PhantomData};
+use core::{default, marker::PhantomData, sync::atomic::AtomicBool};
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
+
+pub static mut INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 pub fn init<P: LOGGING>(logger: &'static SimpleLogger<P>) {
     log::set_logger(logger).unwrap();
@@ -15,6 +17,7 @@ pub fn init<P: LOGGING>(logger: &'static SimpleLogger<P>) {
         Some("trace") => LevelFilter::Trace,
         _ => LevelFilter::Error,
     });
+    unsafe { INITIALIZED.store(true, core::sync::atomic::Ordering::SeqCst) };
 }
 
 /// Add escape sequence to print with color in Linux console
