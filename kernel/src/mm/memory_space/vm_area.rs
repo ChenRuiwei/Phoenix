@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
 use config::mm::PAGE_SIZE;
-use memory::{MapPermission, StepByOne, VPNRange, VirtAddr, VirtPageNum};
+use memory::{pte::PTEFlags, StepByOne, VPNRange, VirtAddr, VirtPageNum};
 
 use crate::{
     mm::{Page, PageTable},
@@ -26,6 +26,48 @@ pub enum VmAreaType {
     Physical,
     /// MMIO (for kernel)
     Mmio,
+}
+
+bitflags! {
+    /// Map permission corresponding to that in pte: `R W X U`
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct MapPermission: u16 {
+        /// Readable
+        const R = 1 << 1;
+        /// Writable
+        const W = 1 << 2;
+        /// Excutable
+        const X = 1 << 3;
+        /// Accessible in U mode
+        const U = 1 << 4;
+        const RW = Self::R.bits() | Self::W.bits();
+        const RX = Self::R.bits() | Self::X.bits();
+        const WX = Self::W.bits() | Self::X.bits();
+        const RWX = Self::R.bits() | Self::W.bits() | Self::X.bits();
+        const URW = Self::U.bits() | Self::RW.bits();
+        const URX = Self::U.bits() | Self::RX.bits();
+        const UWX = Self::U.bits() | Self::WX.bits();
+        const URWX = Self::U.bits() | Self::RWX.bits();
+    }
+}
+
+impl From<MapPermission> for PTEFlags {
+    fn from(perm: MapPermission) -> Self {
+        let mut ret = Self::from_bits(0).unwrap();
+        if perm.contains(MapPermission::U) {
+            ret |= PTEFlags::U;
+        }
+        if perm.contains(MapPermission::R) {
+            ret |= PTEFlags::R;
+        }
+        if perm.contains(MapPermission::W) {
+            ret |= PTEFlags::W;
+        }
+        if perm.contains(MapPermission::X) {
+            ret |= PTEFlags::X;
+        }
+        ret
+    }
 }
 
 pub struct VmArea {

@@ -8,7 +8,7 @@ use config::mm::{
     PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, PTE_NUM_ONE_PAGE, VIRT_RAM_OFFSET,
 };
 
-use crate::page_table::PageTableEntry;
+use crate::PageTableEntry;
 
 const PA_WIDTH_SV39: usize = 56;
 const VA_WIDTH_SV39: usize = 39;
