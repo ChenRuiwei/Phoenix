@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use crate::mm::VIRT_RAM_OFFSET;
 
 pub const BLOCK_SIZE: usize = 512;
