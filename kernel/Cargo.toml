@@ -43,6 +43,8 @@ managed = { version = "0.8", default-features = false, features = ["map"] }
 spin = { version = "0.9", features = ["lazy"] }
 riscv = "0.11"
 virtio-drivers = { version = "0.7" }
+crossbeam-queue = {version = "0", default-features = false, features = ["alloc", "nightly"]}
+scoped-tls = "1.0"
 
 [build-dependencies]
 config = { path = "../config" }
