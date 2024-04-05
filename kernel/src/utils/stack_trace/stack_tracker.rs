@@ -26,7 +26,7 @@ impl StackTracker {
         }
     }
     pub fn print_stacks_err(&self) {
-        for stack_info in &self.stack_info_trace {
+        for stack_info in self.stack_info_trace.iter().rev() {
             log::error!("{}", stack_info);
         }
     }

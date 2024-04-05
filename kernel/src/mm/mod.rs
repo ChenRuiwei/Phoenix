@@ -17,6 +17,7 @@ use memory::{frame, heap, VirtAddr};
 pub use memory_space::{activate_kernel_space, MemorySpace};
 pub use page::Page;
 
+use self::memory_space::vm_area::MapPermission;
 use crate::mm;
 
 /// initiate heap allocator, frame allocator and kernel space
@@ -33,3 +34,10 @@ pub fn init() {
     mm::activate_kernel_space();
     info!("KERNEL SPACE activated");
 }
+
+pub const MMIO: &[(usize, usize, MapPermission)] = &[
+    (0x10000000, 0x1000, MapPermission::RW),   // UART
+    (0x10001000, 0x1000, MapPermission::RW),   // VIRTIO
+    (0x02000000, 0x10000, MapPermission::RW),  // CLINT
+    (0x0C000000, 0x400000, MapPermission::RW), // PLIC
+];

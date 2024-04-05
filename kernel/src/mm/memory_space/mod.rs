@@ -5,14 +5,17 @@ use config::{
     mm::{PAGE_SIZE, USER_STACK_SIZE, VIRT_RAM_OFFSET},
 };
 use log::info;
-use memory::{MapPermission, PageTable, VirtAddr, VirtPageNum, MMIO};
+use memory::{PageTable, VirtAddr, VirtPageNum};
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 use xmas_elf::ElfFile;
 
 use self::vm_area::VmArea;
 use crate::{
-    mm::memory_space::vm_area::VmAreaType,
+    mm::{
+        memory_space::vm_area::{MapPermission, VmAreaType},
+        MMIO,
+    },
     stack_trace,
     task::aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_PHDR},
 };
@@ -154,21 +157,21 @@ impl MemorySpace {
         memory_space.areas.push(VmArea::new(
             (_sbss as usize).into(),
             (_ebss as usize).into(),
-            MapPermission::R | MapPermission::W,
+            MapPermission::RW,
             VmAreaType::Physical,
         ));
         info!("[kernel] mapping signal-return trampoline");
         memory_space.areas.push(VmArea::new(
             (_strampoline as usize).into(),
             (_etrampoline as usize).into(),
-            MapPermission::R | MapPermission::X | MapPermission::U,
+            MapPermission::URX,
             VmAreaType::Physical,
         ));
         info!("[kernel] mapping physical memory");
         memory_space.areas.push(VmArea::new(
             (_ekernel as usize).into(),
             MEMORY_END.into(),
-            MapPermission::R | MapPermission::W,
+            MapPermission::RW,
             VmAreaType::Physical,
         ));
         info!("[kernel] mapping mmio registers");
@@ -268,7 +271,7 @@ impl MemorySpace {
 
     /// Include sections in elf and TrapContext and user stack,
     /// also returns user_sp and entry point.
-    /// TODO: resolve elf file lazily
+    /// PERF: resolve elf file lazily
     pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize, Vec<AuxHeader>) {
         stack_trace!();
         let mut memory_space = Self::new_from_global();
@@ -297,14 +300,8 @@ impl MemorySpace {
 
         // map user stack with U flags
         let max_end_va: VirtAddr = max_end_vpn.into();
-        let mut user_stack_bottom: usize = max_end_va.into();
-        // guard page
-        user_stack_bottom += PAGE_SIZE;
-
-        // We will add the ustack to memory set later by `Thread` itself
-        // Now we add heap section
+        let mut user_stack_bottom: usize = usize::from(max_end_va) + PAGE_SIZE;
         let user_stack_top = user_stack_bottom + USER_STACK_SIZE;
-
         let mut ustack_vma = VmArea::new(
             user_stack_bottom.into(),
             user_stack_top.into(),
