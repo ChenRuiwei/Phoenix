@@ -46,8 +46,8 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-global_asm!(include_str!("trampoline.S"));
-global_asm!(include_str!("link_app.S"));
+global_asm!(include_str!("trampoline.asm"));
+global_asm!(include_str!("link_app.asm"));
 
 static FIRST_HART: AtomicBool = AtomicBool::new(true);
 static INIT_FINISHED: AtomicBool = AtomicBool::new(false);

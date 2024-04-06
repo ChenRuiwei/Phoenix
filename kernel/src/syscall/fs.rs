@@ -3,7 +3,7 @@ use systype::SyscallResult;
 use crate::processor::env::SumGuard;
 
 // TODO:
-pub fn sys_write(fd: usize, buf: usize, len: usize) -> SyscallResult {
+pub async fn sys_write(fd: usize, buf: usize, len: usize) -> SyscallResult {
     assert!(fd == 1);
     let guard = SumGuard::new();
     let buf = unsafe { core::slice::from_raw_parts(buf as *const u8, len) };
