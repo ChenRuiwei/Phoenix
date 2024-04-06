@@ -16,7 +16,6 @@ use crate::{
         memory_space::vm_area::{MapPermission, VmAreaType},
         MMIO,
     },
-    stack_trace,
     task::aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_PHDR},
 };
 
@@ -100,7 +99,6 @@ fn kernel_space_info() {
 impl MemorySpace {
     /// Create an empty `MemorySpace`
     pub fn new() -> Self {
-        stack_trace!();
         Self {
             page_table: PageTable::new(),
             areas: Vec::new(),
@@ -116,7 +114,6 @@ impl MemorySpace {
 
     /// Create a kernel space
     pub fn new_kernel() -> Self {
-        stack_trace!();
         kernel_space_info();
         let mut memory_space = Self::new();
         info!("[kernel] mapping .text section");
@@ -197,7 +194,6 @@ impl MemorySpace {
     /// Map the sections in the elf.
     /// Return the max end vpn and the first section's va.
     fn map_elf(&mut self, elf: &ElfFile, offset: VirtAddr) -> (VirtPageNum, VirtAddr) {
-        stack_trace!();
         let elf_header = elf.header;
         let ph_count = elf_header.pt2.ph_count();
 
@@ -273,7 +269,6 @@ impl MemorySpace {
     /// also returns user_sp and entry point.
     /// PERF: resolve elf file lazily
     pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize, Vec<AuxHeader>) {
-        stack_trace!();
         let mut memory_space = Self::new_from_global();
 
         // map program headers of elf, with U flag

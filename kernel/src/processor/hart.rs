@@ -8,7 +8,6 @@ use riscv::register::sstatus::{self, FS};
 use super::ctx::EnvContext;
 use crate::{
     mm::{self},
-    stack_trace,
     task::Task,
     trap::TrapContext,
 };
@@ -31,7 +30,6 @@ impl Hart {
         &mut self.env
     }
     pub fn current_task(&self) -> &Arc<Task> {
-        stack_trace!();
         self.task.as_ref().unwrap()
     }
 }

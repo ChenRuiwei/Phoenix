@@ -1,15 +1,11 @@
 use riscv::register::sstatus;
 
-use crate::utils::stack_trace::stack_tracker::StackTracker;
-
 /// Store some permission flags
 pub struct EnvContext {
     /// Supervisor interrupt disable
     sie_disabled: usize,
     /// Permit supervisor user memory access
     sum_enabled: usize,
-    /// Stack tracker
-    pub stack_tracker: StackTracker,
 }
 
 impl EnvContext {
@@ -17,7 +13,6 @@ impl EnvContext {
         Self {
             sie_disabled: 0,
             sum_enabled: 0,
-            stack_tracker: StackTracker::new(),
         }
     }
 

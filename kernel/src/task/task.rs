@@ -6,7 +6,7 @@ use alloc::{
 };
 use core::{
     cell::SyncUnsafeCell,
-    sync::atomic::{AtomicI8, Ordering},
+    sync::atomic::{AtomicI32, AtomicI8, Ordering},
     task::Waker,
 };
 
@@ -15,7 +15,6 @@ use sync::mutex::SpinNoIrqLock;
 use super::pid::{Pid, PidHandle};
 use crate::{
     mm::MemorySpace,
-    stack_trace,
     task::{
         manager::TASK_MANAGER,
         pid::{self, alloc_pid},
@@ -25,6 +24,10 @@ use crate::{
 };
 
 type Shared<T> = Arc<SpinNoIrqLock<T>>;
+
+fn new_shared<T>(data: T) -> Shared<T> {
+    Arc::new(SpinNoIrqLock::new(data))
+}
 
 /// User task, a.k.a. process control block
 pub struct Task {
@@ -36,15 +39,15 @@ pub struct Task {
     /// The process's address space
     pub memory_space: Shared<MemorySpace>,
     /// Parent process
-    pub parent: Option<Weak<Task>>,
+    pub parent: Shared<Option<Weak<Task>>>,
     /// Children processes
-    pub children: Vec<Arc<Task>>,
+    pub children: Shared<Vec<Arc<Task>>>,
     /// Exit code of the current process
-    pub exit_code: AtomicI8,
+    pub exit_code: AtomicI32,
     pub trap_context: SyncUnsafeCell<TrapContext>,
     pub waker: SyncUnsafeCell<Option<Waker>>,
     pub ustack_top: usize,
-    pub tgroup: Shared<ThreadGroup>,
+    pub thread_group: Shared<ThreadGroup>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -54,55 +57,68 @@ pub enum TaskState {
 }
 
 impl Task {
-    pub fn new(elf_data: &[u8]) {
-        stack_trace!();
+    pub fn from_elf(elf_data: &[u8]) {
         let (memory_space, user_sp_top, entry_point, _auxv) = MemorySpace::from_elf(elf_data);
 
         let trap_context = TrapContext::app_init_context(entry_point, user_sp_top);
-        // Alloc a pid
-        let pid = alloc_pid();
         let task = Arc::new(Self {
-            pid,
+            pid: alloc_pid(),
             state: SpinNoIrqLock::new(TaskState::Running),
-            parent: None,
-            children: Vec::new(),
-            exit_code: AtomicI8::new(0),
+            parent: new_shared(None),
+            children: new_shared(Vec::new()),
+            exit_code: AtomicI32::new(0),
             trap_context: SyncUnsafeCell::new(trap_context),
-            memory_space: Arc::new(SpinNoIrqLock::new(memory_space)),
+            memory_space: new_shared(memory_space),
             waker: SyncUnsafeCell::new(None),
             ustack_top: user_sp_top,
-            tgroup: Arc::new(SpinNoIrqLock::new(ThreadGroup::new_empty())),
+            thread_group: new_shared(ThreadGroup::empty()),
         });
 
-        task.tgroup.lock().push_leader(task.clone());
+        task.thread_group.lock().push_leader(task.clone());
 
         TASK_MANAGER.add_task(task.pid(), &task);
         log::debug!("create a new process, pid {}", task.pid());
         schedule::spawn_user_task(task);
     }
 
+    fn parent(&self) -> Option<Weak<Self>> {
+        self.parent.lock().clone()
+    }
+
     pub fn pid(&self) -> Pid {
-        stack_trace!();
         self.pid.0
     }
 
-    pub fn exit_code(&self) -> i8 {
-        stack_trace!();
+    pub fn ppid(&self) -> Pid {
+        self.parent()
+            .expect("Call ppid without a parent")
+            .upgrade()
+            .unwrap()
+            .pid()
+    }
+
+    pub fn exit_code(&self) -> i32 {
         self.exit_code.load(Ordering::Relaxed)
+    }
+
+    pub fn set_exit_code(&self, exit_code: i32) {
+        self.exit_code.store(exit_code, Ordering::Relaxed);
     }
 
     /// Get the mutable ref of trap context
     pub fn trap_context_mut(&self) -> &mut TrapContext {
-        stack_trace!();
         unsafe { &mut *self.trap_context.get() }
     }
 
     /// Set waker for this thread
     pub fn set_waker(&self, waker: Waker) {
-        stack_trace!();
         unsafe {
             (*self.waker.get()) = Some(waker);
         }
+    }
+
+    pub fn set_zombie(&self) {
+        *self.state.lock() = TaskState::Zombie
     }
 
     pub fn is_zombie(&self) -> bool {
@@ -112,22 +128,34 @@ impl Task {
     pub fn activate(&self) {
         self.memory_space.lock().activate()
     }
+
+    // TODO:
+    pub fn do_exit(&self) {
+        // Send SIGCHLD to parent
+        if let Some(parent) = self.parent() {
+            let parent = parent.upgrade().unwrap();
+        }
+
+        // Reparent children
+
+        // Release all fd
+    }
 }
 
 impl Drop for Task {
     fn drop(&mut self) {
-        stack_trace!();
         log::info!("task {} died!", self.pid());
     }
 }
 
+/// Hold a group of threads which belongs to the same process
 pub struct ThreadGroup {
     members: BTreeMap<Pid, Arc<Task>>,
     leader: Option<Weak<Task>>,
 }
 
 impl ThreadGroup {
-    pub fn new_empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             members: BTreeMap::new(),
             leader: None,

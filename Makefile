@@ -42,7 +42,6 @@ export STRACE :=
 export SUBMIT :=
 export TMPFS :=
 export SMP :=
-export STACK_TRACE :=
 export PRELIMINARY :=
 
 
@@ -158,6 +157,10 @@ clean:
 PHONY += disasm
 disasm: $(KERNEL_ASM)
 	@$(PAGER) $(KERNEL_ASM)
+
+PHONY += trace
+trace:
+	addr2line -fipe $(KERNEL_ELF) | rustfilt
 
 PHONY += drun
 drun:

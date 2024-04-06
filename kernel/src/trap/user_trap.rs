@@ -1,3 +1,5 @@
+use alloc::sync::Arc;
+
 use arch::interrupts::{disable_interrupt, enable_interrupt};
 use riscv::register::{
     scause::{self, Exception, Trap},
@@ -5,11 +7,11 @@ use riscv::register::{
 };
 
 use super::{set_kernel_trap_entry, TrapContext};
-use crate::{processor::current_trap_cx, stack_trace, syscall::syscall, trap::set_user_trap_entry};
+use crate::{processor::current_trap_cx, syscall::syscall, task::Task, trap::set_user_trap_entry};
 
 #[no_mangle]
 /// handle an interrupt, exception, or system call from user space
-pub async fn trap_handler() {
+pub async fn trap_handler(task: Arc<Task>) {
     set_kernel_trap_entry();
 
     let stval = stval::read();
@@ -19,8 +21,7 @@ pub async fn trap_handler() {
 
     match scause.cause() {
         Trap::Exception(Exception::UserEnvCall) => {
-            stack_trace!();
-            let mut cx = current_trap_cx();
+            let mut cx = task.trap_context_mut();
             cx.sepc += 4;
             // get system call return value
             let result = syscall(

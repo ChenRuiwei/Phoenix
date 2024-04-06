@@ -5,9 +5,11 @@ use core::{
     task::{Context, Poll},
 };
 
-use super::Task;
+use config::process::INITPROC_PID;
+
+use super::{manager::TASK_MANAGER, Task};
 use crate::{
-    processor::{self, ctx::EnvContext, current_task},
+    processor::{self, ctx::EnvContext, current_task, current_trap_cx},
     trap,
 };
 
@@ -101,7 +103,7 @@ pub async fn task_loop(task: Arc<Task>) {
         trap::user_trap::trap_return();
 
         // next time when user traps into kernel, it will come back here
-        trap::user_trap::trap_handler().await;
+        trap::user_trap::trap_handler(task.clone()).await;
 
         if task.is_zombie() {
             log::debug!("thread {} terminated", current_task().pid());
@@ -112,8 +114,13 @@ pub async fn task_loop(task: Arc<Task>) {
     handle_exit(task);
 }
 
-pub fn handle_exit(_task: Arc<Task>) {
-    panic!()
+pub fn handle_exit(task: Arc<Task>) {
+    todo!();
+    log::info!("thread {} handle exit", task.pid());
+    if task.pid() == INITPROC_PID {
+        panic!("initproc die!!!, sepc {:#x}", current_trap_cx().sepc);
+    }
+    TASK_MANAGER.remove_task(task.pid());
 }
 
 /// Spawn a new async user task

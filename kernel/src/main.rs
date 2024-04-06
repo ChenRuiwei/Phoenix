@@ -20,9 +20,6 @@ use processor::local_hart;
 
 use crate::processor::hart;
 
-#[macro_use]
-mod utils;
-
 extern crate alloc;
 
 #[macro_use]

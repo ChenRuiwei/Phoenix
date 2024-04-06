@@ -6,7 +6,6 @@ use memory::{pte::PTEFlags, StepByOne, VPNRange, VirtAddr, VirtPageNum};
 use crate::{
     mm::{Page, PageTable},
     processor::env::SumGuard,
-    stack_trace,
 };
 
 /// Vm area type
@@ -79,7 +78,6 @@ pub struct VmArea {
 
 impl Drop for VmArea {
     fn drop(&mut self) {
-        stack_trace!();
         log::debug!(
             "[VmArea::drop] drop vma, [{:#x}, {:#x}]",
             self.start_vpn().0,
@@ -96,7 +94,6 @@ impl VmArea {
         map_perm: MapPermission,
         vma_type: VmAreaType,
     ) -> Self {
-        stack_trace!();
         let start_vpn: VirtPageNum = start_va.floor();
         let end_vpn: VirtPageNum = end_va.ceil();
         Self {
@@ -136,7 +133,6 @@ impl VmArea {
     /// Data: at the `offset` of the start va.
     /// Assume that all frames were cleared before.
     pub fn copy_data_with_offset(&mut self, page_table: &PageTable, offset: usize, data: &[u8]) {
-        stack_trace!();
         assert_eq!(self.vma_type, VmAreaType::Elf);
         let _sum_guard = SumGuard::new();
 

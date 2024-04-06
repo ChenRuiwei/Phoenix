@@ -9,7 +9,7 @@ use async_utils::SendWrapper;
 
 use super::MutexSupport;
 
-struct MutexGuard<'a, T: ?Sized, S: MutexSupport> {
+pub struct MutexGuard<'a, T: ?Sized, S: MutexSupport> {
     mutex: &'a SpinMutex<T, S>,
     support_guard: S::GuardData,
 }
@@ -55,7 +55,7 @@ impl<T, S: MutexSupport> SpinMutex<T, S> {
     /// Note that the locked data cannot step over `await`,
     /// i.e. cannot be sent between thread.
     #[inline(always)]
-    pub fn lock(&self) -> impl DerefMut<Target = T> + '_ {
+    pub fn lock(&self) -> MutexGuard<T, S> {
         let support_guard = S::before_lock();
         loop {
             self.wait_unlock();

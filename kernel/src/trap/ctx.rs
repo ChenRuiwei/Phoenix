@@ -5,8 +5,6 @@ use core::arch::asm;
 use arch::sstatus::{self, Sstatus};
 use riscv::register::sstatus::{FS, SPP};
 
-use crate::stack_trace;
-
 /// Trap context structure containing sstatus, sepc and registers
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -50,25 +48,21 @@ impl UserFloatContext {
     }
 
     pub fn mark_save_if_needed(&mut self, sstatus: Sstatus) {
-        stack_trace!();
         self.need_save |= (sstatus.fs() == FS::Dirty) as u8;
         self.signal_dirty |= (sstatus.fs() == FS::Dirty) as u8;
     }
 
     pub fn yield_task(&mut self) {
-        stack_trace!();
         self.save();
         self.need_restore = 1;
     }
 
     pub fn encounter_signal(&mut self) {
-        stack_trace!();
         self.save();
     }
 
     /// Save reg -> mem
     pub fn save(&mut self) {
-        stack_trace!();
         if self.need_save == 0 {
             return;
         }
@@ -118,7 +112,6 @@ impl UserFloatContext {
 
     /// Restore mem -> reg
     pub fn restore(&mut self) {
-        stack_trace!();
         if self.need_restore == 0 {
             return;
         }
@@ -165,62 +158,13 @@ impl UserFloatContext {
     }
 }
 
-/// User context that used for signal handling and trap handling
-/// Note that:
-/// For signal handling, user_x[0] means sepc.
-#[derive(Clone, Copy)]
-pub struct UserContext {
-    /// general regs[0..31]
-    pub user_x: [usize; 32],
-    /// general float regs
-    pub user_fx: UserFloatContext,
-    /// CSR sstatus      
-    pub sstatus: Sstatus, // 32
-    // pub sstatus: usize, // 32
-    /// CSR sepc
-    pub sepc: usize, // 33
-}
-
-impl UserContext {
-    /// Construct a new user context from trap context
-    pub fn from_trap_context(trap_context: &TrapContext) -> Self {
-        stack_trace!();
-        // let mut user_fx = UserFloatContext::new();
-        // user_fx.save();
-        // log::error!("store fx, fs1 {}", user_fx.user_fx[9]);
-        Self {
-            user_x: trap_context.user_x,
-            user_fx: trap_context.user_fx,
-            sstatus: trap_context.sstatus,
-            sepc: trap_context.sepc,
-        }
-    }
-    /// Called by `sys_sigreturn`
-    pub fn restore_trap_context(&self, trap_context: &mut TrapContext) {
-        stack_trace!();
-        if trap_context.user_fx.signal_dirty == 1 {
-            // Signal handler has changed some float regs,
-            // then we should restore the old trap context's float regs
-            // and restore them when trap back.
-            trap_context.user_fx = self.user_fx;
-            trap_context.user_fx.need_restore = 1;
-        }
-        trap_context.user_x = self.user_x;
-        trap_context.user_x[0] = 0;
-        trap_context.sstatus = self.sstatus;
-        trap_context.sepc = self.user_x[0];
-    }
-}
-
 impl TrapContext {
     /// Set stack pointer to x_2 reg (sp)
     pub fn set_sp(&mut self, sp: usize) {
-        stack_trace!();
         self.user_x[2] = sp;
     }
     /// Init app context
     pub fn app_init_context(entry: usize, sp: usize) -> Self {
-        stack_trace!();
         let mut sstatus = sstatus::read();
         // set CPU privilege to User after trapping back
         sstatus.set_spp(SPP::User);
@@ -246,7 +190,6 @@ impl TrapContext {
 
     /// Set entry point
     pub fn set_entry_point(&mut self, entry: usize) {
-        stack_trace!();
         self.sepc = entry;
     }
 }
