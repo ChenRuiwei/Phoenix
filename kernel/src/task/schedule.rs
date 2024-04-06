@@ -115,7 +115,6 @@ pub async fn task_loop(task: Arc<Task>) {
 }
 
 pub fn handle_exit(task: Arc<Task>) {
-    todo!();
     log::info!("thread {} handle exit", task.pid());
     if task.pid() == INITPROC_PID {
         panic!("initproc die!!!, sepc {:#x}", current_trap_cx().sepc);
