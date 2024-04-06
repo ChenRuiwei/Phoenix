@@ -39,6 +39,7 @@ mod processor;
 mod syscall;
 mod task;
 mod trap;
+mod utils;
 
 use core::{
     arch::global_asm,
