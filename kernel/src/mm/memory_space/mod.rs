@@ -8,9 +8,11 @@ use log::info;
 use memory::{PageTable, VirtAddr, VirtPageNum};
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
+use systype::SysResult;
 use xmas_elf::ElfFile;
 
 use self::vm_area::VmArea;
+use super::user_ptr::PageFaultAccessType;
 use crate::{
     mm::{
         memory_space::vm_area::{MapPermission, VmAreaType},
@@ -329,6 +331,14 @@ impl MemorySpace {
             heap_end_va
         );
         (memory_space, user_stack_top, entry_point, auxv)
+    }
+
+    pub fn handle_pagefault(
+        &mut self,
+        vaddr: VirtAddr,
+        access_type: PageFaultAccessType,
+    ) -> SysResult<()> {
+        todo!();
     }
 
     pub fn activate(&self) {

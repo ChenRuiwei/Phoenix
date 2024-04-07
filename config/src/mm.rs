@@ -17,6 +17,7 @@ pub const HART_START_ADDR: usize = 0x80200000;
 pub const USER_STACK_SIZE: usize = 1024 * 1024 * 8; // 8M
 
 pub const PAGE_SIZE: usize = 1 << PAGE_SIZE_BITS;
+pub const PAGE_MASK: usize = PAGE_SIZE - 1;
 pub const PAGE_SIZE_BITS: usize = 12;
 pub const PTE_NUM_ONE_PAGE: usize = 512;
 

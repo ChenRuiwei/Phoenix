@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{borrow::ToOwned, vec::Vec};
 
 use config::mm::PAGE_SIZE;
 use memory::{pte::PTEFlags, StepByOne, VPNRange, VirtAddr, VirtPageNum};
@@ -117,7 +117,7 @@ impl VmArea {
             for vpn in self.vpn_range {
                 page_table.map(
                     vpn,
-                    VirtAddr::from(vpn).to_pa().into(),
+                    VirtAddr::from(vpn).to_offset().to_pa().into(),
                     self.map_perm.into(),
                 )
             }

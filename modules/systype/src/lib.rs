@@ -5,8 +5,8 @@ extern crate alloc;
 use alloc::boxed::Box;
 use core::{future::Future, pin::Pin};
 
-pub type SyscallResult = Result<usize, LinuxError>;
-pub type SysResult<T> = Result<T, LinuxError>;
+pub type SyscallResult = Result<usize, SysError>;
+pub type SysResult<T> = Result<T, SysError>;
 
 pub type SysFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -16,7 +16,7 @@ pub type ASysResult<'a, T> = SysFuture<'a, SysResult<T>>;
 /// Linux specific error codes defined in `errno.h`.
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LinuxError {
+pub enum SysError {
     /// Operation not permitted
     EPERM = 1,
     /// No such file or directory
@@ -101,10 +101,10 @@ pub enum LinuxError {
     ECONNREFUSED = 111,
 }
 
-impl LinuxError {
+impl SysError {
     /// Returns the error description.
     pub const fn as_str(&self) -> &'static str {
-        use self::LinuxError::*;
+        use self::SysError::*;
         match self {
             EPERM => "Operation not permitted",
             ENOENT => "No such file or directory",

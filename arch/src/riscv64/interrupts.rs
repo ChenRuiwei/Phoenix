@@ -45,6 +45,11 @@ pub fn set_trap_handler(handler_addr: usize) {
     }
 }
 
+#[inline]
+pub fn set_trap_handler_vector(handler_addr: usize) {
+    unsafe { stvec::write(handler_addr, TrapMode::Vectored) }
+}
+
 /// Disable interrupt and resume to the interrupt state before when it gets
 /// dropped
 pub struct InterruptGuard {

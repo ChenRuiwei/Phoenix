@@ -216,6 +216,7 @@ dependencies = [
  "bit_field",
  "bitflags 2.5.0",
  "buddy_system_allocator",
+ "cfg-if",
  "config",
  "driver",
  "executor",
