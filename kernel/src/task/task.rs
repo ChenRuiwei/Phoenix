@@ -10,6 +10,7 @@ use core::{
     task::Waker,
 };
 
+use signal::Signal;
 use sync::mutex::SpinNoIrqLock;
 
 use super::pid::{Pid, PidHandle};
@@ -48,6 +49,7 @@ pub struct Task {
     pub waker: SyncUnsafeCell<Option<Waker>>,
     pub ustack_top: usize,
     pub thread_group: Shared<ThreadGroup>,
+    pub signal: Signal,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -72,6 +74,7 @@ impl Task {
             waker: SyncUnsafeCell::new(None),
             ustack_top: user_sp_top,
             thread_group: new_shared(ThreadGroup::empty()),
+            signal: Signal::new(),
         });
 
         task.thread_group.lock().push_leader(task.clone());

@@ -1,7 +1,7 @@
 //! Implementation of syscalls
 
 mod id;
-
+mod signal;
 use core::panic;
 
 use id::*;

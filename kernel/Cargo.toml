@@ -8,6 +8,7 @@ edition = "2021"
 arch = { path = "../arch" }
 config = { path = "../config" }
 sync = { path = "../modules/sync/" }
+signal = { path = "../modules/signal/" }
 driver = { path = "../driver/" }
 logging = { path = "../modules/logging/" }
 executor = { path = "../modules/executor/" }
@@ -43,6 +44,7 @@ managed = { version = "0.8", default-features = false, features = ["map"] }
 spin = { version = "0.9", features = ["lazy"] }
 riscv = "0.11"
 virtio-drivers = { version = "0.7" }
+crate_interface = "0.1.1"
 
 [build-dependencies]
 config = { path = "../config" }

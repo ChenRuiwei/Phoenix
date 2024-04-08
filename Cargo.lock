@@ -104,10 +104,36 @@ name = "config"
 version = "0.1.0"
 
 [[package]]
+name = "crate_interface"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d54b79db793871881b52a1eb5dc6fd869743122e34795f12db8e183dcb6a4f28"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.55",
+]
+
+[[package]]
 name = "critical-section"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7059fff8937831a9ae6f0fe4d658ffabf58f2ca96aa9dec1c889f936f705f216"
+
+[[package]]
+name = "crossbeam-queue"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df0346b5d5e76ac2fe4e327c5fd1118d6be7c51dfb18f9b7922923f287471e35"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "248e3bacc7dc6baa3b21e405ee045c3047101a49145e7e9eca583ab4c2ca5345"
 
 [[package]]
 name = "defmt"
@@ -217,6 +243,7 @@ dependencies = [
  "bitflags 2.5.0",
  "buddy_system_allocator",
  "config",
+ "crate_interface",
  "driver",
  "executor",
  "hashbrown",
@@ -228,6 +255,7 @@ dependencies = [
  "rand_core",
  "recycle_allocator",
  "riscv",
+ "signal",
  "smoltcp",
  "spin",
  "sync",
@@ -367,6 +395,15 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "signal"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.5.0",
+ "crossbeam-queue",
+ "log",
+]
 
 [[package]]
 name = "smoltcp"
