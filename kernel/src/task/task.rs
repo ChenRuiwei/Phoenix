@@ -30,11 +30,12 @@ fn new_shared<T>(data: T) -> Shared<T> {
     Arc::new(SpinNoIrqLock::new(data))
 }
 
-/// User task, a.k.a. process control block
+/// User task control block, a.k.a. process control block
+///
+/// We treat processes and threads as tasks, consistent with the approach
+/// adopted by Linux.
 pub struct Task {
     pid: PidHandle,
-    // /// command
-    // pub comm: String,
     /// Whether this process is a zombie process
     pub state: SpinNoIrqLock<TaskState>,
     /// The process's address space
@@ -158,7 +159,7 @@ pub struct ThreadGroup {
 }
 
 impl ThreadGroup {
-    pub fn empty() -> Self {
+    pub fn new() -> Self {
         Self {
             members: BTreeMap::new(),
             leader: None,

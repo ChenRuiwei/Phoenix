@@ -242,6 +242,7 @@ dependencies = [
  "bit_field",
  "bitflags 2.5.0",
  "buddy_system_allocator",
+ "cfg-if",
  "config",
  "crate_interface",
  "driver",
@@ -284,6 +285,7 @@ checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 name = "logging"
 version = "0.1.0"
 dependencies = [
+ "crate_interface",
  "log",
 ]
 

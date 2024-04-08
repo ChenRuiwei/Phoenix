@@ -54,8 +54,8 @@ pub fn init_frame_allocator(start: PhysPageNum, end: PhysPageNum) {
         .insert(0..(END_PPN.get().unwrap().0 - START_PPN.get().unwrap().0));
     log::info!(
         "frame allocator init finshed, start {:#x}, end {:#x}",
-        usize::from(PhysAddr::from(start)),
-        usize::from(PhysAddr::from(end))
+        PhysAddr::from(start),
+        PhysAddr::from(end)
     );
     debug_assert!({
         frame_allocator_test();

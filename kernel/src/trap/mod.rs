@@ -9,7 +9,7 @@ use core::arch::global_asm;
 
 use arch::interrupts::set_trap_handler;
 
-global_asm!(include_str!("trap.S"));
+global_asm!(include_str!("trap.asm"));
 
 extern "C" {
     fn __trap_from_user();

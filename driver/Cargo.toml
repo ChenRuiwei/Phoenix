@@ -11,7 +11,7 @@ config = { path = "../config/" }
 sync = { path = "../modules/sync/" }
 memory = { path = "../modules/memory/" }
 systype = { path = "../modules/systype/" }
-irq_count = { path = "../modules/irq_count/" }
+irq_count = { path = "../crates/irq_count/" }
 
 log = "0.4"
 virtio-drivers = { version = "0.7" }

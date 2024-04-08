@@ -9,6 +9,7 @@
 ///
 pub mod memory_space;
 mod page;
+mod user_ptr;
 
 use config::board::MEMORY_END;
 use log::info;
@@ -16,6 +17,7 @@ pub use memory::page_table::PageTable;
 use memory::{frame, heap, VirtAddr};
 pub use memory_space::{activate_kernel_space, MemorySpace};
 pub use page::Page;
+pub use user_ptr::{UserInOutPtr, UserReadPtr, UserWritePtr};
 
 use self::memory_space::vm_area::MapPermission;
 use crate::mm;
@@ -27,8 +29,8 @@ pub fn init() {
     }
     heap::init_heap_allocator();
     frame::init_frame_allocator(
-        VirtAddr::from(_ekernel as usize).to_pa().into(),
-        VirtAddr::from(MEMORY_END).to_pa().into(),
+        VirtAddr::from(_ekernel as usize).to_offset().to_pa().into(),
+        VirtAddr::from(MEMORY_END).to_offset().to_pa().into(),
     );
     info!("KERNEL SPACE init finished");
     mm::activate_kernel_space();

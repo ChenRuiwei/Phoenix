@@ -9,6 +9,10 @@
     .globl __trap_from_user
     .globl __return_to_user
     .globl __trap_from_kernel
+    .globl __user_rw_trap_vector
+    .globl __user_rw_exception_entry
+    .globl __try_read_user
+    .globl __try_write_user
     .align 2
 
 
@@ -140,4 +144,41 @@ __trap_from_kernel:
     ld  a7, 16*8(sp)
     addi sp, sp, 17*8
     sret
+
+# arg: (user_ptr)
+# return: (usize, usize)
+# if a0 == 0, which means no exception happens
+# if a0 == 1, which means exception happens, then we will treat a1 as scause
+#
+# Safety: need to set stvec to __user_rw_trap_vector and vector mode first
+__try_read_user:
+    mv a1, a0
+    mv a0, zero
+    # will trap into __user_rw_trap_vector if exception happens
+    # we don't care what value this lb will read
+    lb a1, 0(a1)
+    ret
+
+__try_write_user:
+    mv a2, a0
+    mv a0, zero
+    sb a1, 0(a2)
+    ret
+
+__user_rw_exception_entry:
+    csrr a0, sepc
+    addi a0, a0, 4
+    csrw sepc, a0
+    li   a0, 1
+    csrr a1, scause
+    sret
+
+    .align 8
+__user_rw_trap_vector:
+    j __user_rw_exception_entry
+    .rept 16
+    .align 2
+    j __trap_from_kernel
+    .endr
+    unimp
 

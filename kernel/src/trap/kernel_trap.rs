@@ -1,8 +1,12 @@
+use arch::interrupts::set_trap_handler_vector;
 use irq_count::IRQ_COUNTER;
 use riscv::register::{
-    scause::{self, Interrupt, Trap},
-    sepc, stval,
+    scause::{self, Exception, Interrupt, Scause, Trap},
+    sepc, stval, stvec,
 };
+use systype::SysError;
+
+use crate::{processor::hart::local_hart, when_debug};
 
 /// Kernel trap handler
 #[no_mangle]
@@ -19,18 +23,92 @@ pub fn kernel_trap_handler() {
             todo!()
         }
         _ => {
-            log::error!(
+            panic!(
                 "[kernel] {:?}(scause:{}) in application, bad addr = {:#x}, bad instruction = {:#x}, kernel panicked!!",
                 scause::read().cause(),
                 scause::read().bits(),
                 stval::read(),
                 sepc::read(),
             );
-            panic!(
-                "a trap {:?} from kernel! stval {:#x}",
-                scause::read().cause(),
-                stval::read()
-            );
         }
+    }
+}
+
+extern "C" {
+    fn __user_rw_trap_vector();
+}
+
+pub fn set_kernel_user_rw_trap() {
+    let trap_vaddr = __user_rw_trap_vector as usize;
+    set_trap_handler_vector(trap_vaddr);
+    log::trace!(
+        "Switch to User-RW checking mode for hart {} at STVEC: 0x{:x}",
+        local_hart().hart_id(),
+        trap_vaddr
+    );
+}
+
+pub fn will_read_fail(vaddr: usize) -> bool {
+    when_debug!({
+        let curr_stvec = stvec::read().address();
+        debug_assert_eq!(curr_stvec, __user_rw_trap_vector as usize);
+    });
+
+    extern "C" {
+        fn __try_read_user(ptr: usize) -> TryOpRet;
+    }
+    let try_op_ret = unsafe { __try_read_user(vaddr) };
+    match try_op_ret.flag() {
+        0 => false,
+        _ => {
+            when_debug!({
+                let scause: Scause = try_op_ret.scause();
+                match scause.cause() {
+                    scause::Trap::Interrupt(i) => unreachable!("{:?}", i),
+                    scause::Trap::Exception(e) => assert_eq!(e, Exception::LoadPageFault),
+                };
+            });
+            true
+        }
+    }
+}
+
+pub fn will_write_fail(vaddr: usize) -> bool {
+    when_debug!({
+        let curr_stvec = stvec::read().address();
+        debug_assert!(curr_stvec == __user_rw_trap_vector as usize);
+    });
+    extern "C" {
+        fn __try_write_user(vaddr: usize) -> TryOpRet;
+    }
+    let try_op_ret = unsafe { __try_write_user(vaddr) };
+    match try_op_ret.flag() {
+        0 => false,
+        _ => {
+            when_debug!({
+                let scause: Scause = try_op_ret.scause();
+                match scause.cause() {
+                    scause::Trap::Interrupt(i) => unreachable!("{:?}", i),
+                    scause::Trap::Exception(e) => assert_eq!(e, Exception::LoadPageFault),
+                };
+            });
+            true
+        }
+    }
+}
+
+#[repr(C)]
+struct TryOpRet {
+    flag: usize,
+    scause: usize,
+}
+
+impl TryOpRet {
+    pub fn flag(&self) -> usize {
+        self.flag
+    }
+
+    pub fn scause(&self) -> Scause {
+        unsafe { core::mem::transmute(self.scause) }
     }
 }
