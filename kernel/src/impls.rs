@@ -6,15 +6,16 @@ use logging::LogIf;
 
 use crate::processor::hart::local_hart;
 
+/// Print msg with color
+pub fn print_in_color(args: fmt::Arguments, color_code: u8) {
+    driver::print(with_color!(args, color_code));
+}
+
 struct LogIfImpl;
 
 #[crate_interface::impl_interface]
 impl LogIf for LogIfImpl {
     fn print_log(record: &log::Record) {
-        /// Print msg with color
-        fn print_in_color(args: fmt::Arguments, color_code: u8) {
-            driver::print(with_color!(args, color_code));
-        }
         print_in_color(
             format_args!(
                 "[{:>5}][{}:{}][{},-,-] {}\n",
@@ -28,3 +29,4 @@ impl LogIf for LogIfImpl {
         );
     }
 }
+

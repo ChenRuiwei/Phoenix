@@ -43,6 +43,8 @@ impl Write for Out {}
 impl Read for InOut {}
 impl Write for InOut {}
 
+// PERF: UserPtr will check multiple times when read or something are called
+// multiple times.
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct UserPtr<T: Clone + Copy + 'static, P: Policy> {

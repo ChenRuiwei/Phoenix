@@ -43,7 +43,6 @@ extern "C" {
 /// Kernel Space for all processes.
 ///
 /// There is no need to lock `KERNEL_SPACE` since it won't be changed.
-/// initialization.
 pub static KERNEL_SPACE: Lazy<MemorySpace> = Lazy::new(|| MemorySpace::new_kernel());
 
 pub fn activate_kernel_space() {

@@ -72,9 +72,9 @@ pub fn frame_alloc() -> FrameTracker {
         .expect("frame space not enough")
 }
 
-/// Allocate contiguous frames
-// Error: this function is wrong, alloc_contiguous returns only one usize which
+// FIXME: this function is wrong, alloc_contiguous returns only one usize which
 // is not what we want
+/// Allocate contiguous frames
 pub fn frame_alloc_contig(size: usize, align_log2: usize) -> Option<FrameTracker> {
     FRAME_ALLOCATOR
         .lock()
