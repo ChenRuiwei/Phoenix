@@ -18,6 +18,7 @@ irq_count = { path = "../crates//irq_count/" }
 recycle_allocator = { path = "../crates/recycle_allocator/" }
 
 cfg-if = "1.0"
+crate_interface = "0.1"
 buddy_system_allocator = "0.9"
 bitflags = "2.5"
 bit_field = "0.10"

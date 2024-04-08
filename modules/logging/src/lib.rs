@@ -1,14 +1,18 @@
 #![no_std]
 #![no_main]
 
-use core::{default, marker::PhantomData, sync::atomic::AtomicBool};
+use core::sync::atomic::{AtomicBool, Ordering};
 
+extern crate crate_interface;
+
+use crate_interface::call_interface;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 
-pub static mut INITIALIZED: AtomicBool = AtomicBool::new(false);
+pub static mut LOG_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
-pub fn init<P: LOGGING>(logger: &'static SimpleLogger<P>) {
-    log::set_logger(logger).unwrap();
+pub fn init() {
+    static LOGGER: SimpleLogger = SimpleLogger;
+    log::set_logger(&LOGGER).unwrap();
     log::set_max_level(match option_env!("LOG") {
         Some("error") => LevelFilter::Error,
         Some("warn") => LevelFilter::Warn,
@@ -17,10 +21,10 @@ pub fn init<P: LOGGING>(logger: &'static SimpleLogger<P>) {
         Some("trace") => LevelFilter::Trace,
         _ => LevelFilter::Error,
     });
-    unsafe { INITIALIZED.store(true, core::sync::atomic::Ordering::SeqCst) };
+    unsafe { LOG_INITIALIZED.store(true, Ordering::SeqCst) };
 }
 
-/// Add escape sequence to print with color in Linux console
+/// Add escape sequence to print with color in linux console
 #[macro_export]
 macro_rules! with_color {
     ($args:ident, $color_code:ident) => {{
@@ -28,23 +32,14 @@ macro_rules! with_color {
     }};
 }
 
-pub trait LOGGING: Send + Sync {
+#[crate_interface::def_interface]
+pub trait LogIf: Send + Sync {
     fn print_log(record: &Record);
 }
 
-pub struct SimpleLogger<P: LOGGING> {
-    _phantom: PhantomData<P>,
-}
+struct SimpleLogger;
 
-impl<P: LOGGING> SimpleLogger<P> {
-    pub const fn new() -> Self {
-        SimpleLogger {
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<P: LOGGING> Log for SimpleLogger<P> {
+impl Log for SimpleLogger {
     fn enabled(&self, _metadata: &Metadata) -> bool {
         true
     }
@@ -52,7 +47,7 @@ impl<P: LOGGING> Log for SimpleLogger<P> {
         if !self.enabled(record.metadata()) {
             return;
         }
-        P::print_log(record);
+        call_interface!(LogIf::print_log(record));
     }
     fn flush(&self) {}
 }

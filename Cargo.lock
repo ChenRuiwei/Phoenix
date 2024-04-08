@@ -104,6 +104,17 @@ name = "config"
 version = "0.1.0"
 
 [[package]]
+name = "crate_interface"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d54b79db793871881b52a1eb5dc6fd869743122e34795f12db8e183dcb6a4f28"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.55",
+]
+
+[[package]]
 name = "critical-section"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -218,6 +229,7 @@ dependencies = [
  "buddy_system_allocator",
  "cfg-if",
  "config",
+ "crate_interface",
  "driver",
  "executor",
  "hashbrown",
@@ -257,6 +269,7 @@ checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 name = "logging"
 version = "0.1.0"
 dependencies = [
+ "crate_interface",
  "log",
 ]
 

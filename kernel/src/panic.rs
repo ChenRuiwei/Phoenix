@@ -10,7 +10,7 @@ use crate::processor::hart::local_hart;
 fn panic(info: &PanicInfo) -> ! {
     disable_interrupt();
 
-    let logging_initialized = unsafe { logging::INITIALIZED.load(Ordering::SeqCst) };
+    let logging_initialized = unsafe { logging::LOG_INITIALIZED.load(Ordering::SeqCst) };
     if let Some(location) = info.location() {
         if logging_initialized {
             log::error!(

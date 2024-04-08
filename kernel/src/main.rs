@@ -16,7 +16,7 @@ use alloc::fmt;
 
 use config::mm::HART_START_ADDR;
 use driver::sbi;
-use logging::{SimpleLogger, LOGGING};
+use logging::{LogIf, SimpleLogger};
 use processor::local_hart;
 
 use crate::processor::hart;
@@ -92,7 +92,7 @@ fn rust_main(hart_id: usize) {
         boot::print_boot_message();
 
         hart::init(hart_id);
-        logging::init::<Logger>(&LOGGER);
+        logging::init();
 
         println!(
             "[kernel] ---------- main hart {} started ---------- ",
@@ -145,10 +145,9 @@ pub fn print_in_color(args: fmt::Arguments, color_code: u8) {
     driver::print(with_color!(args, color_code));
 }
 
-static LOGGER: SimpleLogger<Logger> = SimpleLogger::new();
-#[derive(Default)]
-pub struct Logger;
-impl LOGGING for Logger {
+pub struct LogIfImpl;
+#[crate_interface::impl_interface]
+impl LogIf for LogIfImpl {
     fn print_log(record: &log::Record) {
         print_in_color(
             format_args!(
