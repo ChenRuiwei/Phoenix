@@ -19,7 +19,7 @@ use crate::{
     task::Task,
     trap::{
         kernel_trap::{set_kernel_user_rw_trap, will_read_fail, will_write_fail},
-        set_kernel_trap_entry,
+        set_kernel_trap,
     },
 };
 
@@ -105,7 +105,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
         self.not_null().then_some(self)
     }
 
-    #[must_use]
     pub fn as_ref(self, task: &Arc<Task>) -> SysResult<&T> {
         debug_assert!(self.not_null());
         task.just_ensure_user_area(
@@ -117,7 +116,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
         Ok(res)
     }
 
-    #[must_use]
     pub fn as_slice(self, n: usize, task: &Arc<Task>) -> SysResult<&[T]> {
         debug_assert!(n == 0 || self.not_null());
         task.just_ensure_user_area(
@@ -129,7 +127,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
         Ok(res)
     }
 
-    #[must_use]
     pub fn read(self, task: &Arc<Task>) -> SysResult<T> {
         debug_assert!(self.not_null());
         task.just_ensure_user_area(
@@ -141,7 +138,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
         Ok(res)
     }
 
-    #[must_use]
     pub fn read_array(self, n: usize, task: &Arc<Task>) -> SysResult<Vec<T>> {
         debug_assert!(n == 0 || self.not_null());
         task.just_ensure_user_area(
@@ -163,7 +159,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
 }
 
 impl<P: Read> UserPtr<u8, P> {
-    #[must_use]
     pub fn read_cstr(self, task: &Arc<Task>) -> SysResult<String> {
         debug_assert!(self.not_null());
         let mut str = String::with_capacity(32);
@@ -204,7 +199,6 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         self.not_null().then_some(self)
     }
 
-    #[must_use]
     pub fn as_mut(self, task: &Arc<Task>) -> SysResult<&mut T> {
         debug_assert!(self.not_null());
         task.just_ensure_user_area(
@@ -216,7 +210,6 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         Ok(res)
     }
 
-    #[must_use]
     pub fn as_mut_slice(self, n: usize, task: &Arc<Task>) -> SysResult<&mut [T]> {
         debug_assert!(n == 0 || self.not_null());
         task.just_ensure_user_area(
@@ -228,7 +221,6 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         Ok(res)
     }
 
-    #[must_use]
     pub fn write(self, task: &Arc<Task>, val: T) -> SysResult<()> {
         debug_assert!(self.not_null());
         task.just_ensure_user_area(
@@ -240,7 +232,6 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         Ok(())
     }
 
-    #[must_use]
     pub fn write_array(self, task: &Arc<Task>, val: &[T]) -> SysResult<()> {
         debug_assert!(self.not_null());
         task.just_ensure_user_area(
@@ -260,7 +251,6 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
 }
 
 impl<P: Write> UserPtr<u8, P> {
-    #[must_use]
     /// should only be used at syscall getdent with dynamic-len structure
     pub unsafe fn write_as_bytes<U>(self, task: &Arc<Task>, val: &U) -> SysResult<()> {
         debug_assert!(self.not_null());
@@ -283,7 +273,6 @@ impl<P: Write> UserPtr<u8, P> {
         Ok(())
     }
 
-    #[must_use]
     pub fn write_cstr(self, task: &Arc<Task>, val: &str) -> SysResult<()> {
         debug_assert!(self.not_null());
 
@@ -332,7 +321,6 @@ impl<T: Clone + Copy + 'static, P: Policy> Display for UserPtr<T, P> {
 }
 
 impl Task {
-    #[inline(always)]
     fn just_ensure_user_area(
         &self,
         begin: VirtAddr,
@@ -343,7 +331,6 @@ impl Task {
     }
 
     /// ensure that the whole range is accessible, or return an error
-    #[inline(always)]
     fn ensure_user_area(
         &self,
         begin: VirtAddr,
@@ -355,7 +342,7 @@ impl Task {
             return Ok(());
         }
 
-        set_kernel_user_rw_trap();
+        unsafe { set_kernel_user_rw_trap() };
 
         let test_fn = match access {
             PageFaultAccessType::RO => will_read_fail,
@@ -367,6 +354,7 @@ impl Task {
         let mut readable_len = 0;
         while readable_len < len {
             if test_fn(curr_vaddr.0) {
+                // TODO: handle_pagefault
                 // self.with_mut_memory(|m| m.handle_pagefault(curr_vaddr,
                 // access))     .map_err(|_| SysError::EFAULT)?;
             }
@@ -377,11 +365,11 @@ impl Task {
             match f(curr_vaddr, len) {
                 ControlFlow::Continue(_) => {}
                 ControlFlow::Break(None) => {
-                    set_kernel_trap_entry();
+                    unsafe { set_kernel_trap() };
                     return Ok(());
                 }
                 ControlFlow::Break(Some(e)) => {
-                    set_kernel_trap_entry();
+                    unsafe { set_kernel_trap() };
                     return Err(e);
                 }
             }
@@ -390,7 +378,7 @@ impl Task {
             curr_vaddr = next_page_beg;
         }
 
-        set_kernel_trap_entry();
+        unsafe { set_kernel_trap() };
         Ok(())
     }
 }

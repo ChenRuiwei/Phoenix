@@ -42,7 +42,7 @@ extern "C" {
 
 /// Kernel Space for all processes.
 ///
-/// There is no need to lock `KERNEL_SPACE` since we won't change it after
+/// There is no need to lock `KERNEL_SPACE` since it won't be changed.
 /// initialization.
 pub static KERNEL_SPACE: Lazy<MemorySpace> = Lazy::new(|| MemorySpace::new_kernel());
 
@@ -189,7 +189,6 @@ impl MemorySpace {
         for area in memory_space.areas.iter_mut() {
             area.map(&mut memory_space.page_table);
         }
-        memory_space.activate();
         memory_space
     }
 

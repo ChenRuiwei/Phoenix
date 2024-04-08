@@ -6,18 +6,18 @@ use riscv::register::{
     sepc, stval,
 };
 
-use super::{set_kernel_trap_entry, TrapContext};
-use crate::{processor::current_trap_cx, syscall::syscall, task::Task, trap::set_user_trap_entry};
+use super::{set_kernel_trap, TrapContext};
+use crate::{processor::current_trap_cx, syscall::syscall, task::Task, trap::set_user_trap};
 
 #[no_mangle]
 /// handle an interrupt, exception, or system call from user space
 pub async fn trap_handler(task: Arc<Task>) {
-    set_kernel_trap_entry();
+    unsafe { set_kernel_trap() };
 
     let stval = stval::read();
     let scause = scause::read();
 
-    enable_interrupt();
+    unsafe { enable_interrupt() };
 
     match scause.cause() {
         Trap::Exception(Exception::UserEnvCall) => {
@@ -61,15 +61,16 @@ pub async fn trap_handler(task: Arc<Task>) {
     }
 }
 
-#[no_mangle]
 /// Back to user mode.
 /// Note that we don't need to flush TLB since user and
 /// kernel use the same pagetable.
+#[no_mangle]
 pub fn trap_return() {
     // Important!
-    disable_interrupt();
-
-    set_user_trap_entry();
+    unsafe {
+        disable_interrupt();
+        set_user_trap()
+    };
 
     extern "C" {
         // fn __alltraps();
