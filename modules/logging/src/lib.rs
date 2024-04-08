@@ -3,8 +3,6 @@
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
-extern crate crate_interface;
-
 use crate_interface::call_interface;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 

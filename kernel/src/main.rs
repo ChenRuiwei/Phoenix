@@ -16,7 +16,6 @@ use alloc::fmt;
 
 use config::mm::HART_START_ADDR;
 use driver::sbi;
-use logging::{LogIf, SimpleLogger};
 use processor::local_hart;
 
 use crate::processor::hart;
@@ -36,6 +35,7 @@ extern crate driver;
 extern crate logging;
 
 mod boot;
+mod impls;
 mod loader;
 mod mm;
 mod panic;
@@ -86,9 +86,7 @@ fn rust_main(hart_id: usize) {
         .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
     {
-        // The first hart
         boot::clear_bss();
-
         boot::print_boot_message();
 
         hart::init(hart_id);
@@ -137,28 +135,5 @@ fn rust_main(hart_id: usize) {
     );
     loop {
         executor::run_until_idle();
-    }
-}
-
-/// Print msg with color
-pub fn print_in_color(args: fmt::Arguments, color_code: u8) {
-    driver::print(with_color!(args, color_code));
-}
-
-pub struct LogIfImpl;
-#[crate_interface::impl_interface]
-impl LogIf for LogIfImpl {
-    fn print_log(record: &log::Record) {
-        print_in_color(
-            format_args!(
-                "[{:>5}][{}:{}][{},-,-] {}\n",
-                record.level(),
-                record.file().unwrap(),
-                record.line().unwrap(),
-                local_hart().hart_id(),
-                record.args()
-            ),
-            logging::level_to_color_code(record.level()),
-        );
     }
 }

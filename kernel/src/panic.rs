@@ -57,14 +57,12 @@ fn backtrace() {
         let mut stack_num = 0;
 
         log::error!("=============== BEGIN BACKTRACE ================");
-
         while current_pc >= _stext as usize && current_pc <= _etext as usize && current_fp != 0 {
             println!("{:#018x}", current_pc - size_of::<usize>());
             stack_num += 1;
             current_fp = *(current_fp as *const usize).offset(-2);
             current_pc = *(current_fp as *const usize).offset(-1);
         }
-
         log::error!("=============== END BACKTRACE ================");
     }
 }
