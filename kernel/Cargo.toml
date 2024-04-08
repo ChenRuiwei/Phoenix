@@ -14,8 +14,8 @@ executor = { path = "../modules/executor/" }
 systype = { path = "../modules/systype/" }
 memory = { path = "../modules/memory/" }
 async_utils = { path = "../modules/async_utils/" }
-irq_count = { path = "../modules/irq_count/" }
-recycle_allocator = { path = "../modules/recycle_allocator/" }
+irq_count = { path = "../crates//irq_count/" }
+recycle_allocator = { path = "../crates/recycle_allocator/" }
 
 cfg-if = "1.0"
 buddy_system_allocator = "0.9"
