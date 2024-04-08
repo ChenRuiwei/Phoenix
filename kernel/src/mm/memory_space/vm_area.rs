@@ -88,6 +88,8 @@ impl Drop for VmArea {
 
 impl VmArea {
     /// Construct a new vma
+    ///
+    /// [start_va, end_va)
     pub fn new(
         start_va: VirtAddr,
         end_va: VirtAddr,
@@ -96,6 +98,7 @@ impl VmArea {
     ) -> Self {
         let start_vpn: VirtPageNum = start_va.floor();
         let end_vpn: VirtPageNum = end_va.ceil();
+        log::trace!("new vpn_range: {:?}, {:?}", start_vpn, end_vpn);
         Self {
             vpn_range: VPNRange::new(start_vpn, end_vpn),
             frames: Vec::new(),

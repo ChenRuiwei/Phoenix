@@ -9,6 +9,10 @@
     .globl __trap_from_user
     .globl __return_to_user
     .globl __trap_from_kernel
+    .globl __user_rw_trap_vector
+    .globl __user_rw_exception_entry
+    .globl __try_read_user
+    .globl __try_write_user
     .align 2
 
 
@@ -141,19 +145,20 @@ __trap_from_kernel:
     addi sp, sp, 17*8
     sret
 
-
+# arg: (user_ptr)
+# return: (usize, usize)
+# if a0 == 0, which means no exception happens
+# if a0 == 1, which means exception happens, then we will treat a1 as scause
+#
+# Safety: need to set stvec to __user_rw_trap_vector and vector mode first
 __try_read_user:
     mv a1, a0
-    # 先将 a0 设置为 0
     mv a0, zero
-    # 尝试读取用户空间的内存
+    # will trap into __user_rw_trap_vector if exception happens
+    # we don't care what value this lb will read
     lb a1, 0(a1)
-    # 如果上条指令出现了缺页异常, 那么就会跳转到 __user_check_exception_entry
-    # 而后者会将 a0 设置为 1 并将 sepc + 4
-    # 于是在发生缺页异常时, a0 为 1, 否则为 0
     ret
 
-# 检查写入同理
 __try_write_user:
     mv a2, a0
     mv a0, zero

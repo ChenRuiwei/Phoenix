@@ -69,7 +69,7 @@ impl VirtAddr {
     }
     /// `VirtAddr`->`VirtPageNum`
     pub fn ceil(&self) -> VirtPageNum {
-        (self.floor() + 1).into()
+        VirtPageNum((self.0 + PAGE_SIZE - 1) / PAGE_SIZE)
     }
     /// Get page offset
     pub fn page_offset(&self) -> usize {

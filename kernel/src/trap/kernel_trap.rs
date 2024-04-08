@@ -1,9 +1,10 @@
 use arch::interrupts::set_trap_handler_vector;
 use irq_count::IRQ_COUNTER;
 use riscv::register::{
-    scause::{self, Interrupt, Trap},
+    scause::{self, Exception, Interrupt, Scause, Trap},
     sepc, stval, stvec,
 };
+use systype::SysError;
 
 use crate::{processor::hart::local_hart, when_debug};
 
@@ -37,7 +38,6 @@ extern "C" {
     fn __user_rw_trap_vector();
 }
 
-#[inline(always)]
 pub fn set_kernel_user_rw_trap() {
     let trap_vaddr = __user_rw_trap_vector as usize;
     set_trap_handler_vector(trap_vaddr);
@@ -48,29 +48,67 @@ pub fn set_kernel_user_rw_trap() {
     );
 }
 
-#[inline(always)]
 pub fn will_read_fail(vaddr: usize) -> bool {
     when_debug!({
         let curr_stvec = stvec::read().address();
-        debug_assert!(curr_stvec == __user_rw_trap_vector as usize);
+        debug_assert_eq!(curr_stvec, __user_rw_trap_vector as usize);
     });
 
     extern "C" {
-        fn __try_read_user(vaddr: usize) -> bool;
+        fn __try_read_user(ptr: usize) -> TryOpRet;
     }
-
-    unsafe { __try_read_user(vaddr) }
+    let try_op_ret = unsafe { __try_read_user(vaddr) };
+    match try_op_ret.flag() {
+        0 => false,
+        _ => {
+            when_debug!({
+                let scause: Scause = try_op_ret.scause();
+                match scause.cause() {
+                    scause::Trap::Interrupt(i) => unreachable!("{:?}", i),
+                    scause::Trap::Exception(e) => assert_eq!(e, Exception::LoadPageFault),
+                };
+            });
+            true
+        }
+    }
 }
 
-#[inline(always)]
 pub fn will_write_fail(vaddr: usize) -> bool {
     when_debug!({
         let curr_stvec = stvec::read().address();
         debug_assert!(curr_stvec == __user_rw_trap_vector as usize);
     });
-
     extern "C" {
-        fn __try_write_user(vaddr: usize) -> bool;
+        fn __try_write_user(vaddr: usize) -> TryOpRet;
     }
-    unsafe { __try_write_user(vaddr) }
+    let try_op_ret = unsafe { __try_write_user(vaddr) };
+    match try_op_ret.flag() {
+        0 => false,
+        _ => {
+            when_debug!({
+                let scause: Scause = try_op_ret.scause();
+                match scause.cause() {
+                    scause::Trap::Interrupt(i) => unreachable!("{:?}", i),
+                    scause::Trap::Exception(e) => assert_eq!(e, Exception::LoadPageFault),
+                };
+            });
+            true
+        }
+    }
+}
+
+#[repr(C)]
+struct TryOpRet {
+    flag: usize,
+    scause: usize,
+}
+
+impl TryOpRet {
+    pub fn flag(&self) -> usize {
+        self.flag
+    }
+
+    pub fn scause(&self) -> Scause {
+        unsafe { core::mem::transmute(self.scause) }
+    }
 }

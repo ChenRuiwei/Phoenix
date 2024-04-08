@@ -10,6 +10,7 @@
 #![feature(sync_unsafe_cell)]
 #![feature(stdsimd)]
 #![feature(riscv_ext_intrinsics)]
+#![allow(unused)]
 
 use alloc::fmt;
 

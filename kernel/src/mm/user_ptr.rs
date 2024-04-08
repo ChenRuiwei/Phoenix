@@ -376,8 +376,14 @@ impl Task {
 
             match f(curr_vaddr, len) {
                 ControlFlow::Continue(_) => {}
-                ControlFlow::Break(None) => return Ok(()),
-                ControlFlow::Break(Some(e)) => return Err(e),
+                ControlFlow::Break(None) => {
+                    set_kernel_trap_entry();
+                    return Ok(());
+                }
+                ControlFlow::Break(Some(e)) => {
+                    set_kernel_trap_entry();
+                    return Err(e);
+                }
             }
 
             readable_len += len;

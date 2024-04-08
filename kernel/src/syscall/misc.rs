@@ -2,6 +2,8 @@
 
 use systype::SyscallResult;
 
+use crate::{mm::UserWritePtr, processor::hart::current_task};
+
 // copy from sys/utsname.h
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -44,5 +46,7 @@ impl UtsName {
 
 /// uname() returns system information in the structure pointed to by buf.
 pub fn sys_uname(buf: usize) -> SyscallResult {
-    todo!()
+    let uts = UserWritePtr::<UtsName>::from(buf);
+    uts.write(current_task(), UtsName::default())?;
+    Ok(0)
 }

@@ -17,6 +17,7 @@ pub use memory::page_table::PageTable;
 use memory::{frame, heap, VirtAddr};
 pub use memory_space::{activate_kernel_space, MemorySpace};
 pub use page::Page;
+pub use user_ptr::{UserInOutPtr, UserReadPtr, UserWritePtr};
 
 use self::memory_space::vm_area::MapPermission;
 use crate::mm;
