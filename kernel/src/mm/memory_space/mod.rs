@@ -7,7 +7,6 @@ use config::{
 };
 use log::info;
 use memory::{PageTable, VPNRange, VirtAddr, VirtPageNum};
-use rangemap::RangeMap;
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
@@ -45,7 +44,7 @@ extern "C" {
 /// Kernel space for all processes.
 ///
 /// There is no need to lock `KERNEL_SPACE` since it won't be changed.
-pub static KERNEL_SPACE: Lazy<MemorySpace> = Lazy::new(|| MemorySpace::new_kernel());
+static KERNEL_SPACE: Lazy<MemorySpace> = Lazy::new(|| MemorySpace::new_kernel());
 
 pub unsafe fn activate_kernel_space() {
     KERNEL_SPACE.activate();

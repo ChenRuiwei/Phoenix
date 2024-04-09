@@ -45,9 +45,13 @@ pub struct Task {
     pub children: Shared<Vec<Arc<Task>>>,
     /// Exit code of the current process
     pub exit_code: AtomicI32,
+    ///
     pub trap_context: SyncUnsafeCell<TrapContext>,
+    ///
     pub waker: SyncUnsafeCell<Option<Waker>>,
+    ///
     pub ustack_top: usize,
+    ///
     pub thread_group: Shared<ThreadGroup>,
 }
 
@@ -71,10 +75,11 @@ macro_rules! with_ {
 }
 
 impl Task {
+    // TODO: this function is not clear, may be replaced with exec
     pub fn from_elf(elf_data: &[u8]) {
         let (memory_space, user_sp_top, entry_point, _auxv) = MemorySpace::from_elf(elf_data);
 
-        let trap_context = TrapContext::app_init_context(entry_point, user_sp_top);
+        let trap_context = TrapContext::new(entry_point, user_sp_top);
         let task = Arc::new(Self {
             pid: alloc_pid(),
             state: SpinNoIrqLock::new(TaskState::Running),
@@ -119,7 +124,7 @@ impl Task {
         self.exit_code.store(exit_code, Ordering::Relaxed);
     }
 
-    /// Get the mutable ref of trap context
+    /// Get the mutable ref of `TrapContext`.
     pub fn trap_context_mut(&self) -> &mut TrapContext {
         unsafe { &mut *self.trap_context.get() }
     }
@@ -142,6 +147,9 @@ impl Task {
     pub unsafe fn activate_page_table(&self) {
         self.memory_space.lock().activate()
     }
+
+    // TODO:
+    pub fn clone(&self) {}
 
     // TODO:
     pub fn do_exit(&self) {

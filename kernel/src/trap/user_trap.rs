@@ -9,8 +9,8 @@ use riscv::register::{
 use super::{set_kernel_trap, TrapContext};
 use crate::{processor::current_trap_cx, syscall::syscall, task::Task, trap::set_user_trap};
 
-#[no_mangle]
 /// handle an interrupt, exception, or system call from user space
+#[no_mangle]
 pub async fn trap_handler(task: Arc<Task>) {
     unsafe { set_kernel_trap() };
 
@@ -22,7 +22,7 @@ pub async fn trap_handler(task: Arc<Task>) {
     match scause.cause() {
         Trap::Exception(Exception::UserEnvCall) => {
             let mut cx = task.trap_context_mut();
-            cx.sepc += 4;
+            cx.set_user_pc_to_next();
             // get system call return value
             let result = syscall(
                 cx.user_x[17],
@@ -36,19 +36,21 @@ pub async fn trap_handler(task: Arc<Task>) {
                 ],
             )
             .await;
+
             // cx is changed during sys_exec, so we have to call it again
             cx = current_trap_cx();
-            cx.user_x[10] = match result {
-                Ok(ret) => ret as usize,
+            let ret = match result {
+                Ok(ret) => ret,
                 Err(err) => {
                     log::warn!(
                         "[trap_handler] syscall {} return, err {:?}",
-                        cx.user_x[17],
+                        cx.syscall_no(),
                         err
                     );
                     -(err as isize) as usize
                 }
             };
+            cx.set_user_a0(ret);
         }
         _ => {
             panic!(
