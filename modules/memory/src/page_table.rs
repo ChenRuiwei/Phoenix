@@ -1,10 +1,11 @@
 //! Implementation of [`PageTable`].
+
 use alloc::{string::String, vec, vec::Vec};
 use core::arch::asm;
 
 use bitflags::*;
 use config::mm::VIRT_RAM_OFFSET;
-use riscv::register::satp;
+use riscv::{asm::sfence_vma, register::satp};
 
 use crate::{
     address::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum},
@@ -15,11 +16,9 @@ use crate::{
 
 /// Write `page_table_token` into satp and sfence.vma
 #[inline]
-pub fn activate_page_table(page_table_token: usize) {
-    unsafe {
-        satp::write(page_table_token);
-        asm!("sfence.vma");
-    }
+pub unsafe fn activate_page_table(page_table_token: usize) {
+    satp::write(page_table_token);
+    core::arch::riscv64::sfence_vma_all();
 }
 
 ///
@@ -31,7 +30,7 @@ pub struct PageTable {
 
 /// Assume that it won't oom when creating/mapping.
 impl PageTable {
-    /// Create a new empty pagetable
+    /// Create a new empty page table
     pub fn new() -> Self {
         let root_frame = frame_alloc();
         PageTable {
@@ -39,34 +38,38 @@ impl PageTable {
             frames: vec![root_frame],
         }
     }
+
+    /// Create a page table that inherits kernel page table by shallow copying
+    /// the ptes from root page table.
+    ///
     /// # Safety
     ///
-    /// There is only mapping from `VIRT_RAM_OFFSET`, but no MMIO mapping
-    pub fn from_global(global_page_table: &Self) -> Self {
+    /// There is only mapping from `VIRT_RAM_OFFSET`, but no MMIO mapping.
+    pub fn from_kernel(kernel_page_table: &Self) -> Self {
         let root_frame = frame_alloc();
 
-        // Map kernel space
-        // Note that we just need shallow copy here
         let kernel_start_vpn: VirtPageNum = VirtAddr::from(VIRT_RAM_OFFSET).into();
-        let level_1_index = kernel_start_vpn.indices()[0];
+        let level_0_index = kernel_start_vpn.indices()[0];
         log::debug!(
-            "[PageTable::from_global] kernel start vpn level 1 index {:#x}, start vpn {:#x}",
-            level_1_index,
+            "[PageTable::from_kernel] kernel start vpn level 0 index {:#x}, start vpn {:#x}",
+            level_0_index,
             kernel_start_vpn.0
         );
-        root_frame.ppn.pte_array()[level_1_index..]
-            .copy_from_slice(&global_page_table.root_ppn.pte_array()[level_1_index..]);
+        root_frame.ppn.pte_array()[level_0_index..]
+            .copy_from_slice(&kernel_page_table.root_ppn.pte_array()[level_0_index..]);
 
-        // the new pagetable only owns the ownership of its own root ppn
+        // the new pagetable only takes the ownership of its own root ppn
         PageTable {
             root_ppn: root_frame.ppn,
             frames: vec![root_frame],
         }
     }
+
     /// Switch to this pagetable
-    pub fn activate(&self) {
+    pub unsafe fn activate(&self) {
         activate_page_table(self.token());
     }
+
     /// Dump page table
     #[allow(unused)]
     pub fn dump(&self) {

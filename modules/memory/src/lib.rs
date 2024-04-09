@@ -2,6 +2,8 @@
 #![no_main]
 #![feature(alloc_error_handler)]
 #![feature(const_trait_impl)]
+#![feature(stdsimd)]
+#![feature(riscv_ext_intrinsics)]
 
 extern crate alloc;
 

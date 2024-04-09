@@ -33,7 +33,7 @@ pub fn init() {
         VirtAddr::from(MEMORY_END).to_offset().to_pa().into(),
     );
     info!("KERNEL SPACE init finished");
-    mm::activate_kernel_space();
+    unsafe { mm::activate_kernel_space() };
     info!("KERNEL SPACE activated");
 }
 

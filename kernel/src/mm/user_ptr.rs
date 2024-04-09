@@ -357,8 +357,8 @@ impl Task {
         while readable_len < len {
             if test_fn(curr_vaddr.0) {
                 // TODO: handle_pagefault
-                // self.with_mut_memory(|m| m.handle_pagefault(curr_vaddr,
-                // access))     .map_err(|_| SysError::EFAULT)?;
+                self.with_mut_memory_space(|m| m.handle_pagefault(curr_vaddr, access))
+                    .map_err(|_| SysError::EFAULT)?;
             }
 
             let next_page_beg: VirtAddr = VirtAddr::from(curr_vaddr.floor().next());

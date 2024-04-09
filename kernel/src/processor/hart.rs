@@ -58,7 +58,7 @@ impl Hart {
         let sie = EnvContext::env_change(env, old_env);
         set_current_task(Arc::clone(task));
         core::mem::swap(self.env_mut(), env);
-        task.activate();
+        unsafe { task.activate_page_table() };
         if sie {
             unsafe { enable_interrupt() };
         }
@@ -67,7 +67,7 @@ impl Hart {
         unsafe { disable_interrupt() };
         let old_env = self.env();
         let sie = EnvContext::env_change(env, old_env);
-        mm::activate_kernel_space();
+        unsafe { mm::activate_kernel_space() };
         self.task = None;
         core::mem::swap(self.env_mut(), env);
         if sie {

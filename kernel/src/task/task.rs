@@ -57,6 +57,19 @@ pub enum TaskState {
     Zombie,
 }
 
+macro_rules! with_ {
+    ($name:ident, $ty:ty) => {
+        paste::paste! {
+            pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
+                f(& self.$name.lock())
+            }
+            pub fn [<with_mut_ $name>]<T>(&self, f: impl FnOnce(&mut $ty) -> T) -> T {
+                f(&mut self.$name.lock())
+            }
+        }
+    };
+}
+
 impl Task {
     pub fn from_elf(elf_data: &[u8]) {
         let (memory_space, user_sp_top, entry_point, _auxv) = MemorySpace::from_elf(elf_data);
@@ -126,7 +139,7 @@ impl Task {
         *self.state.lock() == TaskState::Zombie
     }
 
-    pub fn activate(&self) {
+    pub unsafe fn activate_page_table(&self) {
         self.memory_space.lock().activate()
     }
 
@@ -141,6 +154,8 @@ impl Task {
 
         // Release all fd
     }
+
+    with_!(memory_space, MemorySpace);
 }
 
 impl Drop for Task {

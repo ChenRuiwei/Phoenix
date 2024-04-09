@@ -1,11 +1,13 @@
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, vec::Vec};
+use core::ops::Range;
 
 use config::{
     board::MEMORY_END,
     mm::{PAGE_SIZE, USER_STACK_SIZE, VIRT_RAM_OFFSET},
 };
 use log::info;
-use memory::{PageTable, VirtAddr, VirtPageNum};
+use memory::{PageTable, VPNRange, VirtAddr, VirtPageNum};
+use rangemap::RangeMap;
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
@@ -40,61 +42,18 @@ extern "C" {
     fn _ekernel();
 }
 
-/// Kernel Space for all processes.
+/// Kernel space for all processes.
 ///
 /// There is no need to lock `KERNEL_SPACE` since it won't be changed.
 pub static KERNEL_SPACE: Lazy<MemorySpace> = Lazy::new(|| MemorySpace::new_kernel());
 
-pub fn activate_kernel_space() {
-    unsafe {
-        KERNEL_SPACE.activate();
-    }
+pub unsafe fn activate_kernel_space() {
+    KERNEL_SPACE.activate();
 }
 
 pub struct MemorySpace {
     page_table: PageTable,
-    areas: Vec<VmArea>,
-}
-
-fn kernel_space_info() {
-    log::info!("[kernel] trampoline {:#x}", sigreturn_trampoline as usize);
-    log::info!(
-        "[kernel] .text [{:#x}, {:#x}) [{:#x}, {:#x})",
-        _stext as usize,
-        _strampoline as usize,
-        _etrampoline as usize,
-        _etext as usize
-    );
-    log::info!(
-        "[kernel] .text.trampoline [{:#x}, {:#x})",
-        _strampoline as usize,
-        _etrampoline as usize,
-    );
-    log::info!(
-        "[kernel] .rodata [{:#x}, {:#x})",
-        _srodata as usize,
-        _erodata as usize
-    );
-    log::info!(
-        "[kernel] .data [{:#x}, {:#x})",
-        _sdata as usize,
-        _edata as usize
-    );
-    log::info!(
-        "[kernel] .stack [{:#x}, {:#x})",
-        _sstack as usize,
-        _estack as usize
-    );
-    log::info!(
-        "[kernel] .bss [{:#x}, {:#x})",
-        _sbss as usize,
-        _ebss as usize
-    );
-    log::info!(
-        "[kernel] physical mem [{:#x}, {:#x})",
-        _ekernel as usize,
-        MEMORY_END as usize
-    );
+    areas: BTreeMap<VirtPageNum, VmArea>,
 }
 
 impl MemorySpace {
@@ -102,96 +61,137 @@ impl MemorySpace {
     pub fn new() -> Self {
         Self {
             page_table: PageTable::new(),
-            areas: Vec::new(),
+            areas: BTreeMap::new(),
         }
     }
 
-    pub fn new_from_global() -> Self {
+    /// Create a memory space that inherits kernel page table.
+    pub fn from_kernel() -> Self {
         Self {
-            page_table: PageTable::from_global(&KERNEL_SPACE.page_table),
-            areas: Vec::new(),
+            page_table: PageTable::from_kernel(&KERNEL_SPACE.page_table),
+            areas: BTreeMap::new(),
         }
     }
 
-    /// Create a kernel space
+    /// Create a kernel space.
     pub fn new_kernel() -> Self {
+        fn kernel_space_info() {
+            log::info!("[kernel] trampoline {:#x}", sigreturn_trampoline as usize);
+            log::info!(
+                "[kernel] .text [{:#x}, {:#x}) [{:#x}, {:#x})",
+                _stext as usize,
+                _strampoline as usize,
+                _etrampoline as usize,
+                _etext as usize
+            );
+            log::info!(
+                "[kernel] .text.trampoline [{:#x}, {:#x})",
+                _strampoline as usize,
+                _etrampoline as usize,
+            );
+            log::info!(
+                "[kernel] .rodata [{:#x}, {:#x})",
+                _srodata as usize,
+                _erodata as usize
+            );
+            log::info!(
+                "[kernel] .data [{:#x}, {:#x})",
+                _sdata as usize,
+                _edata as usize
+            );
+            log::info!(
+                "[kernel] .stack [{:#x}, {:#x})",
+                _sstack as usize,
+                _estack as usize
+            );
+            log::info!(
+                "[kernel] .bss [{:#x}, {:#x})",
+                _sbss as usize,
+                _ebss as usize
+            );
+            log::info!(
+                "[kernel] physical mem [{:#x}, {:#x})",
+                _ekernel as usize,
+                MEMORY_END as usize
+            );
+        }
+
         kernel_space_info();
+
         let mut memory_space = Self::new();
-        info!("[kernel] mapping .text section");
-        memory_space.areas.push(VmArea::new(
+        log::info!("[kernel] mapping .text section");
+        memory_space.push_vma(VmArea::new(
             (_stext as usize).into(),
             (_strampoline as usize).into(),
             MapPermission::RX,
             VmAreaType::Physical,
         ));
-        memory_space.areas.push(VmArea::new(
+        memory_space.push_vma(VmArea::new(
             (_etrampoline as usize).into(),
             (_etext as usize).into(),
             MapPermission::RX,
             VmAreaType::Physical,
         ));
-        info!("[kernel] mapping .rodata section");
-        memory_space.areas.push(VmArea::new(
+        log::info!("[kernel] mapping .rodata section");
+        memory_space.push_vma(VmArea::new(
             (_srodata as usize).into(),
             (_erodata as usize).into(),
             MapPermission::R,
             VmAreaType::Physical,
         ));
-        info!("[kernel] mapping .data section");
-        memory_space.areas.push(VmArea::new(
+        log::info!("[kernel] mapping .data section");
+        memory_space.push_vma(VmArea::new(
             (_sdata as usize).into(),
             (_edata as usize).into(),
             MapPermission::RW,
             VmAreaType::Physical,
         ));
-        info!("[kernel] mapping .stack section");
-        memory_space.areas.push(VmArea::new(
+        log::info!("[kernel] mapping .stack section");
+        memory_space.push_vma(VmArea::new(
             (_sstack as usize).into(),
             (_estack as usize).into(),
             MapPermission::RW,
             VmAreaType::Physical,
         ));
-        info!("[kernel] mapping .bss section");
-        memory_space.areas.push(VmArea::new(
+        log::info!("[kernel] mapping .bss section");
+        memory_space.push_vma(VmArea::new(
             (_sbss as usize).into(),
             (_ebss as usize).into(),
             MapPermission::RW,
             VmAreaType::Physical,
         ));
-        info!("[kernel] mapping signal-return trampoline");
-        memory_space.areas.push(VmArea::new(
+        log::info!("[kernel] mapping signal-return trampoline");
+        memory_space.push_vma(VmArea::new(
             (_strampoline as usize).into(),
             (_etrampoline as usize).into(),
             MapPermission::URX,
             VmAreaType::Physical,
         ));
-        info!("[kernel] mapping physical memory");
-        memory_space.areas.push(VmArea::new(
+        log::info!("[kernel] mapping physical memory");
+        memory_space.push_vma(VmArea::new(
             (_ekernel as usize).into(),
             MEMORY_END.into(),
             MapPermission::RW,
             VmAreaType::Physical,
         ));
-        info!("[kernel] mapping mmio registers");
+        log::info!("[kernel] mapping mmio registers");
         for pair in MMIO {
-            info!("start va: {:#x}", pair.0);
-            info!("end va: {:#x}", pair.0 + pair.1);
-            info!("permission: {:?}", pair.2);
-            memory_space.areas.push(VmArea::new(
+            log::info!("start va: {:#x}", pair.0);
+            log::info!("end va: {:#x}", pair.0 + pair.1);
+            log::info!("permission: {:?}", pair.2);
+            memory_space.push_vma(VmArea::new(
                 (pair.0 + VIRT_RAM_OFFSET).into(),
                 (pair.0 + pair.1 + VIRT_RAM_OFFSET).into(),
                 pair.2,
                 VmAreaType::Mmio,
             ));
         }
-        info!("[kernel] new kernel finished");
-        for area in memory_space.areas.iter_mut() {
-            area.map(&mut memory_space.page_table);
-        }
+        log::info!("[kernel] new kernel finished");
         memory_space
     }
 
     /// Map the sections in the elf.
+    ///
     /// Return the max end vpn and the first section's va.
     fn map_elf(&mut self, elf: &ElfFile, offset: VirtAddr) -> (VirtPageNum, VirtAddr) {
         let elf_header = elf.header;
@@ -246,13 +246,11 @@ impl MemorySpace {
 
             log::debug!("{map_offset}");
 
-            vm_area.map(&mut self.page_table);
-            vm_area.copy_data_with_offset(
-                &self.page_table,
+            self.push_vma_with_data(
+                vm_area,
                 map_offset,
                 &elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize],
             );
-            self.areas.push(vm_area);
 
             log::info!(
                 "[map_elf] [{:#x}, {:#x}], map_perm: {:?}",
@@ -267,18 +265,17 @@ impl MemorySpace {
 
     /// Include sections in elf and TrapContext and user stack,
     /// also returns user_sp and entry point.
-    /// PERF: resolve elf file lazily
+    // PERF: resolve elf file lazily
+    // TODO: dynamic interpreter
     pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize, Vec<AuxHeader>) {
-        let mut memory_space = Self::new_from_global();
+        const ELF_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
+
+        let mut memory_space = Self::from_kernel();
 
         // map program headers of elf, with U flag
         let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         let elf_header = elf.header;
-        assert_eq!(
-            elf_header.pt1.magic,
-            [0x7f, 0x45, 0x4c, 0x46],
-            "invalid elf!"
-        );
+        assert_eq!(elf_header.pt1.magic, ELF_MAGIC, "invalid elf!");
         let mut entry_point = elf_header.pt2.entry_point() as usize;
         let ph_entry_size = elf_header.pt2.ph_entry_size() as usize;
         let ph_count = elf_header.pt2.ph_count() as usize;
@@ -303,9 +300,7 @@ impl MemorySpace {
             MapPermission::URW,
             VmAreaType::Stack,
         );
-        ustack_vma.map(&mut memory_space.page_table);
-        memory_space.areas.push(ustack_vma);
-
+        memory_space.push_vma(ustack_vma);
         log::info!(
             "[from_elf] map ustack: {:#x}, {:#x}",
             user_stack_bottom,
@@ -321,14 +316,25 @@ impl MemorySpace {
             MapPermission::URW,
             VmAreaType::Heap,
         );
-        heap_vma.map(&mut memory_space.page_table);
-        memory_space.areas.push(heap_vma);
+        memory_space.push_vma(heap_vma);
         log::info!(
             "[from_elf] map heap: {:#x}, {:#x}",
             heap_start_va,
             heap_end_va
         );
         (memory_space, user_stack_top, entry_point, auxv)
+    }
+
+    /// Push `VmArea` into `MemorySpace` and map it in page table.
+    pub fn push_vma(&mut self, mut vma: VmArea) {
+        vma.map(&mut self.page_table);
+        self.areas.insert(vma.start_vpn(), vma);
+    }
+
+    pub fn push_vma_with_data(&mut self, mut vma: VmArea, offset: usize, data: &[u8]) {
+        vma.map(&mut self.page_table);
+        vma.copy_data_with_offset(&self.page_table, offset, data);
+        self.areas.insert(vma.start_vpn(), vma);
     }
 
     pub fn handle_pagefault(
@@ -339,7 +345,7 @@ impl MemorySpace {
         todo!();
     }
 
-    pub fn activate(&self) {
+    pub unsafe fn activate(&self) {
         self.page_table.activate();
     }
 }
