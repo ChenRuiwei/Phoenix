@@ -1,7 +1,7 @@
 use super::local_env_mut;
 
 /// use RAII to guard `sum` flag
-pub struct SumGuard {}
+pub struct SumGuard;
 
 impl SumGuard {
     pub fn new() -> Self {

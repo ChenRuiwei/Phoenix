@@ -16,7 +16,7 @@ use self::vm_area::VmArea;
 use super::user_ptr::PageFaultAccessType;
 use crate::{
     mm::{
-        memory_space::vm_area::{MapPermission, VmAreaType},
+        memory_space::vm_area::{MapPerm, VmAreaType},
         MMIO,
     },
     task::aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_PHDR},
@@ -122,55 +122,55 @@ impl MemorySpace {
         memory_space.push_vma(VmArea::new(
             (_stext as usize).into(),
             (_strampoline as usize).into(),
-            MapPermission::RX,
+            MapPerm::RX,
             VmAreaType::Physical,
         ));
         memory_space.push_vma(VmArea::new(
             (_etrampoline as usize).into(),
             (_etext as usize).into(),
-            MapPermission::RX,
+            MapPerm::RX,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .rodata section");
         memory_space.push_vma(VmArea::new(
             (_srodata as usize).into(),
             (_erodata as usize).into(),
-            MapPermission::R,
+            MapPerm::R,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .data section");
         memory_space.push_vma(VmArea::new(
             (_sdata as usize).into(),
             (_edata as usize).into(),
-            MapPermission::RW,
+            MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .stack section");
         memory_space.push_vma(VmArea::new(
             (_sstack as usize).into(),
             (_estack as usize).into(),
-            MapPermission::RW,
+            MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .bss section");
         memory_space.push_vma(VmArea::new(
             (_sbss as usize).into(),
             (_ebss as usize).into(),
-            MapPermission::RW,
+            MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping signal-return trampoline");
         memory_space.push_vma(VmArea::new(
             (_strampoline as usize).into(),
             (_etrampoline as usize).into(),
-            MapPermission::URX,
+            MapPerm::URX,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping physical memory");
         memory_space.push_vma(VmArea::new(
             (_ekernel as usize).into(),
             MEMORY_END.into(),
-            MapPermission::RW,
+            MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping mmio registers");
@@ -185,7 +185,7 @@ impl MemorySpace {
                 VmAreaType::Mmio,
             ));
         }
-        log::info!("[kernel] new kernel finished");
+        log::info!("[kernel] KERNEL SPACE init finished");
         memory_space
     }
 
@@ -212,16 +212,16 @@ impl MemorySpace {
                 header_va = start_va.0;
                 has_found_header_va = true;
             }
-            let mut map_perm = MapPermission::U;
+            let mut map_perm = MapPerm::U;
             let ph_flags = ph.flags();
             if ph_flags.is_read() {
-                map_perm |= MapPermission::R;
+                map_perm |= MapPerm::R;
             }
             if ph_flags.is_write() {
-                map_perm |= MapPermission::W;
+                map_perm |= MapPerm::W;
             }
             if ph_flags.is_execute() {
-                map_perm |= MapPermission::X;
+                map_perm |= MapPerm::X;
             }
             let mut vm_area = VmArea::new(start_va, end_va, map_perm, VmAreaType::Elf);
 
@@ -296,7 +296,7 @@ impl MemorySpace {
         let mut ustack_vma = VmArea::new(
             user_stack_bottom.into(),
             user_stack_top.into(),
-            MapPermission::URW,
+            MapPerm::URW,
             VmAreaType::Stack,
         );
         memory_space.push_vma(ustack_vma);
@@ -312,7 +312,7 @@ impl MemorySpace {
         let mut heap_vma = VmArea::new(
             heap_start_va.into(),
             heap_end_va.into(),
-            MapPermission::URW,
+            MapPerm::URW,
             VmAreaType::Heap,
         );
         memory_space.push_vma(heap_vma);

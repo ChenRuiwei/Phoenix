@@ -30,7 +30,7 @@ pub enum VmAreaType {
 bitflags! {
     /// Map permission corresponding to that in pte: `R W X U`
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct MapPermission: u16 {
+    pub struct MapPerm: u16 {
         /// Readable
         const R = 1 << 1;
         /// Writable
@@ -51,19 +51,19 @@ bitflags! {
     }
 }
 
-impl From<MapPermission> for PTEFlags {
-    fn from(perm: MapPermission) -> Self {
+impl From<MapPerm> for PTEFlags {
+    fn from(perm: MapPerm) -> Self {
         let mut ret = Self::from_bits(0).unwrap();
-        if perm.contains(MapPermission::U) {
+        if perm.contains(MapPerm::U) {
             ret |= PTEFlags::U;
         }
-        if perm.contains(MapPermission::R) {
+        if perm.contains(MapPerm::R) {
             ret |= PTEFlags::R;
         }
-        if perm.contains(MapPermission::W) {
+        if perm.contains(MapPerm::W) {
             ret |= PTEFlags::W;
         }
-        if perm.contains(MapPermission::X) {
+        if perm.contains(MapPerm::X) {
             ret |= PTEFlags::X;
         }
         ret
@@ -73,7 +73,7 @@ impl From<MapPermission> for PTEFlags {
 pub struct VmArea {
     pub vpn_range: VPNRange,
     pub frames: Vec<Page>,
-    pub map_perm: MapPermission,
+    pub map_perm: MapPerm,
     pub vma_type: VmAreaType,
 }
 
@@ -94,7 +94,7 @@ impl VmArea {
     pub fn new(
         start_va: VirtAddr,
         end_va: VirtAddr,
-        map_perm: MapPermission,
+        map_perm: MapPerm,
         vma_type: VmAreaType,
     ) -> Self {
         let start_vpn: VirtPageNum = start_va.floor();

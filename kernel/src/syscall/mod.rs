@@ -74,6 +74,7 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
     match syscall_id {
         // Process
         SYSCALL_EXIT => sys_handler!(sys_exit, (args[0] as i32)),
+        SYSCALL_EXECVE => sys_handler!(sys_execve, (args[0], args[1], args[2])),
         // File system
         SYSCALL_WRITE => sys_handler!(sys_write, (args[0], args[1], args[2]), await),
         // Miscellaneous

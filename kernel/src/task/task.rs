@@ -152,7 +152,7 @@ impl Task {
     // TODO:
     pub fn do_clone(&self) {}
 
-    pub fn do_execve(&self) {}
+    pub fn do_execve(&self, data: &[u8], argv: Vec<String>, envp: Vec<String>) {}
 
     // TODO:
     pub fn do_exit(&self) {

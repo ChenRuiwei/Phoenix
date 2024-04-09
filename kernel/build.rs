@@ -37,7 +37,11 @@ fn insert_app_data() -> Result<()> {
             name_with_ext
         })
         .filter(|name| {
-            name == "initproc" || name == "shell" || name == "runtestcase" || name == "hello_world"
+            name == "initproc"
+                || name == "shell"
+                || name == "runtestcase"
+                || name == "hello_world"
+                || name == "exec_test"
         })
         .collect();
 

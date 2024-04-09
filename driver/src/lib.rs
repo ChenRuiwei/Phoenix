@@ -2,14 +2,12 @@
 #![no_main]
 
 extern crate alloc;
-use alloc::{boxed::Box, sync::Arc};
+use alloc::sync::Arc;
 use core::{
-    cell::SyncUnsafeCell,
     fmt::{self, Write},
     task::Waker,
 };
 
-use memory::PageTable;
 use sync::mutex::SpinNoIrqLock;
 
 use self::sbi::console_putchar;

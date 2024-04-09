@@ -10,7 +10,7 @@ pub use task::Task;
 use crate::{loader::get_app_data_by_name, mm::memory_space};
 
 pub fn add_init_proc() {
-    let elf_data = get_app_data_by_name("hello_world").unwrap();
+    let elf_data = get_app_data_by_name("exec_test").unwrap();
 
     let _init_proc = Task::from_elf(elf_data);
 }
