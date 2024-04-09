@@ -50,19 +50,22 @@ impl Hart {
     }
 
     /// Change thread context,
+    ///
     /// Now only change page table temporarily
     pub fn enter_user_task_switch(&mut self, task: &mut Arc<Task>, env: &mut EnvContext) {
         // self can only be an executor running
+        debug_assert!(self.task.is_none());
         unsafe { disable_interrupt() };
         let old_env = self.env();
         let sie = EnvContext::env_change(env, old_env);
         set_current_task(Arc::clone(task));
         core::mem::swap(self.env_mut(), env);
-        unsafe { task.activate_page_table() };
+        unsafe { task.switch_page_table() };
         if sie {
             unsafe { enable_interrupt() };
         }
     }
+
     pub fn leave_user_task_switch(&mut self, env: &mut EnvContext) {
         unsafe { disable_interrupt() };
         let old_env = self.env();
@@ -74,6 +77,7 @@ impl Hart {
             unsafe { enable_interrupt() };
         }
     }
+
     pub fn kernel_task_switch(&mut self, env: &mut EnvContext) {
         unsafe { disable_interrupt() };
         let old_env = self.env();

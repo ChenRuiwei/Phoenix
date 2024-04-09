@@ -16,7 +16,7 @@ use crate::{
 
 /// Write `page_table_token` into satp and sfence.vma
 #[inline]
-pub unsafe fn activate_page_table(page_table_token: usize) {
+pub unsafe fn switch_page_table(page_table_token: usize) {
     satp::write(page_table_token);
     core::arch::riscv64::sfence_vma_all();
 }
@@ -66,8 +66,8 @@ impl PageTable {
     }
 
     /// Switch to this pagetable
-    pub unsafe fn activate(&self) {
-        activate_page_table(self.token());
+    pub unsafe fn switch(&self) {
+        switch_page_table(self.token());
     }
 
     /// Dump page table

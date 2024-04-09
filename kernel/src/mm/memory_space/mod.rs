@@ -47,7 +47,7 @@ extern "C" {
 static KERNEL_SPACE: Lazy<MemorySpace> = Lazy::new(|| MemorySpace::new_kernel());
 
 pub unsafe fn activate_kernel_space() {
-    KERNEL_SPACE.activate();
+    KERNEL_SPACE.switch_page_table();
 }
 
 pub struct MemorySpace {
@@ -344,7 +344,7 @@ impl MemorySpace {
         todo!();
     }
 
-    pub unsafe fn activate(&self) {
-        self.page_table.activate();
+    pub unsafe fn switch_page_table(&self) {
+        self.page_table.switch();
     }
 }

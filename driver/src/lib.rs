@@ -4,12 +4,13 @@
 extern crate alloc;
 use alloc::{boxed::Box, sync::Arc};
 use core::{
+    cell::SyncUnsafeCell,
     fmt::{self, Write},
     task::Waker,
 };
 
 use memory::PageTable;
-use sync::{cell::SyncUnsafeCell, mutex::SpinNoIrqLock};
+use sync::mutex::SpinNoIrqLock;
 
 use self::sbi::console_putchar;
 
@@ -41,31 +42,16 @@ pub trait CharDevice: Send + Sync {
 pub trait NetDevice: smoltcp::phy::Device {}
 
 pub static BLOCK_DEVICE: Mutex<Option<Arc<dyn BlockDevice>>> = Mutex::new(None);
-pub static CHAR_DEVICE: SyncUnsafeCell<Option<Box<dyn CharDevice>>> = SyncUnsafeCell::new(None);
-pub static mut KERNEL_PAGE_TABLE: Option<Arc<SyncUnsafeCell<PageTable>>> = None;
 
 struct Stdout;
 
 impl Write for Stdout {
+    // TODO: char device support
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let char_device = CHAR_DEVICE.get_unchecked_mut();
-        if let Some(cd) = char_device.as_ref() {
-            cd.puts(s.as_bytes());
-        } else {
-            for s in s.as_bytes() {
-                console_putchar(*s as usize);
-            }
+        for s in s.as_bytes() {
+            console_putchar(*s as usize);
         }
         Ok(())
-    }
-}
-
-pub fn getchar() -> u8 {
-    let char_device = CHAR_DEVICE.get_unchecked_mut();
-    if let Some(cd) = char_device.as_ref() {
-        cd.clone().getchar()
-    } else {
-        0xff
     }
 }
 

@@ -4,7 +4,7 @@ use systype::SyscallResult;
 
 use crate::{mm::UserWritePtr, processor::hart::current_task};
 
-// copy from sys/utsname.h
+// Copied from sys/utsname.h
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct UtsName {
@@ -24,6 +24,7 @@ pub struct UtsName {
 }
 
 impl UtsName {
+    // TODO: Is the default value coyied from Titanix correct?
     pub fn default() -> Self {
         Self {
             sysname: Self::from_str("Linux"),

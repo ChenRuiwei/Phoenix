@@ -34,6 +34,7 @@ fn new_shared<T>(data: T) -> Shared<T> {
 /// We treat processes and threads as tasks, consistent with the approach
 /// adopted by Linux.
 pub struct Task {
+    ///
     pid: PidHandle,
     /// Whether this process is a zombie process
     pub state: SpinNoIrqLock<TaskState>,
@@ -144,12 +145,14 @@ impl Task {
         *self.state.lock() == TaskState::Zombie
     }
 
-    pub unsafe fn activate_page_table(&self) {
-        self.memory_space.lock().activate()
+    pub unsafe fn switch_page_table(&self) {
+        self.memory_space.lock().switch_page_table()
     }
 
     // TODO:
-    pub fn clone(&self) {}
+    pub fn do_clone(&self) {}
+
+    pub fn do_execve(&self) {}
 
     // TODO:
     pub fn do_exit(&self) {
