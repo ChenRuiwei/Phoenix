@@ -125,7 +125,7 @@ fn rust_main(hart_id: usize) {
         );
 
         trap::init();
-        mm::activate_kernel_space();
+        unsafe { mm::activate_kernel_space() };
         println!("[kernel] ---------- hart {} started ----------", hart_id);
     }
 

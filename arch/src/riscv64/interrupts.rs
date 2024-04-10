@@ -9,45 +9,35 @@ pub fn is_interrupt_enabled() -> bool {
 }
 
 #[inline]
-pub fn enable_interrupt() {
+pub unsafe fn enable_interrupt() {
     #[cfg(feature = "irq")]
-    unsafe {
-        sstatus::set_sie();
-    }
+    sstatus::set_sie();
 }
 
 #[inline]
-pub fn disable_interrupt() {
+pub unsafe fn disable_interrupt() {
     #[cfg(feature = "irq")]
-    unsafe {
-        sstatus::clear_sie()
-    }
+    sstatus::clear_sie();
 }
 
 #[inline]
-pub fn enable_timer_interrupt() {
-    unsafe {
-        sie::set_stimer();
-    }
+pub unsafe fn enable_timer_interrupt() {
+    sie::set_stimer();
 }
 
 #[inline]
-pub fn enable_external_interrupt() {
-    unsafe {
-        sie::set_sext();
-    }
+pub unsafe fn enable_external_interrupt() {
+    sie::set_sext();
 }
 
 #[inline]
-pub fn set_trap_handler(handler_addr: usize) {
-    unsafe {
-        stvec::write(handler_addr, TrapMode::Direct);
-    }
+pub unsafe fn set_trap_handler(handler_addr: usize) {
+    stvec::write(handler_addr, TrapMode::Direct);
 }
 
 #[inline]
-pub fn set_trap_handler_vector(handler_addr: usize) {
-    unsafe { stvec::write(handler_addr, TrapMode::Vectored) }
+pub unsafe fn set_trap_handler_vector(handler_addr: usize) {
+    stvec::write(handler_addr, TrapMode::Vectored);
 }
 
 /// Disable interrupt and resume to the interrupt state before when it gets
@@ -59,7 +49,7 @@ pub struct InterruptGuard {
 impl InterruptGuard {
     pub fn new() -> Self {
         let interrupt_before = is_interrupt_enabled();
-        disable_interrupt();
+        unsafe { disable_interrupt() };
         Self { interrupt_before }
     }
 }
@@ -67,7 +57,7 @@ impl InterruptGuard {
 impl Drop for InterruptGuard {
     fn drop(&mut self) {
         if self.interrupt_before {
-            enable_interrupt();
+            unsafe { enable_interrupt() };
         }
     }
 }

@@ -35,6 +35,7 @@ fn new_shared<T>(data: T) -> Shared<T> {
 /// We treat processes and threads as tasks, consistent with the approach
 /// adopted by Linux.
 pub struct Task {
+    ///
     pid: PidHandle,
     /// Whether this process is a zombie process
     pub state: SpinNoIrqLock<TaskState>,
@@ -46,9 +47,13 @@ pub struct Task {
     pub children: Shared<Vec<Arc<Task>>>,
     /// Exit code of the current process
     pub exit_code: AtomicI32,
+    ///
     pub trap_context: SyncUnsafeCell<TrapContext>,
+    ///
     pub waker: SyncUnsafeCell<Option<Waker>>,
+    ///
     pub ustack_top: usize,
+    ///
     pub thread_group: Shared<ThreadGroup>,
     pub signal: SpinNoIrqLock<Signal>,
 }
@@ -59,11 +64,25 @@ pub enum TaskState {
     Zombie,
 }
 
+macro_rules! with_ {
+    ($name:ident, $ty:ty) => {
+        paste::paste! {
+            pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
+                f(& self.$name.lock())
+            }
+            pub fn [<with_mut_ $name>]<T>(&self, f: impl FnOnce(&mut $ty) -> T) -> T {
+                f(&mut self.$name.lock())
+            }
+        }
+    };
+}
+
 impl Task {
+    // TODO: this function is not clear, may be replaced with exec
     pub fn from_elf(elf_data: &[u8]) {
         let (memory_space, user_sp_top, entry_point, _auxv) = MemorySpace::from_elf(elf_data);
 
-        let trap_context = TrapContext::app_init_context(entry_point, user_sp_top);
+        let trap_context = TrapContext::new(entry_point, user_sp_top);
         let task = Arc::new(Self {
             pid: alloc_pid(),
             state: SpinNoIrqLock::new(TaskState::Running),
@@ -109,7 +128,7 @@ impl Task {
         self.exit_code.store(exit_code, Ordering::Relaxed);
     }
 
-    /// Get the mutable ref of trap context
+    /// Get the mutable ref of `TrapContext`.
     pub fn trap_context_mut(&self) -> &mut TrapContext {
         unsafe { &mut *self.trap_context.get() }
     }
@@ -129,9 +148,14 @@ impl Task {
         *self.state.lock() == TaskState::Zombie
     }
 
-    pub fn activate(&self) {
-        self.memory_space.lock().activate()
+    pub unsafe fn switch_page_table(&self) {
+        self.memory_space.lock().switch_page_table()
     }
+
+    // TODO:
+    pub fn do_clone(&self) {}
+
+    pub fn do_execve(&self, data: &[u8], argv: Vec<String>, envp: Vec<String>) {}
 
     // TODO:
     pub fn do_exit(&self) {
@@ -144,6 +168,8 @@ impl Task {
 
         // Release all fd
     }
+
+    with_!(memory_space, MemorySpace);
 }
 
 impl Drop for Task {

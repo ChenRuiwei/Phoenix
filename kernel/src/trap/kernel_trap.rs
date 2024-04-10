@@ -38,11 +38,11 @@ extern "C" {
     fn __user_rw_trap_vector();
 }
 
-pub fn set_kernel_user_rw_trap() {
+pub unsafe fn set_kernel_user_rw_trap() {
     let trap_vaddr = __user_rw_trap_vector as usize;
     set_trap_handler_vector(trap_vaddr);
     log::trace!(
-        "Switch to User-RW checking mode for hart {} at STVEC: 0x{:x}",
+        "[kernel] switch to user rw checking mode for hart {} at stvec: {:#x}",
         local_hart().hart_id(),
         trap_vaddr
     );

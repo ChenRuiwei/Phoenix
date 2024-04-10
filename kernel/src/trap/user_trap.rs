@@ -6,28 +6,23 @@ use riscv::register::{
     sepc, stval,
 };
 
-use super::{set_kernel_trap_entry, TrapContext};
-use crate::{
-    processor::current_trap_cx,
-    syscall::syscall,
-    task::{signal::do_signal, Task},
-    trap::set_user_trap_entry,
-};
+use super::{set_kernel_trap, TrapContext};
+use crate::{processor::current_trap_cx, syscall::syscall, task::Task, trap::set_user_trap};
 
-#[no_mangle]
 /// handle an interrupt, exception, or system call from user space
+#[no_mangle]
 pub async fn trap_handler(task: Arc<Task>) {
-    set_kernel_trap_entry();
+    unsafe { set_kernel_trap() };
 
     let stval = stval::read();
     let scause = scause::read();
 
-    enable_interrupt();
+    unsafe { enable_interrupt() };
 
     match scause.cause() {
         Trap::Exception(Exception::UserEnvCall) => {
             let mut cx = task.trap_context_mut();
-            cx.sepc += 4;
+            cx.set_user_pc_to_next();
             // get system call return value
             let result = syscall(
                 cx.user_x[17],
@@ -41,19 +36,21 @@ pub async fn trap_handler(task: Arc<Task>) {
                 ],
             )
             .await;
+
             // cx is changed during sys_exec, so we have to call it again
             cx = current_trap_cx();
-            cx.user_x[10] = match result {
-                Ok(ret) => ret as usize,
+            let ret = match result {
+                Ok(ret) => ret,
                 Err(err) => {
                     log::warn!(
                         "[trap_handler] syscall {} return, err {:?}",
-                        cx.user_x[17],
+                        cx.syscall_no(),
                         err
                     );
                     -(err as isize) as usize
                 }
             };
+            cx.set_user_a0(ret);
         }
         _ => {
             panic!(
@@ -66,19 +63,16 @@ pub async fn trap_handler(task: Arc<Task>) {
     }
 }
 
-#[no_mangle]
 /// Back to user mode.
 /// Note that we don't need to flush TLB since user and
 /// kernel use the same pagetable.
+#[no_mangle]
 pub fn trap_return() {
     // Important!
-    disable_interrupt();
-
-    set_user_trap_entry();
-
-    // 当一个进程从内核模式返回到用户模式之前，
-    // 内核会调用do_signal函数来检查并处理该进程的任何待处理信号
-    do_signal();
+    unsafe {
+        disable_interrupt();
+        set_user_trap()
+    };
 
     extern "C" {
         // fn __alltraps();

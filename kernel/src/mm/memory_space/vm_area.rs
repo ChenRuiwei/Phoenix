@@ -1,14 +1,14 @@
-use alloc::{borrow::ToOwned, vec::Vec};
+use alloc::{borrow::ToOwned, rc::Weak, vec::Vec};
 
 use config::mm::PAGE_SIZE;
 use memory::{pte::PTEFlags, StepByOne, VPNRange, VirtAddr, VirtPageNum};
 
+use super::MemorySpace;
 use crate::{
     mm::{Page, PageTable},
     processor::env::SumGuard,
 };
 
-/// Vm area type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum VmAreaType {
     /// Segments from user elf file, e.g. text, rodata, data, bss
@@ -30,7 +30,7 @@ pub enum VmAreaType {
 bitflags! {
     /// Map permission corresponding to that in pte: `R W X U`
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct MapPermission: u16 {
+    pub struct MapPerm: u16 {
         /// Readable
         const R = 1 << 1;
         /// Writable
@@ -39,6 +39,7 @@ bitflags! {
         const X = 1 << 3;
         /// Accessible in U mode
         const U = 1 << 4;
+
         const RW = Self::R.bits() | Self::W.bits();
         const RX = Self::R.bits() | Self::X.bits();
         const WX = Self::W.bits() | Self::X.bits();
@@ -50,19 +51,19 @@ bitflags! {
     }
 }
 
-impl From<MapPermission> for PTEFlags {
-    fn from(perm: MapPermission) -> Self {
+impl From<MapPerm> for PTEFlags {
+    fn from(perm: MapPerm) -> Self {
         let mut ret = Self::from_bits(0).unwrap();
-        if perm.contains(MapPermission::U) {
+        if perm.contains(MapPerm::U) {
             ret |= PTEFlags::U;
         }
-        if perm.contains(MapPermission::R) {
+        if perm.contains(MapPerm::R) {
             ret |= PTEFlags::R;
         }
-        if perm.contains(MapPermission::W) {
+        if perm.contains(MapPerm::W) {
             ret |= PTEFlags::W;
         }
-        if perm.contains(MapPermission::X) {
+        if perm.contains(MapPerm::X) {
             ret |= PTEFlags::X;
         }
         ret
@@ -72,7 +73,7 @@ impl From<MapPermission> for PTEFlags {
 pub struct VmArea {
     pub vpn_range: VPNRange,
     pub frames: Vec<Page>,
-    pub map_perm: MapPermission,
+    pub map_perm: MapPerm,
     pub vma_type: VmAreaType,
 }
 
@@ -80,8 +81,8 @@ impl Drop for VmArea {
     fn drop(&mut self) {
         log::debug!(
             "[VmArea::drop] drop vma, [{:#x}, {:#x}]",
-            self.start_vpn().0,
-            self.end_vpn().0
+            self.start_vpn(),
+            self.end_vpn()
         );
     }
 }
@@ -93,7 +94,7 @@ impl VmArea {
     pub fn new(
         start_va: VirtAddr,
         end_va: VirtAddr,
-        map_perm: MapPermission,
+        map_perm: MapPerm,
         vma_type: VmAreaType,
     ) -> Self {
         let start_vpn: VirtPageNum = start_va.floor();
@@ -115,6 +116,9 @@ impl VmArea {
         self.vpn_range.end()
     }
 
+    /// Map `VmArea` into page table.
+    ///
+    /// Will alloc new pages for `VmArea` according to `VmAreaType`.
     pub fn map(&mut self, page_table: &mut PageTable) {
         if self.vma_type == VmAreaType::Physical {
             for vpn in self.vpn_range {
@@ -133,9 +137,12 @@ impl VmArea {
         }
     }
 
-    /// Data: at the `offset` of the start va.
+    /// Copy the data to start_va + offset.
+    ///
+    /// Safety:
+    ///
     /// Assume that all frames were cleared before.
-    pub fn copy_data_with_offset(&mut self, page_table: &PageTable, offset: usize, data: &[u8]) {
+    pub fn copy_data_with_offset(&self, page_table: &PageTable, offset: usize, data: &[u8]) {
         assert_eq!(self.vma_type, VmAreaType::Elf);
         let _sum_guard = SumGuard::new();
 

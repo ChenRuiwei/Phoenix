@@ -12,17 +12,16 @@ mod page;
 mod user_ptr;
 
 use config::board::MEMORY_END;
-use log::info;
 pub use memory::page_table::PageTable;
 use memory::{frame, heap, VirtAddr};
 pub use memory_space::{activate_kernel_space, MemorySpace};
 pub use page::Page;
 pub use user_ptr::{UserInOutPtr, UserReadPtr, UserWritePtr};
 
-use self::memory_space::vm_area::MapPermission;
+use self::memory_space::vm_area::MapPerm;
 use crate::mm;
 
-/// initiate heap allocator, frame allocator and kernel space
+/// Initiate heap allocator, frame allocator and kernel space
 pub fn init() {
     extern "C" {
         fn _ekernel();
@@ -32,14 +31,14 @@ pub fn init() {
         VirtAddr::from(_ekernel as usize).to_offset().to_pa().into(),
         VirtAddr::from(MEMORY_END).to_offset().to_pa().into(),
     );
-    info!("KERNEL SPACE init finished");
-    mm::activate_kernel_space();
-    info!("KERNEL SPACE activated");
+    unsafe { mm::activate_kernel_space() };
+    log::info!("KERNEL SPACE activated");
 }
 
-pub const MMIO: &[(usize, usize, MapPermission)] = &[
-    (0x10000000, 0x1000, MapPermission::RW),   // UART
-    (0x10001000, 0x1000, MapPermission::RW),   // VIRTIO
-    (0x02000000, 0x10000, MapPermission::RW),  // CLINT
-    (0x0C000000, 0x400000, MapPermission::RW), // PLIC
+/// MMIO in QEMU
+pub const MMIO: &[(usize, usize, MapPerm)] = &[
+    (0x10000000, 0x1000, MapPerm::RW),   // UART
+    (0x10001000, 0x1000, MapPerm::RW),   // VIRTIO
+    (0x02000000, 0x10000, MapPerm::RW),  // CLINT
+    (0x0C000000, 0x400000, MapPerm::RW), // PLIC
 ];

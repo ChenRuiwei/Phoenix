@@ -17,15 +17,14 @@ extern "C" {
 }
 
 pub fn init() {
-    set_kernel_trap_entry();
+    unsafe { set_kernel_trap() };
 }
 
-///
-pub fn set_kernel_trap_entry() {
+pub unsafe fn set_kernel_trap() {
     set_trap_handler(__trap_from_kernel as usize);
 }
 
-fn set_user_trap_entry() {
+unsafe fn set_user_trap() {
     set_trap_handler(__trap_from_user as usize);
 }
 

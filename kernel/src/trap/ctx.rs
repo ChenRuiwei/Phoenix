@@ -5,11 +5,10 @@ use core::arch::asm;
 use arch::sstatus::{self, Sstatus};
 use riscv::register::sstatus::{FS, SPP};
 
-/// Trap context structure containing sstatus, sepc and registers
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct TrapContext {
-    /// user-to-kernel should save:
+    // User to kernel should save:
     /// general regs[0..31]
     pub user_x: [usize; 32],
     /// CSR sstatus
@@ -17,7 +16,7 @@ pub struct TrapContext {
     /// CSR sepc
     pub sepc: usize, // 33
 
-    /// kernel-to-user should save:
+    // Kernel to user should save:
     pub kernel_sp: usize, // 34
     ///
     pub kernel_ra: usize, // 35
@@ -159,14 +158,10 @@ impl UserFloatContext {
 }
 
 impl TrapContext {
-    /// Set stack pointer to x_2 reg (sp)
-    pub fn set_sp(&mut self, sp: usize) {
-        self.user_x[2] = sp;
-    }
     /// Init app context
-    pub fn app_init_context(entry: usize, sp: usize) -> Self {
+    pub fn new(entry: usize, sp: usize) -> Self {
         let mut sstatus = sstatus::read();
-        // set CPU privilege to User after trapping back
+        // set CPU privilege to User after trap return
         sstatus.set_spp(SPP::User);
         sstatus.set_sie(false);
         sstatus.set_spie(false);
@@ -186,6 +181,26 @@ impl TrapContext {
         };
         cx.set_sp(sp);
         cx
+    }
+
+    /// Set stack pointer to x_2 reg (sp)
+    pub fn set_sp(&mut self, sp: usize) {
+        self.user_x[2] = sp;
+    }
+
+    pub fn set_user_pc_to_next(&mut self) {
+        self.sepc += 4;
+    }
+
+    /// Syscall number
+    pub fn syscall_no(&self) -> usize {
+        // a7 == x17
+        self.user_x[17]
+    }
+
+    pub fn set_user_a0(&mut self, val: usize) {
+        // a0 == x10
+        self.user_x[10] = val;
     }
 
     /// Set entry point
