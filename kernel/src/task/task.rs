@@ -50,7 +50,7 @@ pub struct Task {
     pub waker: SyncUnsafeCell<Option<Waker>>,
     pub ustack_top: usize,
     pub thread_group: Shared<ThreadGroup>,
-    pub signal: Signal,
+    pub signal: SpinNoIrqLock<Signal>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -74,8 +74,8 @@ impl Task {
             memory_space: new_shared(memory_space),
             waker: SyncUnsafeCell::new(None),
             ustack_top: user_sp_top,
-            thread_group: new_shared(ThreadGroup::empty()),
-            signal: Signal::new(),
+            thread_group: new_shared(ThreadGroup::new()),
+            signal: SpinNoIrqLock::new(Signal::new()),
         });
 
         task.thread_group.lock().push_leader(task.clone());

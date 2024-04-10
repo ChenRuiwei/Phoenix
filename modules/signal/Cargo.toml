@@ -9,3 +9,4 @@ edition = "2021"
 crossbeam-queue = {version = "0", default-features = false, features = ["alloc", "nightly"]}
 bitflags = "2.5"
 log = "0.4"
+memory = { path = "../memory/" }

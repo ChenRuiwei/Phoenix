@@ -5,6 +5,7 @@ pub fn add(left: usize, right: usize) -> usize {
 }
 pub mod action;
 pub mod default;
+pub mod signal_stack;
 pub mod sigset;
 
 pub use action::Signal;

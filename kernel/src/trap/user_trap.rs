@@ -7,7 +7,12 @@ use riscv::register::{
 };
 
 use super::{set_kernel_trap_entry, TrapContext};
-use crate::{processor::current_trap_cx, syscall::syscall, task::Task, trap::set_user_trap_entry};
+use crate::{
+    processor::current_trap_cx,
+    syscall::syscall,
+    task::{signal::do_signal, Task},
+    trap::set_user_trap_entry,
+};
 
 #[no_mangle]
 /// handle an interrupt, exception, or system call from user space
@@ -70,6 +75,10 @@ pub fn trap_return() {
     disable_interrupt();
 
     set_user_trap_entry();
+
+    // 当一个进程从内核模式返回到用户模式之前，
+    // 内核会调用do_signal函数来检查并处理该进程的任何待处理信号
+    do_signal();
 
     extern "C" {
         // fn __alltraps();

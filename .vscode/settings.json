@@ -9,6 +9,7 @@
     "./kernel/Cargo.toml",
     "./kernel/Cargo.toml",
     "./kernel/Cargo.toml",
-    "./kernel/Cargo.toml"
+    "./kernel/Cargo.toml",
+    "./modules/signal/Cargo.toml"
   ]
 }

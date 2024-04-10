@@ -48,6 +48,22 @@ impl Sig {
             None
         }
     }
+
+    pub fn is_valid(&self) -> bool {
+        self.0 >= 0 && self.0 < NSIG as i32
+    }
+
+    pub fn raw(&self) -> usize {
+        self.0 as usize
+    }
+
+    pub fn index(&self) -> usize {
+        (self.0 - 1) as usize
+    }
+
+    pub fn is_kill_or_stop(&self) -> bool {
+        matches!(*self, Sig::SIGKILL | Sig::SIGSTOP)
+    }
 }
 
 impl fmt::Display for Sig {
@@ -63,6 +79,7 @@ impl From<usize> for Sig {
 }
 
 bitflags! {
+    #[derive(Copy, Clone)]
     pub struct SigSet: u64 {
         const SIGHUP    = 1 << 0 ;
         const SIGINT    = 1 << 1 ;
@@ -102,14 +119,33 @@ bitflags! {
 
 impl SigSet {
     pub fn add_signal(&mut self, sig: Sig) {
-        self.insert(SigSet::from_bits(1 << (sig.0 - 1)).unwrap())
+        self.insert(SigSet::from_bits(1 << sig.index()).unwrap())
     }
 
     pub fn contain_signal(&self, sig: Sig) -> bool {
-        self.contains(SigSet::from_bits(1 << (sig.0 - 1)).unwrap())
+        self.contains(SigSet::from_bits(1 << sig.index()).unwrap())
     }
 
     pub fn remove_signal(&mut self, sig: Sig) {
-        self.remove(SigSet::from_bits(1 << (sig.0 - 1)).unwrap())
+        self.remove(SigSet::from_bits(1 << sig.index()).unwrap())
+    }
+}
+
+#[derive(Debug)]
+pub enum SigProcMaskHow {
+    SigBlock = 0,
+    SigUnblock = 1,
+    SigSetMask = 2,
+    Unknown,
+}
+
+impl From<usize> for SigProcMaskHow {
+    fn from(value: usize) -> Self {
+        match value {
+            0 => SigProcMaskHow::SigBlock,
+            1 => SigProcMaskHow::SigUnblock,
+            2 => SigProcMaskHow::SigSetMask,
+            _ => SigProcMaskHow::Unknown,
+        }
     }
 }
