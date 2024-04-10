@@ -72,14 +72,17 @@ pub fn frame_alloc() -> FrameTracker {
         .expect("frame space not enough")
 }
 
-// FIXME: this function is wrong, alloc_contiguous returns only one usize which
 // is not what we want
 /// Allocate contiguous frames
-pub fn frame_alloc_contig(size: usize, align_log2: usize) -> Option<FrameTracker> {
-    FRAME_ALLOCATOR
+pub fn frame_alloc_contig(size: usize, align_log2: usize) -> Vec<FrameTracker> {
+    let first_frame = FRAME_ALLOCATOR
         .lock()
         .alloc_contiguous(size, align_log2)
+        .unwrap();
+
+    (first_frame..first_frame + size)
         .map(|u| FrameTracker::new((u + START_PPN.get().unwrap().0).into()))
+        .collect()
 }
 
 /// Deallocate a frame

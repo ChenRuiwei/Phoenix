@@ -3,7 +3,7 @@ use signal::{
     sigset::{Sig, SigSet},
 };
 
-use crate::processor::hart::current_task;
+use crate::processor::hart::{current_task, current_trap_cx};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -64,13 +64,23 @@ pub fn do_signal() {
             signal.pending.add(sig);
             continue;
         }
-        let old_blocked = signal.blocked;
-        match signal.handlers.get(sig).unwrap().atype {
+        let action = signal.handlers.get(sig).unwrap().clone();
+        match action.atype {
             ActionType::Ignore => ignore(sig),
             ActionType::Kill => terminate(sig),
             ActionType::Stop => stop(sig),
             ActionType::Cont => cont(sig),
-            ActionType::User { entry } => {}
+            ActionType::User { entry } => {
+                // 在跳转到用户定义的信号处理程序之前，内核需要保存当前进程的上下文，
+                // 包括程序计数器、寄存器状态、栈指针等。此外，当前的信号屏蔽集也需要被保存，
+                // 因为信号处理程序可能会被嵌套调用（即一个信号处理程序中可能会触发另一个信号），
+                // 所以需要确保每个信号处理程序能恢复到它被调用时的屏蔽集状态
+                let old_blocked = signal.blocked;
+                // 在执行用户定义的信号处理程序之前，内核会将当前处理的信号添加到信号屏蔽集中。这样做是为了防止在处理该信号的过程中，相同的信号再次中断
+                signal.blocked.add_signal(sig);
+                // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。这些信息定义在Action的mask字段
+                signal.blocked |= action.mask;
+            }
         }
     }
 }
@@ -86,4 +96,9 @@ fn stop(sig: Sig) {
 }
 fn cont(sig: Sig) {
     log::info!("cont this sig {}", sig);
+}
+
+fn save_signal_handler_context(old_blocked: SigSet) {
+    current_trap_cx().user_fx.encounter_signal();
+    
 }

@@ -2,7 +2,7 @@ use memory::VirtAddr;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-struct SignalStack {
+pub struct SignalStack {
     /// Base address of stack
     ss_sp: VirtAddr,
     /// Flags

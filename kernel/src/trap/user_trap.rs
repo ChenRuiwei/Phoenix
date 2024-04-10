@@ -7,7 +7,7 @@ use riscv::register::{
 };
 
 use super::{set_kernel_trap, TrapContext};
-use crate::{processor::current_trap_cx, syscall::syscall, task::Task, trap::set_user_trap};
+use crate::{processor::current_trap_cx, syscall::syscall, task::{signal::do_signal, Task}, trap::set_user_trap};
 
 /// handle an interrupt, exception, or system call from user space
 #[no_mangle]
@@ -73,6 +73,8 @@ pub fn trap_return() {
         disable_interrupt();
         set_user_trap()
     };
+
+    do_signal();
 
     extern "C" {
         // fn __alltraps();
