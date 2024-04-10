@@ -1,7 +1,6 @@
 //! UserPtr
-//! 这个模块用来绕过裸指针的异步 Send 检查
 //!
-//! Adapted from FTL OS
+//! Used for automatically check user ptr when reading or writing.
 
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
@@ -44,8 +43,9 @@ impl Write for Out {}
 impl Read for InOut {}
 impl Write for InOut {}
 
-// PERF: UserPtr will perform checking multiple times when read or something are
-// called multiple times.
+/// `UserPtr` checks user ptr automatically when reading or writing.
+///
+/// It will be consumed once being used.
 pub struct UserPtr<T: Clone + Copy + 'static, P: Policy> {
     ptr: *mut T,
     _mark: PhantomData<P>,
@@ -73,40 +73,26 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
     pub fn null() -> Self {
         Self::new(core::ptr::null_mut())
     }
+
     pub fn from_usize(a: usize) -> Self {
         Self::new(a as *mut T)
     }
+
     pub fn is_null(&self) -> bool {
         self.ptr.is_null()
     }
+
     pub fn not_null(&self) -> bool {
         !self.ptr.is_null()
     }
+
     pub fn as_usize(&self) -> usize {
         self.ptr as usize
     }
-    pub fn raw_ptr(&self) -> *const T {
-        self.ptr
-    }
-    /// return None if UserAddr == nullptr
-    pub fn as_ptr(&self) -> Option<*const T> {
-        if self.ptr.is_null() {
-            return None;
-        }
-        Some(self.ptr)
-    }
-    pub fn offset(&self, count: isize) -> Self {
-        Self::new(unsafe { self.ptr.offset(count) })
-    }
-    pub fn transmute<V: Clone + Copy + 'static>(&self) -> UserPtr<V, P> {
-        UserPtr::new(self.ptr as *mut V)
-    }
-    pub fn add(&self, count: usize) -> Self {
-        Self::new(unsafe { self.ptr.add(count) })
-    }
 }
+
 impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
-    pub fn as_ref(self, task: &Arc<Task>) -> SysResult<&T> {
+    pub fn into_ref(self, task: &Arc<Task>) -> SysResult<&T> {
         debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
@@ -117,7 +103,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
         Ok(res)
     }
 
-    pub fn as_slice(self, n: usize, task: &Arc<Task>) -> SysResult<&[T]> {
+    pub fn into_slice(self, n: usize, task: &Arc<Task>) -> SysResult<&[T]> {
         debug_assert!(n == 0 || self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
@@ -231,14 +217,7 @@ impl<P: Read> UserPtr<u8, P> {
 }
 
 impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
-    pub fn raw_ptr_mut(self) -> *mut T {
-        self.ptr
-    }
-    pub fn nonnull_mut(self) -> Option<Self> {
-        self.not_null().then_some(self)
-    }
-
-    pub fn as_mut(self, task: &Arc<Task>) -> SysResult<&mut T> {
+    pub fn into_mut(self, task: &Arc<Task>) -> SysResult<&mut T> {
         debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
@@ -249,7 +228,7 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         Ok(res)
     }
 
-    pub fn as_mut_slice(self, n: usize, task: &Arc<Task>) -> SysResult<&mut [T]> {
+    pub fn into_mut_slice(self, n: usize, task: &Arc<Task>) -> SysResult<&mut [T]> {
         debug_assert!(n == 0 || self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
@@ -303,7 +282,7 @@ impl<P: Write> UserPtr<u8, P> {
 
         unsafe {
             let view = core::slice::from_raw_parts(val as *const U as *const u8, len);
-            let mut ptr = self.ptr as *mut u8;
+            let mut ptr = self.ptr;
             for &c in view {
                 ptr.write(c);
                 ptr = ptr.offset(1);

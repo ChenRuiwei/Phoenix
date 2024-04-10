@@ -23,3 +23,19 @@ pub const PTE_NUM_ONE_PAGE: usize = 512;
 
 /// 3 level for sv39 page table
 pub const PAGE_TABLE_LEVEL_NUM: usize = 3;
+
+/// User stack segment
+pub const U_SEG_STACK_BEG: usize = 0x0000_0001_0000_0000;
+pub const U_SEG_STACK_END: usize = 0x0000_0002_0000_0000;
+
+/// User heap segment
+pub const U_SEG_HEAP_BEG: usize = 0x0000_0002_0000_0000;
+pub const U_SEG_HEAP_END: usize = 0x0000_0004_0000_0000;
+
+/// User mmap segment
+pub const U_SEG_FILE_BEG: usize = 0x0000_0004_0000_0000;
+pub const U_SEG_FILE_END: usize = 0x0000_0006_0000_0000;
+
+/// User share segment
+pub const U_SEG_SHARE_BEG: usize = 0x0000_0006_0000_0000;
+pub const U_SEG_SHARE_END: usize = 0x0000_0008_0000_0000;

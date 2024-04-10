@@ -1,4 +1,5 @@
 //! Trap handling functionality
+
 mod ctx;
 /// Kernel trap handler
 pub mod kernel_trap;

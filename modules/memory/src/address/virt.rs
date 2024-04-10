@@ -60,6 +60,12 @@ impl From<VirtPageNum> for usize {
 }
 
 impl VirtAddr {
+    pub const fn from_usize(v: usize) -> Self {
+        Self(v)
+    }
+    pub const fn bits(&self) -> usize {
+        self.0
+    }
     pub fn to_offset(&self) -> OffsetAddr {
         (*self).into()
     }

@@ -1,3 +1,5 @@
+//! Trap from kernel.
+
 use arch::interrupts::set_trap_handler_vector;
 use irq_count::IRQ_COUNTER;
 use riscv::register::{

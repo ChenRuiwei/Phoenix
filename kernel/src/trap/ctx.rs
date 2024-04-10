@@ -158,7 +158,7 @@ impl UserFloatContext {
 }
 
 impl TrapContext {
-    /// Init app context
+    /// Init user context
     pub fn new(entry: usize, sp: usize) -> Self {
         let mut sstatus = sstatus::read();
         // set CPU privilege to User after trap return
@@ -179,17 +179,36 @@ impl TrapContext {
             kernel_tp: 0,
             user_fx: UserFloatContext::new(),
         };
-        cx.set_sp(sp);
+        cx.set_user_sp(sp);
         cx
     }
 
+    pub fn init_user(
+        &mut self,
+        user_sp: usize,
+        sepc: usize,
+        argc: usize,
+        argv: usize,
+        envp: usize,
+    ) {
+        self.user_x[2] = user_sp;
+        self.user_x[10] = argc;
+        self.user_x[11] = argv;
+        self.user_x[12] = envp;
+        self.sepc = sepc;
+        self.sstatus = sstatus::read();
+        self.user_fx = UserFloatContext::new()
+    }
+
     /// Set stack pointer to x_2 reg (sp)
-    pub fn set_sp(&mut self, sp: usize) {
+    pub fn set_user_sp(&mut self, sp: usize) {
+        // sp == x2
         self.user_x[2] = sp;
     }
 
-    pub fn set_user_pc_to_next(&mut self) {
-        self.sepc += 4;
+    pub fn set_user_a0(&mut self, val: usize) {
+        // a0 == x10
+        self.user_x[10] = val;
     }
 
     /// Syscall number
@@ -198,13 +217,12 @@ impl TrapContext {
         self.user_x[17]
     }
 
-    pub fn set_user_a0(&mut self, val: usize) {
-        // a0 == x10
-        self.user_x[10] = val;
-    }
-
     /// Set entry point
     pub fn set_entry_point(&mut self, entry: usize) {
         self.sepc = entry;
+    }
+
+    pub fn set_user_pc_to_next(&mut self) {
+        self.sepc += 4;
     }
 }

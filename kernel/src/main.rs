@@ -10,7 +10,9 @@
 #![feature(sync_unsafe_cell)]
 #![feature(stdsimd)]
 #![feature(riscv_ext_intrinsics)]
+#![feature(map_try_insert)]
 #![allow(unused)]
+#![allow(clippy::mut_from_ref)]
 
 use alloc::fmt;
 
@@ -57,7 +59,6 @@ global_asm!(include_str!("link_app.asm"));
 static FIRST_HART: AtomicBool = AtomicBool::new(true);
 static INIT_FINISHED: AtomicBool = AtomicBool::new(false);
 
-#[allow(unused)]
 fn hart_start(hart_id: usize) {
     use crate::processor::HARTS;
 

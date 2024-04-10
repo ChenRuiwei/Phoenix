@@ -1,5 +1,6 @@
 use memory::{frame_alloc, FrameTracker, PhysPageNum};
 
+#[derive(Debug)]
 pub struct Page {
     pub frame: FrameTracker,
 }

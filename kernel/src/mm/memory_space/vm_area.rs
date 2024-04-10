@@ -1,4 +1,5 @@
-use alloc::{borrow::ToOwned, rc::Weak, vec::Vec};
+use alloc::vec::Vec;
+use core::ops::Range;
 
 use config::mm::PAGE_SIZE;
 use memory::{pte::PTEFlags, StepByOne, VPNRange, VirtAddr, VirtPageNum};
@@ -70,6 +71,7 @@ impl From<MapPerm> for PTEFlags {
     }
 }
 
+#[derive(Debug)]
 pub struct VmArea {
     pub vpn_range: VPNRange,
     pub frames: Vec<Page>,
@@ -106,6 +108,18 @@ impl VmArea {
             vma_type,
             map_perm,
         }
+    }
+
+    pub fn start_va(&self) -> VirtAddr {
+        self.start_vpn().into()
+    }
+
+    pub fn end_va(&self) -> VirtAddr {
+        self.end_vpn().into()
+    }
+
+    pub fn range_va(&self) -> Range<VirtAddr> {
+        self.start_va()..self.end_va()
     }
 
     pub fn start_vpn(&self) -> VirtPageNum {
