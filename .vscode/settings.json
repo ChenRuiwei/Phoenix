@@ -5,6 +5,11 @@
     "riscv64gc-unknown-none-elf"
   ],
   "rust-analyzer.linkedProjects": [
-    "./kernel/Cargo.toml"
+    "./kernel/Cargo.toml",
+    "./kernel/Cargo.toml",
+    "./kernel/Cargo.toml",
+    "./kernel/Cargo.toml",
+    "./kernel/Cargo.toml",
+    "./modules/signal/Cargo.toml"
   ]
 }

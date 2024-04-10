@@ -12,6 +12,7 @@ use core::{
 };
 
 use config::mm::USER_STACK_SIZE;
+use signal::Signal;
 use sync::mutex::SpinNoIrqLock;
 
 use super::tid::{Pid, Tid, TidHandle};
@@ -64,6 +65,7 @@ pub struct Task {
     pub ustack_top: usize,
     ///
     pub thread_group: Shared<ThreadGroup>,
+    pub signal: SpinNoIrqLock<Signal>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -102,6 +104,7 @@ impl Task {
             waker: SyncUnsafeCell::new(None),
             ustack_top: user_sp_top,
             thread_group: new_shared(ThreadGroup::new()),
+            signal: SpinNoIrqLock::new(Signal::new()),
         });
 
         task.thread_group.lock().push_leader(task.clone());

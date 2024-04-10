@@ -4,6 +4,7 @@ mod fs;
 mod id;
 mod misc;
 mod process;
+mod signal;
 
 use core::panic;
 
@@ -13,7 +14,7 @@ use log::error;
 use process::*;
 use systype::SyscallResult;
 
-use self::misc::sys_uname;
+use self::{misc::sys_uname, signal::sys_sigprocmask};
 use crate::processor::{
     env::SumGuard,
     hart::{current_task, current_trap_cx},
@@ -79,6 +80,9 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         SYSCALL_WRITE => sys_handler!(sys_write, (args[0], args[1], args[2]), await),
         // Miscellaneous
         SYSCALL_UNAME => sys_handler!(sys_uname, (args[0])),
+        SYSCALL_RT_SIGPROCMASK => {
+            sys_handler!(sys_sigprocmask, (args[0], args[1].into(), args[2].into()))
+        }
         _ => {
             error!("Unsupported syscall_id: {}", syscall_id);
             Ok(0)

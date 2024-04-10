@@ -1,6 +1,7 @@
 pub mod aux;
 mod manager;
 mod schedule;
+pub mod signal;
 pub mod task;
 mod tid;
 
