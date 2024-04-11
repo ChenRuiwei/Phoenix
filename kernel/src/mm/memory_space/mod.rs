@@ -319,6 +319,33 @@ impl MemorySpace {
         (memory_space, user_stack_top, entry_point, auxv)
     }
 
+    pub fn parse_and_map_elf(&mut self, elf_data: &[u8]) -> (usize, Vec<AuxHeader>) {
+        const ELF_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
+
+        // map program headers of elf, with U flag
+        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
+        let elf_header = elf.header;
+        assert_eq!(elf_header.pt1.magic, ELF_MAGIC, "invalid elf!");
+        let entry = elf_header.pt2.entry_point() as usize;
+        let ph_entry_size = elf_header.pt2.ph_entry_size() as usize;
+        let ph_count = elf_header.pt2.ph_count() as usize;
+
+        let mut auxv = generate_early_auxv(ph_entry_size, ph_count, entry);
+
+        auxv.push(AuxHeader::new(AT_BASE, 0));
+
+        let (max_end_vpn, header_va) = self.map_elf(&elf, 0.into());
+
+        let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
+        log::debug!(
+            "[parse_and_map_elf] AT_PHDR  ph_head_addr is {:x} ",
+            ph_head_addr
+        );
+        auxv.push(AuxHeader::new(AT_PHDR, ph_head_addr));
+
+        (entry, auxv)
+    }
+
     /// Alloc stack and map it in the page table.
     ///
     /// Return address of the stack top, which is aligned to 16 bytes.

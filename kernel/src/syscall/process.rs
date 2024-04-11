@@ -62,7 +62,11 @@ pub fn sys_wait4() -> SyscallResult {
 /// uninitialized) data segments.
 ///
 /// All threads other than the calling thread are destroyed during an execve().
-pub fn sys_execve(path: usize, mut argv: usize, mut envp: usize) -> SyscallResult {
+pub fn sys_execve(
+    path: UserReadPtr<u8>,
+    argv: UserReadPtr<usize>,
+    envp: UserReadPtr<usize>,
+) -> SyscallResult {
     let task = current_task();
     let path_str = UserReadPtr::<u8>::from(path).read_cstr(task)?;
 
@@ -88,9 +92,6 @@ pub fn sys_execve(path: usize, mut argv: usize, mut envp: usize) -> SyscallResul
         }
         Ok(result)
     };
-
-    let argv = UserReadPtr::from(argv);
-    let envp = UserReadPtr::from(envp);
 
     let mut argv = read_2d_cstr(argv)?;
     let mut envp = read_2d_cstr(envp)?;

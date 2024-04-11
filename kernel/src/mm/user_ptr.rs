@@ -4,7 +4,7 @@
 
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
-    fmt::{Display, Formatter},
+    fmt::{Debug, Display, Formatter},
     intrinsics::size_of,
     marker::PhantomData,
     ops::ControlFlow,
@@ -50,6 +50,22 @@ pub struct UserPtr<T: Clone + Copy + 'static, P: Policy> {
     ptr: *mut T,
     _mark: PhantomData<P>,
     _guard: SumGuard,
+}
+
+impl<T: Clone + Copy + 'static> Debug for UserPtr<T, In> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("UserReadPtr")
+            .field("ptr", &self.ptr)
+            .finish()
+    }
+}
+
+impl<T: Clone + Copy + 'static> Debug for UserPtr<T, Out> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("UserWritePtr")
+            .field("ptr", &self.ptr)
+            .finish()
+    }
 }
 
 pub type UserReadPtr<T> = UserPtr<T, In>;
@@ -103,7 +119,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
         Ok(res)
     }
 
-    pub fn into_slice(self, n: usize, task: &Arc<Task>) -> SysResult<&[T]> {
+    pub fn into_slice(self, task: &Arc<Task>, n: usize) -> SysResult<&[T]> {
         debug_assert!(n == 0 || self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
@@ -125,7 +141,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
         Ok(res)
     }
 
-    pub fn read_array(self, n: usize, task: &Arc<Task>) -> SysResult<Vec<T>> {
+    pub fn read_array(self, task: &Arc<Task>, n: usize) -> SysResult<Vec<T>> {
         debug_assert!(n == 0 || self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
@@ -228,7 +244,7 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         Ok(res)
     }
 
-    pub fn into_mut_slice(self, n: usize, task: &Arc<Task>) -> SysResult<&mut [T]> {
+    pub fn into_mut_slice(self, task: &Arc<Task>, n: usize) -> SysResult<&mut [T]> {
         debug_assert!(n == 0 || self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),

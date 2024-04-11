@@ -214,27 +214,19 @@ impl Task {
     /// execve().
     pub fn do_execve(&self, elf_data: &[u8], argv: Vec<String>, envp: Vec<String>) {
         // change memory space
-        let memory_space = MemorySpace::new_user();
+        let mut memory_space = MemorySpace::new_user();
+        let (entry, auxv) = memory_space.parse_and_map_elf(elf_data);
         self.with_mut_memory_space(|m| *m = memory_space);
         unsafe { self.switch_page_table() };
 
         // exit all threads except main
-        // self.map_all_threads(|t| {
-        //     if !t.is_leader() {
-        //         t.set_zombie()
-        //     }
-        // });
-
         self.with_thread_group(|tg| {
             for t in tg.iter() {
-                if !tg.is_leader(self) {
+                if !tg.is_leader(&t) {
                     t.set_zombie();
                 }
             }
         });
-
-        // parse and map elf
-        let (entry, auxv) = self.parse_and_map_elf(elf_data);
 
         // alloc stack, and push argv, envp and auxv
         let stack_begin = self.with_mut_memory_space(|m| m.alloc_stack(USER_STACK_SIZE));
@@ -244,10 +236,6 @@ impl Task {
         // init trap context
         self.trap_context_mut()
             .init_user(stack_begin.into(), entry, 0, 0, 0);
-
-        // Task::spawn_from_elf(elf_data);
-        //
-        // unimplemented!("exec no implemented yet")
     }
 
     // TODO:
