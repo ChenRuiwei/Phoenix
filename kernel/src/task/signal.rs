@@ -135,14 +135,14 @@ pub fn do_signal() {
                 // a0
                 current_trap_cx().user_x[10] = sig.raw();
                 // a2
-                current_trap_cx().user_x[12] = ucontext_ptr as usize;
+                current_trap_cx().user_x[12] = ucontext_ptr;
                 current_trap_cx().sepc = entry;
                 // ra (when the sigaction set by user finished,if user forgets to call
                 // sys_sigretrun, it will return to sigreturn_trampoline, which
                 // calls sys_sigreturn)
                 current_trap_cx().user_x[1] = sigreturn_trampoline as usize;
                 // sp (it will be used later by sys_sigreturn)
-                current_trap_cx().user_x[2] = ucontext_ptr as usize;
+                current_trap_cx().user_x[2] = ucontext_ptr;
             }
         }
     }
@@ -161,7 +161,7 @@ fn cont(sig: Sig) {
     log::info!("cont this sig {}", sig);
 }
 
-fn save_context_into_sigstack(old_blocked: SigSet) -> *const UContext {
+fn save_context_into_sigstack(old_blocked: SigSet) -> usize {
     let trap_context = current_trap_cx();
     trap_context.user_fx.encounter_signal();
     let signal_stack = current_task().get_signal_stack().take();
@@ -183,7 +183,7 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> *const UContext {
             user_x: trap_context.user_x,
         },
     };
-    let ptr = ucontext_ptr.raw_ptr();
+    let ptr = ucontext_ptr.as_usize();
     ucontext_ptr.write(current_task(), ucontext);
     ptr
 }
