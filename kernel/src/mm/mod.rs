@@ -11,9 +11,14 @@ pub mod memory_space;
 mod page;
 mod user_ptr;
 
-use config::board::MEMORY_END;
+use core::ops::Range;
+
+use config::{
+    board::MEMORY_END,
+    mm::{U_SEG_HEAP_BEG, U_SEG_STACK_BEG, U_SEG_STACK_END},
+};
 pub use memory::page_table::PageTable;
-use memory::{frame, heap, VirtAddr};
+use memory::{frame, heap, VirtAddr, VirtPageNum};
 pub use memory_space::{activate_kernel_space, MemorySpace};
 pub use page::Page;
 pub use user_ptr::{UserInOutPtr, UserReadPtr, UserWritePtr};

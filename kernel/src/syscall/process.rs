@@ -20,7 +20,7 @@ pub fn sys_exit(exit_code: i32) -> SyscallResult {
         exit_code,
         current_trap_cx().sepc
     );
-    let pid = current_task().pid();
+    let pid = current_task().tid();
     current_task().set_zombie();
     Ok(0)
 }
@@ -60,7 +60,13 @@ pub fn sys_wait4() -> SyscallResult {
 /// program that is currently being run by the calling process to be replaced
 /// with a new program, with newly initialized stack, heap, and (initialized and
 /// uninitialized) data segments.
-pub fn sys_execve(path: usize, mut argv: usize, mut envp: usize) -> SyscallResult {
+///
+/// All threads other than the calling thread are destroyed during an execve().
+pub fn sys_execve(
+    path: UserReadPtr<u8>,
+    argv: UserReadPtr<usize>,
+    envp: UserReadPtr<usize>,
+) -> SyscallResult {
     let task = current_task();
     let path_str = UserReadPtr::<u8>::from(path).read_cstr(task)?;
 
@@ -87,9 +93,6 @@ pub fn sys_execve(path: usize, mut argv: usize, mut envp: usize) -> SyscallResul
         Ok(result)
     };
 
-    let argv = UserReadPtr::from(argv);
-    let envp = UserReadPtr::from(envp);
-
     let mut argv = read_2d_cstr(argv)?;
     let mut envp = read_2d_cstr(envp)?;
 
@@ -99,7 +102,7 @@ pub fn sys_execve(path: usize, mut argv: usize, mut envp: usize) -> SyscallResul
         argv,
         envp
     );
-    log::debug!("[sys_execve]: pid: {:?}", task.pid());
+    log::debug!("[sys_execve]: pid: {:?}", task.tid());
 
     // TODO: should we add envp
     // Mankor: 不知道为什么要加，从 Oops 抄过来的

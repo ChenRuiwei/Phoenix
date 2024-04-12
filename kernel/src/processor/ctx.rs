@@ -2,6 +2,7 @@ use riscv::register::sstatus;
 
 /// Store some permission flags
 pub struct EnvContext {
+    // TODO: this sie_disabled is never used
     /// Supervisor interrupt disable
     sie_disabled: usize,
     /// Permit supervisor user memory access

@@ -1,3 +1,5 @@
+//! Trap from user.
+
 use alloc::sync::Arc;
 
 use arch::interrupts::{disable_interrupt, enable_interrupt};
@@ -68,12 +70,12 @@ pub async fn trap_handler(task: Arc<Task>) {
     }
 }
 
-/// Back to user mode.
+/// Trap return to user mode.
+///
 /// Note that we don't need to flush TLB since user and
-/// kernel use the same pagetable.
+/// kernel uses the same pagetable.
 #[no_mangle]
 pub fn trap_return() {
-    // Important!
     unsafe {
         disable_interrupt();
         set_user_trap()
@@ -82,11 +84,13 @@ pub fn trap_return() {
     do_signal();
 
     extern "C" {
-        // fn __alltraps();
         fn __return_to_user(cx: *mut TrapContext);
     }
 
     unsafe {
+
         __return_to_user(current_trap_cx());
+        // next time when user traps into kernel, it will come back here and
+        // return to `user_loop` function.
     }
 }
