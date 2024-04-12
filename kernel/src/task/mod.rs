@@ -5,7 +5,7 @@ pub mod signal;
 pub mod task;
 mod tid;
 
-pub use schedule::{spawn_kernel_task, spawn_user_task};
+pub use schedule::{spawn_kernel_task, spawn_user_task, yield_now};
 pub use task::Task;
 
 use crate::{loader::get_app_data_by_name, mm::memory_space};

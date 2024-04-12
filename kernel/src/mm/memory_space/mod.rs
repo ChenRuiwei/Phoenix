@@ -369,6 +369,25 @@ impl MemorySpace {
         sp_init
     }
 
+    /// Clone a same `MemorySpace`
+    pub fn from_user(user_space: &Self) -> Self {
+        let mut memory_space = Self::new_user();
+        // copy data sections/trap_context/user_stack
+        for (_, area) in user_space.areas.iter() {
+            let mut new_area = VmArea::from_another(area);
+            memory_space.push_vma(new_area);
+            // copy data from another space
+            for vpn in area.vpn_range {
+                if let Some(pte) = user_space.page_table.find_pte(vpn) {
+                    let src_ppn = pte.ppn();
+                    let dst_ppn = memory_space.page_table.find_pte(vpn).unwrap().ppn();
+                    dst_ppn.bytes_array().copy_from_slice(src_ppn.bytes_array());
+                }
+            }
+        }
+        memory_space
+    }
+
     /// Push `VmArea` into `MemorySpace` and map it in page table.
     pub fn push_vma(&mut self, mut vma: VmArea) {
         vma.map(&mut self.page_table);

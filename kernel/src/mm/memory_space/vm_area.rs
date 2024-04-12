@@ -110,6 +110,15 @@ impl VmArea {
         }
     }
 
+    pub fn from_another(another: &Self) -> Self {
+        Self {
+            vpn_range: another.vpn_range,
+            frames: Vec::new(),
+            vma_type: another.vma_type,
+            map_perm: another.map_perm,
+        }
+    }
+
     pub fn start_va(&self) -> VirtAddr {
         self.start_vpn().into()
     }

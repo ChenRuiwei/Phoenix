@@ -12,6 +12,7 @@ use core::{
 };
 
 use config::mm::USER_STACK_SIZE;
+use memory::VirtAddr;
 use signal::Signal;
 use sync::mutex::SpinNoIrqLock;
 
@@ -24,6 +25,7 @@ use crate::{
         },
         MemorySpace,
     },
+    syscall,
     task::{
         aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_PHDR},
         manager::TASK_MANAGER,
@@ -61,8 +63,6 @@ pub struct Task {
     pub trap_context: SyncUnsafeCell<TrapContext>,
     ///
     pub waker: SyncUnsafeCell<Option<Waker>>,
-    ///
-    pub ustack_top: usize,
     ///
     pub thread_group: Shared<ThreadGroup>,
     pub signal: SpinNoIrqLock<Signal>,
@@ -102,7 +102,6 @@ impl Task {
             trap_context: SyncUnsafeCell::new(trap_context),
             memory_space: new_shared(memory_space),
             waker: SyncUnsafeCell::new(None),
-            ustack_top: user_sp_top,
             thread_group: new_shared(ThreadGroup::new()),
             signal: SpinNoIrqLock::new(Signal::new()),
         });
@@ -116,6 +115,18 @@ impl Task {
 
     fn parent(&self) -> Option<Weak<Self>> {
         self.parent.lock().clone()
+    }
+
+    fn children(&self) -> Vec<Arc<Self>> {
+        self.children.lock().clone()
+    }
+
+    fn state(&self) -> TaskState {
+        *self.state.lock()
+    }
+
+    fn add_child(&self, child: Arc<Task>) {
+        self.children.lock().push(child)
     }
 
     pub fn is_leader(&self) -> bool {
@@ -207,11 +218,70 @@ impl Task {
     }
 
     // TODO:
-    pub fn do_clone(&self) {}
+    pub fn do_clone(
+        self: &Arc<Self>,
+        flags: syscall::CloneFlags,
+        user_stack_begin: Option<VirtAddr>,
+    ) -> Arc<Self> {
+        use syscall::CloneFlags;
+        let tid = alloc_tid();
+
+        let trap_context = SyncUnsafeCell::new(self.trap_context_mut().clone());
+        let state = SpinNoIrqLock::new(self.state());
+        let exit_code = AtomicI32::new(self.exit_code());
+
+        let parent;
+        let children;
+        let thread_group;
+
+        if flags.contains(CloneFlags::THREAD) {
+            parent = self.parent.clone();
+            children = self.children.clone();
+            // remember to add the new lproc to group please!
+            thread_group = self.thread_group.clone();
+        } else {
+            parent = new_shared(Some(Arc::downgrade(&self)));
+            children = new_shared(Vec::new());
+            thread_group = new_shared(ThreadGroup::new());
+        }
+
+        let memory_space;
+        if flags.contains(CloneFlags::VM) {
+            memory_space = self.memory_space.clone();
+        } else {
+            debug_assert!(user_stack_begin.is_none());
+            // TODO: COW
+            memory_space = new_shared(self.with_mut_memory_space(|m| MemorySpace::from_user(m)));
+            // Flush both old and new process
+            unsafe { core::arch::riscv64::sfence_vma_all() };
+            // TODO: avoid flushing global entries like kernel mappings
+        }
+
+        let new = Arc::new(Self {
+            tid,
+            state,
+            parent,
+            children,
+            exit_code: AtomicI32::new(0),
+            trap_context,
+            memory_space,
+            waker: SyncUnsafeCell::new(None),
+            thread_group,
+            signal: SpinNoIrqLock::new(Signal::new()),
+        });
+
+        if flags.contains(CloneFlags::THREAD) {
+            new.with_mut_thread_group(|tg| tg.push(new.clone()));
+        } else {
+            new.with_mut_thread_group(|g| g.push_leader(new.clone()));
+            self.add_child(new.clone());
+        }
+
+        TASK_MANAGER.add(&new);
+        new
+    }
 
     // TODO:
-    /// All threads other than the calling thread are destroyed during an
-    /// execve().
     pub fn do_execve(&self, elf_data: &[u8], argv: Vec<String>, envp: Vec<String>) {
         // change memory space
         let mut memory_space = MemorySpace::new_user();
@@ -219,7 +289,7 @@ impl Task {
         self.with_mut_memory_space(|m| *m = memory_space);
         unsafe { self.switch_page_table() };
 
-        // exit all threads except main
+        // terminate all threads except the leader
         self.with_thread_group(|tg| {
             for t in tg.iter() {
                 if !tg.is_leader(&t) {

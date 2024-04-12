@@ -9,7 +9,12 @@ use riscv::register::{
 };
 
 use super::{set_kernel_trap, TrapContext};
-use crate::{processor::current_trap_cx, syscall::syscall, task::{signal::do_signal, Task}, trap::set_user_trap};
+use crate::{
+    processor::current_trap_cx,
+    syscall::syscall,
+    task::{signal::do_signal, Task},
+    trap::set_user_trap,
+};
 
 /// handle an interrupt, exception, or system call from user space
 #[no_mangle]
@@ -83,7 +88,6 @@ pub fn trap_return() {
     }
 
     unsafe {
-
         __return_to_user(current_trap_cx());
         // next time when user traps into kernel, it will come back here and
         // return to `user_loop` function.

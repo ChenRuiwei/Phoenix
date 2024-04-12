@@ -1,3 +1,4 @@
+*.gdb
 .github
 .gdb_history
 target/

@@ -249,4 +249,3 @@ impl UserContext {
         }
     }
 }
-

@@ -8,7 +8,36 @@ use crate::{
     loader::{get_app_data, get_app_data_by_name},
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::{current_task, current_trap_cx},
+    task::{spawn_user_task, yield_now},
 };
+
+bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct CloneFlags: u64 {
+        /* 共享内存 */
+        const VM = 0x0000100;
+        /* 共享文件系统信息 */
+        const FS = 0x0000200;
+        /* 共享已打开的文件 */
+        const FILES = 0x0000400;
+        /* 共享信号处理句柄 */
+        const SIGHAND = 0x00000800;
+        /* 共享 parent (新旧 task 的 getppid 返回结果相同) */
+        const PARENT = 0x00008000;
+        /* 新旧 task 置于相同线程组 */
+        const THREAD = 0x00010000;
+        /* create a new TLS for the child */
+        const SETTLS = 0x00080000;
+        /* set the TID in the parent */
+        const PARENT_SETTID = 0x00100000;
+        /* clear the TID in the child */
+        const CHILD_CLEARTID = 0x00200000;
+        /* set the TID in the child */
+        const CHILD_SETTID = 0x01000000;
+        /* clear child signal handler */
+        const CHILD_CLEAR_SIGHAND = 0x100000000;
+    }
+}
 
 // TODO:
 /// _exit() system call terminates only the calling thread, and actions such as
@@ -20,7 +49,7 @@ pub fn sys_exit(exit_code: i32) -> SyscallResult {
         exit_code,
         current_trap_cx().sepc
     );
-    let pid = current_task().tid();
+    let tid = current_task().tid();
     current_task().set_zombie();
     Ok(0)
 }
@@ -61,14 +90,16 @@ pub fn sys_wait4() -> SyscallResult {
 /// with a new program, with newly initialized stack, heap, and (initialized and
 /// uninitialized) data segments.
 ///
-/// All threads other than the calling thread are destroyed during an execve().
+/// If any of the threads in a thread group performs an execve(2), then all
+/// threads other than the thread group leader are terminated, and the new
+/// program is executed in the thread group leader.
 pub fn sys_execve(
     path: UserReadPtr<u8>,
     argv: UserReadPtr<usize>,
     envp: UserReadPtr<usize>,
 ) -> SyscallResult {
     let task = current_task();
-    let path_str = UserReadPtr::<u8>::from(path).read_cstr(task)?;
+    let path_str = path.read_cstr(task)?;
 
     // TODO: path transefer to filename
     // let path = Path::from_string(path_str)?;
@@ -136,5 +167,48 @@ pub fn sys_execve(
 
     // TODO: now we just load app data into kernel and read it
     task.do_execve(get_app_data_by_name(path_str.as_str()).unwrap(), argv, envp);
+    Ok(0)
+}
+/// 功能：创建一个子进程；
+/// 输入：
+/// flags: 创建的标志，如SIGCHLD；
+/// stack: 指定新进程的栈，可为0；
+/// ptid: 父线程ID；
+/// tls: TLS线程本地存储描述符；
+/// ctid: 子线程ID；
+/// 返回值：成功则返回子进程的线程ID，失败返回-1；
+// TODO:
+pub fn sys_clone(
+    flags: usize,
+    stack_ptr: usize,
+    parent_tid_ptr: usize,
+    tls_ptr: usize,
+    chilren_tid_ptr: usize,
+) -> SyscallResult {
+    let flags = CloneFlags::from_bits(flags.try_into().unwrap()).unwrap();
+
+    //     Since Linux 2.5.35, the flags mask must also include
+    //               CLONE_SIGHAND if CLONE_THREAD is specified (and note that,
+    //               since Linux 2.6.0, CLONE_SIGHAND also requires CLONE_VM to
+    //               be included).
+    let stack_begin = if stack_ptr != 0 {
+        Some(stack_ptr.into())
+    } else {
+        None
+    };
+    let new_task = current_task().do_clone(flags, stack_begin);
+    new_task.trap_context_mut().set_user_a0(0);
+    let new_task_tid = new_task.pid();
+    log::info!(
+        "[sys_clone] clone a new process, pid {}, clone flags {:?}",
+        new_task_tid,
+        flags,
+    );
+    spawn_user_task(new_task);
+    Ok(new_task_tid.into())
+}
+
+pub async fn sys_sched_yield() -> SyscallResult {
+    yield_now().await;
     Ok(0)
 }

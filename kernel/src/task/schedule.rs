@@ -38,6 +38,11 @@ impl Future for YieldFuture {
     }
 }
 
+/// Yield the current thread (and the scheduler will switch to next thread)
+pub async fn yield_now() {
+    YieldFuture::new().await;
+}
+
 /// The outermost future for user task, i.e. the future that wraps one thread's
 /// task future (doing some env context changes e.g. pagetable switching)
 pub struct UserTaskFuture<F: Future + Send + 'static> {

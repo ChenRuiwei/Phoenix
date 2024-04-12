@@ -12,6 +12,7 @@ use ::signal::sigset::SigSet;
 use fs::*;
 use id::*;
 use log::error;
+pub use process::CloneFlags;
 use process::*;
 use systype::SyscallResult;
 
@@ -88,6 +89,8 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 UserReadPtr::<usize>::from(args[2]),
             )
         ),
+        SYSCALL_SCHED_YIELD => sys_handler!(sys_sched_yield, (), await),
+        SYSCALL_CLONE => sys_handler!(sys_clone, (args[0], args[1], args[2], args[3], args[4])),
         // File system
         SYSCALL_WRITE => {
             sys_handler!(sys_write, (args[0], UserReadPtr::<u8>::from(args[1]), args[2]), await)

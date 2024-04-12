@@ -76,9 +76,11 @@ pub fn do_signal() {
                 // 因为信号处理程序可能会被嵌套调用（即一个信号处理程序中可能会触发另一个信号），
                 // 所以需要确保每个信号处理程序能恢复到它被调用时的屏蔽集状态
                 let old_blocked = signal.blocked;
-                // 在执行用户定义的信号处理程序之前，内核会将当前处理的信号添加到信号屏蔽集中。这样做是为了防止在处理该信号的过程中，相同的信号再次中断
+                // 在执行用户定义的信号处理程序之前，内核会将当前处理的信号添加到信号屏蔽集中。
+                // 这样做是为了防止在处理该信号的过程中，相同的信号再次中断
                 signal.blocked.add_signal(sig);
-                // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。这些信息定义在Action的mask字段
+                // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
+                // 这些信息定义在Action的mask字段
                 signal.blocked |= action.mask;
             }
         }
@@ -100,5 +102,4 @@ fn cont(sig: Sig) {
 
 fn save_signal_handler_context(old_blocked: SigSet) {
     current_trap_cx().user_fx.encounter_signal();
-    
 }

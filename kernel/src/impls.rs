@@ -4,7 +4,7 @@ use alloc::fmt;
 
 use logging::LogIf;
 
-use crate::processor::hart::local_hart;
+use crate::processor::hart::{current_task, local_hart};
 
 /// Print msg with color
 pub fn print_in_color(args: fmt::Arguments, color_code: u8) {
@@ -16,17 +16,31 @@ struct LogIfImpl;
 #[crate_interface::impl_interface]
 impl LogIf for LogIfImpl {
     fn print_log(record: &log::Record) {
-        print_in_color(
-            format_args!(
-                "[{:>5}][{}:{}][{},-,-] {}\n",
-                record.level(),
-                record.file().unwrap(),
-                record.line().unwrap(),
-                local_hart().hart_id(),
-                record.args()
-            ),
-            logging::level_to_color_code(record.level()),
-        );
+        if local_hart().has_task() {
+            print_in_color(
+                format_args!(
+                    "[{:>5}][{}:{}][{},{},-] {}\n",
+                    record.level(),
+                    record.file().unwrap(),
+                    record.line().unwrap(),
+                    local_hart().hart_id(),
+                    current_task().tid(),
+                    record.args()
+                ),
+                logging::level_to_color_code(record.level()),
+            )
+        } else {
+            print_in_color(
+                format_args!(
+                    "[{:>5}][{}:{}][{},-,-] {}\n",
+                    record.level(),
+                    record.file().unwrap(),
+                    record.line().unwrap(),
+                    local_hart().hart_id(),
+                    record.args()
+                ),
+                logging::level_to_color_code(record.level()),
+            )
+        }
     }
 }
-

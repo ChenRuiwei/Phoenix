@@ -49,6 +49,10 @@ impl Hart {
         self.hart_id
     }
 
+    pub fn has_task(&self) -> bool {
+        self.task.is_some()
+    }
+
     /// Change thread context,
     ///
     /// Now only change page table temporarily
