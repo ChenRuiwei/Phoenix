@@ -4,7 +4,6 @@ pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
 pub mod action;
-pub mod default;
 pub mod signal_stack;
 pub mod sigset;
 

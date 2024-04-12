@@ -1,6 +1,5 @@
 //! Trap handling functionality
-
-mod ctx;
+pub mod ctx;
 /// Kernel trap handler
 pub mod kernel_trap;
 /// User trap handler

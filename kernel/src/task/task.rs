@@ -13,7 +13,7 @@ use core::{
 
 use config::mm::USER_STACK_SIZE;
 use memory::VirtAddr;
-use signal::Signal;
+use signal::{signal_stack::SignalStack, Signal};
 use sync::mutex::SpinNoIrqLock;
 
 use super::tid::{Pid, Tid, TidHandle};
@@ -66,6 +66,8 @@ pub struct Task {
     ///
     pub thread_group: Shared<ThreadGroup>,
     pub signal: SpinNoIrqLock<Signal>,
+    /// user can define sig_stack by sys_signalstack
+    pub sig_stack: SyncUnsafeCell<Option<SignalStack>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -104,6 +106,7 @@ impl Task {
             waker: SyncUnsafeCell::new(None),
             thread_group: new_shared(ThreadGroup::new()),
             signal: SpinNoIrqLock::new(Signal::new()),
+            sig_stack: SyncUnsafeCell::new(None),
         });
 
         task.thread_group.lock().push_leader(task.clone());
@@ -176,6 +179,16 @@ impl Task {
 
     pub fn is_zombie(&self) -> bool {
         *self.state.lock() == TaskState::Zombie
+    }
+
+    pub fn get_signal_stack(&self) -> &mut Option<SignalStack> {
+        unsafe { &mut *self.sig_stack.get() }
+    }
+
+    pub fn set_signal_stack(&self, stack: Option<SignalStack>) {
+        unsafe {
+            *self.sig_stack.get() = stack;
+        }
     }
 
     pub unsafe fn switch_page_table(&self) {
@@ -268,6 +281,7 @@ impl Task {
             waker: SyncUnsafeCell::new(None),
             thread_group,
             signal: SpinNoIrqLock::new(Signal::new()),
+            sig_stack: SyncUnsafeCell::new(None),
         });
 
         if flags.contains(CloneFlags::THREAD) {
