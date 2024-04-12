@@ -11,7 +11,7 @@ use core::{
     task::Waker,
 };
 
-use config::mm::USER_STACK_SIZE;
+use config::{mm::USER_STACK_SIZE, process::INITPROC_PID};
 use memory::VirtAddr;
 use signal::{signal_stack::SignalStack, Signal};
 use sync::mutex::SpinNoIrqLock;
@@ -322,18 +322,43 @@ impl Task {
             .init_user(stack_begin.into(), entry, 0, 0, 0);
     }
 
+    // After all of the threads in a thread group terminate the parent
+    // process of the thread group is sent a SIGCHLD (or other
+    // termination) signal.
     // TODO:
-    pub fn do_exit(&self) {
-        // Send SIGCHLD to parent
-        if let Some(parent) = self.parent() {
-            let parent = parent.upgrade().unwrap();
+    pub fn do_exit(self: &Arc<Self>) {
+        log::info!("thread {} do exit", self.tid());
+        if self.tid() == INITPROC_PID {
+            panic!("initproc die!!!, sepc {:#x}", self.trap_context_mut().sepc);
         }
 
-        // Reparent children
+        // Send SIGCHLD to parent if this is the leader
+        if self.is_leader() {
+            if let Some(parent) = self.parent() {
+                let parent = parent.upgrade().unwrap();
+            }
+        }
+
+        // Set children to be zombie and reparent them, which means set their parent to
+        // init.
+        assert_ne!(self.tid(), INITPROC_PID);
+        self.with_children(|children| {
+            if !children.is_empty() {
+                let init = TASK_MANAGER.get(INITPROC_PID).unwrap();
+                children.iter().for_each(|c| {
+                    c.set_zombie();
+                    *c.parent.lock() = Some(Arc::downgrade(&init));
+                });
+                init.children.lock().extend(children.iter().cloned());
+            }
+        });
 
         // Release all fd
+
+        TASK_MANAGER.remove(self)
     }
 
+    with_!(children, Vec<Arc<Task>>);
     with_!(memory_space, MemorySpace);
     with_!(thread_group, ThreadGroup);
 }

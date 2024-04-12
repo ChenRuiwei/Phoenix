@@ -120,7 +120,8 @@ pub async fn task_loop(task: Arc<Task>) {
             break;
         }
     }
-    handle_exit(task);
+    task.do_exit();
+    // handle_exit(task);
 }
 
 pub fn handle_exit(task: Arc<Task>) {

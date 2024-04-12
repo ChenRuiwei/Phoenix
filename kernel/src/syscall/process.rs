@@ -169,6 +169,7 @@ pub fn sys_execve(
     task.do_execve(get_app_data_by_name(path_str.as_str()).unwrap(), argv, envp);
     Ok(0)
 }
+
 /// 功能：创建一个子进程；
 /// 输入：
 /// flags: 创建的标志，如SIGCHLD；
@@ -187,10 +188,6 @@ pub fn sys_clone(
 ) -> SyscallResult {
     let flags = CloneFlags::from_bits(flags.try_into().unwrap()).unwrap();
 
-    //     Since Linux 2.5.35, the flags mask must also include
-    //               CLONE_SIGHAND if CLONE_THREAD is specified (and note that,
-    //               since Linux 2.6.0, CLONE_SIGHAND also requires CLONE_VM to
-    //               be included).
     let stack_begin = if stack_ptr != 0 {
         Some(stack_ptr.into())
     } else {
@@ -198,9 +195,9 @@ pub fn sys_clone(
     };
     let new_task = current_task().do_clone(flags, stack_begin);
     new_task.trap_context_mut().set_user_a0(0);
-    let new_task_tid = new_task.pid();
+    let new_task_tid = new_task.tid();
     log::info!(
-        "[sys_clone] clone a new process, pid {}, clone flags {:?}",
+        "[sys_clone] clone a new thread, tid {}, clone flags {:?}",
         new_task_tid,
         flags,
     );

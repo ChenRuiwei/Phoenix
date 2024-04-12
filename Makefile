@@ -147,7 +147,7 @@ PHONY += run
 run: qemu
 
 PHONY += brun
-brun: kernel run
+brun: clean user kernel run
 
 PHONY += clean
 clean:
