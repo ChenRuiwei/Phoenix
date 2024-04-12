@@ -209,25 +209,25 @@ impl TrapContext {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct UserContext {
-    /// general regs[0..31]
-    pub user_x: [usize; 32],
-    /// general float regs
-    pub user_fx: UserFloatContext,
-    /// CSR sstatus      
-    pub sstatus: Sstatus, // 32
-    /// CSR sepc
-    pub sepc: usize, // 33
-}
+// #[derive(Clone, Copy)]
+// pub struct UserContext {
+//     /// general regs[0..31]
+//     pub user_x: [usize; 32],
+//     /// general float regs
+//     pub user_fx: UserFloatContext,
+//     /// CSR sstatus      
+//     pub sstatus: Sstatus, // 32
+//     /// CSR sepc
+//     pub sepc: usize, // 33
+// }
 
-impl UserContext {
-    pub fn from_trap_context(trap_context: &TrapContext) -> Self {
-        Self {
-            user_x: trap_context.user_x,
-            user_fx: trap_context.user_fx,
-            sstatus: trap_context.sstatus,
-            sepc: trap_context.sepc,
-        }
-    }
-}
+// impl UserContext {
+//     pub fn from_trap_context(trap_context: &TrapContext) -> Self {
+//         Self {
+//             user_x: trap_context.user_x,
+//             user_fx: trap_context.user_fx,
+//             sstatus: trap_context.sstatus,
+//             sepc: trap_context.sepc,
+//         }
+//     }
+// }

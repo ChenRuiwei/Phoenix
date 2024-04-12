@@ -72,7 +72,6 @@ pub fn frame_alloc() -> FrameTracker {
         .expect("frame space not enough")
 }
 
-// is not what we want
 /// Allocate contiguous frames
 pub fn frame_alloc_contig(size: usize, align_log2: usize) -> Vec<FrameTracker> {
     let first_frame = FRAME_ALLOCATOR

@@ -12,7 +12,7 @@ pub enum ActionType {
     Kill,
     Stop,
     Cont,
-    User { entry: VirtAddr },
+    User { entry: usize },
 }
 
 impl ActionType {

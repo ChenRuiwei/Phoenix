@@ -80,9 +80,9 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         SYSCALL_WRITE => sys_handler!(sys_write, (args[0], args[1], args[2]), await),
         // Miscellaneous
         SYSCALL_UNAME => sys_handler!(sys_uname, (args[0])),
-        SYSCALL_RT_SIGPROCMASK => {
-            sys_handler!(sys_sigprocmask, (args[0], args[1].into(), args[2].into()))
-        }
+        // SYSCALL_RT_SIGPROCMASK => {
+        //     sys_handler!(sys_sigprocmask, (args[0], args[1], args[2]))
+        // }
         _ => {
             error!("Unsupported syscall_id: {}", syscall_id);
             Ok(0)
