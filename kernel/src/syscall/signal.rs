@@ -1,6 +1,8 @@
 use rand_core::le;
 use signal::{
-    action::{Action, ActionType}, signal_stack::{SignalStack, UContext}, sigset::{Sig, SigProcMaskHow, SigSet}
+    action::{Action, ActionType},
+    signal_stack::{SignalStack, UContext},
+    sigset::{Sig, SigProcMaskHow, SigSet},
 };
 use systype::{SysError, SyscallResult};
 
@@ -16,11 +18,7 @@ use crate::{
 /// 返回值：如果传入参数错误（比如传入的 action 或 old_action
 /// 为空指针或者） 信号类型不存在返回 -1 ，否则返回 0 。
 /// syscall ID: 134
-pub fn sys_sigaction(
-    signum: Sig,
-    action: usize,
-    old_action: usize,
-) -> SyscallResult {
+pub fn sys_sigaction(signum: Sig, action: usize, old_action: usize) -> SyscallResult {
     if !signum.is_valid() {
         return Err(SysError::EINVAL);
     }
@@ -40,7 +38,7 @@ pub fn sys_sigaction(
     let mut signal = current_task().signal.lock();
     let old = signal.handlers.replace(signum, new);
     drop(signal);
-    
+
     // TODO：这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
         old_action.write(current_task(), old.into());
@@ -76,7 +74,7 @@ pub fn sys_sigprocmask(how: usize, set: usize, old_set: usize) -> SyscallResult 
     Ok(0)
 }
 
-pub fn sys_sigreturn() -> SyscallResult{
+pub fn sys_sigreturn() -> SyscallResult {
     let ucontext_ptr = UserReadPtr::<UContext>::from_usize(current_trap_cx().user_x[1]);
     // TODO: if can't read, it should cause segment fault
     let ucontext = ucontext_ptr.read(current_task())?;

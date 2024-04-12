@@ -152,10 +152,10 @@ impl Task {
     }
 
     pub fn get_signal_stack(&self) -> &mut Option<SignalStack> {
-        unsafe { &mut *self.sig_stack.get()}
+        unsafe { &mut *self.sig_stack.get() }
     }
 
-    pub fn set_signal_stack(&self, stack: Option<SignalStack>){
+    pub fn set_signal_stack(&self, stack: Option<SignalStack>) {
         unsafe {
             *self.sig_stack.get() = stack;
         }
@@ -164,7 +164,6 @@ impl Task {
     pub unsafe fn switch_page_table(&self) {
         self.memory_space.lock().switch_page_table()
     }
-
 
     // TODO:
     pub fn do_clone(&self) {}

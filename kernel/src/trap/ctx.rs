@@ -215,7 +215,7 @@ impl TrapContext {
 //     pub user_x: [usize; 32],
 //     /// general float regs
 //     pub user_fx: UserFloatContext,
-//     /// CSR sstatus      
+//     /// CSR sstatus
 //     pub sstatus: Sstatus, // 32
 //     /// CSR sepc
 //     pub sepc: usize, // 33

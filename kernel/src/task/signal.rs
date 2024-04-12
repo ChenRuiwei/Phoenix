@@ -172,7 +172,8 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> *const UContext {
     // extend the signal_stack
     let pad_ucontext = Layout::new::<UContext>().pad_to_align().size();
     let ucontext_ptr = UserWritePtr::<UContext>::from(stack_top - pad_ucontext);
-    // TODO: should increase the size of the signal_stack? It seams umi doesn't do that
+    // TODO: should increase the size of the signal_stack? It seams umi doesn't do
+    // that
     let mut ucontext = UContext {
         uc_link: 0,
         uc_sigmask: old_blocked,

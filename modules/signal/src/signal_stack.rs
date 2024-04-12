@@ -47,11 +47,11 @@ pub struct UContext {
     // 当前上下文使用的栈信息,包含栈的基址、大小等信息
     pub uc_stack: SignalStack,
     // 保存具体机器状态的上下文信息，这是一个机器相关的表示，包含了处理器的寄存器状态等信息
-    pub uc_mcontext: MContext
+    pub uc_mcontext: MContext,
 }
 
 #[derive(Clone, Copy)]
 pub struct MContext {
     pub sepc: usize,
-    pub user_x: [usize; 32]
+    pub user_x: [usize; 32],
 }
