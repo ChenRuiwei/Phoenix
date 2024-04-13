@@ -91,6 +91,15 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         ),
         SYSCALL_SCHED_YIELD => sys_handler!(sys_sched_yield, (), await),
         SYSCALL_CLONE => sys_handler!(sys_clone, (args[0], args[1], args[2], args[3], args[4])),
+        SYSCALL_WAIT4 => sys_handler!(
+            sys_wait4,
+            (
+                args[0] as i32,
+                UserWritePtr::<i32>::from(args[1]),
+                args[2] as i32,
+                args[3]
+            ), await
+        ),
         // File system
         SYSCALL_WRITE => {
             sys_handler!(sys_write, (args[0], UserReadPtr::<u8>::from(args[1]), args[2]), await)

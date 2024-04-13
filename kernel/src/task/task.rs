@@ -120,7 +120,7 @@ impl Task {
         self.parent.lock().clone()
     }
 
-    fn children(&self) -> Vec<Arc<Self>> {
+    pub fn children(&self) -> Vec<Arc<Self>> {
         self.children.lock().clone()
     }
 
@@ -341,7 +341,7 @@ impl Task {
 
         // Set children to be zombie and reparent them, which means set their parent to
         // init.
-        assert_ne!(self.tid(), INITPROC_PID);
+        debug_assert_ne!(self.tid(), INITPROC_PID);
         self.with_children(|children| {
             if !children.is_empty() {
                 let init = TASK_MANAGER.get(INITPROC_PID).unwrap();
@@ -355,6 +355,8 @@ impl Task {
 
         // Release all fd
 
+        // TODO: I think it will cause problem if leader is removed.
+        // self.with_mut_thread_group(|tg| tg.remove(self));
         TASK_MANAGER.remove(self)
     }
 

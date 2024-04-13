@@ -6,7 +6,8 @@ static TID_ALLOCATOR: SpinNoIrqLock<RecycleAllocator> =
     SpinNoIrqLock::new(RecycleAllocator::new(INITPROC_PID));
 
 pub type Tid = usize;
-pub type Pid = usize;
+pub type Pid = Tid;
+pub type PGid = Tid;
 
 #[derive(Debug)]
 pub struct TidHandle(pub Tid);

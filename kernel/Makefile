@@ -1,5 +1,5 @@
 # Building variables
-FEATURES :=
+FEATURES := strace
 ifneq ($(STRACE), )
 	FEATURES += strace
 endif

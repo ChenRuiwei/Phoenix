@@ -2,13 +2,15 @@
 
 use alloc::{string::String, vec::Vec};
 
-use systype::{SysResult, SyscallResult};
+use bitflags::Flags;
+use config::process;
+use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{
     loader::{get_app_data, get_app_data_by_name},
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::{current_task, current_trap_cx},
-    task::{spawn_user_task, yield_now},
+    task::{spawn_user_task, yield_now, PGid, Pid, Tid},
 };
 
 bitflags! {
@@ -39,18 +41,33 @@ bitflags! {
     }
 }
 
+bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct WaitOptions: i32 {
+        // Don't block waiting.
+        const WNOHANG = 0x00000001;
+        // Report status of stopped children.
+        const WUNTRACED = 0x00000002;
+        // Report continued child.
+        const WCONTINUED = 0x00000008;
+    }
+}
+
 // TODO:
 /// _exit() system call terminates only the calling thread, and actions such as
 /// reparenting child processes or sending SIGCHLD to the parent process are
 /// performed only if this is the last thread in the thread group.
 pub fn sys_exit(exit_code: i32) -> SyscallResult {
+    let mut task = current_task();
     log::info!(
         "[sys_exit]: exit code {}, sepc {:#x}",
         exit_code,
         current_trap_cx().sepc
     );
-    let tid = current_task().tid();
-    current_task().set_zombie();
+    let tid = task.tid();
+    task.set_zombie();
+    // TODO: should exit code be set by thread that is not leader
+    task.set_exit_code(exit_code);
     Ok(0)
 }
 
@@ -60,6 +77,11 @@ pub fn sys_exit(exit_code: i32) -> SyscallResult {
 pub fn sys_exit_group(exit_code: i32) -> SyscallResult {
     let mut task = current_task();
     task.set_exit_code(exit_code);
+    task.with_thread_group(|tg| {
+        for t in tg.iter() {
+            t.set_zombie();
+        }
+    });
     Ok(0)
 }
 
@@ -76,12 +98,87 @@ pub fn sys_getppid() -> SyscallResult {
     Ok(current_task().ppid())
 }
 
+// pid_t pid, int *_Nullable wstatus, int options,
+//                    struct rusage *_Nullable rusage)
+
+/// A thread can, and by default will, wait on children of other threads in the
+/// same thread group.
+///
+/// If wstatus is not NULL, wait() and waitpid() store status information in the
+/// int to which it points. This integer can be inspected with the following
+/// macros (which take the integer itself as an argument, not a pointer to it,
+/// as is done in wait() and waitpid()!):
+///
+/// The value of pid can be:
+/// + < -1   meaning wait for any child process whose process group ID is equal
+///   to the absolute value of pid.
+/// + -1     meaning wait for any child process.
+/// + 0      meaning wait for any child process whose process group ID is equal
+///   to that of the calling process at the time of the call to waitpid().
+/// + > 0    meaning wait for the child whose process ID is equal to the value
+///   of pid.
+///
+/// Return:
+/// on success, returns the process ID of the child whose state has changed; if
+/// WNOHANG was specified and one or more child(ren) specified by pid exist, but
+/// have not yet changed state, then 0 is returned. On failure, -1 is returned.
 // TODO:
-pub fn sys_wait4() -> SyscallResult {
+// PERF: event bus to notify when child exits
+pub async fn sys_wait4(
+    pid: i32,
+    wstatus: UserWritePtr<i32>,
+    option: i32,
+    _rusage: usize,
+) -> SyscallResult {
     // The value status & 0xFF is returned to the parent process as the
     // process's exit status, and can be collected by the parent using one of
-    // the wait(2) family of calls.
+    // the wait() family of calls.
     // TODO: We should collect exit_code of child by & 0xFF
+    let task = current_task();
+    let option = WaitOptions::from_bits_truncate(option);
+    enum WaitFor {
+        PGid(PGid),
+        AnyChild,
+        AnyChildInGroup,
+        Pid(Pid),
+    }
+    let target = match pid {
+        -1 => WaitFor::AnyChild,
+        0 => WaitFor::AnyChildInGroup,
+        p if p > 0 => WaitFor::Pid(p as Pid),
+        p => WaitFor::PGid(p as PGid),
+    };
+    loop {
+        log::trace!("[sys_wait4]: finding zombie children");
+        let children = task.children();
+        if children.is_empty() {
+            println!("[sys_wait4] fail: no child");
+            return Err(SysError::ECHILD);
+        }
+        let process = match target {
+            WaitFor::AnyChild => children.iter().find(|c| c.is_zombie()),
+            WaitFor::Pid(pid) => {
+                let c = children
+                    .iter()
+                    .find(|c| c.pid() == pid)
+                    .ok_or(SysError::ECHILD)?;
+                if c.is_zombie() {
+                    Some(c)
+                } else {
+                    None
+                }
+            }
+            WaitFor::PGid(_) => unimplemented!(),
+            WaitFor::AnyChildInGroup => unimplemented!(),
+        };
+        if let Some(process) = process {
+            return Ok(process.pid());
+        } else if option.contains(WaitOptions::WNOHANG) {
+            return Ok(0);
+        }
+        yield_now().await;
+    }
+
     todo!()
 }
 

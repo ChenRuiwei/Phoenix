@@ -3,7 +3,7 @@
 
 extern crate user_lib;
 
-use user_lib::{execve, fork, println, yield_};
+use user_lib::{execve, fork, println, wait, yield_};
 
 #[no_mangle]
 fn main() -> i32 {
@@ -23,6 +23,8 @@ fn main() -> i32 {
             ],
         );
     } else {
+        let mut exit_code: i32 = 0;
+        let _pid = wait(&mut exit_code);
         yield_();
     }
     0
