@@ -73,7 +73,7 @@ impl<T, S: MutexSupport> SpinMutex<T, S> {
         }
     }
 
-    /// # SAFETY
+    /// # Safety
     ///
     /// This is highly unsafe.
     /// You should ensure that context switch won't happen during

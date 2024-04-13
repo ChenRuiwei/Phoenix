@@ -162,7 +162,7 @@ impl VmArea {
 
     /// Copy the data to start_va + offset.
     ///
-    /// Safety:
+    /// # Safety
     ///
     /// Assume that all frames were cleared before.
     pub fn copy_data_with_offset(&self, page_table: &PageTable, offset: usize, data: &[u8]) {

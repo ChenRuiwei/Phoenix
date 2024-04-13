@@ -19,7 +19,7 @@ use config::{
 };
 pub use memory::page_table::PageTable;
 use memory::{frame, heap, VirtAddr, VirtPageNum};
-pub use memory_space::{activate_kernel_space, MemorySpace};
+pub use memory_space::{switch_kernel_page_table, MemorySpace};
 pub use page::Page;
 pub use user_ptr::{UserInOutPtr, UserReadPtr, UserWritePtr};
 
@@ -36,7 +36,7 @@ pub fn init() {
         VirtAddr::from(_ekernel as usize).to_offset().to_pa().into(),
         VirtAddr::from(MEMORY_END).to_offset().to_pa().into(),
     );
-    unsafe { mm::activate_kernel_space() };
+    unsafe { mm::switch_kernel_page_table() };
     log::info!("KERNEL SPACE activated");
 }
 

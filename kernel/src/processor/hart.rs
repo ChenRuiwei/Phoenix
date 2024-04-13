@@ -74,7 +74,7 @@ impl Hart {
         unsafe { disable_interrupt() };
         let old_env = self.env();
         let sie = EnvContext::env_change(env, old_env);
-        unsafe { mm::activate_kernel_space() };
+        unsafe { mm::switch_kernel_page_table() };
         self.task = None;
         core::mem::swap(self.env_mut(), env);
         if sie {

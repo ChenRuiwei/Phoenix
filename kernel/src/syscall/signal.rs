@@ -18,7 +18,11 @@ use crate::{
 /// 返回值：如果传入参数错误（比如传入的 action 或 old_action
 /// 为空指针或者） 信号类型不存在返回 -1 ，否则返回 0 。
 /// syscall ID: 134
-pub fn sys_sigaction(signum: Sig, action: UserReadPtr::<SigAction>, old_action: UserWritePtr::<SigAction>) -> SyscallResult {
+pub fn sys_sigaction(
+    signum: Sig,
+    action: UserReadPtr<SigAction>,
+    old_action: UserWritePtr<SigAction>,
+) -> SyscallResult {
     if !signum.is_valid() {
         return Err(SysError::EINVAL);
     }
@@ -38,7 +42,7 @@ pub fn sys_sigaction(signum: Sig, action: UserReadPtr::<SigAction>, old_action: 
     let old = signal.handlers.replace(signum, new);
     drop(signal);
 
-    // TODO：这里删掉了UMI的一点东西？不知道会不会影响
+    // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
         old_action.write(current_task(), old.into());
     }
@@ -47,7 +51,11 @@ pub fn sys_sigaction(signum: Sig, action: UserReadPtr::<SigAction>, old_action: 
 
 /// how决定如何修改当前的信号屏蔽字;set指定了需要添加、移除或设置的信号;
 /// 当前的信号屏蔽字会被保存在 oldset 指向的位置
-pub fn sys_sigprocmask(how: usize, set: UserReadPtr::<SigSet>, old_set: UserWritePtr::<SigSet>) -> SyscallResult {
+pub fn sys_sigprocmask(
+    how: usize,
+    set: UserReadPtr<SigSet>,
+    old_set: UserWritePtr<SigSet>,
+) -> SyscallResult {
     let mut signal = current_task().signal.lock();
     if !old_set.is_null() {
         old_set.write(current_task(), signal.blocked);

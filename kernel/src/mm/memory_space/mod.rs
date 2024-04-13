@@ -47,7 +47,7 @@ extern "C" {
 /// There is no need to lock `KERNEL_SPACE` since it won't be changed.
 static KERNEL_SPACE: Lazy<MemorySpace> = Lazy::new(MemorySpace::new_kernel);
 
-pub unsafe fn activate_kernel_space() {
+pub unsafe fn switch_kernel_page_table() {
     KERNEL_SPACE.switch_page_table();
 }
 

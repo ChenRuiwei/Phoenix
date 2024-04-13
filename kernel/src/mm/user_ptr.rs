@@ -1,4 +1,4 @@
-//! UserPtr
+//! # UserPtr
 //!
 //! Used for automatically check user ptr when reading or writing.
 
@@ -43,7 +43,7 @@ impl Write for Out {}
 impl Read for InOut {}
 impl Write for InOut {}
 
-/// `UserPtr` checks user ptr automatically when reading or writing.
+/// Checks user ptr automatically when reading or writing.
 ///
 /// It will be consumed once being used.
 pub struct UserPtr<T: Clone + Copy + 'static, P: Policy> {

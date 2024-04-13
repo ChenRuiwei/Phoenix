@@ -23,9 +23,12 @@ fn main() -> i32 {
             ],
         );
     } else {
-        let mut exit_code: i32 = 0;
-        let _pid = wait(&mut exit_code);
-        yield_();
+        let mut wstatus: i32 = 0;
+        let pid = wait(&mut wstatus);
+        println!(
+            "[initproc] Released a zombie process, pid={}, wstatus={:#x}",
+            pid, wstatus,
+        );
     }
     0
 }
