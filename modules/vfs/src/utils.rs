@@ -1,7 +1,13 @@
-use crate::{dentry::VFSDentry, DEFAULT_PERMISSION_DIR, DEFAULT_PERMISSION_FILE, PERMISSION_LEN};
+use alloc::{
+    string::String,
+    sync::{Arc, Weak},
+};
+
+use crate::{dentry::VFSDentry, PERMISSION_LEN};
 
 bitflags::bitflags! {
     // 文件权限
+    #[derive(Copy, Clone)]
     pub struct VFSNodePermission: u16 {
         // 文件所有者拥有读权限
         const OWNER_READ = 0o100;
@@ -33,15 +39,15 @@ impl From<&str> for VFSNodePermission {
         let mut perm = VFSNodePermission::empty();
 
         let perms = [
-            (VfsNodePerm::OWNER_READ, b'r'),
-            (VfsNodePerm::OWNER_WRITE, b'w'),
-            (VfsNodePerm::OWNER_EXEC, b'x'),
-            (VfsNodePerm::GROUP_READ, b'r'),
-            (VfsNodePerm::GROUP_WRITE, b'w'),
-            (VfsNodePerm::GROUP_EXEC, b'x'),
-            (VfsNodePerm::OTHER_READ, b'r'),
-            (VfsNodePerm::OTHER_WRITE, b'w'),
-            (VfsNodePerm::OTHER_EXEC, b'x'),
+            (VFSNodePermission::OWNER_READ, b'r'),
+            (VFSNodePermission::OWNER_WRITE, b'w'),
+            (VFSNodePermission::OWNER_EXEC, b'x'),
+            (VFSNodePermission::GROUP_READ, b'r'),
+            (VFSNodePermission::GROUP_WRITE, b'w'),
+            (VFSNodePermission::GROUP_EXEC, b'x'),
+            (VFSNodePermission::OTHER_READ, b'r'),
+            (VFSNodePermission::OTHER_WRITE, b'w'),
+            (VFSNodePermission::OTHER_EXEC, b'x'),
         ];
 
         for (i, &(flag, ch)) in perms.iter().enumerate() {
@@ -57,33 +63,43 @@ impl VFSNodePermission {
     // 将权限解析为一个长度为9的字符数组，由r, w, x, -组成
     pub const fn get_permission_self(&self) -> [u8; 9] {
         let mut perm = [b'-'; 9];
-        let perms = [
-            (VfsNodePerm::OWNER_READ, b'r'),
-            (VfsNodePerm::OWNER_WRITE, b'w'),
-            (VfsNodePerm::OWNER_EXEC, b'x'),
-            (VfsNodePerm::GROUP_READ, b'r'),
-            (VfsNodePerm::GROUP_WRITE, b'w'),
-            (VfsNodePerm::GROUP_EXEC, b'x'),
-            (VfsNodePerm::OTHER_READ, b'r'),
-            (VfsNodePerm::OTHER_WRITE, b'w'),
-            (VfsNodePerm::OTHER_EXEC, b'x'),
-        ];
-
-        for (i, &(flag, ch)) in perms.iter().enumerate() {
-            if self.contains(flag) {
-                perm[i] = ch;
-            }
+        if self.contains(Self::OWNER_READ) {
+            perm[0] = b'r';
+        }
+        if self.contains(Self::OWNER_WRITE) {
+            perm[1] = b'w';
+        }
+        if self.contains(Self::OWNER_EXEC) {
+            perm[2] = b'x';
+        }
+        if self.contains(Self::GROUP_READ) {
+            perm[3] = b'r';
+        }
+        if self.contains(Self::GROUP_WRITE) {
+            perm[4] = b'w';
+        }
+        if self.contains(Self::GROUP_EXEC) {
+            perm[5] = b'x';
+        }
+        if self.contains(Self::OTHER_READ) {
+            perm[6] = b'r';
+        }
+        if self.contains(Self::OTHER_WRITE) {
+            perm[7] = b'w';
+        }
+        if self.contains(Self::OTHER_EXEC) {
+            perm[8] = b'x';
         }
         perm
     }
 
     // 返回文件默认权限，所有用户都可以读和写，但是不能执行
     pub const fn get_permission_file_default() -> Self {
-        Self::from_bits_truncate(DEFAULT_PERMISSION_FILE)
+        Self::from_bits_truncate(0o666)
     }
 
     pub const fn get_permission_dir_default() -> Self {
-        Self::from_bits_truncate(DEFAULT_PERMISSION_DIR)
+        Self::from_bits_truncate(0o755)
     }
 }
 

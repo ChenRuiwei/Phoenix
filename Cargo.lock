@@ -262,6 +262,7 @@ dependencies = [
  "spin",
  "sync",
  "systype",
+ "vfs",
  "virtio-drivers",
  "xmas-elf",
 ]

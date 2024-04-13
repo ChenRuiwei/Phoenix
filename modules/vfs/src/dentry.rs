@@ -1,3 +1,5 @@
+use alloc::{string::String, sync::Arc};
+
 use systype::SysResult;
 
 use crate::{inode::VFSInode, utils::VFSMountPoint};
@@ -7,7 +9,7 @@ pub trait VFSDentry: Send + Sync {
     fn get_name(&self) -> String;
 
     // 将dentry设为挂载点
-    fn turn_to_mount_point(
+    fn to_mount_point(
         self: Arc<Self>,
         sub_fs_root: Arc<dyn VFSDentry>,
         mount_flag: u32,
@@ -72,13 +74,12 @@ pub trait VFSDentry: Send + Sync {
                 p.get_path() + path.as_str()
             };
         } else {
-            warn!("dentry has no parent");
             String::from("/")
         }
     }
 }
 
-impl dyn VfsDentry {
+impl dyn VFSDentry {
     /// Insert a child to this dentry and return the dentry of the child
     ///
     /// It likes [`VfsDentry::insert`], but it will not take ownership of `self`

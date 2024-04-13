@@ -1,3 +1,5 @@
+use alloc::sync::Arc;
+
 use systype::SysResult;
 
 use crate::{file_system::VFSFileSystem, inode::VFSInode, stat::VFSStat};

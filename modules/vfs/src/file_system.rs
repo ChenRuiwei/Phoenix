@@ -1,3 +1,5 @@
+use alloc::{string::String, sync::Arc};
+
 use systype::SysResult;
 
 use crate::{dentry::VFSDentry, inode::VFSInode, super_block::VFSSuperBlock};
