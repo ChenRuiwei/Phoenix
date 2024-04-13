@@ -38,7 +38,7 @@ impl Future for YieldFuture {
     }
 }
 
-/// Yield the current thread (and the scheduler will switch to next thread)
+/// Yield the current thread (the scheduler will switch to the next thread)
 pub async fn yield_now() {
     YieldFuture::new().await;
 }
