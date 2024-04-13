@@ -10,7 +10,7 @@ use crate::{
     processor::env::SumGuard,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VmAreaType {
     /// Segments from user elf file, e.g. text, rodata, data, bss
     Elf,
@@ -143,7 +143,7 @@ impl VmArea {
     ///
     /// Will alloc new pages for `VmArea` according to `VmAreaType`.
     pub fn map(&mut self, page_table: &mut PageTable) {
-        if self.vma_type == VmAreaType::Physical {
+        if self.vma_type == VmAreaType::Physical || self.vma_type == VmAreaType::Mmio {
             for vpn in self.vpn_range {
                 page_table.map(
                     vpn,

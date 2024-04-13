@@ -11,13 +11,14 @@
 #![feature(stdsimd)]
 #![feature(riscv_ext_intrinsics)]
 #![feature(map_try_insert)]
+#![feature(format_args_nl)]
 #![allow(unused)]
 #![allow(clippy::mut_from_ref)]
 
 use alloc::fmt;
 
 use config::mm::HART_START_ADDR;
-use driver::sbi;
+use driver::{print, sbi};
 use processor::local_hart;
 
 use crate::processor::hart;
@@ -73,7 +74,7 @@ fn hart_start(hart_id: usize) {
             continue;
         }
         let status = sbi::hart_start(i, HART_START_ADDR);
-        println!("[kernel] start to wake up hart {}... status {}", i, status);
+        println!("[kernel] start to wake up hart {i}... status {status}");
         if status == 0 {
             has_another = true;
         }
@@ -93,10 +94,7 @@ fn rust_main(hart_id: usize) {
         hart::init(hart_id);
         logging::init();
 
-        println!(
-            "[kernel] ---------- main hart {} started ---------- ",
-            hart_id
-        );
+        println!("[kernel] ---------- main hart {hart_id} started ---------- ");
 
         mm::init();
         trap::init();
@@ -120,20 +118,14 @@ fn rust_main(hart_id: usize) {
             hint::spin_loop()
         }
 
-        println!(
-            "[kernel] ---------- hart {} is starting... ----------",
-            hart_id
-        );
+        println!("[kernel] ---------- hart {hart_id} is starting... ----------");
 
         trap::init();
         unsafe { mm::switch_kernel_page_table() };
-        println!("[kernel] ---------- hart {} started ----------", hart_id);
+        println!("[kernel] ---------- hart {hart_id} started ----------");
     }
 
-    println!(
-        "[kernel] ---------- hart {} start to fetch task... ---------- ",
-        hart_id
-    );
+    println!("[kernel] ---------- hart {hart_id} start to fetch task... ---------- ");
     loop {
         executor::run_until_idle();
     }

@@ -148,7 +148,7 @@ pub async fn sys_wait4(
                 // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
                 // wstatus macros can be found in "bits/waitstatus.h"
                 let status = (res_task.exit_code() & 0xff) << 8;
-                log::debug!("wstatus: {:#x}", status);
+                log::trace!("[sys_wait4] wstatus: {:#x}", status);
                 wstatus.write(task, status)?;
             }
             // TODO: do some cleanings
@@ -206,12 +206,7 @@ pub fn sys_execve(
     let mut argv = read_2d_cstr(argv)?;
     let mut envp = read_2d_cstr(envp)?;
 
-    log::info!(
-        "[sys_execve]: path: {:?}, argv: {:?}, envp: {:?}",
-        path_str,
-        argv,
-        envp
-    );
+    log::info!("[sys_execve]: path: {path_str:?}, argv: {argv:?}, envp: {envp:?}",);
     log::debug!("[sys_execve]: pid: {:?}", task.tid());
 
     // TODO: should we add envp

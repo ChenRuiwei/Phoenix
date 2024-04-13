@@ -24,7 +24,7 @@ pub struct UtsName {
 }
 
 impl UtsName {
-    // TODO: Is the default value coyied from Titanix correct?
+    // TODO: Is the default value copied from Titanix correct?
     pub fn default() -> Self {
         Self {
             sysname: Self::from_str("Linux"),

@@ -61,17 +61,20 @@ pub fn print(args: fmt::Arguments<'_>) {
 /// print string macro
 #[macro_export]
 macro_rules! print {
-    ($fmt: literal $(, $($arg: tt)+)?) => {
-        $crate::print(format_args!($fmt $(, $($arg)+)?));
-    }
+    ($($arg:tt)*) => {{
+        $crate::print(format_args!($($arg)*));
+    }};
 }
 
 /// println string macro
 #[macro_export]
 macro_rules! println {
-    ($fmt: literal $(, $($arg: tt)+)?) => {
-        $crate::print(format_args!(concat!($fmt, "\n") $(, $($arg)+)?));
-    }
+    () => {
+        $crate::print!("\n")
+    };
+    ($($arg:tt)*) => {{
+        $crate::print(format_args_nl!($($arg)*));
+    }};
 }
 
 pub fn shutdown() -> ! {

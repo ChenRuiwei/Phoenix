@@ -43,11 +43,7 @@ extern "C" {
 pub unsafe fn set_kernel_user_rw_trap() {
     let trap_vaddr = __user_rw_trap_vector as usize;
     set_trap_handler_vector(trap_vaddr);
-    log::trace!(
-        "[kernel] switch to user rw checking mode for hart {} at stvec: {:#x}",
-        local_hart().hart_id(),
-        trap_vaddr
-    );
+    log::trace!("[user check] switch to user rw checking mode at stvec: {trap_vaddr:#x}",);
 }
 
 pub fn will_read_fail(vaddr: usize) -> bool {

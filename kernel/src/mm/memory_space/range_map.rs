@@ -21,11 +21,12 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
     }
     pub fn try_insert(&mut self, Range { start, end }: Range<U>, value: V) -> Result<&mut V, V> {
         debug_assert!(start < end);
-        // if this happens
-        // xstart.......xend
-        //        start.........end
         if let Some((_xstart, Node { end: xend, .. })) = self.0.range(..end).next_back() {
+            // if this happens:
+            // xstart.......xend
+            //        start.........end
             if *xend > start {
+                log::error!("[range map] try_insert error");
                 return Err(value);
             }
         }

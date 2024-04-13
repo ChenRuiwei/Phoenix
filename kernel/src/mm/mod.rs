@@ -26,7 +26,7 @@ pub use user_ptr::{UserInOutPtr, UserReadPtr, UserWritePtr};
 use self::memory_space::vm_area::MapPerm;
 use crate::mm;
 
-/// Initiate heap allocator, frame allocator and kernel space
+/// Initialize heap allocator, frame allocator and kernel space
 pub fn init() {
     extern "C" {
         fn _ekernel();

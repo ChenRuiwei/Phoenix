@@ -44,7 +44,7 @@ fn new_shared<T>(data: T) -> Shared<T> {
 /// User task control block, a.k.a. process control block
 ///
 /// We treat processes and threads as tasks, consistent with the approach
-/// adopted by Linux.
+/// adopted by Linux. A process is a task that is the leader of a `ThreadGroup`.
 pub struct Task {
     ///
     tid: TidHandle,
@@ -68,6 +68,7 @@ pub struct Task {
     pub waker: SyncUnsafeCell<Option<Waker>>,
     ///
     pub thread_group: Shared<ThreadGroup>,
+    ///
     pub signal: SpinNoIrqLock<Signal>,
     /// user can define sig_stack by sys_signalstack
     pub sig_stack: SyncUnsafeCell<Option<SignalStack>>,
@@ -354,8 +355,7 @@ impl Task {
             }
         }
 
-        // set children to be zombie and reparent them, which means set their parent to
-        // init.
+        // set children to be zombie and reparent them to init.
         debug_assert_ne!(self.tid(), INITPROC_PID);
         let children = self.children.lock();
         if !children.is_empty() {
@@ -370,7 +370,7 @@ impl Task {
 
         // release all fd
 
-        // TODO: may cause problem if leader is removed.
+        // NOTE: leader will be removed by parent calling `sys_wait4`
         if !self.is_leader() {
             self.with_mut_thread_group(|tg| tg.remove(self));
             TASK_MANAGER.remove(self)

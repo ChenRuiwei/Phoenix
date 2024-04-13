@@ -172,9 +172,6 @@ impl MemorySpace {
         ));
         log::info!("[kernel] mapping mmio registers");
         for pair in MMIO {
-            log::info!("start va: {:#x}", pair.0);
-            log::info!("end va: {:#x}", pair.0 + pair.1);
-            log::info!("permission: {:?}", pair.2);
             memory_space.push_vma(VmArea::new(
                 (pair.0 + VIRT_RAM_OFFSET).into(),
                 (pair.0 + pair.1 + VIRT_RAM_OFFSET).into(),
@@ -350,7 +347,7 @@ impl MemorySpace {
     ///
     /// Return address of the stack top, which is aligned to 16 bytes.
     ///
-    /// The stack has a range of [sp_init - size, sp_init].
+    /// The stack has a range of [sp - size, sp].
     pub fn alloc_stack(&mut self, size: usize) -> VirtAddr {
         const STACK_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize(U_SEG_STACK_BEG)..VirtAddr::from_usize(U_SEG_STACK_END);
@@ -369,10 +366,10 @@ impl MemorySpace {
         sp_init
     }
 
-    /// Clone a same `MemorySpace`
+    /// Clone a same `MemorySpace` from another user space, including datas in
+    /// memory.
     pub fn from_user(user_space: &Self) -> Self {
         let mut memory_space = Self::new_user();
-        // copy data sections/trap_context/user_stack
         for (_, area) in user_space.areas.iter() {
             let mut new_area = VmArea::from_another(area);
             memory_space.push_vma(new_area);
@@ -391,13 +388,13 @@ impl MemorySpace {
     /// Push `VmArea` into `MemorySpace` and map it in page table.
     pub fn push_vma(&mut self, mut vma: VmArea) {
         vma.map(&mut self.page_table);
-        self.areas.try_insert(vma.range_va(), vma);
+        self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
     pub fn push_vma_with_data(&mut self, mut vma: VmArea, offset: usize, data: &[u8]) {
         vma.map(&mut self.page_table);
         vma.copy_data_with_offset(&self.page_table, offset, data);
-        self.areas.try_insert(vma.range_va(), vma);
+        self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
     pub fn handle_pagefault(
