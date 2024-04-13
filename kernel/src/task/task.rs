@@ -56,7 +56,10 @@ pub struct Task {
     /// Parent process
     pub parent: Shared<Option<Weak<Task>>>,
     /// Children processes
-    pub children: Shared<Vec<Arc<Task>>>,
+    // NOTE: Arc<Task> can only be hold by `Hart`, `UserTaskFuture` and parent `Task`. Unused task
+    // will be automatically dropped by previous two structs. However, it should be treated with
+    // great care to drop task in `children`.
+    pub children: Shared<BTreeMap<Tid, Arc<Task>>>,
     /// Exit code of the current process
     pub exit_code: AtomicI32,
     ///
@@ -68,6 +71,12 @@ pub struct Task {
     pub signal: SpinNoIrqLock<Signal>,
     /// user can define sig_stack by sys_signalstack
     pub sig_stack: SyncUnsafeCell<Option<SignalStack>>,
+}
+
+impl core::fmt::Debug for Task {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Task").field("tid", &self.tid()).finish()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -99,7 +108,7 @@ impl Task {
             tid: alloc_tid(),
             state: SpinNoIrqLock::new(TaskState::Running),
             parent: new_shared(None),
-            children: new_shared(Vec::new()),
+            children: new_shared(BTreeMap::new()),
             exit_code: AtomicI32::new(0),
             trap_context: SyncUnsafeCell::new(trap_context),
             memory_space: new_shared(memory_space),
@@ -120,7 +129,7 @@ impl Task {
         self.parent.lock().clone()
     }
 
-    pub fn children(&self) -> Vec<Arc<Self>> {
+    pub fn children(&self) -> BTreeMap<Tid, Arc<Self>> {
         self.children.lock().clone()
     }
 
@@ -128,8 +137,15 @@ impl Task {
         *self.state.lock()
     }
 
-    fn add_child(&self, child: Arc<Task>) {
-        self.children.lock().push(child)
+    pub fn add_child(&self, child: Arc<Task>) {
+        self.children
+            .lock()
+            .try_insert(child.tid(), child)
+            .expect("try add child with a duplicate tid");
+    }
+
+    pub fn remove_child(&self, tid: Tid) {
+        self.children.lock().remove(&tid);
     }
 
     pub fn is_leader(&self) -> bool {
@@ -250,11 +266,11 @@ impl Task {
         if flags.contains(CloneFlags::THREAD) {
             parent = self.parent.clone();
             children = self.children.clone();
-            // remember to add the new lproc to group please!
+            // will add the new task into the group later
             thread_group = self.thread_group.clone();
         } else {
             parent = new_shared(Some(Arc::downgrade(&self)));
-            children = new_shared(Vec::new());
+            children = new_shared(BTreeMap::new());
             thread_group = new_shared(ThreadGroup::new());
         }
 
@@ -266,8 +282,8 @@ impl Task {
             // TODO: COW
             memory_space = new_shared(self.with_mut_memory_space(|m| MemorySpace::from_user(m)));
             // Flush both old and new process
-            unsafe { core::arch::riscv64::sfence_vma_all() };
             // TODO: avoid flushing global entries like kernel mappings
+            unsafe { core::arch::riscv64::sfence_vma_all() };
         }
 
         let new = Arc::new(Self {
@@ -322,9 +338,8 @@ impl Task {
             .init_user(stack_begin.into(), entry, 0, 0, 0);
     }
 
-    // After all of the threads in a thread group terminate the parent
-    // process of the thread group is sent a SIGCHLD (or other
-    // termination) signal.
+    // NOTE: After all of the threads in a thread group is terminated, the parent
+    // process of the thread group is sent a SIGCHLD (or other termination) signal.
     // TODO:
     pub fn do_exit(self: &Arc<Self>) {
         log::info!("thread {} do exit", self.tid());
@@ -332,35 +347,37 @@ impl Task {
             panic!("initproc die!!!, sepc {:#x}", self.trap_context_mut().sepc);
         }
 
-        // Send SIGCHLD to parent if this is the leader
+        // TODO: send SIGCHLD to parent if this is the leader
         if self.is_leader() {
             if let Some(parent) = self.parent() {
                 let parent = parent.upgrade().unwrap();
             }
         }
 
-        // Set children to be zombie and reparent them, which means set their parent to
+        // set children to be zombie and reparent them, which means set their parent to
         // init.
         debug_assert_ne!(self.tid(), INITPROC_PID);
-        self.with_children(|children| {
-            if !children.is_empty() {
-                let init = TASK_MANAGER.get(INITPROC_PID).unwrap();
-                children.iter().for_each(|c| {
-                    c.set_zombie();
-                    *c.parent.lock() = Some(Arc::downgrade(&init));
-                });
-                init.children.lock().extend(children.iter().cloned());
-            }
-        });
+        let children = self.children.lock();
+        if !children.is_empty() {
+            let init = TASK_MANAGER.get(INITPROC_PID).unwrap();
+            children.values().for_each(|c| {
+                c.set_zombie();
+                *c.parent.lock() = Some(Arc::downgrade(&init));
+            });
+            init.children.lock().extend(children.clone());
+        }
+        drop(children);
 
-        // Release all fd
+        // release all fd
 
-        // TODO: I think it will cause problem if leader is removed.
-        // self.with_mut_thread_group(|tg| tg.remove(self));
-        TASK_MANAGER.remove(self)
+        // TODO: may cause problem if leader is removed.
+        if !self.is_leader() {
+            self.with_mut_thread_group(|tg| tg.remove(self));
+            TASK_MANAGER.remove(self)
+        }
     }
 
-    with_!(children, Vec<Arc<Task>>);
+    with_!(children, BTreeMap<Tid, Arc<Task>>);
     with_!(memory_space, MemorySpace);
     with_!(thread_group, ThreadGroup);
 }

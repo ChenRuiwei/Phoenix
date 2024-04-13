@@ -3,6 +3,7 @@
 mod fs;
 mod id;
 mod misc;
+mod mm;
 mod process;
 mod signal;
 
@@ -12,6 +13,7 @@ use ::signal::sigset::SigSet;
 use fs::*;
 use id::*;
 use log::error;
+use mm::*;
 pub use process::CloneFlags;
 use process::*;
 use systype::SyscallResult;

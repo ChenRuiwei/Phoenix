@@ -10,45 +10,45 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::{current_task, current_trap_cx},
     syscall::process,
-    task::{spawn_user_task, yield_now, PGid, Pid, Tid},
+    task::{spawn_user_task, yield_now, PGid, Pid, Tid, TASK_MANAGER},
 };
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    /// See in "bits/sched.h"
     pub struct CloneFlags: u64 {
-        /* 共享内存 */
+        /// Set if VM shared between processes.
         const VM = 0x0000100;
-        /* 共享文件系统信息 */
+        /// Set if fs info shared between processes.
         const FS = 0x0000200;
-        /* 共享已打开的文件 */
+        /// Set if open files shared between processes.
         const FILES = 0x0000400;
-        /* 共享信号处理句柄 */
+        /// Set if signal handlers shared.
         const SIGHAND = 0x00000800;
-        /* 共享 parent (新旧 task 的 getppid 返回结果相同) */
+        /// Set if we want to have the same parent as the cloner.
         const PARENT = 0x00008000;
-        /* 新旧 task 置于相同线程组 */
+        /// Set to add to same thread group.
         const THREAD = 0x00010000;
-        /* create a new TLS for the child */
+        /// Set TLS info.
         const SETTLS = 0x00080000;
-        /* set the TID in the parent */
+        /// Store TID in userlevel buffer before MM copy.
         const PARENT_SETTID = 0x00100000;
-        /* clear the TID in the child */
+        /// Register exit futex and memory location to clear.
         const CHILD_CLEARTID = 0x00200000;
-        /* set the TID in the child */
+        /// Store TID in userlevel buffer in the child.
         const CHILD_SETTID = 0x01000000;
-        /* clear child signal handler */
-        const CHILD_CLEAR_SIGHAND = 0x100000000;
     }
 }
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    /// See in "bits/waitflags.h"
     pub struct WaitOptions: i32 {
-        // Don't block waiting.
+        /// Don't block waiting.
         const WNOHANG = 0x00000001;
-        // Report status of stopped children.
+        /// Report status of stopped children.
         const WUNTRACED = 0x00000002;
-        // Report continued child.
+        /// Report continued child.
         const WCONTINUED = 0x00000008;
     }
 }
@@ -127,10 +127,10 @@ pub async fn sys_wait4(
             log::error!("[sys_wait4] fail: no child");
             return Err(SysError::ECHILD);
         }
-        let process = match target {
-            WaitFor::AnyChild => children.iter().find(|c| c.is_zombie()),
+        let res_task = match target {
+            WaitFor::AnyChild => children.values().find(|c| c.is_zombie()),
             WaitFor::Pid(pid) => {
-                let c = children.iter().find(|c| c.pid() == pid).ok_or({
+                let c = children.get(&pid).ok_or({
                     log::error!("[sys_wait4] fail: no child with pid {pid}");
                     SysError::ECHILD
                 })?;
@@ -143,15 +143,18 @@ pub async fn sys_wait4(
             WaitFor::PGid(_) => unimplemented!(),
             WaitFor::AnyChildInGroup => unimplemented!(),
         };
-        if let Some(process) = process {
+        if let Some(res_task) = res_task {
             if wstatus.not_null() {
                 // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
                 // wstatus macros can be found in "bits/waitstatus.h"
-                let status = (process.exit_code() & 0xff) << 8;
+                let status = (res_task.exit_code() & 0xff) << 8;
                 log::debug!("wstatus: {:#x}", status);
-                wstatus.write(&task, status)?;
+                wstatus.write(task, status)?;
             }
-            return Ok(process.pid());
+            // TODO: do some cleanings
+            task.remove_child(res_task.tid());
+            TASK_MANAGER.remove(res_task);
+            return Ok(res_task.pid());
         } else if option.contains(WaitOptions::WNOHANG) {
             return Ok(0);
         }
