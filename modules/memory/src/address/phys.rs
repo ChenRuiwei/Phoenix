@@ -2,10 +2,13 @@
 use core::{
     fmt::{self, Debug, Formatter},
     mem::size_of,
+    ops::Range,
 };
+use std::intrinsics::size_of;
 
 use config::mm::{
-    PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, PTE_NUM_ONE_PAGE, VIRT_RAM_OFFSET,
+    PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, PTE_NUM_ONE_PAGE, PTE_SIZE,
+    VIRT_RAM_OFFSET,
 };
 
 use super::{
@@ -86,28 +89,57 @@ impl From<PhysPageNum> for PhysAddr {
 }
 
 impl PhysPageNum {
+    /// Get reference to `PhysPageNum` value
+    pub fn get_ref<T>(&self) -> &'static T {
+        unsafe { (self.0 as *const T).as_ref().unwrap() }
+    }
+
+    /// Get mutable reference to `PhysAddr` value
+    pub fn get_mut<T>(&self) -> &'static mut T {
+        unsafe { (self.0 as *mut T).as_mut().unwrap() }
+    }
+
     pub fn to_pa(&self) -> PhysAddr {
         (*self).into()
     }
+
     pub fn to_offset(&self) -> OffsetPageNum {
         (*self).into()
     }
-    /// Get `PageTableEntry` on `VirtPageNum`
+
+    pub fn pte(&self, idx: usize) -> &'static mut PageTableEntry {
+        let mut va: VirtAddr = self.to_offset().to_vpn().into();
+        va += idx * PTE_SIZE;
+        unsafe { va.get_mut() }
+    }
+
+    /// Get `PageTableEntry` array.
     pub fn pte_array(&self) -> &'static mut [PageTableEntry] {
         let va: VirtAddr = self.to_offset().to_vpn().into();
         unsafe { core::slice::from_raw_parts_mut(va.0 as *mut PageTableEntry, PTE_NUM_ONE_PAGE) }
     }
+
     /// Get bytes array of a physical page
     pub fn bytes_array(&self) -> &'static mut [u8] {
         let va: VirtAddr = self.to_offset().to_vpn().into();
         unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, PAGE_SIZE) }
     }
-    /// Get usize array of a physical page
-    pub fn usize_array(&self) -> &'static mut [usize] {
+
+    /// Get bytes array of a physical page with a range.
+    pub fn bytes_array_range(&self, range: Range<usize>) -> &'static mut [u8] {
+        debug_assert!(range.end < PAGE_SIZE);
+        let mut va: VirtAddr = self.to_offset().to_vpn().into();
+        va += range.start;
+        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, range.len()) }
+    }
+
+    /// Empty the whole page.
+    pub fn empty_the_page(&self) {
         let va: VirtAddr = self.to_offset().to_vpn().into();
         unsafe {
             core::slice::from_raw_parts_mut(va.0 as *mut usize, PAGE_SIZE / size_of::<usize>())
-        }
+                .fill(0)
+        };
     }
 }
 

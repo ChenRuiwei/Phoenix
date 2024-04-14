@@ -3,12 +3,13 @@
 use alloc::vec::Vec;
 use core::fmt::{self, Debug, Formatter};
 
+use bitmap_allocator::BitAlloc;
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 
 use crate::{PhysAddr, PhysPageNum};
 
-/// Manage a frame which has the same lifecycle as the tracker
+/// Manage a frame which has the same lifecycle as the tracker.
 pub struct FrameTracker {
     /// PPN of the frame
     pub ppn: PhysPageNum,
@@ -18,7 +19,7 @@ impl FrameTracker {
     /// Create an empty `FrameTracker`
     pub fn new(ppn: PhysPageNum) -> Self {
         // page cleaning
-        ppn.usize_array().fill(0);
+        ppn.empty_the_page();
         Self { ppn }
     }
 }
@@ -34,8 +35,6 @@ impl Drop for FrameTracker {
         frame_dealloc(self.ppn);
     }
 }
-
-use bitmap_allocator::BitAlloc;
 
 pub type FrameAllocator = bitmap_allocator::BitAlloc16M;
 

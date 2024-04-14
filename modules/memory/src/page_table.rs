@@ -21,16 +21,14 @@ pub unsafe fn switch_page_table(page_table_token: usize) {
     core::arch::riscv64::sfence_vma_all();
 }
 
-///
 pub struct PageTable {
     pub root_ppn: PhysPageNum,
     /// NOTE: these are all internal pages
     frames: Vec<FrameTracker>,
 }
 
-/// Assume that it won't oom when creating/mapping.
 impl PageTable {
-    /// Create a new empty page table
+    /// Create a new empty page table.
     pub fn new() -> Self {
         let root_frame = frame_alloc();
         PageTable {
@@ -51,9 +49,7 @@ impl PageTable {
         let kernel_start_vpn: VirtPageNum = VirtAddr::from(VIRT_RAM_OFFSET).into();
         let level_0_index = kernel_start_vpn.indices()[0];
         log::debug!(
-            "[PageTable::from_kernel] kernel start vpn level 0 index {:#x}, start vpn {:#x}",
-            level_0_index,
-            kernel_start_vpn.0
+            "[PageTable::from_kernel] kernel start vpn level 0 index {level_0_index:#x}, start vpn {kernel_start_vpn:#x}",
         );
         root_frame.ppn.pte_array()[level_0_index..]
             .copy_from_slice(&kernel_page_table.root_ppn.pte_array()[level_0_index..]);
@@ -76,6 +72,7 @@ impl PageTable {
         log::info!("----- Dump page table -----");
         self._dump(self.root_ppn, 0);
     }
+
     fn _dump(&self, ppn: PhysPageNum, level: usize) {
         if level >= 3 {
             return;
@@ -91,11 +88,13 @@ impl PageTable {
             }
         }
     }
+
+    /// Find the leaf pte and will create page table in need.
     fn find_pte_create(&mut self, vpn: VirtPageNum) -> &mut PageTableEntry {
         let idxs = vpn.indices();
         let mut ppn = self.root_ppn;
-        for (i, idx) in idxs.iter().enumerate() {
-            let pte = &mut ppn.pte_array()[*idx];
+        for (i, idx) in idxs.into_iter().enumerate() {
+            let pte = ppn.pte(idx);
             if i == 2 {
                 return pte;
             }
@@ -108,17 +107,19 @@ impl PageTable {
         }
         unreachable!()
     }
+
+    /// Find the leaf pte.
     ///
+    /// Return `None` if the leaf pte is not valid.
     pub fn find_pte(&self, vpn: VirtPageNum) -> Option<&mut PageTableEntry> {
         let idxs = vpn.indices();
         let mut ppn = self.root_ppn;
         let mut result: Option<&mut PageTableEntry> = None;
-        for (i, idx) in idxs.iter().enumerate() {
-            let pte = &mut ppn.pte_array()[*idx];
+        for (i, idx) in idxs.into_iter().enumerate() {
+            let pte = ppn.pte(idx);
             if !pte.is_valid() {
                 return None;
             }
-            // TODO: not sure whether we should check here before return or not
             if i == 2 {
                 result = Some(pte);
                 break;
@@ -127,36 +128,27 @@ impl PageTable {
         }
         result
     }
-    ///
+
+    /// Map `VirtPageNum` to `PhysPageNum` with `PTEFlags`.
     pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
         let pte = self.find_pte_create(vpn);
-        if pte.is_valid() {
-            log::error!("fail!!! ppn {:#x}, pte {:?}", pte.ppn().0, pte.flags());
-        }
-        assert!(!pte.is_valid(), "vpn {:?} is mapped before mapping", vpn);
+        assert!(!pte.is_valid(), "vpn {vpn:?} is mapped before mapping");
         *pte = PageTableEntry::new(ppn, flags | PTEFlags::V | PTEFlags::D | PTEFlags::A);
     }
-    /// Unmap a vpn
+
+    /// Unmap a `VirtPageNum`.
     pub fn unmap(&mut self, vpn: VirtPageNum) {
-        let pte = self.find_pte(vpn).unwrap();
-        assert!(pte.is_valid(), "vpn {:?} is invalid before unmapping", vpn);
+        let pte = self.find_pte(vpn).expect("leaf pte is not valid");
+        assert!(pte.is_valid(), "vpn {vpn:?} is invalid before unmapping",);
         *pte = PageTableEntry::empty();
     }
-    ///
-    pub fn translate_va(&self, va: VirtAddr) -> Option<PhysAddr> {
-        self.find_pte(va.clone().floor()).map(|pte| {
-            let aligned_pa: PhysAddr = pte.ppn().into();
-            let offset = va.page_offset();
-            let aligned_pa_usize: usize = aligned_pa.into();
-            (aligned_pa_usize + offset).into()
-        })
-    }
+
     /// Satp token with sv39 enabled
     pub fn token(&self) -> usize {
         8usize << 60 | self.root_ppn.0
     }
 
-    /// only for debug
+    /// Only for debug
     pub fn print_page(&self, vpn: VirtPageNum) {
         use alloc::format;
 

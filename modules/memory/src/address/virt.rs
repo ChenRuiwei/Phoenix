@@ -91,6 +91,16 @@ impl VirtAddr {
     pub const fn as_mut_ptr(self) -> *mut u8 {
         self.0 as *mut u8
     }
+
+    /// Get reference to `VirtAddr` value
+    pub unsafe fn get_ref<T>(&self) -> &'static T {
+        unsafe { (self.0 as *const T).as_ref().unwrap() }
+    }
+
+    /// Get mutable reference to `VirtAddr` value
+    pub unsafe fn get_mut<T>(&self) -> &'static mut T {
+        unsafe { (self.0 as *mut T).as_mut().unwrap() }
+    }
 }
 impl From<VirtAddr> for VirtPageNum {
     fn from(v: VirtAddr) -> Self {
