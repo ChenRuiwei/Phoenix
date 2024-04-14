@@ -18,7 +18,7 @@
 use alloc::fmt;
 
 use arch::time::{self, set_next_timer_irq};
-use config::mm::HART_START_ADDR;
+use config::{board::CLOCK_FREQ, mm::HART_START_ADDR};
 use driver::{print, sbi};
 use processor::local_hart;
 

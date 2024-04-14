@@ -52,6 +52,25 @@ pub async fn trap_handler(task: Arc<Task>) {
             };
             cx.set_user_a0(ret);
         }
+        Trap::Exception(Exception::StoreFault)
+        | Trap::Exception(Exception::StorePageFault)
+        | Trap::Exception(Exception::InstructionFault)
+        | Trap::Exception(Exception::InstructionPageFault)
+        | Trap::Exception(Exception::LoadFault)
+        | Trap::Exception(Exception::LoadPageFault) => {
+            log::debug!(
+                "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
+            );
+            // There are serveral kinds of page faults:
+            // 1. mmap area
+            // 2. sbrk area
+            // 3. fork cow area
+            // 4. user stack
+            // 5. execve elf file
+            // 6. dynamic link
+            // 7. illegal page fault
+            todo!()
+        }
         Trap::Exception(Exception::IllegalInstruction) => {
             log::warn!(
                 "[trap_handler] detected illegal instruction, stval {stval:#x}, sepc {sepc:#x}",

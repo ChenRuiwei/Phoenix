@@ -19,7 +19,9 @@ pub const USER_STACK_SIZE: usize = 1024 * 1024 * 8; // 8M
 pub const PAGE_SIZE: usize = 1 << PAGE_SIZE_BITS;
 pub const PAGE_MASK: usize = PAGE_SIZE - 1;
 pub const PAGE_SIZE_BITS: usize = 12;
-pub const PTE_NUM_ONE_PAGE: usize = 512;
+
+pub const PTE_SIZE: usize = 8;
+pub const PTE_NUM_ONE_PAGE: usize = PAGE_SIZE / PTE_SIZE;
 
 /// 3 level for sv39 page table
 pub const PAGE_TABLE_LEVEL_NUM: usize = 3;

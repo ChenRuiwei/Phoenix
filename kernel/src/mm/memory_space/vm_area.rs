@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{sync::Weak, vec::Vec};
 use core::ops::Range;
 
 use config::mm::PAGE_SIZE;
@@ -73,6 +73,8 @@ impl From<MapPerm> for PTEFlags {
 
 #[derive(Debug)]
 pub struct VmArea {
+    /// Points to parent `MemorySpace`
+    pub memory_space: Weak<MemorySpace>,
     pub vpn_range: VPNRange,
     pub frames: Vec<Page>,
     pub map_perm: MapPerm,
@@ -103,6 +105,7 @@ impl VmArea {
         let end_vpn: VirtPageNum = end_va.ceil();
         log::trace!("new vpn_range: {:?}, {:?}", start_vpn, end_vpn);
         Self {
+            memory_space: Weak::new(),
             vpn_range: VPNRange::new(start_vpn, end_vpn),
             frames: Vec::new(),
             vma_type,
@@ -112,6 +115,7 @@ impl VmArea {
 
     pub fn from_another(another: &Self) -> Self {
         Self {
+            memory_space: Weak::new(),
             vpn_range: another.vpn_range,
             frames: Vec::new(),
             vma_type: another.vma_type,

@@ -46,10 +46,13 @@ fn new_shared<T>(data: T) -> Shared<T> {
 /// We treat processes and threads as tasks, consistent with the approach
 /// adopted by Linux. A process is a task that is the leader of a `ThreadGroup`.
 pub struct Task {
-    ///
+    // Immutable
+    /// Tid of the task.
     tid: TidHandle,
     /// Whether the task is the leader.
     is_leader: bool,
+
+    // Mutable
     /// Whether this task is a zombie. Locked because of other task may operate
     /// this state, e.g. execve will kill other tasks.
     pub state: SpinNoIrqLock<TaskState>,
@@ -259,7 +262,7 @@ impl Task {
         use syscall::CloneFlags;
         let tid = alloc_tid();
 
-        let trap_context = SyncUnsafeCell::new(self.trap_context_mut().clone());
+        let trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
         let exit_code = AtomicI32::new(self.exit_code());
 
@@ -276,7 +279,7 @@ impl Task {
             thread_group = self.thread_group.clone();
         } else {
             is_leader = true;
-            parent = new_shared(Some(Arc::downgrade(&self)));
+            parent = new_shared(Some(Arc::downgrade(self)));
             children = new_shared(BTreeMap::new());
             thread_group = new_shared(ThreadGroup::new());
         }
@@ -330,7 +333,7 @@ impl Task {
         // terminate all threads except the leader
         self.with_thread_group(|tg| {
             for t in tg.iter() {
-                if !tg.is_leader(&t) {
+                if !t.is_leader() {
                     t.set_zombie();
                 }
             }
@@ -428,10 +431,6 @@ impl ThreadGroup {
 
     pub fn is_empty(&self) -> bool {
         self.members.is_empty()
-    }
-
-    pub fn is_leader(&self, task: &Task) -> bool {
-        self.tgid() == task.tid()
     }
 
     pub fn tgid(&self) -> Tid {

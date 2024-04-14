@@ -64,6 +64,8 @@ impl Hart {
         let sie = EnvContext::env_change(env, old_env);
         set_current_task(Arc::clone(task));
         core::mem::swap(self.env_mut(), env);
+        // PERF: do not switch page table if it belongs to the same user
+        // PERF: support ASID for page table
         unsafe { task.switch_page_table() };
         if sie {
             unsafe { enable_interrupt() };
@@ -74,7 +76,8 @@ impl Hart {
         unsafe { disable_interrupt() };
         let old_env = self.env();
         let sie = EnvContext::env_change(env, old_env);
-        unsafe { mm::switch_kernel_page_table() };
+        // PERF: no need to switch to kernel page table
+        // unsafe { mm::switch_kernel_page_table() };
         self.task = None;
         core::mem::swap(self.env_mut(), env);
         if sie {
