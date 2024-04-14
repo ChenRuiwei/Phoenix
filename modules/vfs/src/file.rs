@@ -1,8 +1,8 @@
 use systype::{SysError, SysResult};
 
-use crate::utils::{VFSDirEntry, VFSPollEvents};
+use crate::utils::{DirEntry, PollEvents};
 
-pub trait VFSFile: Send + Sync {
+pub trait File: Send + Sync {
     // 在offset上读
     fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> SysResult<usize> {
         Err(SysError::ENOSYS)
@@ -14,17 +14,17 @@ pub trait VFSFile: Send + Sync {
     }
 
     // 读取dentry，返回合法的dentry或Error
-    fn read_dir(&self, _start_index: usize) -> SysResult<Option<VFSDirEntry>> {
+    fn read_dir(&self, _start_index: usize) -> SysResult<Option<DirEntry>> {
         Err(SysError::ENOSYS)
     }
 
-    fn poll(&self, event: VFSPollEvents) -> SysResult<VFSPollEvents> {
-        let mut res = VFSPollEvents::empty();
-        if event.contains(VFSPollEvents::IN) {
-            res |= VFSPollEvents::IN;
+    fn poll(&self, event: PollEvents) -> SysResult<PollEvents> {
+        let mut res = PollEvents::empty();
+        if event.contains(PollEvents::IN) {
+            res |= PollEvents::IN;
         }
-        if event.contains(VFSPollEvents::OUT) {
-            res |= VFSPollEvents::OUT;
+        if event.contains(PollEvents::OUT) {
+            res |= PollEvents::OUT;
         }
         Ok(res)
     }

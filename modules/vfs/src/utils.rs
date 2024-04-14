@@ -3,12 +3,12 @@ use alloc::{
     sync::{Arc, Weak},
 };
 
-use crate::{dentry::VFSDentry, PERMISSION_LEN};
+use crate::{dentry::Dentry, PERMISSION_LEN};
 
 bitflags::bitflags! {
     // 文件权限
     #[derive(Copy, Clone)]
-    pub struct VFSNodePermission: u16 {
+    pub struct NodePermission: u16 {
         // 文件所有者拥有读权限
         const OWNER_READ = 0o100;
         // 文件所有者拥有写权限
@@ -32,22 +32,22 @@ bitflags::bitflags! {
     }
 }
 
-impl From<&str> for VFSNodePermission {
+impl From<&str> for NodePermission {
     fn from(value: &str) -> Self {
         let bytes = value.as_bytes();
         assert_eq!(bytes.len(), PERMISSION_LEN);
-        let mut perm = VFSNodePermission::empty();
+        let mut perm = NodePermission::empty();
 
         let perms = [
-            (VFSNodePermission::OWNER_READ, b'r'),
-            (VFSNodePermission::OWNER_WRITE, b'w'),
-            (VFSNodePermission::OWNER_EXEC, b'x'),
-            (VFSNodePermission::GROUP_READ, b'r'),
-            (VFSNodePermission::GROUP_WRITE, b'w'),
-            (VFSNodePermission::GROUP_EXEC, b'x'),
-            (VFSNodePermission::OTHER_READ, b'r'),
-            (VFSNodePermission::OTHER_WRITE, b'w'),
-            (VFSNodePermission::OTHER_EXEC, b'x'),
+            (NodePermission::OWNER_READ, b'r'),
+            (NodePermission::OWNER_WRITE, b'w'),
+            (NodePermission::OWNER_EXEC, b'x'),
+            (NodePermission::GROUP_READ, b'r'),
+            (NodePermission::GROUP_WRITE, b'w'),
+            (NodePermission::GROUP_EXEC, b'x'),
+            (NodePermission::OTHER_READ, b'r'),
+            (NodePermission::OTHER_WRITE, b'w'),
+            (NodePermission::OTHER_EXEC, b'x'),
         ];
 
         for (i, &(flag, ch)) in perms.iter().enumerate() {
@@ -59,7 +59,7 @@ impl From<&str> for VFSNodePermission {
     }
 }
 
-impl VFSNodePermission {
+impl NodePermission {
     // 将权限解析为一个长度为9的字符数组，由r, w, x, -组成
     pub const fn get_permission_self(&self) -> [u8; 9] {
         let mut perm = [b'-'; 9];
@@ -106,7 +106,7 @@ impl VFSNodePermission {
 // 文件与文件夹类型
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum VFSNodeType {
+pub enum NodeType {
     // 未知类型
     Unknown = 0,
     // 先进先出类型（如管道）
@@ -125,7 +125,7 @@ pub enum VFSNodeType {
     Socket = 0o14,
 }
 
-impl From<u8> for VFSNodeType {
+impl From<u8> for NodeType {
     fn from(value: u8) -> Self {
         match value {
             0 => Self::Unknown,
@@ -141,7 +141,7 @@ impl From<u8> for VFSNodeType {
     }
 }
 
-impl From<char> for VFSNodeType {
+impl From<char> for NodeType {
     fn from(value: char) -> Self {
         match value {
             '-' => Self::File,
@@ -156,7 +156,7 @@ impl From<char> for VFSNodeType {
     }
 }
 
-impl VFSNodeType {
+impl NodeType {
     /// Tests whether this node type represents a regular file.
     pub const fn is_file(self) -> bool {
         matches!(self, Self::File)
@@ -210,18 +210,18 @@ impl VFSNodeType {
 }
 
 #[derive(Debug, Clone)]
-pub struct VFSDirEntry {
+pub struct DirEntry {
     /// inode编号
     pub inode_num: u64,
     /// 文件类型
-    pub ty: VFSNodeType,
+    pub ty: NodeType,
     /// 文件名
     pub name: String,
 }
 
 bitflags! {
     /// ppoll 使用，表示对应在文件上等待或者发生过的事件
-    pub struct VFSPollEvents: u16 {
+    pub struct PollEvents: u16 {
         /// 可读
         const IN = 0x0001;
         /// 可写
@@ -236,22 +236,22 @@ bitflags! {
 }
 
 #[derive(Clone)]
-pub struct VFSMountPoint {
-    pub root: Arc<dyn VFSDentry>,
-    pub mount_point: Weak<dyn VFSDentry>,
+pub struct MountPoint {
+    pub root: Arc<dyn Dentry>,
+    pub mount_point: Weak<dyn Dentry>,
     pub mount_flags: u32,
 }
 
 #[repr(C)]
 #[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
-pub struct VFSTimeSpec {
+pub struct TimeSpec {
     pub sec: u64,  // 秒
     pub nsec: u64, // 纳秒, 范围在0~999999999
 }
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 #[repr(C)]
-pub struct VFSFileStat {
+pub struct FileStat {
     pub st_dev: u64,
     pub st_ino: u64,
     pub st_mode: u32,
@@ -264,15 +264,15 @@ pub struct VFSFileStat {
     pub st_blksize: u32,
     pub __pad2: u32,
     pub st_blocks: u64,
-    pub st_atime: VFSTimeSpec,
-    pub st_mtime: VFSTimeSpec,
-    pub st_ctime: VFSTimeSpec,
+    pub st_atime: TimeSpec,
+    pub st_mtime: TimeSpec,
+    pub st_ctime: TimeSpec,
     pub unused: u64,
 }
 
 bitflags! {
     /// renameat flag
-   pub struct VFSRenameFlag: u32 {
+   pub struct RenameFlag: u32 {
        /// Atomically exchange oldpath and newpath.
        /// Both pathnames must exist but may be of different type
        const RENAME_EXCHANGE = 1 << 1;
@@ -284,7 +284,7 @@ bitflags! {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum VFSTime {
-    AccessTime(VFSTimeSpec),
-    ModifiedTime(VFSTimeSpec),
+pub enum Time {
+    AccessTime(TimeSpec),
+    ModifiedTime(TimeSpec),
 }

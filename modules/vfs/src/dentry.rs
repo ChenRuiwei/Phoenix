@@ -2,24 +2,24 @@ use alloc::{string::String, sync::Arc};
 
 use systype::SysResult;
 
-use crate::{inode::VFSInode, utils::VFSMountPoint};
+use crate::{inode::Inode, utils::MountPoint};
 
-pub trait VFSDentry: Send + Sync {
+pub trait Dentry: Send + Sync {
     // 返回dentry名称
     fn get_name(&self) -> String;
 
     // 将dentry设为挂载点
     fn to_mount_point(
         self: Arc<Self>,
-        sub_fs_root: Arc<dyn VFSDentry>,
+        sub_fs_root: Arc<dyn Dentry>,
         mount_flag: u32,
     ) -> SysResult<()>;
 
     // 获取dentry的inode
-    fn get_inode(&self) -> SysResult<Arc<dyn VFSInode>>;
+    fn get_inode(&self) -> SysResult<Arc<dyn Inode>>;
 
     /// Get the mount point of this dentry
-    fn get_mount_point(&self) -> Option<VFSMountPoint>;
+    fn get_mount_point(&self) -> Option<MountPoint>;
 
     /// Remove the mount point of this dentry
     fn clear_mount_point(&self);
@@ -31,26 +31,22 @@ pub trait VFSDentry: Send + Sync {
     /// Lookup a dentry in the directory
     ///
     /// The dentry should cache its children to speed up the lookup
-    fn find(&self, path: &str) -> Option<Arc<dyn VFSDentry>>;
+    fn find(&self, path: &str) -> Option<Arc<dyn Dentry>>;
 
     /// Insert a child to this dentry and return the dentry of the child
-    fn insert(
-        self: Arc<Self>,
-        name: &str,
-        child: Arc<dyn VFSInode>,
-    ) -> SysResult<Arc<dyn VFSDentry>>;
+    fn insert(self: Arc<Self>, name: &str, child: Arc<dyn Inode>) -> SysResult<Arc<dyn Dentry>>;
 
     /// Remove a child from this dentry and return the dentry of the child
-    fn remove(&self, name: &str) -> Option<Arc<dyn VFSDentry>>;
+    fn remove(&self, name: &str) -> Option<Arc<dyn Dentry>>;
 
     /// Get the parent of this dentry
-    fn get_parent(&self) -> Option<Arc<dyn VFSDentry>>;
+    fn get_parent(&self) -> Option<Arc<dyn Dentry>>;
 
     /// Set the parent of this dentry
     ///
     /// This is useful when you want to move a dentry to another directory or
     /// mount this dentry to another directory
-    fn set_parent(&self, parent: &Arc<dyn VFSDentry>);
+    fn set_parent(&self, parent: &Arc<dyn Dentry>);
 
     /// Get the path of this dentry
     fn get_path(&self) -> String {
@@ -79,15 +75,15 @@ pub trait VFSDentry: Send + Sync {
     }
 }
 
-impl dyn VFSDentry {
+impl dyn Dentry {
     /// Insert a child to this dentry and return the dentry of the child
     ///
     /// It likes [`VfsDentry::insert`], but it will not take ownership of `self`
     pub fn insert_weak(
         self: &Arc<Self>,
         name: &str,
-        child: Arc<dyn VFSInode>,
-    ) -> SysResult<Arc<dyn VFSDentry>> {
+        child: Arc<dyn Inode>,
+    ) -> SysResult<Arc<dyn Dentry>> {
         self.clone().insert(name, child)
     }
     /// Make this dentry to  a mount point
@@ -96,7 +92,7 @@ impl dyn VFSDentry {
     /// of `self`
     pub fn to_mount_point_weak(
         self: &Arc<Self>,
-        sub_fs_root: Arc<dyn VFSDentry>,
+        sub_fs_root: Arc<dyn Dentry>,
         mount_flag: u32,
     ) -> SysResult<()> {
         self.clone().to_mount_point(sub_fs_root, mount_flag)

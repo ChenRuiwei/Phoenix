@@ -2,18 +2,18 @@ use alloc::sync::Arc;
 
 use systype::SysResult;
 
-use crate::{file_system::VFSFileSystem, inode::VFSInode, stat::VFSStat};
+use crate::{file_system::FileSystem, inode::Inode, stat::Stat};
 
-pub trait VFSSuperBlock: Send + Sync {
+pub trait SuperBlock: Send + Sync {
     // 回写同步
     // 第二个参数指示是否应该等待其他回写操作结束再执行
     fn sync_super_block(&self, _wait: bool) -> SysResult<()> {
         Ok(())
     }
     // 获取文件系统信息stat
-    fn get_stat(&self) -> SysResult<VFSStat>;
+    fn get_stat(&self) -> SysResult<Stat>;
     // 获取超级块对应文件系统实例
-    fn get_fs(&self) -> Arc<dyn VFSFileSystem>;
+    fn get_fs(&self) -> Arc<dyn FileSystem>;
     // 获取超级块对应的根inode
-    fn get_root_inode(&self) -> SysResult<Arc<dyn VFSInode>>;
+    fn get_root_inode(&self) -> SysResult<Arc<dyn Inode>>;
 }

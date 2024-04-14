@@ -1,13 +1,13 @@
 #![no_std]
 #![no_main]
 
-mod dentry;
-mod file;
-mod file_system;
-mod inode;
-mod stat;
-mod super_block;
-mod utils;
+pub mod dentry;
+pub mod file;
+pub mod file_system;
+pub mod inode;
+pub mod stat;
+pub mod super_block;
+pub mod utils;
 
 #[macro_use]
 extern crate bitflags;

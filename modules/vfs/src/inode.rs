@@ -3,9 +3,9 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 use systype::{SysError, SysResult};
 
 use crate::{
-    file::VFSFile,
-    super_block::VFSSuperBlock,
-    utils::{VFSFileStat, VFSNodePermission, VFSNodeType, VFSRenameFlag, VFSTime, VFSTimeSpec},
+    file::File,
+    super_block::SuperBlock,
+    utils::{FileStat, NodePermission, NodeType, RenameFlag, Time, TimeSpec},
 };
 
 pub struct InodeAttr {
@@ -17,35 +17,35 @@ pub struct InodeAttr {
     ///
     /// For truncate
     pub size: u64,
-    pub atime: VFSTimeSpec, // 最后访问时间
-    pub mtime: VFSTimeSpec, // 最后修改时间
-    pub ctime: VFSTimeSpec, // 最后改变时间
+    pub atime: TimeSpec, // 最后访问时间
+    pub mtime: TimeSpec, // 最后修改时间
+    pub ctime: TimeSpec, // 最后改变时间
 }
 
-pub trait VFSInode: VFSFile {
+pub trait Inode: File {
     // 获取所在文件系统的超级块
-    fn get_super_block(&self) -> SysResult<Arc<dyn VFSSuperBlock>> {
+    fn get_super_block(&self) -> SysResult<Arc<dyn SuperBlock>> {
         Err(SysError::ENOSYS)
     }
 
     /// Get the permission of this inode
-    fn get_node_perm(&self) -> VFSNodePermission {
-        VFSNodePermission::empty()
+    fn get_node_perm(&self) -> NodePermission {
+        NodePermission::empty()
     }
 
     /// Create a new node with the given `path` in the directory
     fn create(
         &self,
         _name: &str,
-        _ty: VFSNodeType,
-        _perm: VFSNodePermission,
+        _ty: NodeType,
+        _perm: NodePermission,
         _rdev: Option<u64>,
-    ) -> SysResult<Arc<dyn VFSInode>> {
+    ) -> SysResult<Arc<dyn Inode>> {
         Err(SysError::ENOSYS)
     }
 
     /// Create a new hard link to the src dentry
-    fn link(&self, _name: &str, _src: Arc<dyn VFSInode>) -> SysResult<Arc<dyn VFSInode>> {
+    fn link(&self, _name: &str, _src: Arc<dyn Inode>) -> SysResult<Arc<dyn Inode>> {
         Err(SysError::ENOSYS)
     }
 
@@ -55,11 +55,11 @@ pub trait VFSInode: VFSFile {
     }
 
     /// Create a new symbolic link to the \[syn_name] file
-    fn symlink(&self, _name: &str, _sy_name: &str) -> SysResult<Arc<dyn VFSInode>> {
+    fn symlink(&self, _name: &str, _sy_name: &str) -> SysResult<Arc<dyn Inode>> {
         Err(SysError::ENOSYS)
     }
 
-    fn lookup(&self, _name: &str) -> SysResult<Arc<dyn VFSInode>> {
+    fn lookup(&self, _name: &str) -> SysResult<Arc<dyn Inode>> {
         Err(SysError::ENOSYS)
     }
 
@@ -81,7 +81,7 @@ pub trait VFSInode: VFSFile {
     /// Get the attributes of the node.
     ///
     /// This method is called by stat(2) and related system calls.
-    fn get_attr(&self) -> SysResult<VFSFileStat> {
+    fn get_attr(&self) -> SysResult<FileStat> {
         Err(SysError::ENOSYS)
     }
 
@@ -92,7 +92,7 @@ pub trait VFSInode: VFSFile {
         Err(SysError::ENOSYS)
     }
 
-    fn inode_type(&self) -> VFSNodeType;
+    fn inode_type(&self) -> NodeType;
 
     fn truncate(&self, _len: u64) -> SysResult<()> {
         Err(SysError::ENOSYS)
@@ -102,9 +102,9 @@ pub trait VFSInode: VFSFile {
     fn rename_to(
         &self,
         _old_name: &str,
-        _new_parent: Arc<dyn VFSInode>,
+        _new_parent: Arc<dyn Inode>,
         _new_name: &str,
-        _flag: VFSRenameFlag,
+        _flag: RenameFlag,
     ) -> SysResult<()> {
         Err(SysError::ENOSYS)
     }
@@ -115,7 +115,7 @@ pub trait VFSInode: VFSFile {
     /// updated automatically.
     ///
     /// The parameter `now` is used to update ctime.
-    fn update_time(&self, _time: VFSTime, _now: VFSTimeSpec) -> SysResult<()> {
+    fn update_time(&self, _time: Time, _now: TimeSpec) -> SysResult<()> {
         Err(SysError::ENOSYS)
     }
 }

@@ -2,7 +2,7 @@ use crate::FileSystemType;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct VFSStat {
+pub struct Stat {
     // fs类型
     pub fs_type: FileSystemType,
     // 最优IO块大小
