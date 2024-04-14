@@ -3,9 +3,10 @@
 
 extern crate user_lib;
 
-use user_lib::println;
+use user_lib::{exit, println};
 
 #[no_mangle]
 fn main() {
     println!("hello world");
+    exit(3)
 }

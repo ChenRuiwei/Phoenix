@@ -200,6 +200,23 @@ impl TrapContext {
         self.user_fx = UserFloatContext::new()
     }
 
+    /// Syscall number
+    pub fn syscall_no(&self) -> usize {
+        // a7 == x17
+        self.user_x[17]
+    }
+
+    pub fn syscall_args(&self) -> [usize; 6] {
+        [
+            self.user_x[10],
+            self.user_x[11],
+            self.user_x[12],
+            self.user_x[13],
+            self.user_x[14],
+            self.user_x[15],
+        ]
+    }
+
     /// Set stack pointer to x_2 reg (sp)
     pub fn set_user_sp(&mut self, sp: usize) {
         // sp == x2
@@ -209,12 +226,6 @@ impl TrapContext {
     pub fn set_user_a0(&mut self, val: usize) {
         // a0 == x10
         self.user_x[10] = val;
-    }
-
-    /// Syscall number
-    pub fn syscall_no(&self) -> usize {
-        // a7 == x17
-        self.user_x[17]
     }
 
     /// Set entry point

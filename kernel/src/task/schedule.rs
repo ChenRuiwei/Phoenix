@@ -38,6 +38,11 @@ impl Future for YieldFuture {
     }
 }
 
+/// Yield the current thread (the scheduler will switch to the next thread)
+pub async fn yield_now() {
+    YieldFuture::new().await;
+}
+
 /// The outermost future for user task, i.e. the future that wraps one thread's
 /// task future (doing some env context changes e.g. pagetable switching)
 pub struct UserTaskFuture<F: Future + Send + 'static> {
@@ -99,31 +104,26 @@ impl<F: Future<Output = ()> + Send + 'static> Future for KernelTaskFuture<F> {
 
 pub async fn task_loop(task: Arc<Task>) {
     task.set_waker(async_utils::take_waker().await);
+
     loop {
         trap::user_trap::trap_return();
 
-        // task may be set to zombie by other task, e.g. execve will kill other tasks
+        // task may be set to zombie by other task, e.g. execve will kill other tasks in
+        // the same thread group
         if task.is_zombie() {
-            log::debug!("thread {} terminated", current_task().tid());
+            log::debug!("thread {} terminated", task.tid());
             break;
         }
 
         trap::user_trap::trap_handler(task.clone()).await;
 
         if task.is_zombie() {
-            log::debug!("thread {} terminated", current_task().tid());
+            log::debug!("thread {} terminated", task.tid());
             break;
         }
     }
-    handle_exit(task);
-}
 
-pub fn handle_exit(task: Arc<Task>) {
-    log::info!("thread {} handle exit", task.tid());
-    if task.pid() == INITPROC_PID {
-        panic!("initproc die!!!, sepc {:#x}", current_trap_cx().sepc);
-    }
-    TASK_MANAGER.remove(&task);
+    task.do_exit();
 }
 
 /// Spawn a new async user task

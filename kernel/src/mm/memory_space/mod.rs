@@ -47,7 +47,7 @@ extern "C" {
 /// There is no need to lock `KERNEL_SPACE` since it won't be changed.
 static KERNEL_SPACE: Lazy<MemorySpace> = Lazy::new(MemorySpace::new_kernel);
 
-pub unsafe fn activate_kernel_space() {
+pub unsafe fn switch_kernel_page_table() {
     KERNEL_SPACE.switch_page_table();
 }
 
@@ -172,9 +172,6 @@ impl MemorySpace {
         ));
         log::info!("[kernel] mapping mmio registers");
         for pair in MMIO {
-            log::info!("start va: {:#x}", pair.0);
-            log::info!("end va: {:#x}", pair.0 + pair.1);
-            log::info!("permission: {:?}", pair.2);
             memory_space.push_vma(VmArea::new(
                 (pair.0 + VIRT_RAM_OFFSET).into(),
                 (pair.0 + pair.1 + VIRT_RAM_OFFSET).into(),
@@ -222,12 +219,7 @@ impl MemorySpace {
             }
             let mut vm_area = VmArea::new(start_va, end_va, map_perm, VmAreaType::Elf);
 
-            log::debug!(
-                "[map_elf] [{:#x}, {:#x}], map_perm: {:?} start...",
-                start_va.0,
-                end_va.0,
-                map_perm
-            );
+            log::debug!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?} start...",);
 
             max_end_vpn = vm_area.vpn_range.end();
 
@@ -246,12 +238,7 @@ impl MemorySpace {
                 &elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize],
             );
 
-            log::info!(
-                "[map_elf] [{:#x}, {:#x}], map_perm: {:?}",
-                start_va.0,
-                end_va.0,
-                map_perm
-            );
+            log::info!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?}",);
         }
 
         (max_end_vpn, header_va.into())
@@ -281,7 +268,7 @@ impl MemorySpace {
         let (max_end_vpn, header_va) = memory_space.map_elf(&elf, 0.into());
 
         let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
-        log::debug!("[from_elf] AT_PHDR  ph_head_addr is {:x} ", ph_head_addr);
+        log::debug!("[from_elf] AT_PHDR  ph_head_addr is {ph_head_addr:x} ");
         auxv.push(AuxHeader::new(AT_PHDR, ph_head_addr));
 
         // map user stack with U flags
@@ -295,11 +282,7 @@ impl MemorySpace {
             VmAreaType::Stack,
         );
         memory_space.push_vma(ustack_vma);
-        log::info!(
-            "[from_elf] map ustack: {:#x}, {:#x}",
-            user_stack_bottom,
-            user_stack_top,
-        );
+        log::info!("[from_elf] map ustack: {user_stack_bottom:#x}, {user_stack_top:#x}",);
 
         // // guard page
         // let heap_start_va = user_stack_top + PAGE_SIZE;
@@ -337,10 +320,7 @@ impl MemorySpace {
         let (max_end_vpn, header_va) = self.map_elf(&elf, 0.into());
 
         let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
-        log::debug!(
-            "[parse_and_map_elf] AT_PHDR  ph_head_addr is {:x} ",
-            ph_head_addr
-        );
+        log::debug!("[parse_and_map_elf] AT_PHDR  ph_head_addr is {ph_head_addr:x}",);
         auxv.push(AuxHeader::new(AT_PHDR, ph_head_addr));
 
         (entry, auxv)
@@ -350,7 +330,7 @@ impl MemorySpace {
     ///
     /// Return address of the stack top, which is aligned to 16 bytes.
     ///
-    /// The stack has a range of [sp_init - size, sp_init].
+    /// The stack has a range of [sp - size, sp].
     pub fn alloc_stack(&mut self, size: usize) -> VirtAddr {
         const STACK_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize(U_SEG_STACK_BEG)..VirtAddr::from_usize(U_SEG_STACK_END);
@@ -362,23 +342,42 @@ impl MemorySpace {
 
         // align to 16 bytes
         let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
-        log::debug!("alloc stack: {:x?}, sp_init: {:x?}", range, sp_init);
+        log::debug!("alloc stack: {range:x?}, sp_init: {sp_init:x?}");
 
         let vm_area = VmArea::new(range.start, range.end, MapPerm::URW, VmAreaType::Stack);
         self.push_vma(vm_area);
         sp_init
     }
 
+    /// Clone a same `MemorySpace` from another user space, including datas in
+    /// memory.
+    pub fn from_user(user_space: &Self) -> Self {
+        let mut memory_space = Self::new_user();
+        for (_, area) in user_space.areas.iter() {
+            let mut new_area = VmArea::from_another(area);
+            memory_space.push_vma(new_area);
+            // copy data from another space
+            for vpn in area.vpn_range {
+                if let Some(pte) = user_space.page_table.find_pte(vpn) {
+                    let src_ppn = pte.ppn();
+                    let dst_ppn = memory_space.page_table.find_pte(vpn).unwrap().ppn();
+                    dst_ppn.bytes_array().copy_from_slice(src_ppn.bytes_array());
+                }
+            }
+        }
+        memory_space
+    }
+
     /// Push `VmArea` into `MemorySpace` and map it in page table.
     pub fn push_vma(&mut self, mut vma: VmArea) {
         vma.map(&mut self.page_table);
-        self.areas.try_insert(vma.range_va(), vma);
+        self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
     pub fn push_vma_with_data(&mut self, mut vma: VmArea, offset: usize, data: &[u8]) {
         vma.map(&mut self.page_table);
         vma.copy_data_with_offset(&self.page_table, offset, data);
-        self.areas.try_insert(vma.range_va(), vma);
+        self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
     pub fn handle_pagefault(

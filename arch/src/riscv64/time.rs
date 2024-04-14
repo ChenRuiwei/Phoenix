@@ -23,7 +23,7 @@ pub fn get_time_duration() -> Duration {
     Duration::from_micros(get_time_us() as u64)
 }
 
-pub fn set_next_timer_irq() {
+pub unsafe fn set_next_timer_irq() {
     let next_trigger: u64 = (time::read() + CLOCK_FREQ / INTERRUPTS_PER_SEC)
         .try_into()
         .unwrap();

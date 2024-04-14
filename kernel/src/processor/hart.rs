@@ -49,6 +49,10 @@ impl Hart {
         self.hart_id
     }
 
+    pub fn has_task(&self) -> bool {
+        self.task.is_some()
+    }
+
     /// Change thread context,
     ///
     /// Now only change page table temporarily
@@ -72,7 +76,7 @@ impl Hart {
         unsafe { disable_interrupt() };
         let old_env = self.env();
         let sie = EnvContext::env_change(env, old_env);
-        unsafe { mm::activate_kernel_space() };
+        unsafe { mm::switch_kernel_page_table() };
         core::mem::swap(self.env_mut(), env);
         self.task.as_ref().unwrap().get_time_stat().record_switch_out_time(get_time_duration());
         self.task = None;

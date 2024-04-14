@@ -1,6 +1,6 @@
 //! Trap from kernel.
 
-use arch::interrupts::set_trap_handler_vector;
+use arch::{interrupts::set_trap_handler_vector, time::set_next_timer_irq};
 use irq_count::IRQ_COUNTER;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Scause, Trap},
@@ -21,8 +21,10 @@ pub fn kernel_trap_handler() {
             todo!()
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            log::trace!("[kernel_trap] receive timer interrupt");
             IRQ_COUNTER.add1(1);
-            todo!()
+            unsafe { set_next_timer_irq() };
+            // TOOD:
         }
         _ => {
             panic!(
@@ -43,11 +45,7 @@ extern "C" {
 pub unsafe fn set_kernel_user_rw_trap() {
     let trap_vaddr = __user_rw_trap_vector as usize;
     set_trap_handler_vector(trap_vaddr);
-    log::trace!(
-        "[kernel] switch to user rw checking mode for hart {} at stvec: {:#x}",
-        local_hart().hart_id(),
-        trap_vaddr
-    );
+    log::trace!("[user check] switch to user rw checking mode at stvec: {trap_vaddr:#x}",);
 }
 
 pub fn will_read_fail(vaddr: usize) -> bool {

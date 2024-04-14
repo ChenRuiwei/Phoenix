@@ -13,7 +13,8 @@ use core::{
     task::Waker,
 };
 
-use config::mm::USER_STACK_SIZE;
+use config::{mm::USER_STACK_SIZE, process::INITPROC_PID};
+use memory::VirtAddr;
 use signal::{signal_stack::SignalStack, Signal};
 use sync::mutex::SpinNoIrqLock;
 
@@ -26,6 +27,7 @@ use crate::{
         },
         MemorySpace,
     },
+    syscall,
     task::{
         aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_PHDR},
         manager::TASK_MANAGER,
@@ -44,10 +46,12 @@ fn new_shared<T>(data: T) -> Shared<T> {
 /// User task control block, a.k.a. process control block
 ///
 /// We treat processes and threads as tasks, consistent with the approach
-/// adopted by Linux.
+/// adopted by Linux. A process is a task that is the leader of a `ThreadGroup`.
 pub struct Task {
     ///
     tid: TidHandle,
+    /// Whether the task is the leader.
+    is_leader: bool,
     /// Whether this task is a zombie. Locked because of other task may operate
     /// this state, e.g. execve will kill other tasks.
     pub state: SpinNoIrqLock<TaskState>,
@@ -56,7 +60,10 @@ pub struct Task {
     /// Parent process
     pub parent: Shared<Option<Weak<Task>>>,
     /// Children processes
-    pub children: Shared<Vec<Arc<Task>>>,
+    // NOTE: Arc<Task> can only be hold by `Hart`, `UserTaskFuture` and parent `Task`. Unused task
+    // will be automatically dropped by previous two structs. However, it should be treated with
+    // great care to drop task in `children`.
+    pub children: Shared<BTreeMap<Tid, Arc<Task>>>,
     /// Exit code of the current process
     pub exit_code: AtomicI32,
     ///
@@ -64,14 +71,19 @@ pub struct Task {
     ///
     pub waker: SyncUnsafeCell<Option<Waker>>,
     ///
-    pub ustack_top: usize,
-    ///
     pub thread_group: Shared<ThreadGroup>,
+    ///
     pub signal: SpinNoIrqLock<Signal>,
     /// user can define sig_stack by sys_signalstack
     pub sig_stack: SyncUnsafeCell<Option<SignalStack>>,
 
     pub time_stat: SyncUnsafeCell<TaskTimeStat>,
+}
+
+impl core::fmt::Debug for Task {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Task").field("tid", &self.tid()).finish()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -101,14 +113,14 @@ impl Task {
         let trap_context = TrapContext::new(entry_point, user_sp_top);
         let task = Arc::new(Self {
             tid: alloc_tid(),
+            is_leader: true,
             state: SpinNoIrqLock::new(TaskState::Running),
             parent: new_shared(None),
-            children: new_shared(Vec::new()),
+            children: new_shared(BTreeMap::new()),
             exit_code: AtomicI32::new(0),
             trap_context: SyncUnsafeCell::new(trap_context),
             memory_space: new_shared(memory_space),
             waker: SyncUnsafeCell::new(None),
-            ustack_top: user_sp_top,
             thread_group: new_shared(ThreadGroup::new()),
             signal: SpinNoIrqLock::new(Signal::new()),
             sig_stack: SyncUnsafeCell::new(None),
@@ -126,8 +138,27 @@ impl Task {
         self.parent.lock().clone()
     }
 
+    pub fn children(&self) -> BTreeMap<Tid, Arc<Self>> {
+        self.children.lock().clone()
+    }
+
+    fn state(&self) -> TaskState {
+        *self.state.lock()
+    }
+
+    pub fn add_child(&self, child: Arc<Task>) {
+        self.children
+            .lock()
+            .try_insert(child.tid(), child)
+            .expect("try add child with a duplicate tid");
+    }
+
+    pub fn remove_child(&self, tid: Tid) {
+        self.children.lock().remove(&tid);
+    }
+
     pub fn is_leader(&self) -> bool {
-        self.pid() == self.tid()
+        self.is_leader
     }
 
     /// Pid means tgid.
@@ -229,11 +260,75 @@ impl Task {
     }
 
     // TODO:
-    pub fn do_clone(&self) {}
+    pub fn do_clone(
+        self: &Arc<Self>,
+        flags: syscall::CloneFlags,
+        user_stack_begin: Option<VirtAddr>,
+    ) -> Arc<Self> {
+        use syscall::CloneFlags;
+        let tid = alloc_tid();
+
+        let trap_context = SyncUnsafeCell::new(self.trap_context_mut().clone());
+        let state = SpinNoIrqLock::new(self.state());
+        let exit_code = AtomicI32::new(self.exit_code());
+
+        let is_leader;
+        let parent;
+        let children;
+        let thread_group;
+
+        if flags.contains(CloneFlags::THREAD) {
+            is_leader = false;
+            parent = self.parent.clone();
+            children = self.children.clone();
+            // will add the new task into the group later
+            thread_group = self.thread_group.clone();
+        } else {
+            is_leader = true;
+            parent = new_shared(Some(Arc::downgrade(&self)));
+            children = new_shared(BTreeMap::new());
+            thread_group = new_shared(ThreadGroup::new());
+        }
+
+        let memory_space;
+        if flags.contains(CloneFlags::VM) {
+            memory_space = self.memory_space.clone();
+        } else {
+            debug_assert!(user_stack_begin.is_none());
+            // TODO: COW
+            memory_space = new_shared(self.with_mut_memory_space(|m| MemorySpace::from_user(m)));
+            // Flush both old and new process
+            // TODO: avoid flushing global entries like kernel mappings
+            unsafe { core::arch::riscv64::sfence_vma_all() };
+        }
+
+        let new = Arc::new(Self {
+            tid,
+            is_leader,
+            state,
+            parent,
+            children,
+            exit_code: AtomicI32::new(0),
+            trap_context,
+            memory_space,
+            waker: SyncUnsafeCell::new(None),
+            thread_group,
+            signal: SpinNoIrqLock::new(Signal::new()),
+            sig_stack: SyncUnsafeCell::new(None),
+        });
+
+        if flags.contains(CloneFlags::THREAD) {
+            new.with_mut_thread_group(|tg| tg.push(new.clone()));
+        } else {
+            new.with_mut_thread_group(|g| g.push_leader(new.clone()));
+            self.add_child(new.clone());
+        }
+
+        TASK_MANAGER.add(&new);
+        new
+    }
 
     // TODO:
-    /// All threads other than the calling thread are destroyed during an
-    /// execve().
     pub fn do_execve(&self, elf_data: &[u8], argv: Vec<String>, envp: Vec<String>) {
         // change memory space
         let mut memory_space = MemorySpace::new_user();
@@ -241,7 +336,7 @@ impl Task {
         self.with_mut_memory_space(|m| *m = memory_space);
         unsafe { self.switch_page_table() };
 
-        // exit all threads except main
+        // terminate all threads except the leader
         self.with_thread_group(|tg| {
             for t in tg.iter() {
                 if !tg.is_leader(&t) {
@@ -260,18 +355,45 @@ impl Task {
             .init_user(stack_begin.into(), entry, 0, 0, 0);
     }
 
+    // NOTE: After all of the threads in a thread group is terminated, the parent
+    // process of the thread group is sent a SIGCHLD (or other termination) signal.
     // TODO:
-    pub fn do_exit(&self) {
-        // Send SIGCHLD to parent
-        if let Some(parent) = self.parent() {
-            let parent = parent.upgrade().unwrap();
+    pub fn do_exit(self: &Arc<Self>) {
+        log::info!("thread {} do exit", self.tid());
+        if self.tid() == INITPROC_PID {
+            panic!("initproc die!!!, sepc {:#x}", self.trap_context_mut().sepc);
         }
 
-        // Reparent children
+        // TODO: send SIGCHLD to parent if this is the leader
+        if self.is_leader() {
+            if let Some(parent) = self.parent() {
+                let parent = parent.upgrade().unwrap();
+            }
+        }
 
-        // Release all fd
+        // set children to be zombie and reparent them to init.
+        debug_assert_ne!(self.tid(), INITPROC_PID);
+        let children = self.children.lock();
+        if !children.is_empty() {
+            let init = TASK_MANAGER.get(INITPROC_PID).unwrap();
+            children.values().for_each(|c| {
+                c.set_zombie();
+                *c.parent.lock() = Some(Arc::downgrade(&init));
+            });
+            init.children.lock().extend(children.clone());
+        }
+        drop(children);
+
+        // release all fd
+
+        // NOTE: leader will be removed by parent calling `sys_wait4`
+        if !self.is_leader() {
+            self.with_mut_thread_group(|tg| tg.remove(self));
+            TASK_MANAGER.remove(self)
+        }
     }
 
+    with_!(children, BTreeMap<Tid, Arc<Task>>);
     with_!(memory_space, MemorySpace);
     with_!(thread_group, ThreadGroup);
 }

@@ -42,7 +42,7 @@ pub fn sys_sigaction(
     let old = signal.handlers.replace(signum, new);
     drop(signal);
 
-    // TODO：这里删掉了UMI的一点东西？不知道会不会影响
+    // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
         old_action.write(current_task(), old.into());
     }

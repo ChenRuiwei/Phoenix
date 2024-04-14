@@ -5,11 +5,11 @@ use hashbrown::HashMap;
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 
-use super::task::Task;
+use super::{task::Task, Tid};
 
 pub static TASK_MANAGER: Lazy<TaskManager> = Lazy::new(TaskManager::new);
 
-pub struct TaskManager(SpinNoIrqLock<HashMap<usize, Weak<Task>>>);
+pub struct TaskManager(SpinNoIrqLock<HashMap<Tid, Weak<Task>>>);
 
 impl TaskManager {
     pub fn new() -> Self {
@@ -29,8 +29,8 @@ impl TaskManager {
         self.get(INITPROC_PID).unwrap()
     }
 
-    pub fn get(&self, pid: usize) -> Option<Arc<Task>> {
-        match self.0.lock().get(&pid) {
+    pub fn get(&self, tid: Tid) -> Option<Arc<Task>> {
+        match self.0.lock().get(&tid) {
             Some(task) => task.upgrade(),
             None => None,
         }

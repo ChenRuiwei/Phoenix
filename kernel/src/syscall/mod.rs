@@ -3,6 +3,7 @@
 mod fs;
 mod id;
 mod misc;
+mod mm;
 mod process;
 mod signal;
 pub mod time;
@@ -13,6 +14,8 @@ use ::signal::sigset::SigSet;
 use fs::*;
 use id::*;
 use log::error;
+use mm::*;
+pub use process::CloneFlags;
 use process::*;
 use systype::SyscallResult;
 
@@ -81,6 +84,7 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
     match syscall_id {
         // Process
         SYSCALL_EXIT => sys_handler!(sys_exit, (args[0] as i32)),
+        SYSCALL_EXIT_GROUP => sys_handler!(sys_exit_group, (args[0] as i32)),
         SYSCALL_EXECVE => sys_handler!(
             sys_execve,
             (
@@ -88,6 +92,17 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 UserReadPtr::<usize>::from(args[1]),
                 UserReadPtr::<usize>::from(args[2]),
             )
+        ),
+        SYSCALL_SCHED_YIELD => sys_handler!(sys_sched_yield, (), await),
+        SYSCALL_CLONE => sys_handler!(sys_clone, (args[0], args[1], args[2], args[3], args[4])),
+        SYSCALL_WAIT4 => sys_handler!(
+            sys_wait4,
+            (
+                args[0] as i32,
+                UserWritePtr::<i32>::from(args[1]),
+                args[2] as i32,
+                args[3]
+            ), await
         ),
         // File system
         SYSCALL_WRITE => {

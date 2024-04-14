@@ -10,7 +10,7 @@ use crate::{
     processor::env::SumGuard,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VmAreaType {
     /// Segments from user elf file, e.g. text, rodata, data, bss
     Elf,
@@ -110,6 +110,15 @@ impl VmArea {
         }
     }
 
+    pub fn from_another(another: &Self) -> Self {
+        Self {
+            vpn_range: another.vpn_range,
+            frames: Vec::new(),
+            vma_type: another.vma_type,
+            map_perm: another.map_perm,
+        }
+    }
+
     pub fn start_va(&self) -> VirtAddr {
         self.start_vpn().into()
     }
@@ -134,7 +143,7 @@ impl VmArea {
     ///
     /// Will alloc new pages for `VmArea` according to `VmAreaType`.
     pub fn map(&mut self, page_table: &mut PageTable) {
-        if self.vma_type == VmAreaType::Physical {
+        if self.vma_type == VmAreaType::Physical || self.vma_type == VmAreaType::Mmio {
             for vpn in self.vpn_range {
                 page_table.map(
                     vpn,
@@ -153,11 +162,11 @@ impl VmArea {
 
     /// Copy the data to start_va + offset.
     ///
-    /// Safety:
+    /// # Safety
     ///
     /// Assume that all frames were cleared before.
     pub fn copy_data_with_offset(&self, page_table: &PageTable, offset: usize, data: &[u8]) {
-        assert_eq!(self.vma_type, VmAreaType::Elf);
+        debug_assert_eq!(self.vma_type, VmAreaType::Elf);
         let _sum_guard = SumGuard::new();
 
         let mut offset = offset;

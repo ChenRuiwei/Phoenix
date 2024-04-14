@@ -1,0 +1,12 @@
+[package]
+name = "vfs"
+version = "0.1.0"
+authors = ["Jaylen Wang <1070001239@qq.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+systype ={ path = "../systype/"}
+
+bitflags = "2.5"
