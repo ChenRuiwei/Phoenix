@@ -90,9 +90,10 @@ pub fn sys_sigreturn() -> SyscallResult {
     Ok(0)
 }
 
-pub fn sys_signalstack(ss: usize, old_ss: usize) -> SyscallResult {
-    let ss = UserReadPtr::<SignalStack>::from(ss);
-    let old_ss = UserWritePtr::<SignalStack>::from(old_ss);
+pub fn sys_signalstack(
+    ss: UserReadPtr<SignalStack>,
+    old_ss: UserWritePtr<SignalStack>,
+) -> SyscallResult {
     if !old_ss.is_null() {
         // old_ss.write(current_task(), current_task())
     }

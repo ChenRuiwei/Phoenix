@@ -1,5 +1,3 @@
-use memory::VirtAddr;
-
 use crate::sigset::SigSet;
 
 /// 信号栈是为信号处理程序执行提供的专用栈空间.它通常包含以下内容:

@@ -1,7 +1,10 @@
 use alloc::sync::Arc;
 use core::arch::asm;
 
-use arch::interrupts::{disable_interrupt, enable_interrupt};
+use arch::{
+    interrupts::{disable_interrupt, enable_interrupt},
+    time::get_time_duration,
+};
 use config::processor::HART_NUM;
 use riscv::register::sstatus::{self, FS};
 
@@ -42,9 +45,11 @@ impl Hart {
             env: EnvContext::new(),
         }
     }
+
     pub fn set_hart_id(&mut self, hart_id: usize) {
         self.hart_id = hart_id;
     }
+
     pub fn hart_id(&self) -> usize {
         self.hart_id
     }
@@ -63,6 +68,9 @@ impl Hart {
         let old_env = self.env();
         let sie = EnvContext::env_change(env, old_env);
         set_current_task(Arc::clone(task));
+        task.get_time_stat()
+            .record_switch_in_time(get_time_duration());
+        // task.time_stat.record_switch_in_time(get_time_duration());
         core::mem::swap(self.env_mut(), env);
         // PERF: do not switch page table if it belongs to the same user
         // PERF: support ASID for page table
@@ -78,8 +86,13 @@ impl Hart {
         let sie = EnvContext::env_change(env, old_env);
         // PERF: no need to switch to kernel page table
         // unsafe { mm::switch_kernel_page_table() };
-        self.task = None;
         core::mem::swap(self.env_mut(), env);
+        self.task
+            .as_ref()
+            .unwrap()
+            .get_time_stat()
+            .record_switch_out_time(get_time_duration());
+        self.task = None;
         if sie {
             unsafe { enable_interrupt() };
         }

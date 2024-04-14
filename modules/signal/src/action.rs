@@ -1,8 +1,5 @@
 extern crate alloc;
 use alloc::collections::VecDeque;
-use core::{default, mem};
-
-use memory::VirtAddr;
 
 use crate::sigset::{Sig, SigSet, NSIG};
 

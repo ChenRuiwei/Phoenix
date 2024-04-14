@@ -262,6 +262,7 @@ dependencies = [
  "spin",
  "sync",
  "systype",
+ "time",
  "vfs",
  "virtio-drivers",
  "xmas-elf",
@@ -500,6 +501,10 @@ dependencies = [
  "quote",
  "syn 2.0.55",
 ]
+
+[[package]]
+name = "time"
+version = "0.1.0"
 
 [[package]]
 name = "unicode-ident"

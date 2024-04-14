@@ -11,10 +11,12 @@ use core::{
     task::Waker,
 };
 
+use arch::time::get_time_duration;
 use config::{mm::USER_STACK_SIZE, process::INITPROC_PID};
 use memory::VirtAddr;
 use signal::{signal_stack::SignalStack, Signal};
 use sync::mutex::SpinNoIrqLock;
+use time::stat::TaskTimeStat;
 
 use super::tid::{Pid, Tid, TidHandle};
 use crate::{
@@ -77,6 +79,8 @@ pub struct Task {
     pub signal: SpinNoIrqLock<Signal>,
     /// user can define sig_stack by sys_signalstack
     pub sig_stack: SyncUnsafeCell<Option<SignalStack>>,
+
+    pub time_stat: SyncUnsafeCell<TaskTimeStat>,
 }
 
 impl core::fmt::Debug for Task {
@@ -123,6 +127,7 @@ impl Task {
             thread_group: new_shared(ThreadGroup::new()),
             signal: SpinNoIrqLock::new(Signal::new()),
             sig_stack: SyncUnsafeCell::new(None),
+            time_stat: SyncUnsafeCell::new(TaskTimeStat::new(get_time_duration())),
         });
 
         task.thread_group.lock().push_leader(task.clone());
@@ -212,6 +217,10 @@ impl Task {
         unsafe {
             *self.sig_stack.get() = stack;
         }
+    }
+
+    pub fn get_time_stat(&self) -> &mut TaskTimeStat {
+        unsafe { &mut *self.time_stat.get() }
     }
 
     pub unsafe fn switch_page_table(&self) {
@@ -309,6 +318,7 @@ impl Task {
             thread_group,
             signal: SpinNoIrqLock::new(Signal::new()),
             sig_stack: SyncUnsafeCell::new(None),
+            time_stat: SyncUnsafeCell::new(TaskTimeStat::new(get_time_duration())),
         });
 
         if flags.contains(CloneFlags::THREAD) {
