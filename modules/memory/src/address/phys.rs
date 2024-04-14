@@ -4,7 +4,6 @@ use core::{
     mem::size_of,
     ops::Range,
 };
-use std::intrinsics::size_of;
 
 use config::mm::{
     PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, PTE_NUM_ONE_PAGE, PTE_SIZE,
