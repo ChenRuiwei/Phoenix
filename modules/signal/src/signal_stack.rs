@@ -1,5 +1,3 @@
-use memory::VirtAddr;
-
 use crate::sigset::SigSet;
 
 #[repr(C)]

@@ -17,6 +17,7 @@ memory = { path = "../modules/memory/" }
 async_utils = { path = "../modules/async_utils/" }
 irq_count = { path = "../crates//irq_count/" }
 recycle_allocator = { path = "../crates/recycle_allocator/" }
+time = { path = "../modules/time" }
 
 cfg-if = "1.0"
 crate_interface = "0.1"

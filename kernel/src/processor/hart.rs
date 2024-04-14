@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use core::arch::asm;
 
-use arch::interrupts::{disable_interrupt, enable_interrupt};
+use arch::{interrupts::{disable_interrupt, enable_interrupt}, time::get_time_duration};
 use config::processor::HART_NUM;
 use riscv::register::sstatus::{self, FS};
 
@@ -59,6 +59,8 @@ impl Hart {
         let old_env = self.env();
         let sie = EnvContext::env_change(env, old_env);
         set_current_task(Arc::clone(task));
+        task.get_time_stat().record_switch_in_time(get_time_duration());
+        // task.time_stat.record_switch_in_time(get_time_duration());
         core::mem::swap(self.env_mut(), env);
         unsafe { task.switch_page_table() };
         if sie {
@@ -71,8 +73,9 @@ impl Hart {
         let old_env = self.env();
         let sie = EnvContext::env_change(env, old_env);
         unsafe { mm::activate_kernel_space() };
-        self.task = None;
         core::mem::swap(self.env_mut(), env);
+        self.task.as_ref().unwrap().get_time_stat().record_switch_out_time(get_time_duration());
+        self.task = None;
         if sie {
             unsafe { enable_interrupt() };
         }

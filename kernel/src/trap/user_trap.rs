@@ -2,7 +2,7 @@
 
 use alloc::sync::Arc;
 
-use arch::interrupts::{disable_interrupt, enable_interrupt};
+use arch::{interrupts::{disable_interrupt, enable_interrupt}, time::get_time_duration};
 use riscv::register::{
     scause::{self, Exception, Trap},
     sepc, stval,
@@ -10,7 +10,7 @@ use riscv::register::{
 
 use super::{set_kernel_trap, TrapContext};
 use crate::{
-    processor::current_trap_cx,
+    processor::{current_trap_cx, hart::current_task},
     syscall::syscall,
     task::{signal::do_signal, Task},
     trap::set_user_trap,
@@ -87,10 +87,15 @@ pub fn trap_return() {
         fn __return_to_user(cx: *mut TrapContext);
     }
 
+    
+    // current_task().time_stat.get()
+    //         .record_trap_return_time(get_time_duration());
+    current_task().get_time_stat().record_trap_return_time(get_time_duration());
     unsafe {
-
+        
         __return_to_user(current_trap_cx());
         // next time when user traps into kernel, it will come back here and
         // return to `user_loop` function.
     }
+    current_task().get_time_stat().record_trap_time(get_time_duration());
 }

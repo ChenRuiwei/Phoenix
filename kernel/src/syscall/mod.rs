@@ -5,6 +5,7 @@ mod id;
 mod misc;
 mod process;
 mod signal;
+pub mod time;
 
 use core::panic;
 
