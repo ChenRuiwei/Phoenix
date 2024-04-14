@@ -48,6 +48,8 @@ fn new_shared<T>(data: T) -> Shared<T> {
 pub struct Task {
     ///
     tid: TidHandle,
+    /// Whether the task is the leader.
+    is_leader: bool,
     /// Whether this task is a zombie. Locked because of other task may operate
     /// this state, e.g. execve will kill other tasks.
     pub state: SpinNoIrqLock<TaskState>,
@@ -107,6 +109,7 @@ impl Task {
         let trap_context = TrapContext::new(entry_point, user_sp_top);
         let task = Arc::new(Self {
             tid: alloc_tid(),
+            is_leader: true,
             state: SpinNoIrqLock::new(TaskState::Running),
             parent: new_shared(None),
             children: new_shared(BTreeMap::new()),
@@ -150,7 +153,7 @@ impl Task {
     }
 
     pub fn is_leader(&self) -> bool {
-        self.pid() == self.tid()
+        self.is_leader
     }
 
     /// Pid means tgid.
@@ -260,16 +263,19 @@ impl Task {
         let state = SpinNoIrqLock::new(self.state());
         let exit_code = AtomicI32::new(self.exit_code());
 
+        let is_leader;
         let parent;
         let children;
         let thread_group;
 
         if flags.contains(CloneFlags::THREAD) {
+            is_leader = false;
             parent = self.parent.clone();
             children = self.children.clone();
             // will add the new task into the group later
             thread_group = self.thread_group.clone();
         } else {
+            is_leader = true;
             parent = new_shared(Some(Arc::downgrade(&self)));
             children = new_shared(BTreeMap::new());
             thread_group = new_shared(ThreadGroup::new());
@@ -289,6 +295,7 @@ impl Task {
 
         let new = Arc::new(Self {
             tid,
+            is_leader,
             state,
             parent,
             children,

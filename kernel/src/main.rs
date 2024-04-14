@@ -17,6 +17,7 @@
 
 use alloc::fmt;
 
+use arch::time::{self, set_next_timer_irq};
 use config::mm::HART_START_ADDR;
 use driver::{print, sbi};
 use processor::local_hart;
@@ -125,6 +126,10 @@ fn rust_main(hart_id: usize) {
         println!("[kernel] ---------- hart {hart_id} started ----------");
     }
 
+    unsafe {
+        arch::interrupts::enable_timer_interrupt();
+        arch::time::set_next_timer_irq()
+    };
     println!("[kernel] ---------- hart {hart_id} start to fetch task... ---------- ");
     loop {
         executor::run_until_idle();

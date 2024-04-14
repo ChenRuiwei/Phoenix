@@ -4,7 +4,6 @@ use systype::{SysError, SysResult};
 
 use crate::{
     file::VFSFile,
-    stat::VFSStat,
     super_block::VFSSuperBlock,
     utils::{VFSFileStat, VFSNodePermission, VFSNodeType, VFSRenameFlag, VFSTime, VFSTimeSpec},
 };

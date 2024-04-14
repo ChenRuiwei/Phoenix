@@ -1,6 +1,6 @@
 //! Trap from kernel.
 
-use arch::interrupts::set_trap_handler_vector;
+use arch::{interrupts::set_trap_handler_vector, time::set_next_timer_irq};
 use irq_count::IRQ_COUNTER;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Scause, Trap},
@@ -21,8 +21,10 @@ pub fn kernel_trap_handler() {
             todo!()
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            log::trace!("[kernel_trap] receive timer interrupt");
             IRQ_COUNTER.add1(1);
-            todo!()
+            unsafe { set_next_timer_irq() };
+            // TOOD:
         }
         _ => {
             panic!(

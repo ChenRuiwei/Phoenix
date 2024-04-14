@@ -4,22 +4,21 @@ use systype::SyscallResult;
 
 use crate::{mm::UserWritePtr, processor::hart::current_task, strace};
 
-// Copied from sys/utsname.h
+// See in "sys/utsname.h"
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct UtsName {
-    /// Operating system name (e.g., "Linux")
+    /// Name of the implementation of the operating system.
     pub sysname: [u8; 65],
-    /// Name within "some implementation-defined network"
+    /// Name of this node on the network.
     pub nodename: [u8; 65],
-    /// Operating system release
-    /// (e.g., "2.6.28")
+    /// Current release level of this implementation.
     pub release: [u8; 65],
-    /// Operating system version
+    /// Current version level of this release.
     pub version: [u8; 65],
-    /// Hardware identifier
+    /// Name of the hardware type the system is running on.
     pub machine: [u8; 65],
-    /// NIS or YP domain name
+    /// Name of the domain of this node on the network.
     pub domainname: [u8; 65],
 }
 

@@ -17,7 +17,7 @@ pub fn get_time_us() -> usize {
     time::read() * 1_000_000 / CLOCK_FREQ
 }
 
-pub fn set_next_timer_irq() {
+pub unsafe fn set_next_timer_irq() {
     let next_trigger: u64 = (get_time() + CLOCK_FREQ / INTERRUPTS_PER_SEC)
         .try_into()
         .unwrap();

@@ -219,12 +219,7 @@ impl MemorySpace {
             }
             let mut vm_area = VmArea::new(start_va, end_va, map_perm, VmAreaType::Elf);
 
-            log::debug!(
-                "[map_elf] [{:#x}, {:#x}], map_perm: {:?} start...",
-                start_va.0,
-                end_va.0,
-                map_perm
-            );
+            log::debug!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?} start...",);
 
             max_end_vpn = vm_area.vpn_range.end();
 
@@ -243,12 +238,7 @@ impl MemorySpace {
                 &elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize],
             );
 
-            log::info!(
-                "[map_elf] [{:#x}, {:#x}], map_perm: {:?}",
-                start_va.0,
-                end_va.0,
-                map_perm
-            );
+            log::info!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?}",);
         }
 
         (max_end_vpn, header_va.into())
@@ -278,7 +268,7 @@ impl MemorySpace {
         let (max_end_vpn, header_va) = memory_space.map_elf(&elf, 0.into());
 
         let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
-        log::debug!("[from_elf] AT_PHDR  ph_head_addr is {:x} ", ph_head_addr);
+        log::debug!("[from_elf] AT_PHDR  ph_head_addr is {ph_head_addr:x} ");
         auxv.push(AuxHeader::new(AT_PHDR, ph_head_addr));
 
         // map user stack with U flags
@@ -292,11 +282,7 @@ impl MemorySpace {
             VmAreaType::Stack,
         );
         memory_space.push_vma(ustack_vma);
-        log::info!(
-            "[from_elf] map ustack: {:#x}, {:#x}",
-            user_stack_bottom,
-            user_stack_top,
-        );
+        log::info!("[from_elf] map ustack: {user_stack_bottom:#x}, {user_stack_top:#x}",);
 
         // // guard page
         // let heap_start_va = user_stack_top + PAGE_SIZE;
@@ -334,10 +320,7 @@ impl MemorySpace {
         let (max_end_vpn, header_va) = self.map_elf(&elf, 0.into());
 
         let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
-        log::debug!(
-            "[parse_and_map_elf] AT_PHDR  ph_head_addr is {:x} ",
-            ph_head_addr
-        );
+        log::debug!("[parse_and_map_elf] AT_PHDR  ph_head_addr is {ph_head_addr:x}",);
         auxv.push(AuxHeader::new(AT_PHDR, ph_head_addr));
 
         (entry, auxv)
@@ -359,7 +342,7 @@ impl MemorySpace {
 
         // align to 16 bytes
         let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
-        log::debug!("alloc stack: {:x?}, sp_init: {:x?}", range, sp_init);
+        log::debug!("alloc stack: {range:x?}, sp_init: {sp_init:x?}");
 
         let vm_area = VmArea::new(range.start, range.end, MapPerm::URW, VmAreaType::Stack);
         self.push_vma(vm_area);
