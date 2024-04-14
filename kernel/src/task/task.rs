@@ -5,18 +5,18 @@ use alloc::{
     task,
     vec::Vec,
 };
-use arch::time::get_time_duration;
-use time::stat::TaskTimeStat;
 use core::{
     cell::SyncUnsafeCell,
     sync::atomic::{AtomicI32, AtomicI8, Ordering},
     task::Waker,
 };
 
+use arch::time::get_time_duration;
 use config::{mm::USER_STACK_SIZE, process::INITPROC_PID};
 use memory::VirtAddr;
 use signal::{signal_stack::SignalStack, Signal};
 use sync::mutex::SpinNoIrqLock;
+use time::stat::TaskTimeStat;
 
 use super::tid::{Pid, Tid, TidHandle};
 use crate::{
@@ -216,7 +216,7 @@ impl Task {
         }
     }
 
-    pub fn get_time_stat(&self) -> &mut TaskTimeStat{
+    pub fn get_time_stat(&self) -> &mut TaskTimeStat {
         unsafe { &mut *self.time_stat.get() }
     }
 
@@ -315,6 +315,7 @@ impl Task {
             thread_group,
             signal: SpinNoIrqLock::new(Signal::new()),
             sig_stack: SyncUnsafeCell::new(None),
+            time_stat: SyncUnsafeCell::new(TaskTimeStat::new(get_time_duration())),
         });
 
         if flags.contains(CloneFlags::THREAD) {

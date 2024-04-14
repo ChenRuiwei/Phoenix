@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 
 use arch::{
     interrupts::{disable_interrupt, enable_interrupt},
-    time::set_next_timer_irq,
+    time::{get_time_duration, set_next_timer_irq},
 };
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
@@ -86,14 +86,17 @@ pub fn trap_return() {
         fn __return_to_user(cx: *mut TrapContext);
     }
 
-    
     // current_task().time_stat.get()
     //         .record_trap_return_time(get_time_duration());
-    current_task().get_time_stat().record_trap_return_time(get_time_duration());
+    current_task()
+        .get_time_stat()
+        .record_trap_return_time(get_time_duration());
     unsafe {
         __return_to_user(current_trap_cx());
         // NOTE: next time when user traps into kernel, it will come back here
         // and return to `user_loop` function.
     }
-    current_task().get_time_stat().record_trap_time(get_time_duration());
+    current_task()
+        .get_time_stat()
+        .record_trap_time(get_time_duration());
 }

@@ -90,7 +90,10 @@ pub fn sys_sigreturn() -> SyscallResult {
     Ok(0)
 }
 
-pub fn sys_signalstack(ss: UserReadPtr::<SignalStack>, old_ss: UserWritePtr::<SignalStack>) -> SyscallResult {
+pub fn sys_signalstack(
+    ss: UserReadPtr<SignalStack>,
+    old_ss: UserWritePtr<SignalStack>,
+) -> SyscallResult {
     if !old_ss.is_null() {
         // old_ss.write(current_task(), current_task())
     }

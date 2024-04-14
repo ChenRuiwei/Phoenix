@@ -6,9 +6,11 @@ pub struct TMS {
     tms_utime: usize,
     /// System CPU time used by caller
     tms_stime: usize,
-    /// User CPU time of all (waited for) children(已终止的子进程累积的用户态时间)
+    /// User CPU time of all (waited for)
+    /// children(已终止的子进程累积的用户态时间)
     tms_cutime: usize,
-    /// System CPU time of all (waited for) children(已终止的子进程累积的核心态时间)
+    /// System CPU time of all (waited for)
+    /// children(已终止的子进程累积的核心态时间)
     tms_cstime: usize,
 }
 

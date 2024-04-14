@@ -6,11 +6,12 @@ mod misc;
 mod mm;
 mod process;
 mod signal;
-pub mod time;
+mod time;
 
 use core::panic;
 
 use ::signal::sigset::SigSet;
+use ::time::{timeval::TimeVal, tms::TMS};
 use fs::*;
 use id::*;
 use log::error;
@@ -26,7 +27,10 @@ use crate::{
         env::SumGuard,
         hart::{current_task, current_trap_cx},
     },
-    syscall::misc::UtsName,
+    syscall::{
+        misc::UtsName,
+        time::{sys_gettimeofday, sys_times},
+    },
 };
 
 #[cfg(feature = "strace")]
@@ -120,6 +124,11 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 )
             )
         }
+        SYSCALL_GET_TIMEOFDAY => sys_handler!(
+            sys_gettimeofday,
+            (UserWritePtr::<TimeVal>::from(args[0]), args[1])
+        ),
+        SYSCALL_TIMES => sys_handler!(sys_times, (UserWritePtr::<TMS>::from(args[0]))),
         _ => {
             error!("Unsupported syscall_id: {}", syscall_id);
             Ok(0)
