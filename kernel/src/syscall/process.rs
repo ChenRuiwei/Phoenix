@@ -270,11 +270,7 @@ pub fn sys_clone(
     let new_task = current_task().do_clone(flags, stack_begin);
     new_task.trap_context_mut().set_user_a0(0);
     let new_task_tid = new_task.tid();
-    log::info!(
-        "[sys_clone] clone a new thread, tid {}, clone flags {:?}",
-        new_task_tid,
-        flags,
-    );
+    log::info!("[sys_clone] clone a new thread, tid {new_task_tid}, clone flags {flags:?}",);
     spawn_user_task(new_task);
     Ok(new_task_tid.into())
 }

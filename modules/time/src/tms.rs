@@ -18,10 +18,10 @@ impl TMS {
     pub fn from_task_time_stat(tts: &TaskTimeStat) -> Self {
         // FIXME: tms_cutime and tms_cstime should be set in sys_wait4
         Self {
-            tms_utime: tts.user_time.as_micros() as usize,
-            tms_stime: tts.system_time.as_micros() as usize,
-            tms_cutime: tts.user_time.as_micros() as usize,
-            tms_cstime: tts.system_time.as_micros() as usize,
+            tms_utime: tts.user_time().as_micros() as usize,
+            tms_stime: tts.system_time().as_micros() as usize,
+            tms_cutime: tts.user_time().as_micros() as usize,
+            tms_cstime: tts.system_time().as_micros() as usize,
         }
     }
 }

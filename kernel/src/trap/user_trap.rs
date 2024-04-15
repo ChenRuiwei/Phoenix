@@ -23,7 +23,7 @@ use crate::{
 
 /// handle an interrupt, exception, or system call from user space
 #[no_mangle]
-pub async fn trap_handler(task: Arc<Task>) {
+pub async fn trap_handler(task: &Arc<Task>) {
     unsafe { set_kernel_trap() };
 
     log::trace!("[trap_handler] user task trap into kernel");
@@ -105,7 +105,7 @@ pub async fn trap_handler(task: Arc<Task>) {
 
 /// Trap return to user mode.
 #[no_mangle]
-pub fn trap_return() {
+pub fn trap_return(task: &Arc<Task>) {
     unsafe {
         disable_interrupt();
         set_user_trap()
@@ -117,9 +117,7 @@ pub fn trap_return() {
         fn __return_to_user(cx: *mut TrapContext);
     }
 
-    current_task()
-        .get_time_stat()
-        .record_trap_return_time(get_time_duration());
+    task.time_stat().record_trap_return();
 
     log::info!("[kernel] trap return to user...");
     unsafe {
@@ -127,7 +125,5 @@ pub fn trap_return() {
         // NOTE: next time when user traps into kernel, it will come back here
         // and return to `user_loop` function.
     }
-    current_task()
-        .get_time_stat()
-        .record_trap_time(get_time_duration());
+    task.time_stat().record_trap();
 }

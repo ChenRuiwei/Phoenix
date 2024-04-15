@@ -164,7 +164,7 @@ fn cont(sig: Sig) {
 fn save_context_into_sigstack(old_blocked: SigSet) -> usize {
     let trap_context = current_trap_cx();
     trap_context.user_fx.encounter_signal();
-    let signal_stack = current_task().get_signal_stack().take();
+    let signal_stack = current_task().signal_stack().take();
     let stack_top = match signal_stack {
         Some(s) => s.get_stack_top(),
         None => current_trap_cx().kernel_sp,

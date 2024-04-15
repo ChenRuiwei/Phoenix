@@ -19,7 +19,7 @@ impl LogIf for LogIfImpl {
         if local_hart().has_task() {
             print_in_color(
                 format_args!(
-                    "[{:>5}][{}:{}][{},{},-] {}\n",
+                    "[{:>5}][{}:{}][H{},T{},-] {}\n",
                     record.level(),
                     record.file().unwrap(),
                     record.line().unwrap(),
@@ -32,7 +32,7 @@ impl LogIf for LogIfImpl {
         } else {
             print_in_color(
                 format_args!(
-                    "[{:>5}][{}:{}][{},-,-] {}\n",
+                    "[{:>5}][{}:{}][H{},-,-] {}\n",
                     record.level(),
                     record.file().unwrap(),
                     record.line().unwrap(),

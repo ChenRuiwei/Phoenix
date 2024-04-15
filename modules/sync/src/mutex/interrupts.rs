@@ -1,21 +1,18 @@
 use riscv::register::sstatus;
 
-#[inline]
-pub fn is_interrupt_enabled() -> bool {
+fn is_interrupt_enabled() -> bool {
     #[cfg(target_arch = "riscv64")]
     sstatus::read().sie()
 }
 
-#[inline]
-pub fn enable_interrupt() {
+unsafe fn enable_interrupt() {
     #[cfg(target_arch = "riscv64")]
     unsafe {
         sstatus::set_sie();
     }
 }
 
-#[inline]
-pub fn disable_interrupt() {
+unsafe fn disable_interrupt() {
     #[cfg(target_arch = "riscv64")]
     unsafe {
         sstatus::clear_sie()
@@ -23,7 +20,7 @@ pub fn disable_interrupt() {
 }
 
 /// Disable interrupt and resume to the intertupt state before when it gets
-/// dropped
+/// dropped.
 pub struct InterruptGuard {
     interrupt_before: bool,
 }
@@ -31,7 +28,7 @@ pub struct InterruptGuard {
 impl InterruptGuard {
     pub fn new() -> Self {
         let interrupt_before = is_interrupt_enabled();
-        disable_interrupt();
+        unsafe { disable_interrupt() };
         Self { interrupt_before }
     }
 }
@@ -39,7 +36,7 @@ impl InterruptGuard {
 impl Drop for InterruptGuard {
     fn drop(&mut self) {
         if self.interrupt_before {
-            enable_interrupt();
+            unsafe { enable_interrupt() };
         }
     }
 }

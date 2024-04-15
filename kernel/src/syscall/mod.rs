@@ -1,7 +1,7 @@
 //! Implementation of syscalls
 
+mod consts;
 mod fs;
-mod id;
 mod misc;
 mod mm;
 mod process;
@@ -12,24 +12,22 @@ use core::panic;
 
 use ::signal::sigset::SigSet;
 use ::time::{timeval::TimeVal, tms::TMS};
+use consts::*;
 use fs::*;
-use id::*;
 use log::error;
+use misc::*;
 use mm::*;
 pub use process::CloneFlags;
 use process::*;
+use signal::*;
 use systype::SyscallResult;
+use time::*;
 
-use self::{misc::sys_uname, signal::sys_sigprocmask};
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::{
         env::SumGuard,
         hart::{current_task, current_trap_cx},
-    },
-    syscall::{
-        misc::UtsName,
-        time::{sys_gettimeofday, sys_times},
     },
 };
 
@@ -108,12 +106,13 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 args[3]
             ), await
         ),
+        // Memory
+
         // File system
         SYSCALL_WRITE => {
             sys_handler!(sys_write, (args[0], UserReadPtr::<u8>::from(args[1]), args[2]), await)
         }
-        // Miscellaneous
-        SYSCALL_UNAME => sys_handler!(sys_uname, (UserWritePtr::<UtsName>::from(args[0]))),
+        // Signal
         SYSCALL_RT_SIGPROCMASK => {
             sys_handler!(
                 sys_sigprocmask,
@@ -124,11 +123,14 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 )
             )
         }
+        // Time
         SYSCALL_GETTIMEOFDAY => sys_handler!(
             sys_gettimeofday,
             (UserWritePtr::<TimeVal>::from(args[0]), args[1])
         ),
         SYSCALL_TIMES => sys_handler!(sys_times, (UserWritePtr::<TMS>::from(args[0]))),
+        // Miscellaneous
+        SYSCALL_UNAME => sys_handler!(sys_uname, (UserWritePtr::<UtsName>::from(args[0]))),
         _ => {
             error!("Unsupported syscall_id: {}", syscall_id);
             Ok(0)

@@ -77,7 +77,7 @@ pub struct Task {
     pub thread_group: Shared<ThreadGroup>,
     ///
     pub signal: SpinNoIrqLock<Signal>,
-    /// user can define sig_stack by sys_signalstack
+    /// User can set `sig_stack` by `sys_signalstack`.
     pub sig_stack: SyncUnsafeCell<Option<SignalStack>>,
 
     pub time_stat: SyncUnsafeCell<TaskTimeStat>,
@@ -133,7 +133,7 @@ impl Task {
             thread_group: new_shared(ThreadGroup::new()),
             signal: SpinNoIrqLock::new(Signal::new()),
             sig_stack: SyncUnsafeCell::new(None),
-            time_stat: SyncUnsafeCell::new(TaskTimeStat::new(get_time_duration())),
+            time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
         });
 
         task.thread_group.lock().push_leader(task.clone());
@@ -215,7 +215,7 @@ impl Task {
         *self.state.lock() == TaskState::Zombie
     }
 
-    pub fn get_signal_stack(&self) -> &mut Option<SignalStack> {
+    pub fn signal_stack(&self) -> &mut Option<SignalStack> {
         unsafe { &mut *self.sig_stack.get() }
     }
 
@@ -225,7 +225,7 @@ impl Task {
         }
     }
 
-    pub fn get_time_stat(&self) -> &mut TaskTimeStat {
+    pub fn time_stat(&self) -> &mut TaskTimeStat {
         unsafe { &mut *self.time_stat.get() }
     }
 
@@ -304,10 +304,8 @@ impl Task {
             memory_space = self.memory_space.clone();
         } else {
             debug_assert!(user_stack_begin.is_none());
-            // TODO: COW
             memory_space =
                 new_shared(self.with_mut_memory_space(|m| MemorySpace::from_user_lazily(m)));
-            // Flush both old and new process
             // TODO: avoid flushing global entries like kernel mappings
             unsafe { flush_tlb_all() };
         }
@@ -325,7 +323,7 @@ impl Task {
             thread_group,
             signal: SpinNoIrqLock::new(Signal::new()),
             sig_stack: SyncUnsafeCell::new(None),
-            time_stat: SyncUnsafeCell::new(TaskTimeStat::new(get_time_duration())),
+            time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
         });
 
         if flags.contains(CloneFlags::THREAD) {

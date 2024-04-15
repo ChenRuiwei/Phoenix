@@ -505,6 +505,9 @@ dependencies = [
 [[package]]
 name = "time"
 version = "0.1.0"
+dependencies = [
+ "arch",
+]
 
 [[package]]
 name = "unicode-ident"

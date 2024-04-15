@@ -3,45 +3,38 @@ use riscv::register::{
     stvec::{self, TrapMode},
 };
 
-#[inline]
 pub fn is_interrupt_enabled() -> bool {
     sstatus::read().sie()
 }
 
-#[inline]
 pub unsafe fn enable_interrupt() {
     #[cfg(feature = "irq")]
     sstatus::set_sie();
 }
 
-#[inline]
 pub unsafe fn disable_interrupt() {
     #[cfg(feature = "irq")]
     sstatus::clear_sie();
 }
 
-#[inline]
 pub unsafe fn enable_timer_interrupt() {
     sie::set_stimer();
 }
 
-#[inline]
 pub unsafe fn enable_external_interrupt() {
     sie::set_sext();
 }
 
-#[inline]
 pub unsafe fn set_trap_handler(handler_addr: usize) {
     stvec::write(handler_addr, TrapMode::Direct);
 }
 
-#[inline]
 pub unsafe fn set_trap_handler_vector(handler_addr: usize) {
     stvec::write(handler_addr, TrapMode::Vectored);
 }
 
 /// Disable interrupt and resume to the interrupt state before when it gets
-/// dropped
+/// dropped.
 pub struct InterruptGuard {
     interrupt_before: bool,
 }
