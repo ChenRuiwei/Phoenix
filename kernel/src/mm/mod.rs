@@ -21,12 +21,12 @@ pub use memory::page_table::PageTable;
 use memory::{frame, heap, VirtAddr, VirtPageNum};
 pub use memory_space::{switch_kernel_page_table, MemorySpace};
 pub use page::Page;
-pub use user_ptr::{UserInOutPtr, UserReadPtr, UserWritePtr};
+pub use user_ptr::{PageFaultAccessType, UserInOutPtr, UserReadPtr, UserWritePtr};
 
 use self::memory_space::vm_area::MapPerm;
 use crate::mm;
 
-/// Initialize heap allocator, frame allocator and kernel space
+/// Initialize heap allocator, frame allocator and kernel space.
 pub fn init() {
     extern "C" {
         fn _ekernel();

@@ -163,7 +163,7 @@ trace:
 	addr2line -fipe $(KERNEL_ELF) | rustfilt
 
 PHONY += drun
-drun:
+drun: fmt clean user kernel
 	$(QEMU) $(QEMU_ARGS) -s -S
 
 PHONY += gdb

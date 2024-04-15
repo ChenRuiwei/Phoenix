@@ -1,3 +1,7 @@
+//! # Syscall numbers
+//!
+//! Syscall numbers from "asm-generic/unistd.h".
+
 pub(super) const SYSCALL_GETCWD: usize = 17;
 pub(super) const SYSCALL_DUP: usize = 23;
 pub(super) const SYSCALL_DUP3: usize = 24;
@@ -67,7 +71,7 @@ pub(super) const SYSCALL_SETSID: usize = 157;
 pub(super) const SYSCALL_UNAME: usize = 160;
 pub(super) const SYSCALL_GETRUSAGE: usize = 165;
 pub(super) const SYSCALL_UMASK: usize = 166;
-pub(super) const SYSCALL_GET_TIMEOFDAY: usize = 169;
+pub(super) const SYSCALL_GETTIMEOFDAY: usize = 169;
 pub(super) const SYSCALL_GETPID: usize = 172;
 pub(super) const SYSCALL_GETPPID: usize = 173;
 pub(super) const SYSCALL_GETUID: usize = 174;

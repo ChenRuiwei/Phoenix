@@ -6,6 +6,7 @@ use arch::{
     interrupts::{disable_interrupt, enable_interrupt},
     time::{get_time_duration, set_next_timer_irq},
 };
+use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
     sepc, sstatus, stval,
@@ -13,6 +14,7 @@ use riscv::register::{
 
 use super::{set_kernel_trap, TrapContext};
 use crate::{
+    mm::PageFaultAccessType,
     processor::{current_trap_cx, hart::current_task},
     syscall::syscall,
     task::{signal::do_signal, yield_now, Task},
@@ -52,11 +54,8 @@ pub async fn trap_handler(task: Arc<Task>) {
             };
             cx.set_user_a0(ret);
         }
-        Trap::Exception(Exception::StoreFault)
-        | Trap::Exception(Exception::StorePageFault)
-        | Trap::Exception(Exception::InstructionFault)
+        Trap::Exception(Exception::StorePageFault)
         | Trap::Exception(Exception::InstructionPageFault)
-        | Trap::Exception(Exception::LoadFault)
         | Trap::Exception(Exception::LoadPageFault) => {
             log::debug!(
                 "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
@@ -69,7 +68,20 @@ pub async fn trap_handler(task: Arc<Task>) {
             // 5. execve elf file
             // 6. dynamic link
             // 7. illegal page fault
-            todo!()
+
+            let access_type = match cause {
+                Trap::Exception(Exception::StorePageFault) => PageFaultAccessType::RW,
+                Trap::Exception(Exception::InstructionPageFault) => PageFaultAccessType::RX,
+                Trap::Exception(Exception::LoadPageFault) => PageFaultAccessType::RO,
+                _ => unreachable!(),
+            };
+
+            let result = task
+                .with_mut_memory_space(|m| m.handle_page_fault(VirtAddr::from(stval), access_type));
+            // if let Err(e) = result {
+            //     lproc.with_memory(|m| m.areas().print_all());
+            //     is_exit = true;
+            // }
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             log::warn!(
@@ -105,11 +117,11 @@ pub fn trap_return() {
         fn __return_to_user(cx: *mut TrapContext);
     }
 
-    // current_task().time_stat.get()
-    //         .record_trap_return_time(get_time_duration());
     current_task()
         .get_time_stat()
         .record_trap_return_time(get_time_duration());
+
+    log::info!("[kernel] trap return to user...");
     unsafe {
         __return_to_user(current_trap_cx());
         // NOTE: next time when user traps into kernel, it will come back here

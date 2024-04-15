@@ -19,6 +19,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
     pub const fn new() -> Self {
         Self(BTreeMap::new())
     }
+
     pub fn try_insert(&mut self, Range { start, end }: Range<U>, value: V) -> Result<&mut V, V> {
         debug_assert!(start < end);
         if let Some((_xstart, Node { end: xend, .. })) = self.0.range(..end).next_back() {
@@ -33,7 +34,8 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         let node = self.0.try_insert(start, Node { end, value }).ok().unwrap();
         Ok(&mut node.value)
     }
-    /// 找到 start <= key < end 的区间
+
+    /// Find range which satisfies that `key` is in [start, end).
     pub fn get(&self, key: U) -> Option<(Range<U>, &V)> {
         let (&start, Node { end, value }) = self.0.range(..=key).next_back()?;
         if *end > key {
@@ -41,7 +43,8 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         }
         None
     }
-    /// 找到 start <= key < end 的区间
+
+    /// Find range which satisfies that `key` is in [start, end).
     pub fn get_mut(&mut self, key: U) -> Option<(Range<U>, &mut V)> {
         let (&start, Node { end, value }) = self.0.range_mut(..=key).next_back()?;
         if *end > key {
@@ -49,6 +52,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         }
         None
     }
+
     /// 在 [start, end) 中找到一个长至少为 size 的空闲区间
     ///
     /// 这个空闲区间将会以某个地址 a 为起点, 以 offset(a, n) 为终点,

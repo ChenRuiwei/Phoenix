@@ -364,7 +364,7 @@ impl Task {
         self.ensure_user_area(begin, len, access, |_, _| ControlFlow::Continue(()))
     }
 
-    /// ensure that the whole range is accessible, or return an error
+    /// Ensure that the whole range is accessible, or return an error.
     fn ensure_user_area(
         &self,
         begin: VirtAddr,
@@ -389,7 +389,7 @@ impl Task {
         while readable_len < len {
             if test_fn(curr_vaddr.0) {
                 // TODO: handle_pagefault
-                self.with_mut_memory_space(|m| m.handle_pagefault(curr_vaddr, access))
+                self.with_mut_memory_space(|m| m.handle_page_fault(curr_vaddr, access))
                     .map_err(|_| SysError::EFAULT)?;
             }
 

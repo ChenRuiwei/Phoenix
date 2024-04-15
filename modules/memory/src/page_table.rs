@@ -143,6 +143,16 @@ impl PageTable {
         *pte = PageTableEntry::empty();
     }
 
+    /// Force mapping `VirtPageNum` to `PhysPageNum` with `PTEFlags`.
+    ///
+    /// # Safety
+    ///
+    /// Could replace old mappings.
+    pub fn map_force(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
+        let pte = self.find_pte_create(vpn);
+        *pte = PageTableEntry::new(ppn, flags | PTEFlags::V | PTEFlags::D | PTEFlags::A);
+    }
+
     /// Satp token with sv39 enabled
     pub fn token(&self) -> usize {
         8usize << 60 | self.root_ppn.0

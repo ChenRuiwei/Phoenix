@@ -6,14 +6,14 @@ use config::{
     mm::{PAGE_SIZE, USER_STACK_SIZE, U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET},
 };
 use log::info;
-use memory::{PageTable, VPNRange, VirtAddr, VirtPageNum};
+use memory::{pte::PTEFlags, PageTable, VPNRange, VirtAddr, VirtPageNum};
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};
-use super::user_ptr::PageFaultAccessType;
+use super::{page, user_ptr::PageFaultAccessType};
 use crate::{
     mm::{
         memory_space::vm_area::{MapPerm, VmAreaType},
@@ -368,24 +368,68 @@ impl MemorySpace {
         memory_space
     }
 
+    /// Clone a same `MemorySpace` lazily.
+    pub fn from_user_lazily(user_space: &mut Self) -> Self {
+        let mut memory_space = Self::new_user();
+        for (_, area) in user_space.areas.iter() {
+            let new_area = VmArea::from_another_deep(area);
+            for vpn in area.vpn_range {
+                let page = area.pages.get(&vpn).expect("");
+                // If there is related physcial frame, then we let the child and father share
+                // it.
+                let pte = user_space.page_table.find_pte(vpn).unwrap();
+
+                let (pte_flags, ppn) = match area.vma_type {
+                    VmAreaType::Shm => {
+                        // If shared memory,
+                        // then we don't need to modify the pte flags,
+                        // i.e. no copy-on-write.
+                        todo!()
+                    }
+                    _ => {
+                        // Else,
+                        // copy-on-write
+                        let mut new_flags = pte.flags() | PTEFlags::COW;
+                        new_flags.remove(PTEFlags::W);
+                        pte.set_flags(new_flags);
+                        (new_flags, page.ppn())
+                    }
+                };
+                memory_space.page_table.map(vpn, ppn, pte_flags);
+            }
+            memory_space.push_vma_lazily(new_area);
+        }
+        memory_space
+    }
+
     /// Push `VmArea` into `MemorySpace` and map it in page table.
     pub fn push_vma(&mut self, mut vma: VmArea) {
         vma.map(&mut self.page_table);
         self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
+    /// Push `VmArea` into `MemorySpace` without mapping it in page table.
+    pub fn push_vma_lazily(&mut self, mut vma: VmArea) {
+        self.areas.try_insert(vma.range_va(), vma).unwrap();
+    }
+
+    /// Push `VmArea` into `MemorySpace` and map it in page table, also copy
+    /// `data` at `offset` of `vma`.
     pub fn push_vma_with_data(&mut self, mut vma: VmArea, offset: usize, data: &[u8]) {
         vma.map(&mut self.page_table);
         vma.copy_data_with_offset(&self.page_table, offset, data);
         self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
-    pub fn handle_pagefault(
+    pub fn handle_page_fault(
         &mut self,
-        vaddr: VirtAddr,
+        va: VirtAddr,
         access_type: PageFaultAccessType,
     ) -> SysResult<()> {
-        todo!();
+        log::trace!("[MemorySpace::handle_page_fault] {va:?}");
+        let (_, vm_area) = self.areas.get_mut(va).expect("no area contains this va");
+        vm_area.handle_page_fault(&mut self.page_table, va.floor());
+        Ok(())
     }
 
     pub unsafe fn switch_page_table(&self) {

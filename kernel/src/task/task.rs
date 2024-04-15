@@ -11,7 +11,7 @@ use core::{
     task::Waker,
 };
 
-use arch::time::get_time_duration;
+use arch::{memory::flush_tlb_all, time::get_time_duration};
 use config::{mm::USER_STACK_SIZE, process::INITPROC_PID};
 use memory::VirtAddr;
 use signal::{signal_stack::SignalStack, Signal};
@@ -86,6 +86,12 @@ pub struct Task {
 impl core::fmt::Debug for Task {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Task").field("tid", &self.tid()).finish()
+    }
+}
+
+impl Drop for Task {
+    fn drop(&mut self) {
+        log::info!("task {} died!", self.tid());
     }
 }
 
@@ -299,10 +305,11 @@ impl Task {
         } else {
             debug_assert!(user_stack_begin.is_none());
             // TODO: COW
-            memory_space = new_shared(self.with_mut_memory_space(|m| MemorySpace::from_user(m)));
+            memory_space =
+                new_shared(self.with_mut_memory_space(|m| MemorySpace::from_user_lazily(m)));
             // Flush both old and new process
             // TODO: avoid flushing global entries like kernel mappings
-            unsafe { core::arch::riscv64::sfence_vma_all() };
+            unsafe { flush_tlb_all() };
         }
 
         let new = Arc::new(Self {
@@ -400,12 +407,6 @@ impl Task {
     with_!(children, BTreeMap<Tid, Arc<Task>>);
     with_!(memory_space, MemorySpace);
     with_!(thread_group, ThreadGroup);
-}
-
-impl Drop for Task {
-    fn drop(&mut self) {
-        log::info!("task {} died!", self.tid());
-    }
 }
 
 /// Hold a group of threads which belongs to the same process.

@@ -124,7 +124,7 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 )
             )
         }
-        SYSCALL_GET_TIMEOFDAY => sys_handler!(
+        SYSCALL_GETTIMEOFDAY => sys_handler!(
             sys_gettimeofday,
             (UserWritePtr::<TimeVal>::from(args[0]), args[1])
         ),

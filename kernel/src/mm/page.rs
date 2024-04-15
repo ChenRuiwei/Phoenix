@@ -62,6 +62,10 @@ impl Page {
         }
     }
 
+    pub fn copy_data_from_another(&self, another: &Page) {
+        self.ppn().copy_page_from_another(another.ppn());
+    }
+
     pub fn ppn(&self) -> PhysPageNum {
         self.frame.ppn
     }
@@ -73,7 +77,7 @@ impl Page {
     /// Read this page starts with offset.
     pub async fn read(&self, offset: usize, buf: &mut [u8]) -> SysResult<usize> {
         debug_assert!(offset < PAGE_SIZE);
-        let end = (offset + buf.len()).max(PAGE_SIZE);
+        let end = (offset + buf.len()).min(PAGE_SIZE);
         self.load_buffer(offset..end).await?;
         buf.copy_from_slice(&self.bytes_array_range(offset..end));
         Ok(end - offset)
@@ -82,7 +86,7 @@ impl Page {
     /// Write this page starts with offset.
     pub async fn write(&self, offset: usize, buf: &[u8]) -> SysResult<usize> {
         debug_assert!(offset < PAGE_SIZE);
-        let end = (offset + buf.len()).max(PAGE_SIZE);
+        let end = (offset + buf.len()).min(PAGE_SIZE);
         self.mark_buffer_dirty(offset..end).await?;
         self.bytes_array_range(offset..end).copy_from_slice(buf);
         Ok(end - offset)

@@ -126,7 +126,7 @@ impl PhysPageNum {
 
     /// Get bytes array of a physical page with a range.
     pub fn bytes_array_range(&self, range: Range<usize>) -> &'static mut [u8] {
-        debug_assert!(range.end < PAGE_SIZE);
+        debug_assert!(range.end <= PAGE_SIZE, "range: {range:?}");
         let mut va: VirtAddr = self.to_offset().to_vpn().into();
         va += range.start;
         unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, range.len()) }
@@ -139,6 +139,18 @@ impl PhysPageNum {
             core::slice::from_raw_parts_mut(va.0 as *mut usize, PAGE_SIZE / size_of::<usize>())
                 .fill(0)
         };
+    }
+
+    pub fn copy_page_from_another(&self, another_ppn: PhysPageNum) {
+        fn usize_array(ppn: &PhysPageNum) -> &'static mut [usize] {
+            let va: VirtAddr = ppn.to_offset().to_vpn().into();
+            unsafe {
+                core::slice::from_raw_parts_mut(va.0 as *mut usize, PAGE_SIZE / size_of::<usize>())
+            }
+        }
+        let dst = usize_array(self);
+        let src = usize_array(&another_ppn);
+        dst.copy_from_slice(src);
     }
 }
 

@@ -1,8 +1,12 @@
-use alloc::{sync::Weak, vec::Vec};
-use core::ops::Range;
+use alloc::{
+    collections::BTreeMap,
+    sync::{Arc, Weak},
+    vec::Vec,
+};
 
+use arch::memory::flush_tlb;
 use config::mm::PAGE_SIZE;
-use memory::{pte::PTEFlags, StepByOne, VPNRange, VirtAddr, VirtPageNum};
+use memory::{page_table, pte::PTEFlags, StepByOne, VPNRange, VirtAddr, VirtPageNum};
 
 use super::MemorySpace;
 use crate::{
@@ -12,6 +16,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VmAreaType {
+    // For user.
     /// Segments from user elf file, e.g. text, rodata, data, bss
     Elf,
     /// User Stack
@@ -22,9 +27,11 @@ pub enum VmAreaType {
     Mmap,
     /// Shared memory
     Shm,
-    /// Physical frames (for kernel mapping with an offset)
+
+    // For kernel.
+    /// Physical frames (mapping with an offset)
     Physical,
-    /// MMIO (for kernel)
+    /// MMIO
     Mmio,
 }
 
@@ -45,6 +52,8 @@ bitflags! {
         const RX = Self::R.bits() | Self::X.bits();
         const WX = Self::W.bits() | Self::X.bits();
         const RWX = Self::R.bits() | Self::W.bits() | Self::X.bits();
+
+        const UW = Self::U.bits() | Self::W.bits();
         const URW = Self::U.bits() | Self::RW.bits();
         const URX = Self::U.bits() | Self::RX.bits();
         const UWX = Self::U.bits() | Self::WX.bits();
@@ -71,23 +80,27 @@ impl From<MapPerm> for PTEFlags {
     }
 }
 
-#[derive(Debug)]
 pub struct VmArea {
-    /// Points to parent `MemorySpace`
-    pub memory_space: Weak<MemorySpace>,
     pub vpn_range: VPNRange,
-    pub frames: Vec<Page>,
+    pub pages: BTreeMap<VirtPageNum, Arc<Page>>,
     pub map_perm: MapPerm,
     pub vma_type: VmAreaType,
 }
 
+impl core::fmt::Debug for VmArea {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("VmArea")
+            .field("vpn_range", &self.vpn_range)
+            .field("map_perm", &self.map_perm)
+            .field("vma_type", &self.vma_type)
+            .finish()
+    }
+}
+
 impl Drop for VmArea {
     fn drop(&mut self) {
-        log::debug!(
-            "[VmArea::drop] drop vma, [{:#x}, {:#x}]",
-            self.start_vpn(),
-            self.end_vpn()
-        );
+        log::debug!("[VmArea::drop] drop {self:?}",);
+        drop(self)
     }
 }
 
@@ -103,21 +116,31 @@ impl VmArea {
     ) -> Self {
         let start_vpn: VirtPageNum = start_va.floor();
         let end_vpn: VirtPageNum = end_va.ceil();
-        log::trace!("new vpn_range: {:?}, {:?}", start_vpn, end_vpn);
-        Self {
-            memory_space: Weak::new(),
+        let new = Self {
             vpn_range: VPNRange::new(start_vpn, end_vpn),
-            frames: Vec::new(),
+            pages: BTreeMap::new(),
             vma_type,
             map_perm,
-        }
+        };
+        log::trace!("[VmArea::new] {new:?}");
+        new
     }
 
     pub fn from_another(another: &Self) -> Self {
+        log::trace!("[VmArea::from_another] {another:?}");
         Self {
-            memory_space: Weak::new(),
             vpn_range: another.vpn_range,
-            frames: Vec::new(),
+            pages: BTreeMap::new(),
+            vma_type: another.vma_type,
+            map_perm: another.map_perm,
+        }
+    }
+
+    pub fn from_another_deep(another: &Self) -> Self {
+        log::trace!("[VmArea::from_another_deep] {another:?}");
+        Self {
+            vpn_range: another.vpn_range,
+            pages: another.pages.clone(),
             vma_type: another.vma_type,
             map_perm: another.map_perm,
         }
@@ -131,7 +154,7 @@ impl VmArea {
         self.end_vpn().into()
     }
 
-    pub fn range_va(&self) -> Range<VirtAddr> {
+    pub fn range_va(&self) -> core::ops::Range<VirtAddr> {
         self.start_va()..self.end_va()
     }
 
@@ -141,6 +164,14 @@ impl VmArea {
 
     pub fn end_vpn(&self) -> VirtPageNum {
         self.vpn_range.end()
+    }
+
+    pub fn perm(&self) -> MapPerm {
+        self.map_perm
+    }
+
+    pub fn get_page(&self, vpn: VirtPageNum) -> &Arc<Page> {
+        self.pages.get(&vpn).expect("page not found for vpn")
     }
 
     /// Map `VmArea` into page table.
@@ -159,7 +190,7 @@ impl VmArea {
             for vpn in self.vpn_range {
                 let page = Page::new();
                 page_table.map(vpn, page.ppn(), self.map_perm.into());
-                self.frames.push(page);
+                self.pages.insert(vpn, Arc::new(page));
             }
         }
     }
@@ -177,21 +208,62 @@ impl VmArea {
         let mut start: usize = 0;
         let mut current_vpn = self.vpn_range.start();
         let len = data.len();
-        loop {
+        while start < len {
             let src = &data[start..len.min(start + PAGE_SIZE - offset)];
-            let dst = &mut page_table
+            let dst = page_table
                 .find_pte(current_vpn)
                 .unwrap()
                 .ppn()
-                .bytes_array()[offset..offset + src.len()];
-            dst.fill(0);
+                .bytes_array_range(offset..offset + src.len());
             dst.copy_from_slice(src);
             start += PAGE_SIZE - offset;
             offset = 0;
-            if start >= len {
-                break;
-            }
             current_vpn.step();
+        }
+    }
+
+    pub fn handle_page_fault(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
+        log::debug!(
+            "[VmArea::handle_page_fault]: {self:?}, {vpn:?} at page table {:?}",
+            page_table.root_ppn
+        );
+        let page: Page;
+        let pte = page_table.find_pte(vpn);
+        if let Some(pte) = pte {
+            // if PTE is valid, then it must be COW
+            log::debug!("[VmArea::handle_page_fault] pte flags: {:?}", pte.flags());
+            let mut pte_flags = pte.flags();
+            debug_assert!(pte_flags.contains(PTEFlags::COW));
+            debug_assert!(!pte_flags.contains(PTEFlags::W));
+            debug_assert!(self.perm().contains(MapPerm::UW));
+
+            let old_page = self.get_page(vpn);
+
+            if Arc::strong_count(old_page) > 1 {
+                // shared now
+                log::debug!("[VmArea::handle_page_fault] copying cow page {old_page:?}",);
+
+                // copy the data
+                page = Page::new();
+                page.copy_data_from_another(&old_page);
+
+                // unmap old page and map new page
+                pte_flags.remove(PTEFlags::COW);
+                pte_flags.insert(PTEFlags::W);
+                page_table.map_force(vpn, page.ppn(), pte_flags);
+                // NOTE: track `Page` with great care
+                self.pages.insert(vpn, Arc::new(page));
+                unsafe { flush_tlb(vpn.to_va().into()) };
+            } else {
+                // not shared
+                log::debug!("[VmArea::handle_page_fault] removing cow flag for page {old_page:?}",);
+
+                // set the pte to writable
+                pte_flags.remove(PTEFlags::COW);
+                pte_flags.insert(PTEFlags::W);
+                pte.set_flags(pte_flags);
+                unsafe { flush_tlb(vpn.to_va().into()) };
+            }
         }
     }
 }
