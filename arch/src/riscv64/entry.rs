@@ -1,17 +1,17 @@
 use config::mm::{KERNEL_STACK_SIZE, VIRT_RAM_OFFSET};
 
 #[link_section = ".bss.stack"]
-static mut STACK: [u8; KERNEL_STACK_SIZE * 8] = [0u8; KERNEL_STACK_SIZE * 8];
+static mut BOOT_STACK: [u8; KERNEL_STACK_SIZE * 8] = [0u8; KERNEL_STACK_SIZE * 8];
 
 #[repr(C, align(4096))]
-struct OnePage([u64; 512]);
+struct BootPageTable([u64; 512]);
 
-static mut PAGE_TABLE: OnePage = {
+static mut BOOT_PAGE_TABLE: BootPageTable = {
     let mut arr: [u64; 512] = [0; 512];
     arr[2] = (0x80000 << 10) | 0xcf;
     arr[256] = (0x00000 << 10) | 0xcf;
     arr[258] = (0x80000 << 10) | 0xcf;
-    OnePage(arr)
+    BootPageTable(arr)
 };
 
 #[naked]
@@ -46,8 +46,8 @@ unsafe extern "C" fn _start(hart_id: usize) -> ! {
             or      a2, a2, t2
             jalr    a2                      // call rust_main
         ",
-        boot_stack = sym STACK,
-        page_table = sym PAGE_TABLE,
+        boot_stack = sym BOOT_STACK,
+        page_table = sym BOOT_PAGE_TABLE,
         virt_ram_offset = const VIRT_RAM_OFFSET,
         options(noreturn),
     )

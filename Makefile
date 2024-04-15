@@ -42,7 +42,6 @@ export STRACE :=
 export SUBMIT :=
 export TMPFS :=
 export SMP :=
-export STACK_TRACE :=
 export PRELIMINARY :=
 
 
@@ -62,8 +61,8 @@ QEMU_ARGS += -nographic
 QEMU_ARGS += -smp $(CPUS)
 QEMU_ARGS += -kernel $(KERNEL_BIN)
 QEMU_ARGS += -bios $(BOOTLOADER)
-QEMU_ARGS += -drive file=$(FS_IMG),if=none,format=raw,id=x0
-QEMU_ARGS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+# QEMU_ARGS += -drive file=$(FS_IMG),if=none,format=raw,id=x0
+# QEMU_ARGS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 
 DOCKER_RUN_ARGS := run
 DOCKER_RUN_ARGS += --rm
@@ -123,21 +122,21 @@ user:
 	@cp ./testcase/22/busybox $(TARGET_DIR)/busybox
 	@echo "building user finished"
 
-PHONY += fs-img
-fs-img:
-	@echo "building fs-img..."
-	@rm -rf $(FS_IMG)
-	@mkdir -p $(FS_IMG_DIR)
-	@dd if=/dev/zero of=$(FS_IMG) count=1363148 bs=1K
-	@mkfs.vfat -F 32 $(FS_IMG)
-	@echo "making fatfs image by using $(TEST_DIR)"
-	@mkdir -p mnt
-	@mount -t vfat -o user,umask=000,utf8=1 --source $(FS_IMG) --target mnt
-	@cp -r $(TEST_DIR)/* mnt
-	@umount mnt
-	@rm -rf mnt
-	@chmod -R 777 $(FS_IMG_DIR)
-	@echo "building fs-img finished"
+# PHONY += fs-img
+# fs-img:
+# 	@echo "building fs-img..."
+# 	@rm -rf $(FS_IMG)
+# 	@mkdir -p $(FS_IMG_DIR)
+# 	@dd if=/dev/zero of=$(FS_IMG) count=1363148 bs=1K
+# 	@mkfs.vfat -F 32 $(FS_IMG)
+# 	@echo "making fatfs image by using $(TEST_DIR)"
+# 	@mkdir -p mnt
+# 	@mount -t vfat -o user,umask=000,utf8=1 --source $(FS_IMG) --target mnt
+# 	@cp -r $(TEST_DIR)/* mnt
+# 	@umount mnt
+# 	@rm -rf mnt
+# 	@chmod -R 777 $(FS_IMG_DIR)
+# 	@echo "building fs-img finished"
 
 PHONY += qemu
 qemu:
@@ -146,6 +145,9 @@ qemu:
 
 PHONY += run
 run: qemu
+
+PHONY += brun
+brun: fmt clean user kernel run
 
 PHONY += clean
 clean:
@@ -156,12 +158,16 @@ PHONY += disasm
 disasm: $(KERNEL_ASM)
 	@$(PAGER) $(KERNEL_ASM)
 
-PHONY += gdbserver
-gdbserver:
+PHONY += trace
+trace:
+	addr2line -fipe $(KERNEL_ELF) | rustfilt
+
+PHONY += drun
+drun: fmt clean user kernel
 	$(QEMU) $(QEMU_ARGS) -s -S
 
-PHONY += gdbclient
-gdbclient:
+PHONY += gdb
+gdb:
 	$(RISCV_GDB) -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'
 
 .PHONY: $(PHONY)

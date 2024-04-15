@@ -1,22 +1,10 @@
 # Building variables
-FEATURES := stack_trace
+FEATURES :=
 ifneq ($(STRACE), )
 	FEATURES += strace
 endif
-ifneq ($(SUBMIT), )
-	FEATURES += submit
-endif
-ifneq ($(TMPFS), )
-	FEATURES += tmpfs
-endif
 ifneq ($(SMP), )
-	FEATURES += multi_hart
-endif
-ifeq ($(BOARD), u740)
-	FEATURES += board_u740
-endif
-ifneq ($(PRELIMINARY), )
-	FEATURES += preliminary
+	FEATURES += smp
 endif
 
 CARGO_BUILD_ARGS :=

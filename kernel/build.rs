@@ -25,10 +25,10 @@ fn main() {
     insert_app_data().unwrap();
 }
 
-static TARGET_PATH: &str = "./target/riscv64gc-unknown-none-elf/release/";
+static TARGET_PATH: &str = "./target/riscv64gc-unknown-none-elf/debug/";
 
 fn insert_app_data() -> Result<()> {
-    let mut f = File::create("src/link_app.S").unwrap();
+    let mut f = File::create("src/link_app.asm").unwrap();
     let mut apps: Vec<_> = read_dir("../user/src/bin")
         .unwrap()
         .map(|dir_entry| {
@@ -36,7 +36,13 @@ fn insert_app_data() -> Result<()> {
             name_with_ext.drain(name_with_ext.find('.').unwrap()..name_with_ext.len());
             name_with_ext
         })
-        .filter(|name| name == "initproc" || name == "shell" || name == "runtestcase")
+        .filter(|name| {
+            name == "initproc"
+                || name == "shell"
+                || name == "runtestcase"
+                || name == "hello_world"
+                || name == "exec_test"
+        })
         .collect();
 
     apps.sort();

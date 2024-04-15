@@ -6,36 +6,44 @@
 //!
 //! Every task or process has a memory_space to control its virtual memory.
 
-pub(crate) mod heap_allocator;
 ///
 pub mod memory_space;
 mod page;
-mod shm;
-use memory::frame_allocator;
-pub use shm::SHARED_MEMORY_MANAGER;
-///
-pub mod user_check;
+mod user_ptr;
 
-use log::info;
-pub use memory::page_table::{PageTable, PageTableEntry};
-pub use memory_space::{activate_kernel_space, remap_test, MemorySpace, KERNEL_SPACE};
-pub use page::{Page, PageBuilder};
+use core::ops::Range;
 
-use crate::{mm, processor::hart::HARTS};
+use config::{
+    board::MEMORY_END,
+    mm::{U_SEG_HEAP_BEG, U_SEG_STACK_BEG, U_SEG_STACK_END},
+};
+pub use memory::page_table::PageTable;
+use memory::{frame, heap, VirtAddr, VirtPageNum};
+pub use memory_space::{switch_kernel_page_table, MemorySpace};
+pub use page::Page;
+pub use user_ptr::{PageFaultAccessType, UserInOutPtr, UserReadPtr, UserWritePtr};
 
-/// initiate heap allocator, frame allocator and kernel space
+use self::memory_space::vm_area::MapPerm;
+use crate::mm;
+
+/// Initialize heap allocator, frame allocator and kernel space.
 pub fn init() {
-    heap_allocator::init_heap();
-    // heap_allocator::heap_test();
-    // Note that it is since here that can we use log!
-    unsafe {
-        for hart in HARTS.iter() {
-            hart.init_local_ctx();
-        }
+    extern "C" {
+        fn _ekernel();
     }
-    frame_allocator::init_frame_allocator();
-    memory_space::init_kernel_space();
-    info!("KERNEL SPACE init finished");
-    mm::activate_kernel_space();
-    info!("KERNEL SPACE activated");
+    heap::init_heap_allocator();
+    frame::init_frame_allocator(
+        VirtAddr::from(_ekernel as usize).to_offset().to_pa().into(),
+        VirtAddr::from(MEMORY_END).to_offset().to_pa().into(),
+    );
+    unsafe { mm::switch_kernel_page_table() };
+    log::info!("KERNEL SPACE activated");
 }
+
+/// MMIO in QEMU
+pub const MMIO: &[(usize, usize, MapPerm)] = &[
+    (0x10000000, 0x1000, MapPerm::RW),   // UART
+    (0x10001000, 0x1000, MapPerm::RW),   // VIRTIO
+    (0x02000000, 0x10000, MapPerm::RW),  // CLINT
+    (0x0C000000, 0x400000, MapPerm::RW), // PLIC
+];

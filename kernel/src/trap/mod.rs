@@ -1,5 +1,5 @@
 //! Trap handling functionality
-mod ctx;
+pub mod ctx;
 /// Kernel trap handler
 pub mod kernel_trap;
 /// User trap handler
@@ -9,7 +9,7 @@ use core::arch::global_asm;
 
 use arch::interrupts::set_trap_handler;
 
-global_asm!(include_str!("trap.S"));
+global_asm!(include_str!("trap.asm"));
 
 extern "C" {
     fn __trap_from_user();
@@ -17,16 +17,15 @@ extern "C" {
 }
 
 pub fn init() {
-    set_kernel_trap_entry();
+    unsafe { set_kernel_trap() };
 }
 
-///
-pub fn set_kernel_trap_entry() {
+pub unsafe fn set_kernel_trap() {
     set_trap_handler(__trap_from_kernel as usize);
 }
 
-fn set_user_trap_entry() {
+unsafe fn set_user_trap() {
     set_trap_handler(__trap_from_user as usize);
 }
 
-pub use ctx::{TrapContext, UserContext};
+pub use ctx::TrapContext;

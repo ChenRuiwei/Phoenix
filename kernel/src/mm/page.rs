@@ -1,33 +1,24 @@
-use alloc::sync::Weak;
+use alloc::sync::{Arc, Weak};
 
-use config::{
-    board::BLOCK_SIZE,
-    mm::{PAGE_SIZE, PAGE_SIZE_BITS},
-};
-use log::{info, trace};
-use memory::{FrameTracker, MapPermission};
-use sync::mutex::{SleepLock, SpinLock};
-use systype::{GeneralRet, SyscallErr};
+use config::{board::BLOCK_SIZE, mm::PAGE_SIZE};
+use memory::{frame_alloc, FrameTracker, PhysPageNum};
+use sync::mutex::{sleep_mutex::SleepMutex, SleepLock};
+use systype::{SysError, SysResult};
+use vfs::inode::Inode;
 
-use crate::fs::Inode;
-
-type Mutex<T> = SleepLock<T>;
-
-/// Note that the process will visit one page through `Arc`
-/// which maintains the ref cnt, so we can decide whether
-/// one page can be evicted by `Arc::strong_count()`
 pub struct Page {
-    /// Immutable page permission
-    pub permission: SpinLock<MapPermission>,
-    /// Physical data frame
-    pub data_frame: FrameTracker,
-    /// Mutable page inner
-    /// TODO: figure out whether we should use Box to decrease
-    pub file_info: Option<Mutex<FilePageInfo>>,
+    frame: FrameTracker,
+    file_info: Option<SleepLock<FilePageInfo>>,
+}
+
+impl core::fmt::Debug for Page {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Page").field("frame", &self.ppn()).finish()
+    }
 }
 
 pub struct FilePageInfo {
-    /// Start offset of this page at its related file
+    /// Offset of the file at page start.
     file_offset: usize,
     /// Data block state
     data_states: [DataState; PAGE_SIZE / BLOCK_SIZE],
@@ -35,146 +26,75 @@ pub struct FilePageInfo {
     inode: Weak<dyn Inode>,
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DataState {
-    Dirty,
+    /// Uninitialized, which means not loaded from disk yet.
+    UnInit,
+    /// Data in memory is coherent with date on disk.
     Coherent,
-    Outdated,
+    /// Data in memory is dirty.
+    Dirty,
 }
 
-/// Build a page
-pub struct PageBuilder {
-    permission: MapPermission,
-    offset: Option<usize>,
-    inode: Option<Weak<dyn Inode>>,
-    physical_frame: Option<FrameTracker>,
-    is_file_page: bool,
-}
-
-impl PageBuilder {
-    /// Construct a page builder
-    pub fn new() -> Self {
-        // stack_trace!();
-        Self {
-            offset: None,
-            inode: None,
-            physical_frame: None,
-            // TODO: defalut is readable and writable
-            permission: MapPermission::R | MapPermission::W,
-            is_file_page: false,
-        }
-    }
-    /// Whether this page is related to a file
-    pub fn is_file_page(mut self) -> Self {
-        self.is_file_page = true;
-        self
-    }
-    /// The page's backup file
-    pub fn file_info(mut self, file_info: &FilePageInfo) -> Self {
-        self.offset = Some(file_info.file_offset);
-        self.inode = Some(file_info.inode.clone());
-        self.is_file_page = true;
-        self
-    }
-    /// Page map permission
-    pub fn permission(mut self, permission: MapPermission) -> Self {
-        // stack_trace!();
-        // if permission.bits() == 0 {
-        //     warn!("permission None: {:?}", permission);
-        // }
-        self.permission = permission;
-        self
-    }
-    /// Page's file offset
-    pub fn offset(mut self, offset: usize) -> Self {
-        self.offset = Some((offset >> PAGE_SIZE_BITS) << PAGE_SIZE_BITS);
-        self
-    }
-    /// Page's backup inode
-    pub fn inode(mut self, inode: Weak<dyn Inode>) -> Self {
-        self.inode = Some(inode);
-        self
-    }
-    /// Page's physical page frame
-    pub fn physical_frame(mut self, frame: FrameTracker) -> Self {
-        // stack_trace!();
-        self.physical_frame = Some(frame);
-        self
-    }
-    /// Build the page
-    pub fn build(mut self) -> Page {
-        // stack_trace!();
-        let frame = match self.physical_frame {
-            None => memory::frame_alloc().unwrap(),
-            Some(_) => self.physical_frame.take().unwrap(),
-        };
-        Page {
-            permission: SpinLock::new(self.permission),
-            data_frame: frame,
-            file_info: match self.is_file_page {
-                true => Some(Mutex::new(FilePageInfo {
-                    file_offset: self.offset.unwrap(),
-                    data_states: core::array::from_fn(|_| DataState::Outdated),
-                    inode: self.inode.unwrap(),
-                })),
-                false => None,
-            },
-        }
+impl FilePageInfo {
+    pub fn inode(&self) -> Arc<dyn Inode> {
+        self.inode.upgrade().unwrap()
     }
 }
 
 impl Page {
-    /// Reinterpret this page
-    pub fn reinterpret<T>(&self) -> &'static T {
-        self.data_frame.ppn.reinterpret()
-    }
-
-    /// Reinterpret this page
-    pub fn reinterpret_mut<T>(&self) -> &'static mut T {
-        self.data_frame.ppn.reinterpret_mut()
-    }
-
-    /// Read this page.
-    /// `offset`: page offset
-    pub async fn read(&self, offset: usize, buf: &mut [u8]) -> GeneralRet<usize> {
-        if offset >= PAGE_SIZE {
-            Err(SyscallErr::E2BIG)
-        } else {
-            let mut end = offset + buf.len();
-            if end > PAGE_SIZE {
-                end = PAGE_SIZE;
-            }
-            self.load_buffer_if_needed(offset, end).await?;
-            buf.copy_from_slice(&self.data_frame.ppn.bytes_array()[offset..end]);
-            Ok(end - offset)
-        }
-    }
-    /// Write this page.
-    /// `offset`: page offset
-    pub async fn write(&self, offset: usize, buf: &[u8]) -> GeneralRet<usize> {
-        trace!(
-            "[Page::write]: page addr {:#x}",
-            self as *const Self as usize
-        );
-        if offset >= PAGE_SIZE {
-            Err(SyscallErr::E2BIG)
-        } else {
-            // let mut inner = self.inner.lock();
-            let mut end = offset + buf.len();
-            if end > PAGE_SIZE {
-                end = PAGE_SIZE;
-            }
-            self.mark_buffer_dirty_if_needed(offset, end).await?;
-            self.data_frame.ppn.bytes_array()[offset..end].copy_from_slice(buf);
-            Ok(end - offset)
+    pub fn new() -> Self {
+        Self {
+            frame: frame_alloc(),
+            file_info: None,
         }
     }
 
-    /// Sync all buffers if needed
-    pub async fn sync(&self) -> GeneralRet<()> {
+    pub fn new_with_file(inode: Weak<dyn Inode>, file_offset: usize) -> Self {
+        let file_page_info = FilePageInfo {
+            file_offset,
+            data_states: core::array::from_fn(|_| DataState::UnInit),
+            inode,
+        };
+        Self {
+            frame: frame_alloc(),
+            file_info: Some(SleepLock::new(file_page_info)),
+        }
+    }
+
+    pub fn copy_data_from_another(&self, another: &Page) {
+        self.ppn().copy_page_from_another(another.ppn());
+    }
+
+    pub fn ppn(&self) -> PhysPageNum {
+        self.frame.ppn
+    }
+
+    pub fn bytes_array_range(&self, range: core::ops::Range<usize>) -> &'static mut [u8] {
+        self.ppn().bytes_array_range(range)
+    }
+
+    /// Read this page starts with offset.
+    pub async fn read(&self, offset: usize, buf: &mut [u8]) -> SysResult<usize> {
+        debug_assert!(offset < PAGE_SIZE);
+        let end = (offset + buf.len()).min(PAGE_SIZE);
+        self.load_buffer(offset..end).await?;
+        buf.copy_from_slice(&self.bytes_array_range(offset..end));
+        Ok(end - offset)
+    }
+
+    /// Write this page starts with offset.
+    pub async fn write(&self, offset: usize, buf: &[u8]) -> SysResult<usize> {
+        debug_assert!(offset < PAGE_SIZE);
+        let end = (offset + buf.len()).min(PAGE_SIZE);
+        self.mark_buffer_dirty(offset..end).await?;
+        self.bytes_array_range(offset..end).copy_from_slice(buf);
+        Ok(end - offset)
+    }
+
+    /// Sync all buffers in need.
+    pub async fn sync(&self) -> SysResult<()> {
         let file_info = self.file_info.as_ref().unwrap().lock().await;
-        let inode = file_info.inode.upgrade().ok_or(SyscallErr::EBADF)?;
-        let data_len = inode.metadata().inner.lock().data_len;
         log::trace!(
             "[Page::sync] sync page, file offset {:#x}",
             file_info.file_offset
@@ -185,20 +105,13 @@ impl Page {
                     let page_offset = idx * BLOCK_SIZE;
                     let file_offset = file_info.file_offset + page_offset;
                     log::trace!(
-                        "[Page::sync] sync block of the page, file offset {:#x}",
-                        file_offset
+                        "[Page::sync] sync block of the page, file offset {file_offset:#x}",
                     );
-                    // In case of truncate
-                    if data_len <= file_offset {
-                        info!("[Page::sync] file has been truncated, now len {:#x}, page's file offset {:#x}", data_len, file_offset);
-                        return Ok(());
-                    }
-                    inode
-                        .write(
-                            file_offset,
-                            &self.bytes_array()[page_offset..page_offset + BLOCK_SIZE],
-                        )
-                        .await?;
+                    // TODO: In case of truncate (Titanix)?
+                    file_info.inode().write_at(
+                        file_offset as u64,
+                        self.bytes_array_range(page_offset..page_offset + BLOCK_SIZE),
+                    );
                 }
                 _ => {}
             }
@@ -206,95 +119,35 @@ impl Page {
         Ok(())
     }
 
-    /// Load all buffers
-    pub async fn load_all_buffers(&self) -> GeneralRet<()> {
-        trace!(
-            "[Page::load_all_buffers]: page addr {:#x}",
-            self.bytes_array_ptr() as usize
-        );
-        // let mut inner = self.inner.lock();
-        let len = PAGE_SIZE;
-        self.load_buffer_if_needed(0, len).await?;
-        Ok(())
-    }
-
-    /// Get the raw pointer of this page
-    pub fn bytes_array_ptr(&self) -> *const u8 {
-        self.data_frame.ppn.bytes_array().as_ptr()
-    }
-
-    /// Get the bytes array of this page
-    pub fn bytes_array(&self) -> &'static [u8] {
-        self.data_frame.ppn.bytes_array()
-    }
-
-    async fn load_buffer_if_needed(&self, start_off: usize, end_off: usize) -> GeneralRet<()> {
-        let start_buffer_idx = start_off / BLOCK_SIZE;
-        let end_buffer_idx = (end_off - 1 + BLOCK_SIZE) / BLOCK_SIZE;
+    /// Load buffers if needed.
+    async fn load_buffer(&self, offset_range: core::ops::Range<usize>) -> SysResult<()> {
+        let start_idx = offset_range.start / BLOCK_SIZE;
+        let end_idx = (offset_range.end + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
         let mut file_info = self.file_info.as_ref().unwrap().lock().await;
-        for idx in start_buffer_idx..end_buffer_idx {
-            if file_info.data_states[idx] == DataState::Outdated {
+        for idx in start_idx..end_idx {
+            if file_info.data_states[idx] == DataState::UnInit {
                 let page_offset = idx * BLOCK_SIZE;
                 let file_offset = page_offset + file_info.file_offset;
-                trace!(
-                    "outdated block, idx {}, start_page_off {:#x}, file_off {:#x}, backup-file off {:#x}",
-                    idx,
-                    start_off,
-                    file_offset,
-                    file_info.file_offset
-                );
-                file_info
-                    .inode
-                    .upgrade()
-                    .unwrap()
-                    .read(
-                        file_offset,
-                        &mut self.data_frame.ppn.bytes_array()
-                            [page_offset..page_offset + BLOCK_SIZE],
-                    )
-                    .await?;
+                log::trace!("outdated block, idx {idx}, file_off {file_offset:#x}",);
+                file_info.inode().read_at(
+                    file_offset as u64,
+                    self.bytes_array_range(page_offset..page_offset + BLOCK_SIZE),
+                )?;
                 file_info.data_states[idx] = DataState::Coherent;
             }
         }
         Ok(())
     }
 
-    async fn mark_buffer_dirty_if_needed(
-        &self,
-        start_off: usize,
-        end_off: usize,
-    ) -> GeneralRet<()> {
-        let start_buffer_idx = start_off / BLOCK_SIZE;
-        let end_buffer_idx = (end_off - 1 + BLOCK_SIZE) / BLOCK_SIZE;
-        trace!("start {}, end {}", start_buffer_idx, end_buffer_idx);
+    // NOTE: no need to load buffers since these buffers will be writen immediately
+    async fn mark_buffer_dirty(&self, offset_range: core::ops::Range<usize>) -> SysResult<()> {
+        let start_idx = offset_range.start / BLOCK_SIZE;
+        let end_idx = (offset_range.end + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
         let mut file_info = self.file_info.as_ref().unwrap().lock().await;
-
-        for idx in start_buffer_idx..end_buffer_idx {
-            if file_info.data_states[idx] == DataState::Outdated {
-                let page_offset = idx * BLOCK_SIZE;
-                let file_offset = page_offset + file_info.file_offset;
-                file_info
-                    .inode
-                    .upgrade()
-                    .unwrap()
-                    .read(
-                        file_offset,
-                        &mut self.data_frame.ppn.bytes_array()
-                            [page_offset..page_offset + BLOCK_SIZE],
-                    )
-                    .await?;
-                trace!(
-                    "outdated block, idx {}, start_page_off {:#x}",
-                    idx,
-                    start_off
-                );
-                file_info.data_states[idx] = DataState::Coherent;
-            }
-            if file_info.data_states[idx] != DataState::Dirty {
-                file_info.data_states[idx] = DataState::Dirty;
-            }
+        for idx in start_idx..end_idx {
+            file_info.data_states[idx] = DataState::Dirty;
         }
         Ok(())
     }

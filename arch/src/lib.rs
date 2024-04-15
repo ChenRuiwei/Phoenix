@@ -2,6 +2,8 @@
 #![no_main]
 #![feature(naked_functions)]
 #![feature(asm_const)]
+#![feature(stdsimd)]
+#![feature(riscv_ext_intrinsics)]
 
 extern crate alloc;
 

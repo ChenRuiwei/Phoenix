@@ -1,7 +1,7 @@
+*.gdb
 .github
 .gdb_history
 target/
 vendor/
 fs-img/
-kernel/src/link_app.S
-kernel/src/linker.ld
+kernel/src/link_app.asm

@@ -5,24 +5,24 @@
 #![feature(let_chains)]
 #![feature(trait_upcasting)]
 #![feature(panic_info_message)]
+#![feature(const_trait_impl)]
+#![feature(effects)]
+#![feature(sync_unsafe_cell)]
+#![feature(stdsimd)]
+#![feature(riscv_ext_intrinsics)]
+#![feature(map_try_insert)]
+#![feature(format_args_nl)]
+#![allow(unused)]
+#![allow(clippy::mut_from_ref)]
 
-use alloc::{boxed::Box, sync::Arc};
+use alloc::fmt;
 
-use arch::interrupts;
-use config::mm::HART_START_ADDR;
-use driver::{
-    plic::initplic,
-    qemu::{self, virtio_blk::VirtIOBlock},
-    sbi, BLOCK_DEVICE, CHAR_DEVICE, KERNEL_PAGE_TABLE,
-};
-use mm::KERNEL_SPACE;
+use arch::time::{self, set_next_timer_irq};
+use config::{board::CLOCK_FREQ, mm::HART_START_ADDR};
+use driver::{print, sbi};
+use processor::local_hart;
 
-use crate::{
-    fs::TTY,
-    process::{thread, PROCESS_MANAGER},
-    processor::hart,
-    timer::{timeout_task::ksleep, POLL_QUEUE},
-};
+use crate::processor::hart;
 
 extern crate alloc;
 
@@ -30,37 +30,37 @@ extern crate alloc;
 extern crate bitflags;
 
 #[macro_use]
+extern crate cfg_if;
+
+#[macro_use]
 extern crate driver;
 
+#[macro_use]
+extern crate logging;
+
 mod boot;
-mod fs;
-mod futex;
+mod impls;
 mod loader;
 mod mm;
-mod net;
 mod panic;
-mod process;
 mod processor;
-mod signal;
 mod syscall;
-mod timer;
+mod task;
 mod trap;
 mod utils;
 
 use core::{
     arch::global_asm,
-    hint::{self},
+    hint,
     sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
 };
 
-global_asm!(include_str!("trampoline.S"));
-global_asm!(include_str!("link_app.S"));
+global_asm!(include_str!("trampoline.asm"));
+global_asm!(include_str!("link_app.asm"));
 
 static FIRST_HART: AtomicBool = AtomicBool::new(true);
 static INIT_FINISHED: AtomicBool = AtomicBool::new(false);
 
-#[allow(unused)]
 fn hart_start(hart_id: usize) {
     use crate::processor::HARTS;
 
@@ -75,7 +75,7 @@ fn hart_start(hart_id: usize) {
             continue;
         }
         let status = sbi::hart_start(i, HART_START_ADDR);
-        println!("[kernel] start to wake up hart {}... status {}", i, status);
+        println!("[kernel] start to wake up hart {i}... status {status}");
         if status == 0 {
             has_another = true;
         }
@@ -89,56 +89,27 @@ fn rust_main(hart_id: usize) {
         .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
     {
-        // The first hart
         boot::clear_bss();
-
         boot::print_boot_message();
 
         hart::init(hart_id);
-        utils::logging::init();
+        logging::init();
 
-        println!(
-            "[kernel] ---------- main hart {} started ---------- ",
-            hart_id
-        );
+        println!("[kernel] ---------- main hart {hart_id} started ---------- ");
 
         mm::init();
-        mm::remap_test();
         trap::init();
-        driver_init();
         loader::init();
-        fs::init();
-        timer::init();
-        net::config::init();
 
-        thread::spawn_kernel_thread(async move {
-            process::add_initproc();
-        });
-
-        #[cfg(not(feature = "submit"))]
-        thread::spawn_kernel_thread(async move {
-            loop {
-                log::info!("[daemon] process cnt {}", PROCESS_MANAGER.total_num());
-                ksleep(Duration::from_secs(3)).await;
-            }
-        });
-
-        #[cfg(not(feature = "submit"))]
-        thread::spawn_kernel_thread(async move {
-            loop {
-                POLL_QUEUE.poll();
-                ksleep(Duration::from_millis(30)).await;
-            }
+        task::spawn_kernel_task(async move {
+            task::add_init_proc();
         });
 
         // barrier
         INIT_FINISHED.store(true, Ordering::SeqCst);
 
-        #[cfg(feature = "multi_hart")]
+        #[cfg(feature = "smp")]
         hart_start(hart_id);
-
-        arch::interrupts::enable_timer_interrupt();
-        timer::set_next_trigger();
     } else {
         // The other harts
         hart::init(hart_id);
@@ -148,57 +119,19 @@ fn rust_main(hart_id: usize) {
             hint::spin_loop()
         }
 
-        println!(
-            "[kernel] ---------- hart {} is starting... ----------",
-            hart_id
-        );
+        println!("[kernel] ---------- hart {hart_id} is starting... ----------");
 
         trap::init();
-        mm::activate_kernel_space();
-        println!("[kernel] ---------- hart {} started ----------", hart_id);
-
-        arch::interrupts::enable_timer_interrupt();
-        timer::set_next_trigger();
+        unsafe { mm::switch_kernel_page_table() };
+        println!("[kernel] ---------- hart {hart_id} started ----------");
     }
 
-    println!(
-        "[kernel] ---------- hart {} start to fetch task... ---------- ",
-        hart_id
-    );
+    unsafe {
+        arch::interrupts::enable_timer_interrupt();
+        arch::time::set_next_timer_irq()
+    };
+    println!("[kernel] ---------- hart {hart_id} start to fetch task... ---------- ");
     loop {
         executor::run_until_idle();
     }
-}
-
-fn init_block_device() {
-    {
-        *BLOCK_DEVICE.lock() = Some(Arc::new(VirtIOBlock::new()));
-    }
-}
-
-fn init_char_device() {
-    {
-        *CHAR_DEVICE.get_unchecked_mut() = Some(Box::new(qemu::uart::UART::new(
-            0xffff_ffc0_1000_0000,
-            Box::new(|ch| {
-                TTY.get_unchecked_mut().as_ref().unwrap().handle_irq(ch);
-            }),
-        )));
-    }
-}
-
-pub fn driver_init() {
-    unsafe {
-        KERNEL_PAGE_TABLE = Some(
-            KERNEL_SPACE
-                .as_ref()
-                .expect("KERENL SPACE not init yet")
-                .page_table
-                .clone(),
-        )
-    };
-    initplic(0xffff_ffc0_0c00_0000);
-    init_char_device();
-    init_block_device();
-    interrupts::enable_external_interrupt();
 }

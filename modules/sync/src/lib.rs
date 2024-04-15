@@ -9,7 +9,6 @@ extern crate alloc;
 #[macro_use]
 extern crate bitflags;
 
-pub mod cell;
 pub mod mailbox;
 pub mod mutex;
 
