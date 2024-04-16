@@ -1,5 +1,5 @@
 # Building variables
-DOCKER_NAME = titanix
+DOCKER_NAME = phoenix
 BOARD := qemu
 export TARGET = riscv64gc-unknown-none-elf
 export MODE = release
