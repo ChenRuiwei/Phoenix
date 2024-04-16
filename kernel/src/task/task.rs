@@ -11,12 +11,13 @@ use core::{
     task::Waker,
 };
 
-use arch::{memory::flush_tlb_all, time::get_time_duration};
+use arch::{memory::sfence_vma_all, time::get_time_duration};
 use config::{mm::USER_STACK_SIZE, process::INITPROC_PID};
 use memory::VirtAddr;
 use signal::{signal_stack::SignalStack, Signal};
 use sync::mutex::SpinNoIrqLock;
 use time::stat::TaskTimeStat;
+use virtio_drivers::PAGE_SIZE;
 
 use super::tid::{Pid, Tid, TidHandle};
 use crate::{
@@ -307,7 +308,7 @@ impl Task {
             memory_space =
                 new_shared(self.with_mut_memory_space(|m| MemorySpace::from_user_lazily(m)));
             // TODO: avoid flushing global entries like kernel mappings
-            unsafe { flush_tlb_all() };
+            unsafe { sfence_vma_all() };
         }
 
         let new = Arc::new(Self {
@@ -358,6 +359,7 @@ impl Task {
         let stack_begin = self.with_mut_memory_space(|m| m.alloc_stack(USER_STACK_SIZE));
 
         // alloc heap
+        self.with_mut_memory_space(|m| m.alloc_heap_lazily());
 
         // init trap context
         self.trap_context_mut()

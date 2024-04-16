@@ -3,7 +3,10 @@ use core::ops::Range;
 
 use config::{
     board::MEMORY_END,
-    mm::{PAGE_SIZE, USER_STACK_SIZE, U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET},
+    mm::{
+        PAGE_SIZE, USER_STACK_SIZE, U_SEG_HEAP_BEG, U_SEG_HEAP_END, U_SEG_STACK_BEG,
+        U_SEG_STACK_END, VIRT_RAM_OFFSET,
+    },
 };
 use log::info;
 use memory::{pte::PTEFlags, PageTable, VPNRange, VirtAddr, VirtPageNum};
@@ -19,6 +22,7 @@ use crate::{
         memory_space::vm_area::{MapPerm, VmAreaType},
         MMIO,
     },
+    processor::env::SumGuard,
     task::aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_PHDR},
 };
 
@@ -284,6 +288,8 @@ impl MemorySpace {
         memory_space.push_vma(ustack_vma);
         log::info!("[from_elf] map ustack: {user_stack_bottom:#x}, {user_stack_top:#x}",);
 
+        memory_space.alloc_heap_lazily();
+
         // // guard page
         // let heap_start_va = user_stack_top + PAGE_SIZE;
         // let heap_end_va = heap_start_va;
@@ -349,6 +355,20 @@ impl MemorySpace {
         sp_init
     }
 
+    /// Alloc heap lazily.
+    pub fn alloc_heap_lazily(&mut self) {
+        const HEAP_RANGE: Range<VirtAddr> =
+            VirtAddr::from_usize(U_SEG_HEAP_BEG)..VirtAddr::from_usize(U_SEG_HEAP_END);
+
+        let vm_area = VmArea::new(
+            HEAP_RANGE.start,
+            HEAP_RANGE.end,
+            MapPerm::URW,
+            VmAreaType::Heap,
+        );
+        self.push_vma_lazily(vm_area);
+    }
+
     /// Clone a same `MemorySpace` from another user space, including datas in
     /// memory.
     pub fn from_user(user_space: &Self) -> Self {
@@ -374,28 +394,28 @@ impl MemorySpace {
         for (_, area) in user_space.areas.iter() {
             let new_area = VmArea::from_another_deep(area);
             for vpn in area.vpn_range {
-                let page = area.pages.get(&vpn).expect("");
-                // If there is related physcial frame, then we let the child and father share
-                // it.
-                let pte = user_space.page_table.find_pte(vpn).unwrap();
-
-                let (pte_flags, ppn) = match area.vma_type {
-                    VmAreaType::Shm => {
-                        // If shared memory,
-                        // then we don't need to modify the pte flags,
-                        // i.e. no copy-on-write.
-                        todo!()
-                    }
-                    _ => {
-                        // Else,
-                        // copy-on-write
-                        let mut new_flags = pte.flags() | PTEFlags::COW;
-                        new_flags.remove(PTEFlags::W);
-                        pte.set_flags(new_flags);
-                        (new_flags, page.ppn())
-                    }
-                };
-                memory_space.page_table.map(vpn, ppn, pte_flags);
+                if let Some(page) = area.pages.get(&vpn) {
+                    let pte = user_space.page_table.find_pte(vpn).unwrap();
+                    let (pte_flags, ppn) = match area.vma_type {
+                        VmAreaType::Shm => {
+                            // If shared memory,
+                            // then we don't need to modify the pte flags,
+                            // i.e. no copy-on-write.
+                            todo!()
+                        }
+                        _ => {
+                            // Else,
+                            // copy-on-write
+                            let mut new_flags = pte.flags() | PTEFlags::COW;
+                            new_flags.remove(PTEFlags::W);
+                            pte.set_flags(new_flags);
+                            (new_flags, page.ppn())
+                        }
+                    };
+                    memory_space.page_table.map(vpn, ppn, pte_flags);
+                } else {
+                    // lazy allocated area
+                }
             }
             memory_space.push_vma_lazily(new_area);
         }
@@ -434,5 +454,45 @@ impl MemorySpace {
 
     pub unsafe fn switch_page_table(&self) {
         self.page_table.switch();
+    }
+
+    /// only for debug
+    pub fn print_all(&self) {
+        use crate::{
+            trap::{
+                kernel_trap::{set_kernel_user_rw_trap, will_read_fail},
+                set_kernel_trap,
+            },
+            utils::exam_hash,
+        };
+        let _sum_guard = SumGuard::new();
+        unsafe { set_kernel_user_rw_trap() };
+        for (range, area) in self.areas.iter() {
+            log::warn!(
+                "==== {:?}, {:?}, {:?}, ====",
+                area.vma_type,
+                area.perm(),
+                range,
+            );
+
+            for vpn in area.vpn_range {
+                let vaddr = vpn.to_va();
+                if will_read_fail(vaddr.bits()) {
+                    // log::debug!("{:<8x}: unmapped", vpn);
+                } else {
+                    let hash = exam_hash(vpn.bytes_array());
+                    log::info!(
+                        "0x{: >8x}: {:0>4x} {:0>4x} {:0>4x} {:0>4x}",
+                        vpn.0,
+                        (hash & 0xffff_0000_0000_0000) >> 48,
+                        (hash & 0x0000_ffff_0000_0000) >> 32,
+                        (hash & 0x0000_0000_ffff_0000) >> 16,
+                        (hash & 0x0000_0000_0000_ffff),
+                    );
+                }
+            }
+        }
+        log::warn!("==== print all done ====");
+        unsafe { set_kernel_trap() };
     }
 }

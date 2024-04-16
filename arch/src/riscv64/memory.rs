@@ -1,7 +1,7 @@
-pub unsafe fn flush_tlb(vaddr: usize) {
-    core::arch::riscv64::sfence_vma(vaddr, 0)
+pub unsafe fn sfence_vma_vaddr(vaddr: usize) {
+    core::arch::riscv64::sfence_vma_vaddr(vaddr);
 }
 
-pub unsafe fn flush_tlb_all() {
-    core::arch::riscv64::sfence_vma_all()
+pub unsafe fn sfence_vma_all() {
+    core::arch::riscv64::sfence_vma_all();
 }

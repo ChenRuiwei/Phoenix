@@ -90,7 +90,7 @@ fn rust_main(hart_id: usize) {
         .is_ok()
     {
         boot::clear_bss();
-        boot::print_boot_message();
+        boot::print_banner();
 
         hart::init(hart_id);
         logging::init();

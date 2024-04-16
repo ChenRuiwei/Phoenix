@@ -23,7 +23,7 @@ use syscall::*;
 // const USER_HEAP_SIZE: usize = 16384;
 const USER_HEAP_SIZE: usize = 0x32000;
 
-// NOTE: heap space is allocated in .data segment
+// Note that heap space is allocated in .data segment
 // TODO: can we change to dynamically allocate by invoking sys_sbrk?
 static mut HEAP_SPACE: [u8; USER_HEAP_SIZE] = [0; USER_HEAP_SIZE];
 
@@ -38,10 +38,10 @@ pub fn handle_alloc_error(layout: core::alloc::Layout) -> ! {
 #[no_mangle]
 #[link_section = ".text.entry"]
 pub extern "C" fn _start(argc: usize, argv: usize) -> ! {
-    // pub extern "C" fn _start(sp: usize) -> ! {
     unsafe {
-        HEAP.lock()
-            .init(HEAP_SPACE.as_ptr() as usize, USER_HEAP_SIZE);
+        // HEAP.lock()
+        //     .init(HEAP_SPACE.as_ptr() as usize, USER_HEAP_SIZE);
+        HEAP.lock().init(0x0000_0002_0000_0000, USER_HEAP_SIZE);
     }
     let mut v: Vec<&'static str> = Vec::new();
     for i in 0..argc {

@@ -3,6 +3,8 @@
 
 extern crate user_lib;
 
+extern crate alloc;
+
 use user_lib::{execve, fork, println, wait, yield_};
 
 #[no_mangle]
@@ -23,6 +25,7 @@ fn main() -> i32 {
             ],
         );
     } else {
+        heap_test();
         let mut wstatus: i32 = 0;
         let pid = wait(&mut wstatus);
         println!(
@@ -31,4 +34,21 @@ fn main() -> i32 {
         );
     }
     0
+}
+
+fn heap_test() {
+    use alloc::{boxed::Box, vec::Vec};
+    let a = Box::new(5);
+    assert_eq!(*a, 5);
+    drop(a);
+    let mut v: Vec<usize> = Vec::new();
+    let max_len = (20000000 - 10000) / core::mem::size_of::<usize>();
+    for i in 0..500 {
+        v.push(i);
+    }
+    for (i, val) in v.iter().take(500).enumerate() {
+        assert_eq!(*val, i);
+    }
+    drop(v);
+    println!("heap_test passed");
 }

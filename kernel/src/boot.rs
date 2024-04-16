@@ -1,6 +1,6 @@
 use driver::println;
 
-const BOOT_MSG: &str = r#"
+const BOOT_BANNER: &str = r#"
     ____  __                     _
    / __ \/ /_  ____  ___  ____  (_)  __
   / /_/ / __ \/ __ \/ _ \/ __ \/ / |/_/
@@ -8,8 +8,8 @@ const BOOT_MSG: &str = r#"
 /_/   /_/ /_/\____/\___/_/ /_/_/_/|_|
 "#;
 
-pub fn print_boot_message() {
-    println!("{}", BOOT_MSG);
+pub fn print_banner() {
+    println!("{}", BOOT_BANNER);
 }
 
 /// Clear BSS segment at start up

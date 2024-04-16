@@ -3,10 +3,13 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
+use core::sync::atomic::AtomicBool;
 
-use arch::memory::flush_tlb;
+use arch::memory::sfence_vma_vaddr;
 use config::mm::PAGE_SIZE;
 use memory::{page_table, pte::PTEFlags, StepByOne, VPNRange, VirtAddr, VirtPageNum};
+use spin::mutex::SpinMutex;
+use sync::mutex::SpinNoIrqLock;
 
 use super::MemorySpace;
 use crate::{
@@ -66,6 +69,8 @@ impl From<MapPerm> for PTEFlags {
         let mut ret = Self::from_bits(0).unwrap();
         if perm.contains(MapPerm::U) {
             ret |= PTEFlags::U;
+        } else {
+            ret |= PTEFlags::G;
         }
         if perm.contains(MapPerm::R) {
             ret |= PTEFlags::R;
@@ -77,6 +82,19 @@ impl From<MapPerm> for PTEFlags {
             ret |= PTEFlags::X;
         }
         ret
+    }
+}
+
+#[derive(Clone)]
+pub struct PageManager {
+    pub pages: BTreeMap<VirtPageNum, Arc<SpinNoIrqLock<Page>>>,
+}
+
+impl PageManager {
+    pub fn new() -> Self {
+        Self {
+            pages: BTreeMap::new(),
+        }
     }
 }
 
@@ -178,18 +196,20 @@ impl VmArea {
     ///
     /// Will alloc new pages for `VmArea` according to `VmAreaType`.
     pub fn map(&mut self, page_table: &mut PageTable) {
+        // NOTE: set pte flag with global mapping for kernel memory
+        let mut pte_flags: PTEFlags = self.map_perm.into();
         if self.vma_type == VmAreaType::Physical || self.vma_type == VmAreaType::Mmio {
             for vpn in self.vpn_range {
                 page_table.map(
                     vpn,
                     VirtAddr::from(vpn).to_offset().to_pa().into(),
-                    self.map_perm.into(),
+                    pte_flags,
                 )
             }
         } else {
             for vpn in self.vpn_range {
                 let page = Page::new();
-                page_table.map(vpn, page.ppn(), self.map_perm.into());
+                page_table.map(vpn, page.ppn(), pte_flags);
                 self.pages.insert(vpn, Arc::new(page));
             }
         }
@@ -237,11 +257,18 @@ impl VmArea {
             debug_assert!(!pte_flags.contains(PTEFlags::W));
             debug_assert!(self.perm().contains(MapPerm::UW));
 
+            static mutex: SpinMutex<usize> = SpinMutex::<_>::new(0);
+            let guard = mutex.lock();
             let old_page = self.get_page(vpn);
-
-            if Arc::strong_count(old_page) > 1 {
+            let mut cnt: usize;
+            // FIXME: should add extern lock to lock this area.
+            let cnt = Arc::strong_count(old_page);
+            // NOTE: should use atomic that can not be relaxed
+            if cnt > 1 {
                 // shared now
-                log::debug!("[VmArea::handle_page_fault] copying cow page {old_page:?}",);
+                log::debug!(
+                    "[VmArea::handle_page_fault] copying cow page {old_page:?} with count {cnt}",
+                );
 
                 // copy the data
                 page = Page::new();
@@ -253,16 +280,30 @@ impl VmArea {
                 page_table.map_force(vpn, page.ppn(), pte_flags);
                 // NOTE: track `Page` with great care
                 self.pages.insert(vpn, Arc::new(page));
-                unsafe { flush_tlb(vpn.to_va().into()) };
+                unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
             } else {
                 // not shared
-                log::debug!("[VmArea::handle_page_fault] removing cow flag for page {old_page:?}",);
+                log::error!("[VmArea::handle_page_fault] removing cow flag for page {old_page:?}",);
 
                 // set the pte to writable
                 pte_flags.remove(PTEFlags::COW);
                 pte_flags.insert(PTEFlags::W);
                 pte.set_flags(pte_flags);
-                unsafe { flush_tlb(vpn.to_va().into()) };
+                unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+            }
+        } else {
+            log::debug!(
+                "[VmArea::handle_page_fault] handle for type {:?}",
+                self.vma_type
+            );
+            match self.vma_type {
+                VmAreaType::Heap => {
+                    page = Page::new();
+                    page_table.map(vpn, page.ppn(), self.map_perm.into());
+                    self.pages.insert(vpn, Arc::new(page));
+                    unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                }
+                _ => {}
             }
         }
     }

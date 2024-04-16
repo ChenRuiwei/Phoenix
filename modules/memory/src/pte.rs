@@ -1,8 +1,9 @@
 use bitflags::*;
 
 use crate::PhysPageNum;
-
 bitflags! {
+    // If pte.v=0, or if pte.r=0 and pte.w=1, or if any reserved bits are set, will raise a
+    // page-fault exception corresponding to the original access type.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct PTEFlags: u16 {
         const V = 1 << 0;

@@ -5,8 +5,8 @@ authors = ["ChenRuiwei <1982833213@qq.com>"]
 edition = "2021"
 
 [dependencies]
-arch = { path = "../arch" }
-config = { path = "../config" }
+arch = { path = "../arch/" }
+config = { path = "../config/" }
 sync = { path = "../modules/sync/" }
 signal = { path = "../modules/signal/" }
 driver = { path = "../driver/" }
@@ -15,10 +15,10 @@ executor = { path = "../modules/executor/" }
 systype = { path = "../modules/systype/" }
 memory = { path = "../modules/memory/" }
 async_utils = { path = "../modules/async_utils/" }
-vfs = { path = "../modules/vfs/"}
-irq_count = { path = "../crates//irq_count/" }
+vfs = { path = "../modules/vfs/" }
+irq_count = { path = "../crates/irq_count/" }
 recycle_allocator = { path = "../crates/recycle_allocator/" }
-time = { path = "../modules/time" }
+time = { path = "../modules/time/" }
 
 cfg-if = "1.0"
 crate_interface = "0.1"

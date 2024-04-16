@@ -131,6 +131,12 @@ impl VirtPageNum {
         }
         indices
     }
+
+    /// Get bytes array of a page
+    pub fn bytes_array(&self) -> &'static mut [u8] {
+        let va: VirtAddr = self.to_va();
+        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, PAGE_SIZE) }
+    }
 }
 
 impl StepByOne for VirtAddr {

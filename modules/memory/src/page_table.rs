@@ -15,7 +15,6 @@ use crate::{
 };
 
 /// Write `page_table_token` into satp and sfence.vma
-#[inline]
 pub unsafe fn switch_page_table(page_table_token: usize) {
     satp::write(page_table_token);
     core::arch::riscv64::sfence_vma_all();

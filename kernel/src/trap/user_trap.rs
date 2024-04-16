@@ -78,10 +78,10 @@ pub async fn trap_handler(task: &Arc<Task>) {
 
             let result = task
                 .with_mut_memory_space(|m| m.handle_page_fault(VirtAddr::from(stval), access_type));
-            // if let Err(e) = result {
-            //     lproc.with_memory(|m| m.areas().print_all());
-            //     is_exit = true;
-            // }
+            if let Err(e) = result {
+                task.with_memory_space(|m| m.print_all());
+                task.do_exit()
+            }
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             log::warn!(

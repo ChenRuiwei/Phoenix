@@ -8,6 +8,7 @@ pub mod user_trap;
 use core::arch::global_asm;
 
 use arch::interrupts::set_trap_handler;
+pub use ctx::TrapContext;
 
 global_asm!(include_str!("trap.asm"));
 
@@ -27,5 +28,3 @@ pub unsafe fn set_kernel_trap() {
 unsafe fn set_user_trap() {
     set_trap_handler(__trap_from_user as usize);
 }
-
-pub use ctx::TrapContext;
