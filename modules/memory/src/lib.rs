@@ -4,6 +4,7 @@
 #![feature(const_trait_impl)]
 #![feature(stdsimd)]
 #![feature(riscv_ext_intrinsics)]
+#![feature(step_trait)]
 
 extern crate alloc;
 

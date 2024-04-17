@@ -41,7 +41,10 @@ pub extern "C" fn _start(argc: usize, argv: usize) -> ! {
     unsafe {
         // HEAP.lock()
         //     .init(HEAP_SPACE.as_ptr() as usize, USER_HEAP_SIZE);
-        HEAP.lock().init(0x0000_0002_0000_0000, USER_HEAP_SIZE);
+
+        const HEAP_START: usize = 0x0000_0002_0000_0000;
+        sys_brk(HEAP_START + USER_HEAP_SIZE);
+        HEAP.lock().init(HEAP_START, USER_HEAP_SIZE);
     }
     let mut v: Vec<&'static str> = Vec::new();
     for i in 0..argc {

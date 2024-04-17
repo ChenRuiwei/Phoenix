@@ -25,6 +25,7 @@ const SYSCALL_CLONE: usize = 220;
 const SYSCALL_EXECVE: usize = 221;
 const SYSCALL_MMAP: usize = 222;
 const SYSCALL_WAITPID: usize = 260;
+const SYSCALL_BRK: usize = 214;
 
 fn syscall(id: usize, args: [usize; 3]) -> isize {
     let mut ret: isize;
@@ -254,4 +255,8 @@ pub fn sys_pipe(pipe: &mut [i32]) -> isize {
 
 pub fn sys_close(fd: usize) -> isize {
     syscall(SYSCALL_CLOSE, [fd, 0, 0])
+}
+
+pub fn sys_brk(addr: usize) -> isize {
+    syscall(SYSCALL_BRK, [addr, 0, 0])
 }

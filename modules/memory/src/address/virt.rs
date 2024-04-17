@@ -1,6 +1,7 @@
 //! Implementation of physical and virtual address and page number.
 use core::{
     fmt::{self, Debug, Formatter},
+    iter::Step,
     mem::size_of,
 };
 
@@ -63,31 +64,43 @@ impl VirtAddr {
     pub const fn from_usize(v: usize) -> Self {
         Self(v)
     }
+
     pub const fn bits(&self) -> usize {
         self.0
     }
+
     pub fn to_offset(&self) -> OffsetAddr {
         (*self).into()
     }
+
+    pub const fn from_usize_range(range: core::ops::Range<usize>) -> core::ops::Range<Self> {
+        Self::from_usize(range.start)..Self::from_usize(range.end)
+    }
+
     /// `VirtAddr`->`VirtPageNum`
     pub fn floor(&self) -> VirtPageNum {
         VirtPageNum(self.0 / PAGE_SIZE)
     }
+
     /// `VirtAddr`->`VirtPageNum`
     pub fn ceil(&self) -> VirtPageNum {
         VirtPageNum((self.0 + PAGE_SIZE - 1) / PAGE_SIZE)
     }
+
     /// Get page offset
     pub fn page_offset(&self) -> usize {
         self.0 & PAGE_MASK
     }
+
     /// Check page aligned
     pub fn aligned(&self) -> bool {
         self.page_offset() == 0
     }
+
     pub const fn as_ptr(self) -> *const u8 {
         self.0 as *const u8
     }
+
     pub const fn as_mut_ptr(self) -> *mut u8 {
         self.0 as *mut u8
     }
@@ -136,6 +149,20 @@ impl VirtPageNum {
     pub fn bytes_array(&self) -> &'static mut [u8] {
         let va: VirtAddr = self.to_va();
         unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, PAGE_SIZE) }
+    }
+}
+
+impl Step for VirtPageNum {
+    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+        usize::steps_between(&start.0, &end.0)
+    }
+
+    fn forward_checked(start: Self, count: usize) -> Option<Self> {
+        usize::forward_checked(start.0, count).map(VirtPageNum::from)
+    }
+
+    fn backward_checked(start: Self, count: usize) -> Option<Self> {
+        usize::forward_checked(start.0, count).map(VirtPageNum::from)
     }
 }
 

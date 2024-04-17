@@ -3,7 +3,7 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
-use core::sync::atomic::AtomicBool;
+use core::{ops::Range, sync::atomic::AtomicBool};
 
 use arch::memory::sfence_vma_vaddr;
 use config::mm::PAGE_SIZE;
@@ -89,7 +89,7 @@ impl From<MapPerm> for PTEFlags {
 pub struct VmArea {
     /// VPN range for the `VmArea`.
     /// NOTE: stores range that is truly allocated for lazy allocated areas.
-    pub vpn_range: VPNRange,
+    pub vpn_range: Range<VirtPageNum>,
     pub pages: BTreeMap<VirtPageNum, Arc<Page>>,
     pub map_perm: MapPerm,
     pub vma_type: VmAreaType,
@@ -108,12 +108,11 @@ impl core::fmt::Debug for VmArea {
 impl Drop for VmArea {
     fn drop(&mut self) {
         log::debug!("[VmArea::drop] drop {self:?}",);
-        drop(self)
     }
 }
 
 impl VmArea {
-    /// Construct a new vma
+    /// Construct a new vma.
     pub fn new(
         range_va: core::ops::Range<VirtAddr>,
         map_perm: MapPerm,
@@ -122,7 +121,7 @@ impl VmArea {
         let start_vpn: VirtPageNum = range_va.start.floor();
         let end_vpn: VirtPageNum = range_va.end.ceil();
         let new = Self {
-            vpn_range: VPNRange::new(start_vpn, end_vpn),
+            vpn_range: start_vpn..end_vpn,
             pages: BTreeMap::new(),
             vma_type,
             map_perm,
@@ -134,7 +133,7 @@ impl VmArea {
     pub fn from_another(another: &Self) -> Self {
         log::trace!("[VmArea::from_another] {another:?}");
         Self {
-            vpn_range: another.vpn_range,
+            vpn_range: another.vpn_range.clone(),
             pages: BTreeMap::new(),
             vma_type: another.vma_type,
             map_perm: another.map_perm,
@@ -154,11 +153,11 @@ impl VmArea {
     }
 
     pub fn start_vpn(&self) -> VirtPageNum {
-        self.vpn_range.start()
+        self.vpn_range.start
     }
 
     pub fn end_vpn(&self) -> VirtPageNum {
-        self.vpn_range.end()
+        self.vpn_range.end
     }
 
     pub fn perm(&self) -> MapPerm {
@@ -176,7 +175,7 @@ impl VmArea {
         // NOTE: set pte flag with global mapping for kernel memory
         let mut pte_flags: PTEFlags = self.map_perm.into();
         if self.vma_type == VmAreaType::Physical || self.vma_type == VmAreaType::Mmio {
-            for vpn in self.vpn_range {
+            for vpn in self.vpn_range.clone() {
                 page_table.map(
                     vpn,
                     VirtAddr::from(vpn).to_offset().to_pa().into(),
@@ -184,7 +183,7 @@ impl VmArea {
                 )
             }
         } else {
-            for vpn in self.vpn_range {
+            for vpn in self.vpn_range.clone() {
                 let page = Page::new();
                 page_table.map(vpn, page.ppn(), pte_flags);
                 self.pages.insert(vpn, Arc::new(page));
@@ -203,7 +202,7 @@ impl VmArea {
 
         let mut offset = offset;
         let mut start: usize = 0;
-        let mut current_vpn = self.vpn_range.start();
+        let mut current_vpn = self.start_vpn();
         let len = data.len();
         while start < len {
             let src = &data[start..len.min(start + PAGE_SIZE - offset)];
@@ -276,6 +275,8 @@ impl VmArea {
                     page = Page::new();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, Arc::new(page));
+                    // FIXME: if lazy alloc is not contiguous
+                    self.vpn_range.end = vpn;
                     unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                 }
                 _ => {}

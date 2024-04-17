@@ -1,4 +1,7 @@
+use memory::VirtAddr;
 use systype::{SysError, SyscallResult};
+
+use crate::processor::hart::current_task;
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -24,7 +27,10 @@ bitflags! {
 /// NOTE: The actual Linux system call returns the new program break on success.
 /// On failure, the system call returns the current break.
 pub fn sys_brk(addr: usize) -> SyscallResult {
-    todo!()
+    let task = current_task();
+    // TODO: whether we should implment raw system call
+    let brk = task.with_mut_memory_space(|m| m.reset_heap_break(VirtAddr::from(addr)));
+    Ok(brk.bits())
 }
 
 pub fn sys_mmap(

@@ -12,7 +12,7 @@ use log::info;
 use memory::{pte::PTEFlags, PageTable, VPNRange, VirtAddr, VirtPageNum};
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
-use systype::SysResult;
+use systype::{SysError, SysResult};
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};
@@ -217,7 +217,7 @@ impl MemorySpace {
 
             log::debug!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?} start...",);
 
-            max_end_vpn = vm_area.vpn_range.end();
+            max_end_vpn = vm_area.end_vpn();
 
             let map_offset = start_va.0 - start_va.floor().0 * PAGE_SIZE;
 
@@ -330,7 +330,7 @@ impl MemorySpace {
     /// The stack has a range of [sp - size, sp].
     pub fn alloc_stack(&mut self, size: usize) -> VirtAddr {
         const STACK_RANGE: Range<VirtAddr> =
-            VirtAddr::from_usize(U_SEG_STACK_BEG)..VirtAddr::from_usize(U_SEG_STACK_END);
+            VirtAddr::from_usize_range(U_SEG_STACK_BEG..U_SEG_STACK_END);
 
         let range = self
             .areas
@@ -349,10 +349,44 @@ impl MemorySpace {
     /// Alloc heap lazily.
     pub fn alloc_heap_lazily(&mut self) {
         const HEAP_RANGE: Range<VirtAddr> =
-            VirtAddr::from_usize(U_SEG_HEAP_BEG)..VirtAddr::from_usize(U_SEG_HEAP_END);
+            VirtAddr::from_usize_range(U_SEG_HEAP_BEG..U_SEG_HEAP_END);
 
-        let vm_area = VmArea::new(HEAP_RANGE, MapPerm::URW, VmAreaType::Heap);
+        const INIT_SIZE: usize = PAGE_SIZE;
+        let range = VirtAddr::from_usize_range(U_SEG_HEAP_BEG..U_SEG_HEAP_BEG + INIT_SIZE);
+
+        let vm_area = VmArea::new(range, MapPerm::URW, VmAreaType::Heap);
         self.push_vma_lazily(vm_area);
+    }
+
+    pub fn get_heap_break(&self) -> VirtAddr {
+        // HACK: directly get U_SEG_HEAP_BEG instead？
+        let (range, _) = self
+            .areas
+            .iter()
+            .find(|(_, vma)| vma.vma_type == VmAreaType::Heap)
+            .unwrap();
+        range.end
+    }
+
+    /// NOTE: The actual Linux system call returns the new program break on
+    /// success. On failure, the system call returns the current break.
+    pub fn reset_heap_break(&mut self, new_brk: VirtAddr) -> VirtAddr {
+        let (range, vma) = self
+            .areas
+            .iter_mut()
+            .find(|(_, vma)| vma.vma_type == VmAreaType::Heap)
+            .unwrap();
+        let result = if new_brk > range.end {
+            self.areas.extend_back(range.start..new_brk)
+        } else if new_brk < range.end {
+            self.areas.reduce_back(range.start, new_brk)
+        } else {
+            Ok(())
+        };
+        match result {
+            Ok(_) => new_brk,
+            Err(_) => range.end,
+        }
     }
 
     /// Clone a same `MemorySpace` from another user space, including datas in
@@ -363,7 +397,7 @@ impl MemorySpace {
             let mut new_area = VmArea::from_another(area);
             memory_space.push_vma(new_area);
             // copy data from another space
-            for vpn in area.vpn_range {
+            for vpn in area.vpn_range.clone() {
                 if let Some(pte) = user_space.page_table.find_pte(vpn) {
                     let src_ppn = pte.ppn();
                     let dst_ppn = memory_space.page_table.find_pte(vpn).unwrap().ppn();
@@ -380,7 +414,7 @@ impl MemorySpace {
         for (_, area) in user_space.areas.iter() {
             log::debug!("[MemorySpace::from_user_lazily] cloning area {area:?}");
             let new_area = area.clone();
-            for vpn in area.vpn_range {
+            for vpn in area.vpn_range.clone() {
                 if let Some(page) = area.pages.get(&vpn) {
                     let pte = user_space.page_table.find_pte(vpn).unwrap();
                     let (pte_flags, ppn) = match area.vma_type {
@@ -434,7 +468,7 @@ impl MemorySpace {
         access_type: PageFaultAccessType,
     ) -> SysResult<()> {
         log::trace!("[MemorySpace::handle_page_fault] {va:?}");
-        let (_, vm_area) = self.areas.get_mut(va).expect("no area contains this va");
+        let vm_area = self.areas.get_mut(va).expect("no area contains this va");
         vm_area.handle_page_fault(&mut self.page_table, va.floor());
         Ok(())
     }
@@ -462,7 +496,7 @@ impl MemorySpace {
                 range,
             );
 
-            for vpn in area.vpn_range {
+            for vpn in area.vpn_range.clone() {
                 let vaddr = vpn.to_va();
                 if will_read_fail(vaddr.bits()) {
                     // log::debug!("{:<8x}: unmapped", vpn);

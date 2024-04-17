@@ -52,6 +52,7 @@ pub async fn trap_handler(task: &Arc<Task>) {
                     -(e as isize) as usize
                 }
             };
+            log::info!("[trap_handler] handle syscall no {syscall_no} return val {ret:#x}");
             cx.set_user_a0(ret);
         }
         Trap::Exception(Exception::StorePageFault)

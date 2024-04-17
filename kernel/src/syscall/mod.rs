@@ -113,7 +113,9 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
             ), await
         ),
         // Memory
-
+        SYSCALL_BRK => {
+            sys_handler!(sys_brk, (args[0]))
+        }
         // File system
         SYSCALL_WRITE => {
             sys_handler!(sys_write, (args[0], UserReadPtr::<u8>::from(args[1]), args[2]), await)
