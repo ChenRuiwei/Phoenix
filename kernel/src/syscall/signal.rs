@@ -19,10 +19,11 @@ use crate::{
 /// 为空指针或者） 信号类型不存在返回 -1 ，否则返回 0 。
 /// syscall ID: 134
 pub fn sys_sigaction(
-    signum: Sig,
+    signum: usize,
     action: UserReadPtr<SigAction>,
     old_action: UserWritePtr<SigAction>,
 ) -> SyscallResult {
+    let signum = Sig::from_usize(signum);
     if !signum.is_valid() {
         return Err(SysError::EINVAL);
     }

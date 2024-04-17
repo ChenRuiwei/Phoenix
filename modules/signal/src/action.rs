@@ -43,7 +43,7 @@ impl Action {
     }
 }
 
-// 存储着进程接收到的信号队列,当进程接收到一个信号时，就需要把接收到的信号添加
+// 存储着进程接收到的信号队列,当进程接收到一个信号时，就需要把接收到的信号添加到
 // pending 这个队列中
 pub struct SigPending {
     pub queue: VecDeque<Sig>,
@@ -77,6 +77,11 @@ impl SigPending {
         } else {
             None
         }
+    }
+
+    pub fn has_signal_to_handle(&self, blocked: SigSet) -> bool {
+        // if there is any signal in pending list and it haven't been blocked
+        (!blocked & self.bitmap).is_empty()
     }
 
     pub fn contain(&self, sig: Sig) -> bool {

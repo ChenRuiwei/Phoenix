@@ -41,12 +41,8 @@ impl Sig {
     pub const SIGLEGACYMAX: Sig = Sig(32); // Legacy maximum signal
     pub const SIGMAX: Sig = Sig(64); // Maximum signal
 
-    pub fn from_i32(num: usize) -> Option<Sig> {
-        if num < NSIG {
-            Some(Sig(num as i32 + 1))
-        } else {
-            None
-        }
+    pub fn from_usize(num: usize) -> Sig {
+        Sig(num as i32)
     }
 
     pub fn is_valid(&self) -> bool {

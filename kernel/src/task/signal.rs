@@ -1,7 +1,15 @@
 use alloc::sync::Arc;
-use core::alloc::Layout;
+use core::{
+    alloc::Layout,
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
-use arch::sstatus::{self, Sstatus};
+use arch::{
+    sstatus::{self, Sstatus},
+    time::get_time_ms,
+};
 use memory::VirtAddr;
 use signal::{
     action::{Action, ActionType},
@@ -138,7 +146,7 @@ pub fn do_signal() {
                 current_trap_cx().user_x[12] = ucontext_ptr;
                 current_trap_cx().sepc = entry;
                 // ra (when the sigaction set by user finished,if user forgets to call
-                // sys_sigretrun, it will return to sigreturn_trampoline, which
+                // sys_sigreturn, it will return to sigreturn_trampoline, which
                 // calls sys_sigreturn)
                 current_trap_cx().user_x[1] = sigreturn_trampoline as usize;
                 // sp (it will be used later by sys_sigreturn)
@@ -149,16 +157,16 @@ pub fn do_signal() {
 }
 
 fn ignore(sig: Sig) {
-    log::debug!("ignore this sig {}", sig);
+    log::debug!("Recevie signal {}. Action: ignore", sig);
 }
 fn terminate(sig: Sig) {
-    log::info!("terminate this sig {}", sig);
+    log::info!("Recevie signal {}. Action: terminate", sig);
 }
 fn stop(sig: Sig) {
-    log::info!("stop this sig {}", sig);
+    log::info!("Recevie signal {}. Action: stop", sig);
 }
 fn cont(sig: Sig) {
-    log::info!("cont this sig {}", sig);
+    log::info!("Recevie signal {}. Action: continue", sig);
 }
 
 fn save_context_into_sigstack(old_blocked: SigSet) -> usize {
@@ -186,4 +194,17 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> usize {
     let ptr = ucontext_ptr.as_usize();
     ucontext_ptr.write(current_task(), ucontext);
     ptr
+}
+
+pub struct WaitHandlableSignal(pub &'static Arc<Task>);
+
+impl Future for WaitHandlableSignal {
+    type Output = usize;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let signal = self.0.signal.lock();
+        match signal.pending.has_signal_to_handle(signal.blocked) {
+            true => Poll::Ready(get_time_ms()),
+            false => Poll::Pending,
+        }
+    }
 }
