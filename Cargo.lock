@@ -263,6 +263,7 @@ dependencies = [
  "sync",
  "systype",
  "time",
+ "timer",
  "vfs",
  "virtio-drivers",
  "xmas-elf",
@@ -507,6 +508,15 @@ name = "time"
 version = "0.1.0"
 dependencies = [
  "arch",
+]
+
+[[package]]
+name = "timer"
+version = "0.1.0"
+dependencies = [
+ "arch",
+ "spin",
+ "sync",
 ]
 
 [[package]]
