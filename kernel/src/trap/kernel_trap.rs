@@ -21,7 +21,7 @@ pub fn kernel_trap_handler() {
             todo!()
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            log::trace!("[kernel_trap] receive timer interrupt");
+            // log::trace!("[kernel_trap] receive timer interrupt");
             IRQ_COUNTER.add1(1);
             unsafe { set_next_timer_irq() };
             // TODO: handle time out events

@@ -22,7 +22,7 @@ pub unsafe fn switch_page_table(page_table_token: usize) {
 
 pub struct PageTable {
     pub root_ppn: PhysPageNum,
-    /// NOTE: these are all internal pages
+    /// Frames hold all internal pages
     frames: Vec<FrameTracker>,
 }
 

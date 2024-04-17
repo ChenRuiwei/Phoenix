@@ -85,19 +85,6 @@ impl From<MapPerm> for PTEFlags {
     }
 }
 
-#[derive(Clone)]
-pub struct PageManager {
-    pub pages: BTreeMap<VirtPageNum, Arc<SpinNoIrqLock<Page>>>,
-}
-
-impl PageManager {
-    pub fn new() -> Self {
-        Self {
-            pages: BTreeMap::new(),
-        }
-    }
-}
-
 pub struct VmArea {
     pub vpn_range: VPNRange,
     pub pages: BTreeMap<VirtPageNum, Arc<Page>>,
@@ -189,7 +176,7 @@ impl VmArea {
     }
 
     pub fn get_page(&self, vpn: VirtPageNum) -> &Arc<Page> {
-        self.pages.get(&vpn).expect("page not found for vpn")
+        self.pages.get(&vpn).expect("no page found for vpn")
     }
 
     /// Map `VmArea` into page table.
@@ -257,13 +244,12 @@ impl VmArea {
             debug_assert!(!pte_flags.contains(PTEFlags::W));
             debug_assert!(self.perm().contains(MapPerm::UW));
 
-            static mutex: SpinMutex<usize> = SpinMutex::<_>::new(0);
-            let guard = mutex.lock();
+            // HACK: decrease lock granularity
+            static MUTEX: SpinNoIrqLock<bool> = SpinNoIrqLock::new(false);
+            let _guard = MUTEX.lock();
             let old_page = self.get_page(vpn);
             let mut cnt: usize;
-            // FIXME: should add extern lock to lock this area.
             let cnt = Arc::strong_count(old_page);
-            // NOTE: should use atomic that can not be relaxed
             if cnt > 1 {
                 // shared now
                 log::debug!(

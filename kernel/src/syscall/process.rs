@@ -104,6 +104,7 @@ pub async fn sys_wait4(
 ) -> SyscallResult {
     let task = current_task();
     let option = WaitOptions::from_bits_truncate(option);
+    #[derive(Debug)]
     enum WaitFor {
         // wait for any child process in the specific process group
         PGid(PGid),
@@ -121,7 +122,7 @@ pub async fn sys_wait4(
         p => WaitFor::PGid(p as PGid),
     };
     loop {
-        log::trace!("[sys_wait4]: finding zombie children");
+        // log::debug!("[sys_wait4]: finding zombie children for {target:?}");
         let children = task.children();
         if children.is_empty() {
             log::error!("[sys_wait4] fail: no child");
