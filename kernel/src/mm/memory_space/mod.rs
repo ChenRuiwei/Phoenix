@@ -57,6 +57,7 @@ pub unsafe fn switch_kernel_page_table() {
 
 pub struct MemorySpace {
     page_table: PageTable,
+    /// NOTE: stores range that is lazy allocated
     areas: RangeMap<VirtAddr, VmArea>,
 }
 
@@ -121,64 +122,55 @@ impl MemorySpace {
         let mut memory_space = Self::new();
         log::info!("[kernel] mapping .text section");
         memory_space.push_vma(VmArea::new(
-            (_stext as usize).into(),
-            (_strampoline as usize).into(),
+            (_stext as usize).into()..(_strampoline as usize).into(),
             MapPerm::RX,
             VmAreaType::Physical,
         ));
         memory_space.push_vma(VmArea::new(
-            (_etrampoline as usize).into(),
-            (_etext as usize).into(),
+            (_etrampoline as usize).into()..(_etext as usize).into(),
             MapPerm::RX,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .rodata section");
         memory_space.push_vma(VmArea::new(
-            (_srodata as usize).into(),
-            (_erodata as usize).into(),
+            (_srodata as usize).into()..(_erodata as usize).into(),
             MapPerm::R,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .data section");
         memory_space.push_vma(VmArea::new(
-            (_sdata as usize).into(),
-            (_edata as usize).into(),
+            (_sdata as usize).into()..(_edata as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .stack section");
         memory_space.push_vma(VmArea::new(
-            (_sstack as usize).into(),
-            (_estack as usize).into(),
+            (_sstack as usize).into()..(_estack as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .bss section");
         memory_space.push_vma(VmArea::new(
-            (_sbss as usize).into(),
-            (_ebss as usize).into(),
+            (_sbss as usize).into()..(_ebss as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping signal-return trampoline");
         memory_space.push_vma(VmArea::new(
-            (_strampoline as usize).into(),
-            (_etrampoline as usize).into(),
+            (_strampoline as usize).into()..(_etrampoline as usize).into(),
             MapPerm::URX,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping physical memory");
         memory_space.push_vma(VmArea::new(
-            (_ekernel as usize).into(),
-            MEMORY_END.into(),
+            (_ekernel as usize).into()..MEMORY_END.into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping mmio registers");
         for pair in MMIO {
             memory_space.push_vma(VmArea::new(
-                (pair.0 + VIRT_RAM_OFFSET).into(),
-                (pair.0 + pair.1 + VIRT_RAM_OFFSET).into(),
+                (pair.0 + VIRT_RAM_OFFSET).into()..(pair.0 + pair.1 + VIRT_RAM_OFFSET).into(),
                 pair.2,
                 VmAreaType::Mmio,
             ));
@@ -221,7 +213,7 @@ impl MemorySpace {
             if ph_flags.is_execute() {
                 map_perm |= MapPerm::X;
             }
-            let mut vm_area = VmArea::new(start_va, end_va, map_perm, VmAreaType::Elf);
+            let mut vm_area = VmArea::new(start_va..end_va, map_perm, VmAreaType::Elf);
 
             log::debug!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?} start...",);
 
@@ -280,8 +272,7 @@ impl MemorySpace {
         let mut user_stack_bottom: usize = usize::from(max_end_va) + PAGE_SIZE;
         let user_stack_top = user_stack_bottom + USER_STACK_SIZE;
         let mut ustack_vma = VmArea::new(
-            user_stack_bottom.into(),
-            user_stack_top.into(),
+            user_stack_bottom.into()..user_stack_top.into(),
             MapPerm::URW,
             VmAreaType::Stack,
         );
@@ -343,14 +334,14 @@ impl MemorySpace {
 
         let range = self
             .areas
-            .find_free_range(STACK_RANGE, size, |va, n| (va + n).ceil().into())
+            .find_free_range(STACK_RANGE, size)
             .expect("too many stack!");
 
         // align to 16 bytes
         let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
         log::debug!("alloc stack: {range:x?}, sp_init: {sp_init:x?}");
 
-        let vm_area = VmArea::new(range.start, range.end, MapPerm::URW, VmAreaType::Stack);
+        let vm_area = VmArea::new(range, MapPerm::URW, VmAreaType::Stack);
         self.push_vma(vm_area);
         sp_init
     }
@@ -360,12 +351,7 @@ impl MemorySpace {
         const HEAP_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize(U_SEG_HEAP_BEG)..VirtAddr::from_usize(U_SEG_HEAP_END);
 
-        let vm_area = VmArea::new(
-            HEAP_RANGE.start,
-            HEAP_RANGE.end,
-            MapPerm::URW,
-            VmAreaType::Heap,
-        );
+        let vm_area = VmArea::new(HEAP_RANGE, MapPerm::URW, VmAreaType::Heap);
         self.push_vma_lazily(vm_area);
     }
 

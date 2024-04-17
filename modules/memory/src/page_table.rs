@@ -1,14 +1,12 @@
 //! Implementation of [`PageTable`].
 
 use alloc::{string::String, vec, vec::Vec};
-use core::arch::asm;
 
-use bitflags::*;
 use config::mm::VIRT_RAM_OFFSET;
-use riscv::{asm::sfence_vma, register::satp};
+use riscv::register::satp;
 
 use crate::{
-    address::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum},
+    address::{PhysPageNum, VirtAddr, VirtPageNum},
     frame::{frame_alloc, FrameTracker},
     pte::PTEFlags,
     PageTableEntry,
@@ -20,6 +18,11 @@ pub unsafe fn switch_page_table(page_table_token: usize) {
     core::arch::riscv64::sfence_vma_all();
 }
 
+/// # Safety
+///
+/// Must be dropped after switching to new page table, otherwise, there will be
+/// a vacuum period where satp points a waste page table since `frames` have
+/// been deallocated.
 pub struct PageTable {
     pub root_ppn: PhysPageNum,
     /// Frames hold all internal pages
@@ -174,7 +177,7 @@ impl PageTable {
         // 00   AC EE 12 ... 34
         // ...
 
-        let slice = unsafe { ppn.bytes_array() };
+        let slice = ppn.bytes_array();
 
         // we can only print a whole line using log::debug,
         // so we manually write it for 16 times

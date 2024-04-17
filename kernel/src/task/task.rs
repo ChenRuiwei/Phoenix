@@ -340,22 +340,12 @@ impl Task {
 
     // TODO:
     pub fn do_execve(&self, elf_data: &[u8], argv: Vec<String>, envp: Vec<String>) {
-        // parsing elf
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();
         let (entry, auxv) = memory_space.parse_and_map_elf(elf_data);
 
-        // change memory space
-        log::debug!("[Task::do_execve] changing memory space");
-        // NOTE: need to switch to new page table first before dropping old page table,
-        // otherwise, there will be a vacuum period without page table which will cause
-        // random errors in smp situation
-        unsafe { memory_space.switch_page_table() };
-        // TODO: other thread will panic when running since we have released old page
-        // table
-        self.with_mut_memory_space(|m| *m = memory_space);
-
-        // terminate all threads except the leader
+        // NOTE: should do termination before switching page table, so that other
+        // threads will trap in by page fault but be terminated before handling
         log::debug!("[Task::do_execve] terminating all threads except the leader");
         self.with_thread_group(|tg| {
             for t in tg.iter() {
@@ -364,6 +354,13 @@ impl Task {
                 }
             }
         });
+
+        log::debug!("[Task::do_execve] changing memory space");
+        // NOTE: need to switch to new page table first before dropping old page table,
+        // otherwise, there will be a vacuum period without page table which will cause
+        // random errors in smp situation
+        unsafe { memory_space.switch_page_table() };
+        self.with_mut_memory_space(|m| *m = memory_space);
 
         // alloc stack, and push argv, envp and auxv
         log::debug!("[Task::do_execve] allocing stack");

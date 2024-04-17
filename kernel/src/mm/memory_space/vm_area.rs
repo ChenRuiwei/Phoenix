@@ -87,6 +87,8 @@ impl From<MapPerm> for PTEFlags {
 
 #[derive(Clone)]
 pub struct VmArea {
+    /// VPN range for the `VmArea`.
+    /// NOTE: stores range that is truly allocated for lazy allocated areas.
     pub vpn_range: VPNRange,
     pub pages: BTreeMap<VirtPageNum, Arc<Page>>,
     pub map_perm: MapPerm,
@@ -112,16 +114,13 @@ impl Drop for VmArea {
 
 impl VmArea {
     /// Construct a new vma
-    ///
-    /// [start_va, end_va)
     pub fn new(
-        start_va: VirtAddr,
-        end_va: VirtAddr,
+        range_va: core::ops::Range<VirtAddr>,
         map_perm: MapPerm,
         vma_type: VmAreaType,
     ) -> Self {
-        let start_vpn: VirtPageNum = start_va.floor();
-        let end_vpn: VirtPageNum = end_va.ceil();
+        let start_vpn: VirtPageNum = range_va.start.floor();
+        let end_vpn: VirtPageNum = range_va.end.ceil();
         let new = Self {
             vpn_range: VPNRange::new(start_vpn, end_vpn),
             pages: BTreeMap::new(),
@@ -273,6 +272,7 @@ impl VmArea {
             );
             match self.vma_type {
                 VmAreaType::Heap => {
+                    // lazy allcation for heap
                     page = Page::new();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, Arc::new(page));
