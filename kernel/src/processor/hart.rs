@@ -144,10 +144,6 @@ pub fn current_task() -> &'static Arc<Task> {
     local_hart().current_task()
 }
 
-pub fn set_current_task(task: Arc<Task>) {
+fn set_current_task(task: Arc<Task>) {
     local_hart().task = Some(task);
-}
-
-pub fn current_trap_cx() -> &'static mut TrapContext {
-    current_task().trap_context_mut()
 }

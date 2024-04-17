@@ -20,7 +20,7 @@ use signal::{
 use super::Task;
 use crate::{
     mm::{Page, UserWritePtr},
-    processor::hart::{current_task, current_trap_cx},
+    processor::hart::current_task,
     trap::{ctx::UserFloatContext, TrapContext},
 };
 
@@ -107,6 +107,8 @@ extern "C" {
 }
 
 pub fn do_signal() {
+    let task = current_task();
+    let trap_context = task.trap_context_mut();
     let mut signal = current_task().signal.lock();
     // if there is no signal to be handle, just return
     if signal.pending.is_empty() {
@@ -141,16 +143,16 @@ pub fn do_signal() {
                 // 用户自定义的sa_handler的参数，void myhandler(int signo,siginfo_t *si,void
                 // *ucontext); TODO:实现siginfo
                 // a0
-                current_trap_cx().user_x[10] = sig.raw();
+                trap_context.user_x[10] = sig.raw();
                 // a2
-                current_trap_cx().user_x[12] = ucontext_ptr;
-                current_trap_cx().sepc = entry;
+                trap_context.user_x[12] = ucontext_ptr;
+                trap_context.sepc = entry;
                 // ra (when the sigaction set by user finished,if user forgets to call
                 // sys_sigreturn, it will return to sigreturn_trampoline, which
                 // calls sys_sigreturn)
-                current_trap_cx().user_x[1] = sigreturn_trampoline as usize;
+                trap_context.user_x[1] = sigreturn_trampoline as usize;
                 // sp (it will be used later by sys_sigreturn)
-                current_trap_cx().user_x[2] = ucontext_ptr;
+                trap_context.user_x[2] = ucontext_ptr;
             }
         }
     }
@@ -170,12 +172,13 @@ fn cont(sig: Sig) {
 }
 
 fn save_context_into_sigstack(old_blocked: SigSet) -> usize {
-    let trap_context = current_trap_cx();
+    let task = current_task();
+    let trap_context = task.trap_context_mut();
     trap_context.user_fx.encounter_signal();
-    let signal_stack = current_task().signal_stack().take();
+    let signal_stack = task.signal_stack().take();
     let stack_top = match signal_stack {
         Some(s) => s.get_stack_top(),
-        None => current_trap_cx().kernel_sp,
+        None => trap_context.kernel_sp,
     };
     // extend the signal_stack
     let pad_ucontext = Layout::new::<UContext>().pad_to_align().size();
@@ -192,7 +195,7 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> usize {
         },
     };
     let ptr = ucontext_ptr.as_usize();
-    ucontext_ptr.write(current_task(), ucontext);
+    ucontext_ptr.write(task, ucontext);
     ptr
 }
 

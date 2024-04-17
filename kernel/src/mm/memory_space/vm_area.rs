@@ -88,6 +88,7 @@ impl From<MapPerm> for PTEFlags {
 #[derive(Clone)]
 pub struct VmArea {
     /// VPN range for the `VmArea`.
+    // FIXME: if truly allocated is not contiguous
     /// NOTE: stores range that is truly allocated for lazy allocated areas.
     range_vpn: Range<VirtPageNum>,
     pub pages: BTreeMap<VirtPageNum, Arc<Page>>,
@@ -196,6 +197,7 @@ impl VmArea {
     /// # Safety
     ///
     /// Assume that all frames were cleared before.
+    // HACK: ugly
     pub fn copy_data_with_offset(&self, page_table: &PageTable, offset: usize, data: &[u8]) {
         debug_assert_eq!(self.vma_type, VmAreaType::Elf);
         let _sum_guard = SumGuard::new();

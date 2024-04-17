@@ -9,7 +9,7 @@ use config::process::INITPROC_PID;
 
 use super::{manager::TASK_MANAGER, Task};
 use crate::{
-    processor::{self, ctx::EnvContext, current_task, current_trap_cx},
+    processor::{self, ctx::EnvContext, current_task},
     trap,
 };
 
@@ -111,18 +111,17 @@ pub async fn task_loop(task: Arc<Task>) {
         // task may be set to zombie by other task, e.g. execve will kill other tasks in
         // the same thread group
         if task.is_zombie() {
-            log::debug!("thread {} terminated", task.tid());
             break;
         }
 
         trap::user_trap::trap_handler(&task).await;
 
         if task.is_zombie() {
-            log::debug!("thread {} terminated", task.tid());
             break;
         }
     }
 
+    log::debug!("thread {} terminated", task.tid());
     task.do_exit();
 }
 

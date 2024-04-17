@@ -8,7 +8,7 @@ use systype::{SysError, SyscallResult};
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
-    processor::hart::{current_task, current_trap_cx},
+    processor::hart::current_task,
     task::signal::{SigAction, SIG_DFL, SIG_IGN},
 };
 
@@ -81,13 +81,15 @@ pub fn sys_sigprocmask(
 }
 
 pub fn sys_sigreturn() -> SyscallResult {
-    let ucontext_ptr = UserReadPtr::<UContext>::from_usize(current_trap_cx().user_x[1]);
+    let task = current_task();
+    let trap_context = task.trap_context_mut();
+    let ucontext_ptr = UserReadPtr::<UContext>::from(trap_context.user_x[1]);
     // TODO: if can't read, it should cause segment fault
     let ucontext = ucontext_ptr.read(current_task())?;
-    current_task().signal.lock().blocked = ucontext.uc_sigmask;
-    current_task().set_signal_stack((ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack));
-    current_trap_cx().sepc = ucontext.uc_mcontext.sepc;
-    current_trap_cx().user_x = ucontext.uc_mcontext.user_x;
+    task.signal.lock().blocked = ucontext.uc_sigmask;
+    task.set_signal_stack((ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack));
+    trap_context.sepc = ucontext.uc_mcontext.sepc;
+    trap_context.user_x = ucontext.uc_mcontext.user_x;
     Ok(0)
 }
 

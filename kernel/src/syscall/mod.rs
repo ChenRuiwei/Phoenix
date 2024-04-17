@@ -25,10 +25,7 @@ use time::*;
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
-    processor::{
-        env::SumGuard,
-        hart::{current_task, current_trap_cx},
-    },
+    processor::{env::SumGuard, hart::current_task},
     syscall::{
         misc::UtsName,
         signal::{sys_sigaction, sys_sigreturn},
@@ -69,7 +66,7 @@ macro_rules! sys_handler {
                 "{}, args: {:?}, sepc: {:#x}",
                 stringify!($handler),
                 $args,
-                crate::processor::current_trap_cx().sepc
+                crate::processor::current_task().trap_context_mut().sepc
             );
             $handler$args
         }
@@ -80,7 +77,7 @@ macro_rules! sys_handler {
                 "{}, args: {:?}, sepc: {:#x}",
                 stringify!($handler),
                 $args,
-                crate::processor::current_trap_cx().sepc
+                crate::processor::current_task().trap_context_mut().sepc
             );
             $handler$args.$await
         }

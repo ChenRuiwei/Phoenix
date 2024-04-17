@@ -15,7 +15,7 @@ use riscv::register::{
 use super::{set_kernel_trap, TrapContext};
 use crate::{
     mm::PageFaultAccessType,
-    processor::{current_trap_cx, hart::current_task},
+    processor::hart::current_task,
     syscall::syscall,
     task::{signal::do_signal, yield_now, Task},
     trap::set_user_trap,
@@ -122,7 +122,7 @@ pub fn trap_return(task: &Arc<Task>) {
 
     log::info!("[kernel] trap return to user...");
     unsafe {
-        __return_to_user(current_trap_cx());
+        __return_to_user(task.trap_context_mut());
         // NOTE: next time when user traps into kernel, it will come back here
         // and return to `user_loop` function.
     }

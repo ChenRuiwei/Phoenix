@@ -8,7 +8,7 @@ use systype::{SysError, SysResult, SyscallResult};
 use crate::{
     loader::{get_app_data, get_app_data_by_name},
     mm::{UserReadPtr, UserWritePtr},
-    processor::hart::{current_task, current_trap_cx},
+    processor::hart::current_task,
     syscall::process,
     task::{spawn_user_task, yield_now, PGid, Pid, Tid, TASK_MANAGER},
 };
