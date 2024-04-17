@@ -9,7 +9,7 @@ use config::{
     },
 };
 use log::info;
-use memory::{pte::PTEFlags, PageTable, VPNRange, VirtAddr, VirtPageNum};
+use memory::{pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 use systype::{SysError, SysResult};
@@ -397,7 +397,7 @@ impl MemorySpace {
             let mut new_area = VmArea::from_another(area);
             memory_space.push_vma(new_area);
             // copy data from another space
-            for vpn in area.vpn_range.clone() {
+            for vpn in area.range_vpn() {
                 if let Some(pte) = user_space.page_table.find_pte(vpn) {
                     let src_ppn = pte.ppn();
                     let dst_ppn = memory_space.page_table.find_pte(vpn).unwrap().ppn();
@@ -414,7 +414,7 @@ impl MemorySpace {
         for (_, area) in user_space.areas.iter() {
             log::debug!("[MemorySpace::from_user_lazily] cloning area {area:?}");
             let new_area = area.clone();
-            for vpn in area.vpn_range.clone() {
+            for vpn in area.range_vpn() {
                 if let Some(page) = area.pages.get(&vpn) {
                     let pte = user_space.page_table.find_pte(vpn).unwrap();
                     let (pte_flags, ppn) = match area.vma_type {
@@ -496,7 +496,7 @@ impl MemorySpace {
                 range,
             );
 
-            for vpn in area.vpn_range.clone() {
+            for vpn in area.range_vpn() {
                 let vaddr = vpn.to_va();
                 if will_read_fail(vaddr.bits()) {
                     // log::debug!("{:<8x}: unmapped", vpn);

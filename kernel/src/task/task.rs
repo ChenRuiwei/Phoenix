@@ -379,9 +379,12 @@ impl Task {
     // TODO:
     pub fn do_exit(self: &Arc<Self>) {
         log::info!("thread {} do exit", self.tid());
-        if self.tid() == INITPROC_PID {
-            panic!("initproc die!!!, sepc {:#x}", self.trap_context_mut().sepc);
-        }
+        assert_ne!(
+            self.tid(),
+            INITPROC_PID,
+            "initproc die!!!, sepc {:#x}",
+            self.trap_context_mut().sepc
+        );
 
         // TODO: send SIGCHLD to parent if this is the leader
         if self.is_leader() {
@@ -390,18 +393,19 @@ impl Task {
             }
         }
 
-        // set children to be zombie and reparent them to init.
+        log::debug!("[Task::do_exit] set children to be zombie and reparent them to init");
         debug_assert_ne!(self.tid(), INITPROC_PID);
-        let children = self.children.lock();
-        if !children.is_empty() {
+        self.with_mut_children(|children| {
+            if children.is_empty() {
+                return;
+            }
             let init = TASK_MANAGER.get(INITPROC_PID).unwrap();
             children.values().for_each(|c| {
                 c.set_zombie();
                 *c.parent.lock() = Some(Arc::downgrade(&init));
             });
             init.children.lock().extend(children.clone());
-        }
-        drop(children);
+        });
 
         // release all fd
 

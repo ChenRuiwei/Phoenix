@@ -1,6 +1,5 @@
 mod offset;
 mod phys;
-mod step;
 mod virt;
 
 const PA_WIDTH_SV39: usize = 56;
@@ -10,8 +9,7 @@ const VPN_WIDTH_SV39: usize = VA_WIDTH_SV39 - PAGE_SIZE_BITS;
 
 use config::mm::PAGE_SIZE_BITS;
 pub use phys::{PhysAddr, PhysPageNum};
-pub use step::StepByOne;
-pub use virt::{VPNRange, VirtAddr, VirtPageNum};
+pub use virt::{VirtAddr, VirtPageNum};
 
 macro_rules! impl_arithmetic_with_usize {
     ($t:ty) => {
@@ -71,5 +69,24 @@ macro_rules! impl_fmt {
     };
 }
 
+macro_rules! impl_step {
+    ($t:ty) => {
+        impl core::iter::Step for $t {
+            fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+                usize::steps_between(&start.0, &end.0)
+            }
+
+            fn forward_checked(start: Self, count: usize) -> Option<Self> {
+                usize::forward_checked(start.0, count).map(<$t>::from)
+            }
+
+            fn backward_checked(start: Self, count: usize) -> Option<Self> {
+                usize::forward_checked(start.0, count).map(<$t>::from)
+            }
+        }
+    };
+}
+
 pub(self) use impl_arithmetic_with_usize;
 pub(self) use impl_fmt;
+pub(self) use impl_step;

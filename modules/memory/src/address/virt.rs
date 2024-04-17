@@ -9,11 +9,7 @@ use config::mm::{
     PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, PTE_NUM_ONE_PAGE, VIRT_RAM_OFFSET,
 };
 
-use super::{
-    impl_arithmetic_with_usize, impl_fmt,
-    offset::OffsetAddr,
-    step::{SimpleRange, StepByOne},
-};
+use super::{impl_arithmetic_with_usize, impl_fmt, impl_step, offset::OffsetAddr};
 use crate::address::{VA_WIDTH_SV39, VPN_WIDTH_SV39};
 
 /// Virtual address
@@ -28,6 +24,7 @@ impl_fmt!(VirtAddr, "VA");
 impl_fmt!(VirtPageNum, "VPN");
 impl_arithmetic_with_usize!(VirtPageNum);
 impl_arithmetic_with_usize!(VirtAddr);
+impl_step!(VirtPageNum);
 
 impl From<usize> for VirtAddr {
     fn from(v: usize) -> Self {
@@ -121,6 +118,7 @@ impl From<VirtAddr> for VirtPageNum {
         v.floor()
     }
 }
+
 impl From<VirtPageNum> for VirtAddr {
     fn from(v: VirtPageNum) -> Self {
         Self(v.0 << PAGE_SIZE_BITS)
@@ -151,32 +149,3 @@ impl VirtPageNum {
         unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, PAGE_SIZE) }
     }
 }
-
-impl Step for VirtPageNum {
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
-        usize::steps_between(&start.0, &end.0)
-    }
-
-    fn forward_checked(start: Self, count: usize) -> Option<Self> {
-        usize::forward_checked(start.0, count).map(VirtPageNum::from)
-    }
-
-    fn backward_checked(start: Self, count: usize) -> Option<Self> {
-        usize::forward_checked(start.0, count).map(VirtPageNum::from)
-    }
-}
-
-impl StepByOne for VirtAddr {
-    fn step(&mut self) {
-        self.0 += 1;
-    }
-}
-
-impl StepByOne for VirtPageNum {
-    fn step(&mut self) {
-        self.0 += 1;
-    }
-}
-
-/// a simple range structure for virtual page number
-pub type VPNRange = SimpleRange<VirtPageNum>;

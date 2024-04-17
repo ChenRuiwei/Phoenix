@@ -7,7 +7,7 @@ use core::{ops::Range, sync::atomic::AtomicBool};
 
 use arch::memory::sfence_vma_vaddr;
 use config::mm::PAGE_SIZE;
-use memory::{page_table, pte::PTEFlags, StepByOne, VPNRange, VirtAddr, VirtPageNum};
+use memory::{page_table, pte::PTEFlags, VirtAddr, VirtPageNum};
 use spin::mutex::SpinMutex;
 use sync::mutex::SpinNoIrqLock;
 
@@ -89,7 +89,7 @@ impl From<MapPerm> for PTEFlags {
 pub struct VmArea {
     /// VPN range for the `VmArea`.
     /// NOTE: stores range that is truly allocated for lazy allocated areas.
-    pub vpn_range: Range<VirtPageNum>,
+    range_vpn: Range<VirtPageNum>,
     pub pages: BTreeMap<VirtPageNum, Arc<Page>>,
     pub map_perm: MapPerm,
     pub vma_type: VmAreaType,
@@ -98,7 +98,7 @@ pub struct VmArea {
 impl core::fmt::Debug for VmArea {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("VmArea")
-            .field("vpn_range", &self.vpn_range)
+            .field("range_vpn", &self.range_vpn)
             .field("map_perm", &self.map_perm)
             .field("vma_type", &self.vma_type)
             .finish()
@@ -113,15 +113,11 @@ impl Drop for VmArea {
 
 impl VmArea {
     /// Construct a new vma.
-    pub fn new(
-        range_va: core::ops::Range<VirtAddr>,
-        map_perm: MapPerm,
-        vma_type: VmAreaType,
-    ) -> Self {
+    pub fn new(range_va: Range<VirtAddr>, map_perm: MapPerm, vma_type: VmAreaType) -> Self {
         let start_vpn: VirtPageNum = range_va.start.floor();
         let end_vpn: VirtPageNum = range_va.end.ceil();
         let new = Self {
-            vpn_range: start_vpn..end_vpn,
+            range_vpn: start_vpn..end_vpn,
             pages: BTreeMap::new(),
             vma_type,
             map_perm,
@@ -133,7 +129,7 @@ impl VmArea {
     pub fn from_another(another: &Self) -> Self {
         log::trace!("[VmArea::from_another] {another:?}");
         Self {
-            vpn_range: another.vpn_range.clone(),
+            range_vpn: another.range_vpn(),
             pages: BTreeMap::new(),
             vma_type: another.vma_type,
             map_perm: another.map_perm,
@@ -148,16 +144,20 @@ impl VmArea {
         self.end_vpn().into()
     }
 
-    pub fn range_va(&self) -> core::ops::Range<VirtAddr> {
-        self.start_va()..self.end_va()
-    }
-
     pub fn start_vpn(&self) -> VirtPageNum {
-        self.vpn_range.start
+        self.range_vpn.start
     }
 
     pub fn end_vpn(&self) -> VirtPageNum {
-        self.vpn_range.end
+        self.range_vpn.end
+    }
+
+    pub fn range_va(&self) -> Range<VirtAddr> {
+        self.start_va()..self.end_va()
+    }
+
+    pub fn range_vpn(&self) -> Range<VirtPageNum> {
+        self.range_vpn.clone()
     }
 
     pub fn perm(&self) -> MapPerm {
@@ -175,7 +175,7 @@ impl VmArea {
         // NOTE: set pte flag with global mapping for kernel memory
         let mut pte_flags: PTEFlags = self.map_perm.into();
         if self.vma_type == VmAreaType::Physical || self.vma_type == VmAreaType::Mmio {
-            for vpn in self.vpn_range.clone() {
+            for vpn in self.range_vpn() {
                 page_table.map(
                     vpn,
                     VirtAddr::from(vpn).to_offset().to_pa().into(),
@@ -183,7 +183,7 @@ impl VmArea {
                 )
             }
         } else {
-            for vpn in self.vpn_range.clone() {
+            for vpn in self.range_vpn() {
                 let page = Page::new();
                 page_table.map(vpn, page.ppn(), pte_flags);
                 self.pages.insert(vpn, Arc::new(page));
@@ -214,7 +214,7 @@ impl VmArea {
             dst.copy_from_slice(src);
             start += PAGE_SIZE - offset;
             offset = 0;
-            current_vpn.step();
+            current_vpn += 1;
         }
     }
 
@@ -276,7 +276,7 @@ impl VmArea {
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, Arc::new(page));
                     // FIXME: if lazy alloc is not contiguous
-                    self.vpn_range.end = vpn;
+                    self.range_vpn.end = vpn;
                     unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                 }
                 _ => {}

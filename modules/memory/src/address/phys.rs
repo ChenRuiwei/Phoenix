@@ -13,7 +13,6 @@ use config::mm::{
 use super::{
     impl_fmt,
     offset::{OffsetAddr, OffsetPageNum},
-    step::StepByOne,
 };
 use crate::{
     address::{PA_WIDTH_SV39, PPN_WIDTH_SV39},
@@ -151,12 +150,6 @@ impl PhysPageNum {
         let dst = usize_array(self);
         let src = usize_array(&another_ppn);
         dst.copy_from_slice(src);
-    }
-}
-
-impl StepByOne for PhysPageNum {
-    fn step(&mut self) {
-        self.0 += 1;
     }
 }
 

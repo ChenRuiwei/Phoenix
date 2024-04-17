@@ -28,7 +28,7 @@ bitflags! {
 /// On failure, the system call returns the current break.
 pub fn sys_brk(addr: usize) -> SyscallResult {
     let task = current_task();
-    // TODO: whether we should implment raw system call
+    // TODO: whether we should implement raw system call
     let brk = task.with_mut_memory_space(|m| m.reset_heap_break(VirtAddr::from(addr)));
     Ok(brk.bits())
 }

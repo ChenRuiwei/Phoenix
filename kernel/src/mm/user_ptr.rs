@@ -10,7 +10,7 @@ use core::{
     ops::ControlFlow,
 };
 
-use memory::{StepByOne, VirtAddr};
+use memory::VirtAddr;
 use riscv::register::scause;
 use systype::{SysError, SysResult};
 
