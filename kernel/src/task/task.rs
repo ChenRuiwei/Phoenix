@@ -346,7 +346,7 @@ impl Task {
         let (entry, auxv) = memory_space.parse_and_map_elf(elf_data);
 
         // change memory space
-        log::debug!("[Task::do_execve] change memory space");
+        log::debug!("[Task::do_execve] changing memory space");
         // NOTE: need to switch to new page table first before dropping old page table,
         // otherwise, there will be a vacuum period without page table which will cause
         // random errors in smp situation
@@ -356,7 +356,7 @@ impl Task {
         self.with_mut_memory_space(|m| *m = memory_space);
 
         // terminate all threads except the leader
-        log::debug!("[Task::do_execve] terminate all threads except the leader");
+        log::debug!("[Task::do_execve] terminating all threads except the leader");
         self.with_thread_group(|tg| {
             for t in tg.iter() {
                 if !t.is_leader() {
@@ -366,7 +366,7 @@ impl Task {
         });
 
         // alloc stack, and push argv, envp and auxv
-        log::debug!("[Task::do_execve] alloc stack");
+        log::debug!("[Task::do_execve] allocing stack");
         let stack_begin = self.with_mut_memory_space(|m| m.alloc_stack(USER_STACK_SIZE));
 
         // alloc heap
