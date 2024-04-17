@@ -83,16 +83,13 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         debug_assert!(offset(start, size) <= end);
         Some(start..offset(start, size))
     }
-    /// Check whether range is free
-    ///
-    /// if range is free, return Ok(())
-    ///
-    /// if start >= end, return Err(())
+
+    /// Check whether range is free.
     pub fn range_is_free(&self, Range { start, end }: Range<U>) -> Result<(), ()> {
         if start >= end {
             return Err(());
         }
-        if let Some((_, node)) = self.0.range(..start).next_back() {
+        if let Some((_, node)) = self.0.range(..=start).next_back() {
             if node.end > start {
                 return Err(());
             }
@@ -102,6 +99,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         }
         Ok(())
     }
+
     /// range 处于返回值对应的 range 内
     pub fn range_contain(&self, range: Range<U>) -> Option<&V> {
         let (_, Node { end, value }) = self.0.range(..=range.start).next_back()?;
@@ -110,6 +108,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         }
         None
     }
+
     /// range 处于返回值对应的 range 内
     pub fn range_contain_mut(&mut self, range: Range<U>) -> Option<&mut V> {
         let (_, Node { end, value }) = self.0.range_mut(..=range.start).next_back()?;
@@ -118,6 +117,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         }
         None
     }
+
     /// range 完全匹配返回值所在范围
     pub fn range_match(&self, range: Range<U>) -> Option<&V> {
         let (start, Node { end, value }) = self.0.range(..=range.start).next_back()?;
@@ -126,11 +126,13 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         }
         None
     }
+
     pub fn force_remove_one(&mut self, Range { start, end }: Range<U>) -> V {
         let Node { end: n_end, value } = self.0.remove(&start).unwrap();
         assert!(n_end == end);
         value
     }
+
     /// split_l: take the left side of the range
     ///
     /// split_r: take the right side of the range
@@ -188,6 +190,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
             release(value, n_start..end);
         }
     }
+
     pub fn replace(
         &mut self,
         r @ Range { start, end }: Range<U>,
@@ -199,6 +202,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         self.remove(r, split_l, split_r, release);
         self.0.try_insert(start, Node { end, value }).ok().unwrap();
     }
+
     /// 位置必须位于某个段中间, 否则panic
     pub fn split_at(&mut self, p: U, split_r: impl FnOnce(&mut V, U, Range<U>) -> V) {
         let (&start, Node { end, value }) = self.0.range_mut(..p).next_back().unwrap();
@@ -211,6 +215,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         };
         self.0.try_insert(p, node).ok().unwrap();
     }
+
     /// 将一个段切成两半
     pub fn split_at_maybe(&mut self, p: U, split_r: impl FnOnce(&mut V, U, Range<U>) -> V) {
         let (&start, Node { end, value }) = match self.0.range_mut(..p).next_back() {
@@ -228,6 +233,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         };
         self.0.try_insert(p, node).ok().unwrap();
     }
+
     /// 按顺序调用三个函数
     ///
     /// 位置必须位于某个段中间, 否则panic
@@ -256,6 +262,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
             .into_iter()
             .for_each(|(n_start, node)| release(node.value, n_start..node.end));
     }
+
     /// f return (A, B)
     ///
     /// if A is Some will set current into A, else do nothing.
@@ -274,6 +281,7 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         }
         map
     }
+
     /// 必须存在 range 对应的 node
     pub fn merge(&mut self, Range { start, end }: Range<U>, mut f: impl FnMut(&V, &V) -> bool) {
         let cur = self.0.get(&start).unwrap();
@@ -300,10 +308,18 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         }
     }
 
-    /// 向后 (虚拟地址增大方向) 扩展一个从 start 开始的段, 这个段必须存在.
-    /// 扩展成功返回 Ok, 否则 Err
-    pub fn extend_back(&mut self, start: U, new_end: U) -> Result<(), ()> {
-        // TODO-PERF: 看看如何说服 rust 让它能只让我查一次
+    /// Extend a segment from back.
+    ///
+    /// # Panic
+    ///
+    /// The segment pointed by `start` must exist.
+    pub fn extend_back(
+        &mut self,
+        Range {
+            start,
+            end: new_end,
+        }: Range<U>,
+    ) -> Result<(), ()> {
         let node = self.0.get(&start).unwrap();
         self.range_is_free(node.end..new_end)?;
 
@@ -312,10 +328,14 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
         Ok(())
     }
 
-    /// 向后 (虚拟地址增大方向) 减少一个从 start 开始的段, 这个段必须存在.
+    /// Reduce a segment backwards. Return the range reduced when success, or
+    /// error when fail.
     ///
-    /// 减少成功 (长度为 0 时删除该段) 返回被删除的段的范围, 越界或超出长度返回
-    /// Err
+    /// Will automatically remove the range when its length becomes zero.
+    ///
+    /// # Panic
+    ///
+    /// The segment pointed by `start` must exist.
     pub fn reduce_back(&mut self, start: U, new_end: U) -> Result<Range<U>, ()> {
         let node = self.0.get_mut(&start).unwrap();
         let node_end = node.end;
@@ -337,20 +357,21 @@ impl<U: Ord + Copy, V> RangeMap<U, V> {
             (r, &n.value)
         })
     }
+
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (Range<U>, &mut V)> {
         self.0.iter_mut().map(|(&s, n)| {
             let r = s..n.end;
             (r, &mut n.value)
         })
     }
-    /// return start in r
+
     pub fn range(&self, r: Range<U>) -> impl Iterator<Item = (Range<U>, &V)> {
         self.0.range(r).map(|(&s, n)| {
             let r = s..n.end;
             (r, &n.value)
         })
     }
-    /// return start in r
+
     pub fn range_mut(&mut self, r: Range<U>) -> impl Iterator<Item = (Range<U>, &mut V)> {
         self.0.range_mut(r).map(|(&s, n)| {
             let r = s..n.end;

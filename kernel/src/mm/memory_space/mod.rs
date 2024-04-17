@@ -392,7 +392,8 @@ impl MemorySpace {
     pub fn from_user_lazily(user_space: &mut Self) -> Self {
         let mut memory_space = Self::new_user();
         for (_, area) in user_space.areas.iter() {
-            let new_area = VmArea::from_another_deep(area);
+            log::debug!("[MemorySpace::from_user_lazily] cloning area {area:?}");
+            let new_area = area.clone();
             for vpn in area.vpn_range {
                 if let Some(page) = area.pages.get(&vpn) {
                     let pte = user_space.page_table.find_pte(vpn).unwrap();

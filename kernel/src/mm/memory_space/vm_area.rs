@@ -85,6 +85,7 @@ impl From<MapPerm> for PTEFlags {
     }
 }
 
+#[derive(Clone)]
 pub struct VmArea {
     pub vpn_range: VPNRange,
     pub pages: BTreeMap<VirtPageNum, Arc<Page>>,
@@ -136,16 +137,6 @@ impl VmArea {
         Self {
             vpn_range: another.vpn_range,
             pages: BTreeMap::new(),
-            vma_type: another.vma_type,
-            map_perm: another.map_perm,
-        }
-    }
-
-    pub fn from_another_deep(another: &Self) -> Self {
-        log::trace!("[VmArea::from_another_deep] {another:?}");
-        Self {
-            vpn_range: another.vpn_range,
-            pages: another.pages.clone(),
             vma_type: another.vma_type,
             map_perm: another.map_perm,
         }
@@ -244,9 +235,7 @@ impl VmArea {
             debug_assert!(!pte_flags.contains(PTEFlags::W));
             debug_assert!(self.perm().contains(MapPerm::UW));
 
-            // HACK: decrease lock granularity
-            static MUTEX: SpinNoIrqLock<bool> = SpinNoIrqLock::new(false);
-            let _guard = MUTEX.lock();
+            // PERF: copying data vs. lock the area vs. atomic ref cnt
             let old_page = self.get_page(vpn);
             let mut cnt: usize;
             let cnt = Arc::strong_count(old_page);
