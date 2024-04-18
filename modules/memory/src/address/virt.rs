@@ -1,18 +1,9 @@
 //! Implementation of physical and virtual address and page number.
-use core::{
-    fmt::{self, Debug, Formatter},
-    mem::size_of,
-};
+use core::fmt::{self};
 
-use config::mm::{
-    PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, PTE_NUM_ONE_PAGE, VIRT_RAM_OFFSET,
-};
+use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM};
 
-use super::{
-    impl_arithmetic_with_usize, impl_fmt,
-    offset::OffsetAddr,
-    step::{SimpleRange, StepByOne},
-};
+use super::{impl_arithmetic_with_usize, impl_fmt, impl_step, offset::OffsetAddr};
 use crate::address::{VA_WIDTH_SV39, VPN_WIDTH_SV39};
 
 /// Virtual address
@@ -27,6 +18,7 @@ impl_fmt!(VirtAddr, "VA");
 impl_fmt!(VirtPageNum, "VPN");
 impl_arithmetic_with_usize!(VirtPageNum);
 impl_arithmetic_with_usize!(VirtAddr);
+impl_step!(VirtPageNum);
 
 impl From<usize> for VirtAddr {
     fn from(v: usize) -> Self {
@@ -63,31 +55,43 @@ impl VirtAddr {
     pub const fn from_usize(v: usize) -> Self {
         Self(v)
     }
+
     pub const fn bits(&self) -> usize {
         self.0
     }
+
     pub fn to_offset(&self) -> OffsetAddr {
         (*self).into()
     }
+
+    pub const fn from_usize_range(range: core::ops::Range<usize>) -> core::ops::Range<Self> {
+        Self::from_usize(range.start)..Self::from_usize(range.end)
+    }
+
     /// `VirtAddr`->`VirtPageNum`
     pub fn floor(&self) -> VirtPageNum {
         VirtPageNum(self.0 / PAGE_SIZE)
     }
+
     /// `VirtAddr`->`VirtPageNum`
     pub fn ceil(&self) -> VirtPageNum {
         VirtPageNum((self.0 + PAGE_SIZE - 1) / PAGE_SIZE)
     }
+
     /// Get page offset
     pub fn page_offset(&self) -> usize {
         self.0 & PAGE_MASK
     }
+
     /// Check page aligned
     pub fn aligned(&self) -> bool {
         self.page_offset() == 0
     }
+
     pub const fn as_ptr(self) -> *const u8 {
         self.0 as *const u8
     }
+
     pub const fn as_mut_ptr(self) -> *mut u8 {
         self.0 as *mut u8
     }
@@ -108,6 +112,7 @@ impl From<VirtAddr> for VirtPageNum {
         v.floor()
     }
 }
+
 impl From<VirtPageNum> for VirtAddr {
     fn from(v: VirtPageNum) -> Self {
         Self(v.0 << PAGE_SIZE_BITS)
@@ -138,18 +143,3 @@ impl VirtPageNum {
         unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, PAGE_SIZE) }
     }
 }
-
-impl StepByOne for VirtAddr {
-    fn step(&mut self) {
-        self.0 += 1;
-    }
-}
-
-impl StepByOne for VirtPageNum {
-    fn step(&mut self) {
-        self.0 += 1;
-    }
-}
-
-/// a simple range structure for virtual page number
-pub type VPNRange = SimpleRange<VirtPageNum>;

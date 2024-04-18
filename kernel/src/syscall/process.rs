@@ -2,15 +2,13 @@
 
 use alloc::{string::String, vec::Vec};
 
-use bitflags::Flags;
 use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{
-    loader::{get_app_data, get_app_data_by_name},
+    loader::get_app_data_by_name,
     mm::{UserReadPtr, UserWritePtr},
-    processor::hart::{current_task, current_trap_cx},
-    syscall::process,
-    task::{spawn_user_task, yield_now, PGid, Pid, Tid, TASK_MANAGER},
+    processor::hart::current_task,
+    task::{spawn_user_task, yield_now, PGid, Pid, TASK_MANAGER},
 };
 
 bitflags! {
@@ -57,7 +55,7 @@ bitflags! {
 /// reparenting child processes or sending SIGCHLD to the parent process are
 /// performed only if this is the last thread in the thread group.
 pub fn sys_exit(exit_code: i32) -> SyscallResult {
-    let mut task = current_task();
+    let task = current_task();
     task.set_zombie();
     // non-leader thread are detached (see CLONE_THREAD flag in manual page clone.2)
     if task.is_leader() {
@@ -69,7 +67,7 @@ pub fn sys_exit(exit_code: i32) -> SyscallResult {
 /// This system call terminates all threads in the calling process's thread
 /// group.
 pub fn sys_exit_group(exit_code: i32) -> SyscallResult {
-    let mut task = current_task();
+    let task = current_task();
     task.with_thread_group(|tg| {
         for t in tg.iter() {
             t.set_zombie();
@@ -199,7 +197,7 @@ pub fn sys_execve(
     // };
     // let filename = path.last().clone();
 
-    let read_2d_cstr = |mut ptr2d: UserReadPtr<usize>| -> SysResult<Vec<String>> {
+    let read_2d_cstr = |ptr2d: UserReadPtr<usize>| -> SysResult<Vec<String>> {
         let ptr_vec: Vec<UserReadPtr<u8>> = ptr2d
             .read_cvec(task)?
             .into_iter()
@@ -213,8 +211,8 @@ pub fn sys_execve(
         Ok(result)
     };
 
-    let mut argv = read_2d_cstr(argv)?;
-    let mut envp = read_2d_cstr(envp)?;
+    let argv = read_2d_cstr(argv)?;
+    let envp = read_2d_cstr(envp)?;
 
     log::info!("[sys_execve]: path: {path_str:?}, argv: {argv:?}, envp: {envp:?}",);
     log::debug!("[sys_execve]: pid: {:?}", task.tid());
@@ -266,9 +264,9 @@ pub fn sys_execve(
 pub fn sys_clone(
     flags: usize,
     stack_ptr: usize,
-    parent_tid_ptr: usize,
-    tls_ptr: usize,
-    chilren_tid_ptr: usize,
+    _parent_tid_ptr: usize,
+    _tls_ptr: usize,
+    _chilren_tid_ptr: usize,
 ) -> SyscallResult {
     let flags = CloneFlags::from_bits(flags.try_into().unwrap()).unwrap();
 

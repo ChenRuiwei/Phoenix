@@ -10,7 +10,7 @@ pub fn fp() -> usize {
 
 /// Returns the current link register or return address
 #[inline(always)]
-pub fn lr() -> usize {
+pub fn ra() -> usize {
     let ptr: usize;
     unsafe {
         core::arch::asm!("mv {}, ra", out(reg) ptr);

@@ -9,27 +9,21 @@ mod resource;
 mod signal;
 mod time;
 
-use core::panic;
-
 use ::signal::sigset::SigSet;
 use ::time::{timespec::TimeSpec, timeval::TimeVal, tms::TMS};
 use consts::*;
 use fs::*;
 use log::error;
+use memory::VirtAddr;
 use misc::*;
 use mm::*;
 pub use process::CloneFlags;
 use process::*;
 use signal::*;
 use systype::SyscallResult;
-use time::*;
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
-    processor::{
-        env::SumGuard,
-        hart::{current_task, current_trap_cx},
-    },
     syscall::{
         misc::UtsName,
         resource::{sys_getrusage, Rusage},
@@ -48,7 +42,7 @@ pub const STRACE_COLOR_CODE: u8 = 35; // Purple
 macro_rules! strace {
     ($fmt: literal $(, $($arg: tt)+)?) => {
         use $crate::{
-            processor::{local_hart, current_task}
+            processor::hart::{local_hart, current_task}
         };
         $crate::impls::print_in_color(
             format_args!(concat!("[SYSCALL][{},{}] ", $fmt, "\n"),
@@ -71,7 +65,7 @@ macro_rules! sys_handler {
                 "{}, args: {:?}, sepc: {:#x}",
                 stringify!($handler),
                 $args,
-                crate::processor::current_trap_cx().sepc
+                crate::processor::hart::current_task().trap_context_mut().sepc
             );
             $handler$args
         }
@@ -82,7 +76,7 @@ macro_rules! sys_handler {
                 "{}, args: {:?}, sepc: {:#x}",
                 stringify!($handler),
                 $args,
-                crate::processor::current_trap_cx().sepc
+                crate::processor::hart::current_task().trap_context_mut().sepc
             );
             $handler$args.$await
         }
@@ -114,23 +108,27 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 args[3]
             ), await
         ),
+        SYSCALL_GETPID => sys_handler!(sys_getpid, ()),
+        SYSCALL_GETPPID => sys_handler!(sys_getppid, ()),
         // Memory
-
+        SYSCALL_BRK => {
+            sys_handler!(sys_brk, (VirtAddr::from(args[0])))
+        }
         // File system
         SYSCALL_WRITE => {
             sys_handler!(sys_write, (args[0], UserReadPtr::<u8>::from(args[1]), args[2]), await)
         }
+
         // Signal
-        SYSCALL_RT_SIGPROCMASK => {
-            sys_handler!(
-                sys_sigprocmask,
-                (
-                    args[0],
-                    UserReadPtr::<SigSet>::from(args[1]),
-                    UserWritePtr::<SigSet>::from(args[2]),
-                )
+        SYSCALL_RT_SIGPROCMASK => sys_handler!(
+            sys_sigprocmask,
+            (
+                args[0],
+                UserReadPtr::<SigSet>::from(args[1]),
+                UserWritePtr::<SigSet>::from(args[2]),
             )
-        }
+        ),
+
         SYSCALL_RT_SIGACTION => sys_handler!(
             sys_sigaction,
             (

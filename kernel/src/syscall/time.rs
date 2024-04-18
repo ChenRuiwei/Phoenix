@@ -24,25 +24,20 @@ use crate::{
 /// - `tz`: `usize`
 ///   - An obsolete parameter historically used for timezone information.
 ///     Typically set to zero or ignored in modern implementations.
-pub fn sys_gettimeofday(tv: UserWritePtr<TimeVal>, tz: usize) -> SyscallResult {
-    tv.write(current_task(), TimeVal::from_usec(get_time_us()));
+pub fn sys_gettimeofday(tv: UserWritePtr<TimeVal>, _tz: usize) -> SyscallResult {
+    tv.write(current_task(), TimeVal::from_usec(get_time_us()))?;
     Ok(0)
 }
 
 pub fn sys_times(tms: UserWritePtr<TMS>) -> SyscallResult {
-    if !tms.is_null() {
-        tms.write(
-            current_task(),
-            TMS::from_task_time_stat(current_task().time_stat()),
-        );
-    }
-
+    let task = current_task();
+    tms.write(task, TMS::from_task_time_stat(task.time_stat()))?;
     Ok(0)
 }
 
-/// nanosleep suspends  the execution of the calling thread until either at
-/// least the time specified in *req has elapsed, or the delivery of a signal
-/// that triggers the invocation of a handler in the calling thread or that
+/// nanosleep suspends the execution of the calling thread until either at least
+/// the time specified in *req has elapsed, or the delivery of a signal that
+/// triggers the invocation of a handler in the calling thread or that
 /// terminates the process
 ///
 /// req: Specify the length of time you want to sleep
@@ -52,15 +47,16 @@ pub async fn sys_nanosleep(
     req: UserReadPtr<TimeSpec>,
     rem: UserWritePtr<TimeSpec>,
 ) -> SyscallResult {
-    let req = req.read(current_task())?;
+    let task = current_task();
+    let req = req.read(task)?;
     let sleep_ms = req.into_ms();
     let current_ms = get_time_ms();
-    match Select2Futures::new(WaitHandlableSignal(current_task()), ksleep_ms(sleep_ms)).await {
+    match Select2Futures::new(WaitHandlableSignal(task), ksleep_ms(sleep_ms)).await {
         SelectOutput::Output1(break_ms) => {
             log::info!("[sys_nanosleep] interrupt by signal");
             if !rem.is_null() {
                 let remain_ms = sleep_ms - (break_ms - current_ms);
-                rem.write(current_task(), TimeSpec::from_ms(remain_ms));
+                rem.write(task, TimeSpec::from_ms(remain_ms))?;
             }
             Err(SysError::EINTR)
         }

@@ -1,5 +1,5 @@
 //! The panic handler
-use core::{arch::riscv64::wfi, mem::size_of, panic::PanicInfo, sync::atomic::Ordering};
+use core::{mem::size_of, panic::PanicInfo, sync::atomic::Ordering};
 
 use arch::interrupts::disable_interrupt;
 use driver::sbi::shutdown;
@@ -52,14 +52,12 @@ fn backtrace() {
         fn _etext();
     }
     unsafe {
-        let mut current_pc = arch::register::lr();
+        let mut current_pc = arch::register::ra();
         let mut current_fp = arch::register::fp();
-        let mut stack_num = 0;
 
         log::error!("=============== BEGIN BACKTRACE ================");
         while current_pc >= _stext as usize && current_pc <= _etext as usize && current_fp != 0 {
             println!("{:#018x}", current_pc - size_of::<usize>());
-            stack_num += 1;
             current_fp = *(current_fp as *const usize).offset(-2);
             current_pc = *(current_fp as *const usize).offset(-1);
         }

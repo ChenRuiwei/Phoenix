@@ -1,14 +1,13 @@
 //! Trap handling functionality
-pub mod ctx;
-/// Kernel trap handler
+
+pub mod context;
 pub mod kernel_trap;
-/// User trap handler
 pub mod user_trap;
 
 use core::arch::global_asm;
 
 use arch::interrupts::set_trap_handler;
-pub use ctx::TrapContext;
+pub use context::TrapContext;
 
 global_asm!(include_str!("trap.asm"));
 

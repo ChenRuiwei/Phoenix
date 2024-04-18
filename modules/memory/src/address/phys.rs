@@ -1,19 +1,15 @@
 //! Implementation of physical and virtual address and page number.
 use core::{
-    fmt::{self, Debug, Formatter},
+    fmt::{self},
     mem::size_of,
     ops::Range,
 };
 
-use config::mm::{
-    PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, PTE_NUM_ONE_PAGE, PTE_SIZE,
-    VIRT_RAM_OFFSET,
-};
+use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PTE_NUM_ONE_PAGE, PTE_SIZE};
 
 use super::{
     impl_fmt,
     offset::{OffsetAddr, OffsetPageNum},
-    step::StepByOne,
 };
 use crate::{
     address::{PA_WIDTH_SV39, PPN_WIDTH_SV39},
@@ -151,12 +147,6 @@ impl PhysPageNum {
         let dst = usize_array(self);
         let src = usize_array(&another_ppn);
         dst.copy_from_slice(src);
-    }
-}
-
-impl StepByOne for PhysPageNum {
-    fn step(&mut self) {
-        self.0 += 1;
     }
 }
 

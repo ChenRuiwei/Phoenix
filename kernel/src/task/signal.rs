@@ -6,23 +6,16 @@ use core::{
     task::{Context, Poll},
 };
 
-use arch::{
-    sstatus::{self, Sstatus},
-    time::get_time_ms,
-};
-use memory::VirtAddr;
+use arch::time::get_time_ms;
 use signal::{
     action::{Action, ActionType},
-    signal_stack::{self, MContext, SignalStack, UContext},
+    signal_stack::{MContext, UContext},
     sigset::{Sig, SigSet},
 };
+use systype::SysResult;
 
 use super::Task;
-use crate::{
-    mm::{Page, UserWritePtr},
-    processor::hart::{current_task, current_trap_cx},
-    trap::{ctx::UserFloatContext, TrapContext},
-};
+use crate::{mm::UserWritePtr, processor::hart::current_task};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -70,47 +63,16 @@ impl From<Action> for SigAction {
     }
 }
 
-// pub struct SignalContext {
-// pub blocked: SigSet,
-// general regs[0..31]
-// pub user_x: [usize; 32],
-// general float regs
-// pub user_fx: UserFloatContext,
-// CSR sepc
-// pub sepc: usize, // 33
-// }
-//
-// impl SignalContext {
-// pub fn new(blocked: SigSet, trap_context: &TrapContext) -> Self {
-// let mut sstatus = sstatus::read();
-// Self {
-// blocked,
-// user_x: trap_context.user_x,
-// user_fx: trap_context.user_fx,
-// sepc: trap_context.sepc,
-// }
-// }
-// }
-//
-// pub struct SignalTrapoline {
-// page: Arc<Page>,
-// user_addr: VirtAddr,
-// }
-//
-// impl SignalTrapoline {
-// pub fn new(task: Arc<Task>) -> Self{
-//
-// }
-// }
 extern "C" {
     fn sigreturn_trampoline();
 }
 
-pub fn do_signal() {
-    current_task().with_mut_signal(|signal| {
+pub fn do_signal() -> SysResult<()> {
+    let task = current_task();
+    task.with_mut_signal(|signal| -> SysResult<()> {
         // if there is no signal to be handle, just return
         if signal.pending.is_empty() {
-            return;
+            return Ok(());
         }
         let len = signal.pending.queue.len();
         for _ in 0..len {
@@ -137,8 +99,8 @@ pub fn do_signal() {
                     // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
                     // 这些信息定义在Action的mask字段
                     signal.blocked |= action.mask;
-                    let ucontext_ptr = save_context_into_sigstack(old_blocked);
-                    let trap_cx = current_trap_cx();
+                    let ucontext_ptr = save_context_into_sigstack(old_blocked)?;
+                    let trap_cx = task.trap_context_mut();
                     // 用户自定义的sa_handler的参数，void myhandler(int signo,siginfo_t *si,void
                     // *ucontext); TODO:实现siginfo
                     // a0
@@ -155,7 +117,8 @@ pub fn do_signal() {
                 }
             }
         }
-    });
+        Ok(())
+    })
 }
 
 fn ignore(sig: Sig) {
@@ -171,20 +134,21 @@ fn cont(sig: Sig) {
     log::info!("Recevie signal {}. Action: continue", sig);
 }
 
-fn save_context_into_sigstack(old_blocked: SigSet) -> usize {
-    let trap_context = current_trap_cx();
+fn save_context_into_sigstack(old_blocked: SigSet) -> SysResult<usize> {
+    let task = current_task();
+    let trap_context = task.trap_context_mut();
     trap_context.user_fx.encounter_signal();
-    let signal_stack = current_task().signal_stack().take();
+    let signal_stack = task.signal_stack().take();
     let stack_top = match signal_stack {
         Some(s) => s.get_stack_top(),
-        None => current_trap_cx().kernel_sp,
+        None => trap_context.kernel_sp,
     };
     // extend the signal_stack
     let pad_ucontext = Layout::new::<UContext>().pad_to_align().size();
     let ucontext_ptr = UserWritePtr::<UContext>::from(stack_top - pad_ucontext);
     // TODO: should increase the size of the signal_stack? It seams umi doesn't do
     // that
-    let mut ucontext = UContext {
+    let ucontext = UContext {
         uc_link: 0,
         uc_sigmask: old_blocked,
         uc_stack: signal_stack.unwrap_or_default(),
@@ -194,15 +158,15 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> usize {
         },
     };
     let ptr = ucontext_ptr.as_usize();
-    ucontext_ptr.write(current_task(), ucontext);
-    ptr
+    ucontext_ptr.write(task, ucontext)?;
+    Ok(ptr)
 }
 
 pub struct WaitHandlableSignal(pub &'static Arc<Task>);
 
 impl Future for WaitHandlableSignal {
     type Output = usize;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
         self.0.with_mut_signal(|signal| -> Poll<Self::Output> {
             match signal.pending.has_signal_to_handle(signal.blocked) {
                 true => Poll::Ready(get_time_ms()),

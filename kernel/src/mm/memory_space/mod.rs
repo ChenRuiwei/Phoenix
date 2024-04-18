@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 use core::ops::Range;
 
 use config::{
@@ -9,14 +9,12 @@ use config::{
     },
 };
 use log::info;
-use memory::{pte::PTEFlags, PageTable, VPNRange, VirtAddr, VirtPageNum};
+use memory::{pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
 use spin::Lazy;
-use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};
-use super::{page, user_ptr::PageFaultAccessType};
 use crate::{
     mm::{
         memory_space::vm_area::{MapPerm, VmAreaType},
@@ -57,6 +55,7 @@ pub unsafe fn switch_kernel_page_table() {
 
 pub struct MemorySpace {
     page_table: PageTable,
+    /// NOTE: stores range that is lazy allocated
     areas: RangeMap<VirtAddr, VmArea>,
 }
 
@@ -121,64 +120,55 @@ impl MemorySpace {
         let mut memory_space = Self::new();
         log::info!("[kernel] mapping .text section");
         memory_space.push_vma(VmArea::new(
-            (_stext as usize).into(),
-            (_strampoline as usize).into(),
+            (_stext as usize).into()..(_strampoline as usize).into(),
             MapPerm::RX,
             VmAreaType::Physical,
         ));
         memory_space.push_vma(VmArea::new(
-            (_etrampoline as usize).into(),
-            (_etext as usize).into(),
+            (_etrampoline as usize).into()..(_etext as usize).into(),
             MapPerm::RX,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .rodata section");
         memory_space.push_vma(VmArea::new(
-            (_srodata as usize).into(),
-            (_erodata as usize).into(),
+            (_srodata as usize).into()..(_erodata as usize).into(),
             MapPerm::R,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .data section");
         memory_space.push_vma(VmArea::new(
-            (_sdata as usize).into(),
-            (_edata as usize).into(),
+            (_sdata as usize).into()..(_edata as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .stack section");
         memory_space.push_vma(VmArea::new(
-            (_sstack as usize).into(),
-            (_estack as usize).into(),
+            (_sstack as usize).into()..(_estack as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping .bss section");
         memory_space.push_vma(VmArea::new(
-            (_sbss as usize).into(),
-            (_ebss as usize).into(),
+            (_sbss as usize).into()..(_ebss as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping signal-return trampoline");
         memory_space.push_vma(VmArea::new(
-            (_strampoline as usize).into(),
-            (_etrampoline as usize).into(),
+            (_strampoline as usize).into()..(_etrampoline as usize).into(),
             MapPerm::URX,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping physical memory");
         memory_space.push_vma(VmArea::new(
-            (_ekernel as usize).into(),
-            MEMORY_END.into(),
+            (_ekernel as usize).into()..MEMORY_END.into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
         log::info!("[kernel] mapping mmio registers");
         for pair in MMIO {
             memory_space.push_vma(VmArea::new(
-                (pair.0 + VIRT_RAM_OFFSET).into(),
-                (pair.0 + pair.1 + VIRT_RAM_OFFSET).into(),
+                (pair.0 + VIRT_RAM_OFFSET).into()..(pair.0 + pair.1 + VIRT_RAM_OFFSET).into(),
                 pair.2,
                 VmAreaType::Mmio,
             ));
@@ -221,11 +211,11 @@ impl MemorySpace {
             if ph_flags.is_execute() {
                 map_perm |= MapPerm::X;
             }
-            let mut vm_area = VmArea::new(start_va, end_va, map_perm, VmAreaType::Elf);
+            let vm_area = VmArea::new(start_va..end_va, map_perm, VmAreaType::Elf);
 
             log::debug!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?} start...",);
 
-            max_end_vpn = vm_area.vpn_range.end();
+            max_end_vpn = vm_area.end_vpn();
 
             let map_offset = start_va.0 - start_va.floor().0 * PAGE_SIZE;
 
@@ -261,7 +251,7 @@ impl MemorySpace {
         let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         let elf_header = elf.header;
         assert_eq!(elf_header.pt1.magic, ELF_MAGIC, "invalid elf!");
-        let mut entry_point = elf_header.pt2.entry_point() as usize;
+        let entry_point = elf_header.pt2.entry_point() as usize;
         let ph_entry_size = elf_header.pt2.ph_entry_size() as usize;
         let ph_count = elf_header.pt2.ph_count() as usize;
 
@@ -277,11 +267,10 @@ impl MemorySpace {
 
         // map user stack with U flags
         let max_end_va: VirtAddr = max_end_vpn.into();
-        let mut user_stack_bottom: usize = usize::from(max_end_va) + PAGE_SIZE;
+        let user_stack_bottom: usize = usize::from(max_end_va) + PAGE_SIZE;
         let user_stack_top = user_stack_bottom + USER_STACK_SIZE;
-        let mut ustack_vma = VmArea::new(
-            user_stack_bottom.into(),
-            user_stack_top.into(),
+        let ustack_vma = VmArea::new(
+            user_stack_bottom.into()..user_stack_top.into(),
             MapPerm::URW,
             VmAreaType::Stack,
         );
@@ -323,7 +312,7 @@ impl MemorySpace {
 
         auxv.push(AuxHeader::new(AT_BASE, 0));
 
-        let (max_end_vpn, header_va) = self.map_elf(&elf, 0.into());
+        let (_max_end_vpn, header_va) = self.map_elf(&elf, 0.into());
 
         let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
         log::debug!("[parse_and_map_elf] AT_PHDR  ph_head_addr is {ph_head_addr:x}",);
@@ -339,18 +328,18 @@ impl MemorySpace {
     /// The stack has a range of [sp - size, sp].
     pub fn alloc_stack(&mut self, size: usize) -> VirtAddr {
         const STACK_RANGE: Range<VirtAddr> =
-            VirtAddr::from_usize(U_SEG_STACK_BEG)..VirtAddr::from_usize(U_SEG_STACK_END);
+            VirtAddr::from_usize_range(U_SEG_STACK_BEG..U_SEG_STACK_END);
 
         let range = self
             .areas
-            .find_free_range(STACK_RANGE, size, |va, n| (va + n).ceil().into())
+            .find_free_range(STACK_RANGE, size)
             .expect("too many stack!");
 
         // align to 16 bytes
         let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
         log::debug!("alloc stack: {range:x?}, sp_init: {sp_init:x?}");
 
-        let vm_area = VmArea::new(range.start, range.end, MapPerm::URW, VmAreaType::Stack);
+        let vm_area = VmArea::new(range, MapPerm::URW, VmAreaType::Stack);
         self.push_vma(vm_area);
         sp_init
     }
@@ -358,15 +347,44 @@ impl MemorySpace {
     /// Alloc heap lazily.
     pub fn alloc_heap_lazily(&mut self) {
         const HEAP_RANGE: Range<VirtAddr> =
-            VirtAddr::from_usize(U_SEG_HEAP_BEG)..VirtAddr::from_usize(U_SEG_HEAP_END);
+            VirtAddr::from_usize_range(U_SEG_HEAP_BEG..U_SEG_HEAP_END);
 
-        let vm_area = VmArea::new(
-            HEAP_RANGE.start,
-            HEAP_RANGE.end,
-            MapPerm::URW,
-            VmAreaType::Heap,
-        );
+        const INIT_SIZE: usize = PAGE_SIZE;
+        let range = VirtAddr::from_usize_range(U_SEG_HEAP_BEG..U_SEG_HEAP_BEG + INIT_SIZE);
+
+        let vm_area = VmArea::new(range, MapPerm::URW, VmAreaType::Heap);
         self.push_vma_lazily(vm_area);
+    }
+
+    pub fn get_heap_break(&self) -> VirtAddr {
+        // HACK: directly get U_SEG_HEAP_BEG instead？
+        let (range, _) = self
+            .areas
+            .iter()
+            .find(|(_, vma)| vma.vma_type == VmAreaType::Heap)
+            .unwrap();
+        range.end
+    }
+
+    /// NOTE: The actual Linux system call returns the new program break on
+    /// success. On failure, the system call returns the current break.
+    pub fn reset_heap_break(&mut self, new_brk: VirtAddr) -> VirtAddr {
+        let (range, _vma) = self
+            .areas
+            .iter_mut()
+            .find(|(_, vma)| vma.vma_type == VmAreaType::Heap)
+            .unwrap();
+        let result = if new_brk > range.end {
+            self.areas.extend_back(range.start..new_brk)
+        } else if new_brk < range.end {
+            self.areas.reduce_back(range.start, new_brk)
+        } else {
+            Ok(())
+        };
+        match result {
+            Ok(_) => new_brk,
+            Err(_) => range.end,
+        }
     }
 
     /// Clone a same `MemorySpace` from another user space, including datas in
@@ -374,10 +392,10 @@ impl MemorySpace {
     pub fn from_user(user_space: &Self) -> Self {
         let mut memory_space = Self::new_user();
         for (_, area) in user_space.areas.iter() {
-            let mut new_area = VmArea::from_another(area);
+            let new_area = VmArea::from_another(area);
             memory_space.push_vma(new_area);
             // copy data from another space
-            for vpn in area.vpn_range {
+            for vpn in area.range_vpn() {
                 if let Some(pte) = user_space.page_table.find_pte(vpn) {
                     let src_ppn = pte.ppn();
                     let dst_ppn = memory_space.page_table.find_pte(vpn).unwrap().ppn();
@@ -392,8 +410,9 @@ impl MemorySpace {
     pub fn from_user_lazily(user_space: &mut Self) -> Self {
         let mut memory_space = Self::new_user();
         for (_, area) in user_space.areas.iter() {
-            let new_area = VmArea::from_another_deep(area);
-            for vpn in area.vpn_range {
+            log::debug!("[MemorySpace::from_user_lazily] cloning area {area:?}");
+            let new_area = area.clone();
+            for vpn in area.range_vpn() {
                 if let Some(page) = area.pages.get(&vpn) {
                     let pte = user_space.page_table.find_pte(vpn).unwrap();
                     let (pte_flags, ppn) = match area.vma_type {
@@ -429,7 +448,7 @@ impl MemorySpace {
     }
 
     /// Push `VmArea` into `MemorySpace` without mapping it in page table.
-    pub fn push_vma_lazily(&mut self, mut vma: VmArea) {
+    pub fn push_vma_lazily(&mut self, vma: VmArea) {
         self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
@@ -441,13 +460,9 @@ impl MemorySpace {
         self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
-    pub fn handle_page_fault(
-        &mut self,
-        va: VirtAddr,
-        access_type: PageFaultAccessType,
-    ) -> SysResult<()> {
+    pub fn handle_page_fault(&mut self, va: VirtAddr) -> SysResult<()> {
         log::trace!("[MemorySpace::handle_page_fault] {va:?}");
-        let (_, vm_area) = self.areas.get_mut(va).expect("no area contains this va");
+        let vm_area = self.areas.get_mut(va).expect("no area contains this va");
         vm_area.handle_page_fault(&mut self.page_table, va.floor());
         Ok(())
     }
@@ -475,7 +490,7 @@ impl MemorySpace {
                 range,
             );
 
-            for vpn in area.vpn_range {
+            for vpn in area.range_vpn() {
                 let vaddr = vpn.to_va();
                 if will_read_fail(vaddr.bits()) {
                     // log::debug!("{:<8x}: unmapped", vpn);

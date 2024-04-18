@@ -1,4 +1,3 @@
-use rand_core::le;
 use signal::{
     action::{Action, ActionType},
     signal_stack::{SignalStack, UContext},
@@ -8,7 +7,7 @@ use systype::{SysError, SyscallResult};
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
-    processor::hart::{current_task, current_trap_cx},
+    processor::hart::current_task,
     task::signal::{SigAction, SIG_DFL, SIG_IGN},
 };
 
@@ -23,6 +22,7 @@ pub fn sys_sigaction(
     action: UserReadPtr<SigAction>,
     old_action: UserWritePtr<SigAction>,
 ) -> SyscallResult {
+    let task = current_task();
     let task = current_task();
     let signum = Sig::from_usize(signum);
     if !signum.is_valid() {
@@ -89,7 +89,7 @@ pub fn sys_sigprocmask(
 
 pub fn sys_sigreturn() -> SyscallResult {
     let task = current_task();
-    let trap_cx = current_trap_cx();
+    let trap_cx = task.trap_context_mut();
     let ucontext_ptr = UserReadPtr::<UContext>::from_usize(trap_cx.user_x[1]);
 
     let ucontext = ucontext_ptr.read(task)?;
@@ -103,7 +103,7 @@ pub fn sys_sigreturn() -> SyscallResult {
 }
 
 pub fn sys_signalstack(
-    ss: UserReadPtr<SignalStack>,
+    _ss: UserReadPtr<SignalStack>,
     old_ss: UserWritePtr<SignalStack>,
 ) -> SyscallResult {
     if !old_ss.is_null() {

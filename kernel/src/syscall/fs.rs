@@ -1,9 +1,6 @@
 use systype::SyscallResult;
 
-use crate::{
-    mm::UserReadPtr,
-    processor::{env::SumGuard, hart::current_task},
-};
+use crate::{mm::UserReadPtr, processor::hart::current_task};
 
 // TODO:
 pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallResult {
