@@ -89,16 +89,16 @@ pub fn sys_sigprocmask(
 
 pub fn sys_sigreturn() -> SyscallResult {
     let task = current_task();
-    let trap_cx = task.trap_context_mut();
-    let ucontext_ptr = UserReadPtr::<UContext>::from_usize(trap_cx.user_x[1]);
+    let cx = task.trap_context_mut();
+    let ucontext_ptr = UserReadPtr::<UContext>::from_usize(cx.user_x[1]);
 
     let ucontext = ucontext_ptr.read(task)?;
     task.with_mut_signal(|signal| {
         signal.blocked = ucontext.uc_sigmask;
     });
     task.set_signal_stack((ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack));
-    trap_cx.sepc = ucontext.uc_mcontext.sepc;
-    trap_cx.user_x = ucontext.uc_mcontext.user_x;
+    cx.sepc = ucontext.uc_mcontext.sepc;
+    cx.user_x = ucontext.uc_mcontext.user_x;
     Ok(0)
 }
 

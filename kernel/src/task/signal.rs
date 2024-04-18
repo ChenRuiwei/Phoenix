@@ -100,20 +100,20 @@ pub fn do_signal() -> SysResult<()> {
                     // 这些信息定义在Action的mask字段
                     signal.blocked |= action.mask;
                     let ucontext_ptr = save_context_into_sigstack(old_blocked)?;
-                    let trap_cx = task.trap_context_mut();
+                    let cx = task.trap_context_mut();
                     // 用户自定义的sa_handler的参数，void myhandler(int signo,siginfo_t *si,void
                     // *ucontext); TODO:实现siginfo
                     // a0
-                    trap_cx.user_x[10] = sig.raw();
+                    cx.user_x[10] = sig.raw();
                     // a2
-                    trap_cx.user_x[12] = ucontext_ptr;
-                    trap_cx.sepc = entry;
+                    cx.user_x[12] = ucontext_ptr;
+                    cx.sepc = entry;
                     // ra (when the sigaction set by user finished,if user forgets to call
                     // sys_sigreturn, it will return to sigreturn_trampoline, which
                     // calls sys_sigreturn)
-                    trap_cx.user_x[1] = sigreturn_trampoline as usize;
+                    cx.user_x[1] = sigreturn_trampoline as usize;
                     // sp (it will be used later by sys_sigreturn)
-                    trap_cx.user_x[2] = ucontext_ptr;
+                    cx.user_x[2] = ucontext_ptr;
                 }
             }
         }
@@ -136,12 +136,12 @@ fn cont(sig: Sig) {
 
 fn save_context_into_sigstack(old_blocked: SigSet) -> SysResult<usize> {
     let task = current_task();
-    let trap_context = task.trap_context_mut();
-    trap_context.user_fx.encounter_signal();
+    let cx = task.trap_context_mut();
+    cx.user_fx.encounter_signal();
     let signal_stack = task.signal_stack().take();
     let stack_top = match signal_stack {
         Some(s) => s.get_stack_top(),
-        None => trap_context.kernel_sp,
+        None => cx.kernel_sp,
     };
     // extend the signal_stack
     let pad_ucontext = Layout::new::<UContext>().pad_to_align().size();
@@ -153,8 +153,8 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> SysResult<usize> {
         uc_sigmask: old_blocked,
         uc_stack: signal_stack.unwrap_or_default(),
         uc_mcontext: MContext {
-            sepc: trap_context.sepc,
-            user_x: trap_context.user_x,
+            sepc: cx.sepc,
+            user_x: cx.user_x,
         },
     };
     let ptr = ucontext_ptr.as_usize();
