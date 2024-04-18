@@ -43,6 +43,7 @@ impl FilePageInfo {
 }
 
 impl Page {
+    /// Create a `Page` by allocating a frame.
     pub fn new() -> Self {
         Self {
             frame: frame_alloc(),

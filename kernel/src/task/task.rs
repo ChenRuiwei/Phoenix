@@ -31,7 +31,7 @@ fn new_shared<T>(data: T) -> Shared<T> {
     Arc::new(SpinNoIrqLock::new(data))
 }
 
-/// User task control block, a.k.a. process control block
+/// User task control block, a.k.a. process control block.
 ///
 /// We treat processes and threads as tasks, consistent with the approach
 /// adopted by Linux. A process is a task that is the leader of a `ThreadGroup`.

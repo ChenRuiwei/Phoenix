@@ -32,10 +32,12 @@ pub trait File: Send + Sync {
     fn ioctl(&self, _cmd: u32, _arg: usize) -> SysResult<usize> {
         Err(SysError::ENOSYS)
     }
+
     /// Called by the close(2) system call to flush a file
     fn flush(&self) -> SysResult<()> {
         Ok(())
     }
+
     /// Called by the fsync(2) system call.
     fn fsync(&self) -> SysResult<()> {
         Ok(())
