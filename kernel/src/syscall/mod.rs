@@ -5,6 +5,7 @@ mod fs;
 mod misc;
 mod mm;
 mod process;
+mod resource;
 mod signal;
 mod time;
 
@@ -25,6 +26,7 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     syscall::{
         misc::UtsName,
+        resource::{sys_getrusage, Rusage},
         signal::{sys_sigaction, sys_sigreturn},
         time::{sys_gettimeofday, sys_nanosleep, sys_times},
     },
@@ -151,6 +153,10 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         ),
         // Miscellaneous
         SYSCALL_UNAME => sys_handler!(sys_uname, (UserWritePtr::<UtsName>::from(args[0]))),
+        SYSCALL_GETRUSAGE => sys_handler!(
+            sys_getrusage,
+            (args[0] as i32, UserWritePtr::<Rusage>::from(args[1]))
+        ),
         _ => {
             error!("Unsupported syscall_id: {}", syscall_id);
             Ok(0)

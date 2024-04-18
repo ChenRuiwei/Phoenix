@@ -1,7 +1,7 @@
 use signal::{
     action::{Action, ActionType},
     signal_stack::{SignalStack, UContext},
-    sigset::{Sig, SigProcMaskHow, SigSet},
+    sigset::{Sig, SigSet},
 };
 use systype::{SysError, SyscallResult};
 
@@ -23,6 +23,7 @@ pub fn sys_sigaction(
     old_action: UserWritePtr<SigAction>,
 ) -> SyscallResult {
     let task = current_task();
+    let task = current_task();
     let signum = Sig::from_usize(signum);
     if !signum.is_valid() {
         return Err(SysError::EINVAL);
@@ -39,13 +40,10 @@ pub fn sys_sigaction(
         flags: action.sa_flags,
         mask: action.sa_mask,
     };
-    let mut signal = task.signal.lock();
-    let old = signal.handlers.replace(signum, new);
-    drop(signal);
-
+    let old = task.with_mut_signal(|signal| -> Action { signal.handlers.replace(signum, new) });
     // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
-        old_action.write(task, old.into())?;
+        old_action.write(task, old.into());
     }
     Ok(0)
 }
@@ -57,40 +55,50 @@ pub fn sys_sigprocmask(
     set: UserReadPtr<SigSet>,
     old_set: UserWritePtr<SigSet>,
 ) -> SyscallResult {
+    const SIGBLOCK: usize = 0;
+    const SIGUNBLOCK: usize = 1;
+    const SIGSETMASK: usize = 2;
     let task = current_task();
-    let mut signal = task.signal.lock();
     if !old_set.is_null() {
-        old_set.write(task, signal.blocked)?;
+        task.with_signal(|signal| {
+            old_set.write(task, signal.blocked);
+        });
     }
     if !set.is_null() {
-        match SigProcMaskHow::from(how) {
-            SigProcMaskHow::SigBlock => {
-                signal.blocked |= set.read(task)?;
+        let set = set.read(task)?;
+        return task.with_mut_signal(|signal| -> SyscallResult {
+            match how {
+                SIGBLOCK => {
+                    signal.blocked |= set;
+                }
+                SIGUNBLOCK => {
+                    signal.blocked.remove(set);
+                }
+                SIGSETMASK => {
+                    signal.blocked = set;
+                }
+                _ => {
+                    return Err(SysError::EINVAL);
+                }
             }
-            SigProcMaskHow::SigUnblock => {
-                signal.blocked.remove(set.read(task)?);
-            }
-            SigProcMaskHow::SigSetMask => {
-                signal.blocked = set.read(task)?;
-            }
-            SigProcMaskHow::Unknown => {
-                return Err(SysError::EINVAL);
-            }
-        }
+            Ok(0)
+        });
     }
     Ok(0)
 }
 
 pub fn sys_sigreturn() -> SyscallResult {
     let task = current_task();
-    let trap_context = task.trap_context_mut();
-    let ucontext_ptr = UserReadPtr::<UContext>::from(trap_context.user_x[1]);
-    // TODO: if can't read, it should cause segment fault
+    let trap_cx = task.trap_context_mut();
+    let ucontext_ptr = UserReadPtr::<UContext>::from_usize(trap_cx.user_x[1]);
+
     let ucontext = ucontext_ptr.read(task)?;
-    task.signal.lock().blocked = ucontext.uc_sigmask;
+    task.with_mut_signal(|signal| {
+        signal.blocked = ucontext.uc_sigmask;
+    });
     task.set_signal_stack((ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack));
-    trap_context.sepc = ucontext.uc_mcontext.sepc;
-    trap_context.user_x = ucontext.uc_mcontext.user_x;
+    trap_cx.sepc = ucontext.uc_mcontext.sepc;
+    trap_cx.user_x = ucontext.uc_mcontext.user_x;
     Ok(0)
 }
 

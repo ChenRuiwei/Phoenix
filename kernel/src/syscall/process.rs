@@ -134,6 +134,15 @@ pub async fn sys_wait4(
                     SysError::ECHILD
                 })?;
                 if c.is_zombie() {
+                    // TODO:又臭又长
+                    c.parent()
+                        .as_ref()
+                        .unwrap()
+                        .upgrade()
+                        .unwrap()
+                        .time_stat()
+                        .update_child_time(c.time_stat().user_system_time());
+
                     Some(c)
                 } else {
                     None

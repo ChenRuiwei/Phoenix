@@ -16,12 +16,13 @@ pub struct TMS {
 
 impl TMS {
     pub fn from_task_time_stat(tts: &TaskTimeStat) -> Self {
-        // FIXME: tms_cutime and tms_cstime should be set in sys_wait4
+        let (utime, stime) = tts.user_system_time();
+        let (cutime, cstime) = tts.child_user_system_time();
         Self {
-            tms_utime: tts.user_time().as_micros() as usize,
-            tms_stime: tts.system_time().as_micros() as usize,
-            tms_cutime: tts.user_time().as_micros() as usize,
-            tms_cstime: tts.system_time().as_micros() as usize,
+            tms_utime: utime.as_micros() as usize,
+            tms_stime: stime.as_micros() as usize,
+            tms_cutime: cutime.as_micros() as usize,
+            tms_cstime: cstime.as_micros() as usize,
         }
     }
 }

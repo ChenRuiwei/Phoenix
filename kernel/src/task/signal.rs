@@ -63,93 +63,62 @@ impl From<Action> for SigAction {
     }
 }
 
-// pub struct SignalContext {
-// pub blocked: SigSet,
-// general regs[0..31]
-// pub user_x: [usize; 32],
-// general float regs
-// pub user_fx: UserFloatContext,
-// CSR sepc
-// pub sepc: usize, // 33
-// }
-//
-// impl SignalContext {
-// pub fn new(blocked: SigSet, trap_context: &TrapContext) -> Self {
-// let mut sstatus = sstatus::read();
-// Self {
-// blocked,
-// user_x: trap_context.user_x,
-// user_fx: trap_context.user_fx,
-// sepc: trap_context.sepc,
-// }
-// }
-// }
-//
-// pub struct SignalTrapoline {
-// page: Arc<Page>,
-// user_addr: VirtAddr,
-// }
-//
-// impl SignalTrapoline {
-// pub fn new(task: Arc<Task>) -> Self{
-//
-// }
-// }
 extern "C" {
     fn sigreturn_trampoline();
 }
 
 pub fn do_signal() -> SysResult<()> {
     let task = current_task();
-    let trap_context = task.trap_context_mut();
-    let mut signal = task.signal.lock();
-    // if there is no signal to be handle, just return
-    if signal.pending.is_empty() {
-        return Ok(());
-    }
-    let len = signal.pending.queue.len();
-    for _ in 0..len {
-        let sig = signal.pending.pop().unwrap();
-        if !sig.is_kill_or_stop() && signal.blocked.contain_signal(sig) {
-            signal.pending.add(sig);
-            continue;
+    task.with_mut_signal(|signal| -> SysResult<()> {
+        // if there is no signal to be handle, just return
+        if signal.pending.is_empty() {
+            return Ok(());
         }
-        let action = signal.handlers.get(sig).unwrap().clone();
-        match action.atype {
-            ActionType::Ignore => ignore(sig),
-            ActionType::Kill => terminate(sig),
-            ActionType::Stop => stop(sig),
-            ActionType::Cont => cont(sig),
-            ActionType::User { entry } => {
-                // 在跳转到用户定义的信号处理程序之前，内核需要保存当前进程的上下文，
-                // 包括程序计数器、寄存器状态、栈指针等。此外，当前的信号屏蔽集也需要被保存，
-                // 因为信号处理程序可能会被嵌套调用（即一个信号处理程序中可能会触发另一个信号），
-                // 所以需要确保每个信号处理程序能恢复到它被调用时的屏蔽集状态
-                let old_blocked = signal.blocked;
-                // 在执行用户定义的信号处理程序之前，内核会将当前处理的信号添加到信号屏蔽集中。
-                // 这样做是为了防止在处理该信号的过程中，相同的信号再次中断
-                signal.blocked.add_signal(sig);
-                // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
-                // 这些信息定义在Action的mask字段
-                signal.blocked |= action.mask;
-                let ucontext_ptr = save_context_into_sigstack(old_blocked)?;
-                // 用户自定义的sa_handler的参数，void myhandler(int signo,siginfo_t *si,void
-                // *ucontext); TODO:实现siginfo
-                // a0
-                trap_context.user_x[10] = sig.raw();
-                // a2
-                trap_context.user_x[12] = ucontext_ptr;
-                trap_context.sepc = entry;
-                // ra (when the sigaction set by user finished,if user forgets to call
-                // sys_sigreturn, it will return to sigreturn_trampoline, which
-                // calls sys_sigreturn)
-                trap_context.user_x[1] = sigreturn_trampoline as usize;
-                // sp (it will be used later by sys_sigreturn)
-                trap_context.user_x[2] = ucontext_ptr;
+        let len = signal.pending.queue.len();
+        for _ in 0..len {
+            let sig = signal.pending.pop().unwrap();
+            if !sig.is_kill_or_stop() && signal.blocked.contain_signal(sig) {
+                signal.pending.add(sig);
+                continue;
+            }
+            let action = signal.handlers.get(sig).unwrap().clone();
+            match action.atype {
+                ActionType::Ignore => ignore(sig),
+                ActionType::Kill => terminate(sig),
+                ActionType::Stop => stop(sig),
+                ActionType::Cont => cont(sig),
+                ActionType::User { entry } => {
+                    // 在跳转到用户定义的信号处理程序之前，内核需要保存当前进程的上下文，
+                    // 包括程序计数器、寄存器状态、栈指针等。此外，当前的信号屏蔽集也需要被保存，
+                    // 因为信号处理程序可能会被嵌套调用（即一个信号处理程序中可能会触发另一个信号），
+                    // 所以需要确保每个信号处理程序能恢复到它被调用时的屏蔽集状态
+                    let old_blocked = signal.blocked;
+                    // 在执行用户定义的信号处理程序之前，内核会将当前处理的信号添加到信号屏蔽集中。
+                    // 这样做是为了防止在处理该信号的过程中，相同的信号再次中断
+                    signal.blocked.add_signal(sig);
+                    // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
+                    // 这些信息定义在Action的mask字段
+                    signal.blocked |= action.mask;
+                    let ucontext_ptr = save_context_into_sigstack(old_blocked)?;
+                    let trap_cx = task.trap_context_mut();
+                    // 用户自定义的sa_handler的参数，void myhandler(int signo,siginfo_t *si,void
+                    // *ucontext); TODO:实现siginfo
+                    // a0
+                    trap_cx.user_x[10] = sig.raw();
+                    // a2
+                    trap_cx.user_x[12] = ucontext_ptr;
+                    trap_cx.sepc = entry;
+                    // ra (when the sigaction set by user finished,if user forgets to call
+                    // sys_sigreturn, it will return to sigreturn_trampoline, which
+                    // calls sys_sigreturn)
+                    trap_cx.user_x[1] = sigreturn_trampoline as usize;
+                    // sp (it will be used later by sys_sigreturn)
+                    trap_cx.user_x[2] = ucontext_ptr;
+                }
             }
         }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 fn ignore(sig: Sig) {
@@ -198,10 +167,11 @@ pub struct WaitHandlableSignal(pub &'static Arc<Task>);
 impl Future for WaitHandlableSignal {
     type Output = usize;
     fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
-        let signal = self.0.signal.lock();
-        match signal.pending.has_signal_to_handle(signal.blocked) {
-            true => Poll::Ready(get_time_ms()),
-            false => Poll::Pending,
-        }
+        self.0.with_mut_signal(|signal| -> Poll<Self::Output> {
+            match signal.pending.has_signal_to_handle(signal.blocked) {
+                true => Poll::Ready(get_time_ms()),
+                false => Poll::Pending,
+            }
+        })
     }
 }
