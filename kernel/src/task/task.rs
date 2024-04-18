@@ -15,7 +15,8 @@ use arch::{memory::sfence_vma_all, time::get_time_duration};
 use config::{mm::USER_STACK_SIZE, process::INITPROC_PID};
 use memory::VirtAddr;
 use signal::{signal_stack::SignalStack, Signal};
-use sync::mutex::SpinNoIrqLock;
+use spin::MutexGuard;
+use sync::mutex::{SpinNoIrq, SpinNoIrqLock};
 use time::stat::TaskTimeStat;
 use virtio_drivers::PAGE_SIZE;
 
@@ -58,30 +59,30 @@ pub struct Task {
     // Mutable
     /// Whether this task is a zombie. Locked because of other task may operate
     /// this state, e.g. execve will kill other tasks.
-    pub state: SpinNoIrqLock<TaskState>,
+    state: SpinNoIrqLock<TaskState>,
     /// The process's address space
-    pub memory_space: Shared<MemorySpace>,
+    memory_space: Shared<MemorySpace>,
     /// Parent process
-    pub parent: Shared<Option<Weak<Task>>>,
+    parent: Shared<Option<Weak<Task>>>,
     /// Children processes
     // NOTE: Arc<Task> can only be hold by `Hart`, `UserTaskFuture` and parent `Task`. Unused task
     // will be automatically dropped by previous two structs. However, it should be treated with
     // great care to drop task in `children`.
-    pub children: Shared<BTreeMap<Tid, Arc<Task>>>,
+    children: Shared<BTreeMap<Tid, Arc<Task>>>,
     /// Exit code of the current process
-    pub exit_code: AtomicI32,
+    exit_code: AtomicI32,
     ///
-    pub trap_context: SyncUnsafeCell<TrapContext>,
+    trap_context: SyncUnsafeCell<TrapContext>,
     ///
-    pub waker: SyncUnsafeCell<Option<Waker>>,
+    waker: SyncUnsafeCell<Option<Waker>>,
     ///
-    pub thread_group: Shared<ThreadGroup>,
+    thread_group: Shared<ThreadGroup>,
     ///
-    pub signal: SpinNoIrqLock<Signal>,
+    signal: SpinNoIrqLock<Signal>,
     /// User can set `sig_stack` by `sys_signalstack`.
-    pub sig_stack: SyncUnsafeCell<Option<SignalStack>>,
+    sig_stack: SyncUnsafeCell<Option<SignalStack>>,
 
-    pub time_stat: SyncUnsafeCell<TaskTimeStat>,
+    time_stat: SyncUnsafeCell<TaskTimeStat>,
 }
 
 impl core::fmt::Debug for Task {
@@ -144,7 +145,7 @@ impl Task {
         schedule::spawn_user_task(task);
     }
 
-    fn parent(&self) -> Option<Weak<Self>> {
+    pub fn parent(&self) -> Option<Weak<Self>> {
         self.parent.lock().clone()
     }
 
@@ -418,6 +419,7 @@ impl Task {
     with_!(children, BTreeMap<Tid, Arc<Task>>);
     with_!(memory_space, MemorySpace);
     with_!(thread_group, ThreadGroup);
+    with_!(signal, Signal);
 }
 
 /// Hold a group of threads which belongs to the same process.

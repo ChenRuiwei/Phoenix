@@ -30,10 +30,13 @@ pub fn sys_gettimeofday(tv: UserWritePtr<TimeVal>, tz: usize) -> SyscallResult {
 }
 
 pub fn sys_times(tms: UserWritePtr<TMS>) -> SyscallResult {
-    tms.write(
-        current_task(),
-        TMS::from_task_time_stat(current_task().time_stat()),
-    );
+    if !tms.is_null() {
+        tms.write(
+            current_task(),
+            TMS::from_task_time_stat(current_task().time_stat()),
+        );
+    }
+
     Ok(0)
 }
 
