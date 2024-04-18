@@ -40,7 +40,7 @@ pub const STRACE_COLOR_CODE: u8 = 35; // Purple
 macro_rules! strace {
     ($fmt: literal $(, $($arg: tt)+)?) => {
         use $crate::{
-            processor::{local_hart, current_task}
+            processor::hart::{local_hart, current_task}
         };
         $crate::impls::print_in_color(
             format_args!(concat!("[SYSCALL][{},{}] ", $fmt, "\n"),
@@ -63,7 +63,7 @@ macro_rules! sys_handler {
                 "{}, args: {:?}, sepc: {:#x}",
                 stringify!($handler),
                 $args,
-                crate::processor::current_task().trap_context_mut().sepc
+                crate::processor::hart::current_task().trap_context_mut().sepc
             );
             $handler$args
         }
@@ -74,7 +74,7 @@ macro_rules! sys_handler {
                 "{}, args: {:?}, sepc: {:#x}",
                 stringify!($handler),
                 $args,
-                crate::processor::current_task().trap_context_mut().sepc
+                crate::processor::hart::current_task().trap_context_mut().sepc
             );
             $handler$args.$await
         }

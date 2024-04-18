@@ -21,11 +21,7 @@ use super::tid::{Pid, Tid, TidHandle};
 use crate::{
     mm::MemorySpace,
     syscall,
-    task::{
-        manager::TASK_MANAGER,
-        schedule,
-        tid::alloc_tid,
-    },
+    task::{manager::TASK_MANAGER, schedule, tid::alloc_tid},
     trap::TrapContext,
 };
 

@@ -7,7 +7,7 @@ use core::{
 
 use super::Task;
 use crate::{
-    processor::{self, ctx::EnvContext},
+    processor::{self, env::EnvContext, hart},
     trap,
 };
 
@@ -65,7 +65,7 @@ impl<F: Future + Send + 'static> Future for UserTaskFuture<F> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
-        let hart = processor::local_hart();
+        let hart = hart::local_hart();
         hart.enter_user_task_switch(&mut this.task, &mut this.env);
         let ret = unsafe { Pin::new_unchecked(&mut this.future).poll(cx) };
         hart.leave_user_task_switch(&mut this.env);
@@ -92,7 +92,7 @@ impl<F: Future<Output = ()> + Send + 'static> Future for KernelTaskFuture<F> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
-        let hart = processor::local_hart();
+        let hart = hart::local_hart();
         hart.kernel_task_switch(&mut this.env);
         let ret = unsafe { Pin::new_unchecked(&mut this.future).poll(cx) };
         hart.kernel_task_switch(&mut this.env);

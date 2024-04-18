@@ -54,7 +54,7 @@ static FIRST_HART: AtomicBool = AtomicBool::new(true);
 static INIT_FINISHED: AtomicBool = AtomicBool::new(false);
 
 fn hart_start(hart_id: usize) {
-    use crate::processor::HARTS;
+    use crate::processor::hart::HARTS;
 
     // only start two harts
     let mut has_another = false;
