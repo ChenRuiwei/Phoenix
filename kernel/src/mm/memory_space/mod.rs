@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 use core::ops::Range;
 
 use config::{
@@ -11,12 +11,10 @@ use config::{
 use log::info;
 use memory::{pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
 use spin::Lazy;
-use sync::mutex::SpinNoIrqLock;
-use systype::{SysError, SysResult};
+use systype::SysResult;
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};
-use super::{page, user_ptr::PageFaultAccessType};
 use crate::{
     mm::{
         memory_space::vm_area::{MapPerm, VmAreaType},
@@ -213,7 +211,7 @@ impl MemorySpace {
             if ph_flags.is_execute() {
                 map_perm |= MapPerm::X;
             }
-            let mut vm_area = VmArea::new(start_va..end_va, map_perm, VmAreaType::Elf);
+            let vm_area = VmArea::new(start_va..end_va, map_perm, VmAreaType::Elf);
 
             log::debug!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?} start...",);
 
@@ -253,7 +251,7 @@ impl MemorySpace {
         let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         let elf_header = elf.header;
         assert_eq!(elf_header.pt1.magic, ELF_MAGIC, "invalid elf!");
-        let mut entry_point = elf_header.pt2.entry_point() as usize;
+        let entry_point = elf_header.pt2.entry_point() as usize;
         let ph_entry_size = elf_header.pt2.ph_entry_size() as usize;
         let ph_count = elf_header.pt2.ph_count() as usize;
 
@@ -269,9 +267,9 @@ impl MemorySpace {
 
         // map user stack with U flags
         let max_end_va: VirtAddr = max_end_vpn.into();
-        let mut user_stack_bottom: usize = usize::from(max_end_va) + PAGE_SIZE;
+        let user_stack_bottom: usize = usize::from(max_end_va) + PAGE_SIZE;
         let user_stack_top = user_stack_bottom + USER_STACK_SIZE;
-        let mut ustack_vma = VmArea::new(
+        let ustack_vma = VmArea::new(
             user_stack_bottom.into()..user_stack_top.into(),
             MapPerm::URW,
             VmAreaType::Stack,
@@ -314,7 +312,7 @@ impl MemorySpace {
 
         auxv.push(AuxHeader::new(AT_BASE, 0));
 
-        let (max_end_vpn, header_va) = self.map_elf(&elf, 0.into());
+        let (_max_end_vpn, header_va) = self.map_elf(&elf, 0.into());
 
         let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
         log::debug!("[parse_and_map_elf] AT_PHDR  ph_head_addr is {ph_head_addr:x}",);
@@ -371,7 +369,7 @@ impl MemorySpace {
     /// NOTE: The actual Linux system call returns the new program break on
     /// success. On failure, the system call returns the current break.
     pub fn reset_heap_break(&mut self, new_brk: VirtAddr) -> VirtAddr {
-        let (range, vma) = self
+        let (range, _vma) = self
             .areas
             .iter_mut()
             .find(|(_, vma)| vma.vma_type == VmAreaType::Heap)
@@ -394,7 +392,7 @@ impl MemorySpace {
     pub fn from_user(user_space: &Self) -> Self {
         let mut memory_space = Self::new_user();
         for (_, area) in user_space.areas.iter() {
-            let mut new_area = VmArea::from_another(area);
+            let new_area = VmArea::from_another(area);
             memory_space.push_vma(new_area);
             // copy data from another space
             for vpn in area.range_vpn() {
@@ -450,7 +448,7 @@ impl MemorySpace {
     }
 
     /// Push `VmArea` into `MemorySpace` without mapping it in page table.
-    pub fn push_vma_lazily(&mut self, mut vma: VmArea) {
+    pub fn push_vma_lazily(&mut self, vma: VmArea) {
         self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
@@ -462,11 +460,7 @@ impl MemorySpace {
         self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
-    pub fn handle_page_fault(
-        &mut self,
-        va: VirtAddr,
-        access_type: PageFaultAccessType,
-    ) -> SysResult<()> {
+    pub fn handle_page_fault(&mut self, va: VirtAddr) -> SysResult<()> {
         log::trace!("[MemorySpace::handle_page_fault] {va:?}");
         let vm_area = self.areas.get_mut(va).expect("no area contains this va");
         vm_area.handle_page_fault(&mut self.page_table, va.floor());

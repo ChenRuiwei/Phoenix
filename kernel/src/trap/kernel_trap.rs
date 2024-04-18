@@ -6,9 +6,8 @@ use riscv::register::{
     scause::{self, Exception, Interrupt, Scause, Trap},
     sepc, stval, stvec,
 };
-use systype::SysError;
 
-use crate::{processor::hart::local_hart, when_debug};
+use crate::when_debug;
 
 /// Kernel trap handler
 #[no_mangle]

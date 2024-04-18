@@ -12,15 +12,10 @@
 #![feature(riscv_ext_intrinsics)]
 #![feature(map_try_insert)]
 #![feature(format_args_nl)]
-#![allow(unused)]
 #![allow(clippy::mut_from_ref)]
 
-use alloc::fmt;
-
-use arch::time::{self, set_next_timer_irq};
-use config::{board::CLOCK_FREQ, mm::HART_START_ADDR};
-use driver::{print, sbi};
-use processor::local_hart;
+use config::mm::HART_START_ADDR;
+use driver::sbi;
 
 use crate::processor::hart;
 
@@ -28,9 +23,6 @@ extern crate alloc;
 
 #[macro_use]
 extern crate bitflags;
-
-#[macro_use]
-extern crate cfg_if;
 
 #[macro_use]
 extern crate driver;

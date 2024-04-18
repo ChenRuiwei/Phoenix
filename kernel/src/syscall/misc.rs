@@ -2,7 +2,7 @@
 
 use systype::SyscallResult;
 
-use crate::{mm::UserWritePtr, processor::hart::current_task, strace};
+use crate::{mm::UserWritePtr, processor::hart::current_task};
 
 // See in "sys/utsname.h"
 #[derive(Debug, Clone, Copy)]

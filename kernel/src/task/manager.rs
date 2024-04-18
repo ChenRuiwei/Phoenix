@@ -1,6 +1,6 @@
 use alloc::sync::{Arc, Weak};
 
-use config::process::INITPROC_PID;
+use config::process::INIT_PROC_PID;
 use hashbrown::HashMap;
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
@@ -24,9 +24,9 @@ impl TaskManager {
         self.0.lock().remove(&task.tid());
     }
 
-    /// Get the init process
+    /// Get the init process.
     pub fn init_proc(&self) -> Arc<Task> {
-        self.get(INITPROC_PID).unwrap()
+        self.get(INIT_PROC_PID).unwrap()
     }
 
     pub fn get(&self, tid: Tid) -> Option<Arc<Task>> {

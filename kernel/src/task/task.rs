@@ -2,35 +2,26 @@ use alloc::{
     collections::BTreeMap,
     string::String,
     sync::{Arc, Weak},
-    task,
     vec::Vec,
 };
 use core::{
     cell::SyncUnsafeCell,
-    sync::atomic::{AtomicI32, AtomicI8, Ordering},
+    sync::atomic::{AtomicI32, Ordering},
     task::Waker,
 };
 
-use arch::{memory::sfence_vma_all, time::get_time_duration};
-use config::{mm::USER_STACK_SIZE, process::INITPROC_PID};
+use arch::memory::sfence_vma_all;
+use config::{mm::USER_STACK_SIZE, process::INIT_PROC_PID};
 use memory::VirtAddr;
 use signal::{signal_stack::SignalStack, Signal};
 use sync::mutex::SpinNoIrqLock;
 use time::stat::TaskTimeStat;
-use virtio_drivers::PAGE_SIZE;
 
 use super::tid::{Pid, Tid, TidHandle};
 use crate::{
-    mm::{
-        memory_space::{
-            self,
-            vm_area::{MapPerm, VmArea},
-        },
-        MemorySpace,
-    },
+    mm::MemorySpace,
     syscall,
     task::{
-        aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_PHDR},
         manager::TASK_MANAGER,
         schedule,
         tid::alloc_tid,
@@ -234,41 +225,6 @@ impl Task {
         self.memory_space.lock().switch_page_table()
     }
 
-    pub fn map_all_threads(&self, mut f: impl FnMut(&Self)) {
-        self.with_mut_thread_group(|tg| {
-            for t in tg.iter() {
-                f(&t)
-            }
-        });
-    }
-
-    pub fn parse_and_map_elf(&self, elf_data: &[u8]) -> (usize, Vec<AuxHeader>) {
-        const ELF_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
-
-        // map program headers of elf, with U flag
-        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
-        let elf_header = elf.header;
-        assert_eq!(elf_header.pt1.magic, ELF_MAGIC, "invalid elf!");
-        let entry = elf_header.pt2.entry_point() as usize;
-        let ph_entry_size = elf_header.pt2.ph_entry_size() as usize;
-        let ph_count = elf_header.pt2.ph_count() as usize;
-
-        let mut auxv = generate_early_auxv(ph_entry_size, ph_count, entry);
-
-        auxv.push(AuxHeader::new(AT_BASE, 0));
-
-        let (max_end_vpn, header_va) = self.with_mut_memory_space(|m| m.map_elf(&elf, 0.into()));
-
-        let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
-        log::debug!(
-            "[parse_and_map_elf] AT_PHDR  ph_head_addr is {:x} ",
-            ph_head_addr
-        );
-        auxv.push(AuxHeader::new(AT_PHDR, ph_head_addr));
-
-        (entry, auxv)
-    }
-
     // TODO:
     pub fn do_clone(
         self: &Arc<Self>,
@@ -280,7 +236,7 @@ impl Task {
 
         let trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
-        let exit_code = AtomicI32::new(self.exit_code());
+        let _exit_code = AtomicI32::new(self.exit_code());
 
         let is_leader;
         let parent;
@@ -339,10 +295,10 @@ impl Task {
     }
 
     // TODO:
-    pub fn do_execve(&self, elf_data: &[u8], argv: Vec<String>, envp: Vec<String>) {
+    pub fn do_execve(&self, elf_data: &[u8], _argv: Vec<String>, _envp: Vec<String>) {
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();
-        let (entry, auxv) = memory_space.parse_and_map_elf(elf_data);
+        let (entry, _auxv) = memory_space.parse_and_map_elf(elf_data);
 
         // NOTE: should do termination before switching page table, so that other
         // threads will trap in by page fault but be terminated before handling
@@ -381,7 +337,7 @@ impl Task {
         log::info!("thread {} do exit", self.tid());
         assert_ne!(
             self.tid(),
-            INITPROC_PID,
+            INIT_PROC_PID,
             "initproc die!!!, sepc {:#x}",
             self.trap_context_mut().sepc
         );
@@ -389,22 +345,22 @@ impl Task {
         // TODO: send SIGCHLD to parent if this is the leader
         if self.is_leader() {
             if let Some(parent) = self.parent() {
-                let parent = parent.upgrade().unwrap();
+                let _parent = parent.upgrade().unwrap();
             }
         }
 
         log::debug!("[Task::do_exit] set children to be zombie and reparent them to init");
-        debug_assert_ne!(self.tid(), INITPROC_PID);
+        debug_assert_ne!(self.tid(), INIT_PROC_PID);
         self.with_mut_children(|children| {
             if children.is_empty() {
                 return;
             }
-            let init = TASK_MANAGER.get(INITPROC_PID).unwrap();
+            let init_proc = TASK_MANAGER.init_proc();
             children.values().for_each(|c| {
                 c.set_zombie();
-                *c.parent.lock() = Some(Arc::downgrade(&init));
+                *c.parent.lock() = Some(Arc::downgrade(&init_proc));
             });
-            init.children.lock().extend(children.clone());
+            init_proc.children.lock().extend(children.clone());
         });
 
         // release all fd
@@ -422,6 +378,7 @@ impl Task {
 }
 
 /// Hold a group of threads which belongs to the same process.
+// PERF: move leader out to decrease lock granularity
 pub struct ThreadGroup {
     members: BTreeMap<Tid, Weak<Task>>,
     leader: Option<Weak<Task>>,
@@ -450,10 +407,6 @@ impl ThreadGroup {
     pub fn remove(&mut self, thread: &Task) {
         debug_assert!(self.leader.is_some());
         self.members.remove(&thread.tid());
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.members.is_empty()
     }
 
     pub fn tgid(&self) -> Tid {

@@ -1,14 +1,11 @@
 //! Implementation of physical and virtual address and page number.
 use core::{
-    fmt::{self, Debug, Formatter},
+    fmt::{self},
     mem::size_of,
     ops::Range,
 };
 
-use config::mm::{
-    PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, PTE_NUM_ONE_PAGE, PTE_SIZE,
-    VIRT_RAM_OFFSET,
-};
+use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PTE_NUM_ONE_PAGE, PTE_SIZE};
 
 use super::{
     impl_fmt,

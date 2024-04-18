@@ -25,7 +25,7 @@ const USER_HEAP_SIZE: usize = 0x32000;
 
 // Note that heap space is allocated in .data segment
 // TODO: can we change to dynamically allocate by invoking sys_sbrk?
-static mut HEAP_SPACE: [u8; USER_HEAP_SIZE] = [0; USER_HEAP_SIZE];
+// static mut HEAP_SPACE: [u8; USER_HEAP_SIZE] = [0; USER_HEAP_SIZE];
 
 #[global_allocator]
 static HEAP: LockedHeap<32> = LockedHeap::empty();

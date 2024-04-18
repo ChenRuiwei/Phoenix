@@ -1,5 +1,5 @@
 use alloc::collections::BTreeMap;
-use core::ops::{Add, AddAssign, Range, RangeBounds};
+use core::ops::{Add, Range};
 
 #[derive(Clone, Debug)]
 struct Node<U, V> {
@@ -38,7 +38,7 @@ impl<U: Ord + Copy + Add<usize, Output = U>, V> RangeMap<U, V> {
     }
 
     /// Find range which satisfies that `key` is in [start, end).
-    pub fn get(&self, key: U) -> Option<(&V)> {
+    pub fn get(&self, key: U) -> Option<&V> {
         let (_, Node { end, value }) = self.0.range(..=key).next_back()?;
         if *end > key {
             return Some(value);
@@ -47,7 +47,7 @@ impl<U: Ord + Copy + Add<usize, Output = U>, V> RangeMap<U, V> {
     }
 
     /// Find range which satisfies that `key` is in [start, end).
-    pub fn get_mut(&mut self, key: U) -> Option<(&mut V)> {
+    pub fn get_mut(&mut self, key: U) -> Option<&mut V> {
         let (_, Node { end, value }) = self.0.range_mut(..=key).next_back()?;
         if *end > key {
             return Some(value);
@@ -182,7 +182,7 @@ impl<U: Ord + Copy + Add<usize, Output = U>, V> RangeMap<U, V> {
     /// The segment pointed by `start` must exist.
     pub fn reduce_back(&mut self, start: U, new_end: U) -> Result<(), ()> {
         let node = self.0.get_mut(&start).unwrap();
-        let node_end = node.end;
+        let _node_end = node.end;
         if start <= new_end && new_end < node.end {
             if start == new_end {
                 self.0.remove(&start).unwrap();

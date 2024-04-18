@@ -1,13 +1,7 @@
 //! Implementation of physical and virtual address and page number.
-use core::{
-    fmt::{self, Debug, Formatter},
-    iter::Step,
-    mem::size_of,
-};
+use core::fmt::{self};
 
-use config::mm::{
-    PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, PTE_NUM_ONE_PAGE, VIRT_RAM_OFFSET,
-};
+use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM};
 
 use super::{impl_arithmetic_with_usize, impl_fmt, impl_step, offset::OffsetAddr};
 use crate::address::{VA_WIDTH_SV39, VPN_WIDTH_SV39};

@@ -2,8 +2,8 @@ use alloc::sync::{Arc, Weak};
 
 use config::{board::BLOCK_SIZE, mm::PAGE_SIZE};
 use memory::{frame_alloc, FrameTracker, PhysPageNum};
-use sync::mutex::{sleep_mutex::SleepMutex, SleepLock};
-use systype::{SysError, SysResult};
+use sync::mutex::SleepLock;
+use systype::SysResult;
 use vfs::inode::Inode;
 
 pub struct Page {
@@ -111,7 +111,7 @@ impl Page {
                     file_info.inode().write_at(
                         file_offset as u64,
                         self.bytes_array_range(page_offset..page_offset + BLOCK_SIZE),
-                    );
+                    )?;
                 }
                 _ => {}
             }

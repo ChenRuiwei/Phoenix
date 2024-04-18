@@ -4,18 +4,16 @@ use alloc::sync::Arc;
 
 use arch::{
     interrupts::{disable_interrupt, enable_interrupt},
-    time::{get_time_duration, set_next_timer_irq},
+    time::set_next_timer_irq,
 };
 use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
-    sepc, sstatus, stval,
+    sepc, stval,
 };
 
 use super::{set_kernel_trap, TrapContext};
 use crate::{
-    mm::PageFaultAccessType,
-    processor::hart::current_task,
     syscall::syscall,
     task::{signal::do_signal, yield_now, Task},
     trap::set_user_trap,
@@ -70,16 +68,8 @@ pub async fn trap_handler(task: &Arc<Task>) {
             // 6. dynamic link
             // 7. illegal page fault
 
-            let access_type = match cause {
-                Trap::Exception(Exception::StorePageFault) => PageFaultAccessType::RW,
-                Trap::Exception(Exception::InstructionPageFault) => PageFaultAccessType::RX,
-                Trap::Exception(Exception::LoadPageFault) => PageFaultAccessType::RO,
-                _ => unreachable!(),
-            };
-
-            let result = task
-                .with_mut_memory_space(|m| m.handle_page_fault(VirtAddr::from(stval), access_type));
-            if let Err(e) = result {
+            let result = task.with_mut_memory_space(|m| m.handle_page_fault(VirtAddr::from(stval)));
+            if let Err(_e) = result {
                 task.with_memory_space(|m| m.print_all());
                 task.do_exit()
             }
@@ -88,7 +78,7 @@ pub async fn trap_handler(task: &Arc<Task>) {
             log::warn!(
                 "[trap_handler] detected illegal instruction, stval {stval:#x}, sepc {sepc:#x}",
             );
-            // TODO: kill the process
+            task.do_exit();
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");

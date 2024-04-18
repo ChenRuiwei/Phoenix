@@ -1,17 +1,10 @@
-use alloc::{
-    collections::BTreeMap,
-    sync::{Arc, Weak},
-    vec::Vec,
-};
-use core::{ops::Range, sync::atomic::AtomicBool};
+use alloc::{collections::BTreeMap, sync::Arc};
+use core::ops::Range;
 
 use arch::memory::sfence_vma_vaddr;
 use config::mm::PAGE_SIZE;
-use memory::{page_table, pte::PTEFlags, VirtAddr, VirtPageNum};
-use spin::mutex::SpinMutex;
-use sync::mutex::SpinNoIrqLock;
+use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
 
-use super::MemorySpace;
 use crate::{
     mm::{Page, PageTable},
     processor::env::SumGuard,
@@ -174,7 +167,7 @@ impl VmArea {
     /// Will alloc new pages for `VmArea` according to `VmAreaType`.
     pub fn map(&mut self, page_table: &mut PageTable) {
         // NOTE: set pte flag with global mapping for kernel memory
-        let mut pte_flags: PTEFlags = self.map_perm.into();
+        let pte_flags: PTEFlags = self.map_perm.into();
         if self.vma_type == VmAreaType::Physical || self.vma_type == VmAreaType::Mmio {
             for vpn in self.range_vpn() {
                 page_table.map(
@@ -237,7 +230,7 @@ impl VmArea {
 
             // PERF: copying data vs. lock the area vs. atomic ref cnt
             let old_page = self.get_page(vpn);
-            let mut cnt: usize;
+            let mut _cnt: usize;
             let cnt = Arc::strong_count(old_page);
             if cnt > 1 {
                 // shared now

@@ -5,7 +5,7 @@ extern crate user_lib;
 
 extern crate alloc;
 
-use user_lib::{execve, fork, println, wait, yield_};
+use user_lib::{execve, fork, println, wait};
 
 #[no_mangle]
 fn main() -> i32 {
@@ -42,7 +42,6 @@ fn heap_test() {
     assert_eq!(*a, 5);
     drop(a);
     let mut v: Vec<usize> = Vec::new();
-    let max_len = (20000000 - 10000) / core::mem::size_of::<usize>();
     for i in 0..500 {
         v.push(i);
     }

@@ -2,6 +2,8 @@
 //!
 //! Syscall numbers from "asm-generic/unistd.h".
 
+#![allow(unused)]
+
 pub(super) const SYSCALL_GETCWD: usize = 17;
 pub(super) const SYSCALL_DUP: usize = 23;
 pub(super) const SYSCALL_DUP3: usize = 24;

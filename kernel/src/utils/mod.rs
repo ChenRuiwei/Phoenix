@@ -10,8 +10,6 @@ macro_rules! when_debug {
     };
 }
 
-pub use when_debug;
-
 /// Used for debug.
 pub fn exam_hash(buf: &[u8]) -> usize {
     let mut h: usize = 5381;

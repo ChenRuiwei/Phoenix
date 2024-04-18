@@ -1,10 +1,7 @@
 use alloc::sync::Arc;
 use core::arch::asm;
 
-use arch::{
-    interrupts::{disable_interrupt, enable_interrupt},
-    time::get_time_duration,
-};
+use arch::interrupts::{disable_interrupt, enable_interrupt};
 use config::processor::HART_NUM;
 use riscv::register::sstatus::{self, FS};
 
@@ -12,7 +9,6 @@ use super::ctx::EnvContext;
 use crate::{
     mm::{self},
     task::Task,
-    trap::TrapContext,
 };
 
 const HART_EACH: Hart = Hart::new();

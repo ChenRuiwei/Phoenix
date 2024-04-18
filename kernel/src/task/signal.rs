@@ -6,23 +6,16 @@ use core::{
     task::{Context, Poll},
 };
 
-use arch::{
-    sstatus::{self, Sstatus},
-    time::get_time_ms,
-};
-use memory::VirtAddr;
+use arch::time::get_time_ms;
 use signal::{
     action::{Action, ActionType},
-    signal_stack::{self, MContext, SignalStack, UContext},
+    signal_stack::{MContext, UContext},
     sigset::{Sig, SigSet},
 };
+use systype::SysResult;
 
 use super::Task;
-use crate::{
-    mm::{Page, UserWritePtr},
-    processor::hart::current_task,
-    trap::{ctx::UserFloatContext, TrapContext},
-};
+use crate::{mm::UserWritePtr, processor::hart::current_task};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -106,13 +99,13 @@ extern "C" {
     fn sigreturn_trampoline();
 }
 
-pub fn do_signal() {
+pub fn do_signal() -> SysResult<()> {
     let task = current_task();
     let trap_context = task.trap_context_mut();
-    let mut signal = current_task().signal.lock();
+    let mut signal = task.signal.lock();
     // if there is no signal to be handle, just return
     if signal.pending.is_empty() {
-        return;
+        return Ok(());
     }
     let len = signal.pending.queue.len();
     for _ in 0..len {
@@ -139,7 +132,7 @@ pub fn do_signal() {
                 // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
                 // 这些信息定义在Action的mask字段
                 signal.blocked |= action.mask;
-                let ucontext_ptr = save_context_into_sigstack(old_blocked);
+                let ucontext_ptr = save_context_into_sigstack(old_blocked)?;
                 // 用户自定义的sa_handler的参数，void myhandler(int signo,siginfo_t *si,void
                 // *ucontext); TODO:实现siginfo
                 // a0
@@ -156,6 +149,7 @@ pub fn do_signal() {
             }
         }
     }
+    Ok(())
 }
 
 fn ignore(sig: Sig) {
@@ -171,7 +165,7 @@ fn cont(sig: Sig) {
     log::info!("Recevie signal {}. Action: continue", sig);
 }
 
-fn save_context_into_sigstack(old_blocked: SigSet) -> usize {
+fn save_context_into_sigstack(old_blocked: SigSet) -> SysResult<usize> {
     let task = current_task();
     let trap_context = task.trap_context_mut();
     trap_context.user_fx.encounter_signal();
@@ -185,7 +179,7 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> usize {
     let ucontext_ptr = UserWritePtr::<UContext>::from(stack_top - pad_ucontext);
     // TODO: should increase the size of the signal_stack? It seams umi doesn't do
     // that
-    let mut ucontext = UContext {
+    let ucontext = UContext {
         uc_link: 0,
         uc_sigmask: old_blocked,
         uc_stack: signal_stack.unwrap_or_default(),
@@ -195,15 +189,15 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> usize {
         },
     };
     let ptr = ucontext_ptr.as_usize();
-    ucontext_ptr.write(task, ucontext);
-    ptr
+    ucontext_ptr.write(task, ucontext)?;
+    Ok(ptr)
 }
 
 pub struct WaitHandlableSignal(pub &'static Arc<Task>);
 
 impl Future for WaitHandlableSignal {
     type Output = usize;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
         let signal = self.0.signal.lock();
         match signal.pending.has_signal_to_handle(signal.blocked) {
             true => Poll::Ready(get_time_ms()),

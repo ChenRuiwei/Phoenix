@@ -5,11 +5,9 @@ use core::{
     task::{Context, Poll},
 };
 
-use config::process::INITPROC_PID;
-
-use super::{manager::TASK_MANAGER, Task};
+use super::Task;
 use crate::{
-    processor::{self, ctx::EnvContext, current_task},
+    processor::{self, ctx::EnvContext},
     trap,
 };
 

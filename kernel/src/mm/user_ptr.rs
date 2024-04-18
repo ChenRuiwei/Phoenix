@@ -32,16 +32,11 @@ pub trait Write: Policy {}
 pub struct In;
 #[derive(Clone, Copy)]
 pub struct Out;
-#[derive(Clone, Copy)]
-pub struct InOut;
 
 impl Policy for In {}
 impl Policy for Out {}
-impl Policy for InOut {}
 impl Read for In {}
 impl Write for Out {}
-impl Read for InOut {}
-impl Write for InOut {}
 
 /// Checks user ptr automatically when reading or writing.
 ///
@@ -70,9 +65,6 @@ impl<T: Clone + Copy + 'static> Debug for UserPtr<T, Out> {
 
 pub type UserReadPtr<T> = UserPtr<T, In>;
 pub type UserWritePtr<T> = UserPtr<T, Out>;
-// TODO: I don't see where this is used, because user write can both read and
-// write.
-pub type UserInOutPtr<T> = UserPtr<T, InOut>;
 
 unsafe impl<T: Clone + Copy + 'static, P: Policy> Send for UserPtr<T, P> {}
 unsafe impl<T: Clone + Copy + 'static, P: Policy> Sync for UserPtr<T, P> {}
@@ -388,8 +380,7 @@ impl Task {
         let mut readable_len = 0;
         while readable_len < len {
             if test_fn(curr_vaddr.0) {
-                // TODO: handle_pagefault
-                self.with_mut_memory_space(|m| m.handle_page_fault(curr_vaddr, access))
+                self.with_mut_memory_space(|m| m.handle_page_fault(curr_vaddr))
                     .map_err(|_| SysError::EFAULT)?;
             }
 
