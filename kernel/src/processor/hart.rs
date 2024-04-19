@@ -14,7 +14,7 @@ use crate::{
 const HART_EACH: Hart = Hart::new();
 pub static mut HARTS: [Hart; HART_NUM] = [HART_EACH; HART_NUM];
 
-/// The processor has several `Hart`s
+/// Each cpu owns one `Hart`.
 pub struct Hart {
     hart_id: usize,
     task: Option<Arc<Task>>,

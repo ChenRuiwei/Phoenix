@@ -251,7 +251,7 @@ impl VmArea {
                 unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
             } else {
                 // not shared
-                log::error!("[VmArea::handle_page_fault] removing cow flag for page {old_page:?}",);
+                log::debug!("[VmArea::handle_page_fault] removing cow flag for page {old_page:?}",);
 
                 // set the pte to writable
                 pte_flags.remove(PTEFlags::COW);
