@@ -8,17 +8,19 @@ pub mod console;
 mod error;
 mod lang_items;
 mod syscall;
-pub use syscall::{SigAction, SigSet, Signal};
+pub mod types;
 
 #[macro_use]
 extern crate bitflags;
 extern crate alloc;
 
 use alloc::vec::Vec;
+use core::ptr::null;
 
 use buddy_system_allocator::LockedHeap;
 pub use error::SyscallErr;
 use syscall::*;
+use types::*;
 
 // const USER_HEAP_SIZE: usize = 16384;
 const USER_HEAP_SIZE: usize = 0x32000;
@@ -71,18 +73,6 @@ fn main(_: usize, _: &[&str]) -> i32 {
     panic!("Cannot find main!");
 }
 
-bitflags! {
-    pub struct OpenFlags: u32 {
-        const O_RDONLY = 0;
-        const O_WRONLY = 1 << 0;
-        const O_RDWR = 1 << 1;
-        const O_CLOEXEC = 1 << 7;
-        const O_CREATE = 1 << 9;
-        const O_TRUNC = 1 << 10;
-    }
-}
-const AT_FDCWD: isize = -100;
-
 #[macro_export]
 macro_rules! wexitstatus {
     ($a:expr) => {
@@ -90,89 +80,35 @@ macro_rules! wexitstatus {
     };
 }
 
-pub fn getcwd(path: usize, len: usize) -> isize {
-    sys_getcwd(path, len)
-}
+// pub fn getcwd(path: usize, len: usize) -> isize {
+//     sys_getcwd(path, len)
+// }
 
-pub fn mount(dev_name: usize, target_path: usize, ftype: usize, flags: u32, data: usize) -> isize {
-    sys_mount(dev_name, target_path, ftype, flags, data)
-}
+// pub fn mount(dev_name: usize, target_path: usize, ftype: usize, flags: u32,
+// data: usize) -> isize {     sys_mount(dev_name, target_path, ftype, flags,
+// data) }
 
-pub fn uname(buf: usize) -> isize {
-    sys_uname(buf)
-}
+// pub fn uname(buf: usize) -> isize {
+//     sys_uname(buf)
+// }
 
+//************file system***************/
 pub fn dup(fd: usize) -> isize {
     sys_dup(fd)
 }
 pub fn dup3(oldfd: usize, newfd: usize, flags: OpenFlags) -> isize {
-    sys_dup3(oldfd, newfd, flags.bits())
+    sys_dup3(oldfd, newfd, flags.bits() as usize)
 }
 pub fn openat(path: &str, flags: OpenFlags) -> isize {
     // TODO: change to the version that has `mode` arg
-    sys_openat(AT_FDCWD as usize, path, flags.bits(), 0)
+    sys_openat(AT_FDCWD as usize, path.as_ptr(), flags.bits() as usize, 0)
 }
 pub fn read(fd: usize, buf: &mut [u8]) -> isize {
-    sys_read(fd, buf)
+    sys_read(fd, buf.as_mut_ptr(), buf.len())
 }
 pub fn write(fd: usize, buf: &[u8]) -> isize {
-    sys_write(fd, buf)
+    sys_write(fd, buf.as_ptr(), buf.len())
 }
-pub fn exit(exit_code: i32) -> ! {
-    sys_exit(exit_code);
-}
-pub fn exit_group(exit_code: i32) -> ! {
-    sys_exit_group(exit_code);
-}
-pub fn yield_() -> isize {
-    sys_yield()
-}
-pub fn get_time(time_val: &mut TimeVal) -> isize {
-    sys_get_time(time_val as *mut TimeVal)
-}
-pub fn getpid() -> isize {
-    sys_getpid()
-}
-pub enum FutexOperations {
-    FutexWait = 1,
-    FutexWake = 2,
-}
-
-pub fn futex(uaddr: *const usize, futex_op: FutexOperations, val: usize) -> isize {
-    sys_futex(uaddr, futex_op, val)
-}
-
-pub fn kill(pid: isize, signo: i32) -> isize {
-    sys_kill(pid, signo)
-}
-pub fn sigaction(sig_no: Signal, act: &SigAction, old_act: &mut SigAction) -> isize {
-    sys_sigaction(sig_no, act, old_act)
-}
-pub fn sigreturn() -> isize {
-    sys_sigreturn()
-}
-pub fn fork() -> isize {
-    sys_fork()
-}
-
-bitflags! {
-    ///Open file flags
-    pub struct CloneFlags: u32 {
-        const CLONE_THREAD = 1 << 4;
-        const CLONE_VM = 1 << 8;
-        const CLONE_FS = 1 << 9;
-        const CLONE_FILES = 1 << 10;
-    }
-}
-/// Since rust's variadic params should be achieved by macro, here we just
-/// support passing one arg(but can use a struct to pack more args)
-pub fn clone(f: fn(*const u8) -> isize, stack: *const u8, flags: i32, arg: *const u8) -> isize {
-    sys_clone(f, stack, flags, arg)
-}
-pub fn execve(path: &str, args: &[*const u8], envp: &[*const u8]) -> isize {
-    sys_execve(path, args, envp)
-}
-
 pub fn mmap(
     addr: *const u8,
     length: usize,
@@ -181,7 +117,43 @@ pub fn mmap(
     fd: usize,
     offset: usize,
 ) -> isize {
-    sys_mmap(addr, length, prot, flags, fd, offset)
+    sys_mmap(
+        addr as usize,
+        length,
+        prot as usize,
+        flags as usize,
+        fd,
+        offset,
+    )
+}
+
+//************ task ***************/
+pub fn exit(exit_code: i32) -> ! {
+    sys_exit(exit_code);
+    loop {}
+}
+pub fn exit_group(exit_code: i32) -> ! {
+    sys_exit_group(exit_code);
+    loop {}
+}
+pub fn yield_() -> isize {
+    sys_yield()
+}
+
+pub fn getpid() -> isize {
+    sys_getpid()
+}
+
+pub fn fork() -> isize {
+    sys_fork()
+}
+
+pub fn execve(cmd: &str, args: &[*const u8], env: &[*const u8]) -> isize {
+    sys_execve(
+        cmd.as_ptr(),
+        args.as_ptr() as *const usize,
+        env.as_ptr() as *const usize,
+    )
 }
 
 pub fn wait(exit_code: &mut i32) -> isize {
@@ -191,29 +163,29 @@ pub fn wait(exit_code: &mut i32) -> isize {
 pub fn waitpid(pid: usize, exit_code: &mut i32) -> isize {
     sys_waitpid(pid as isize, exit_code as *mut _)
 }
-pub struct TimeVal {
-    pub sec: usize,
-    pub usec: usize,
-}
-pub fn sleep(period_ms: usize) {
-    let mut start = TimeVal { sec: 0, usec: 0 };
-    assert_eq!(sys_get_time(&mut start as *mut TimeVal), 0);
-    let start_ts = start.sec * 1000 + start.usec / 1000;
-    let mut tmp = TimeVal { sec: 0, usec: 0 };
-    loop {
-        assert_eq!(sys_get_time(&mut tmp as *mut TimeVal), 0);
-        let curr_ts = tmp.sec * 1000 + tmp.usec / 1000;
-        if start_ts + period_ms <= curr_ts {
-            break;
-        }
-        sys_yield();
-    }
-}
 
 pub fn pipe(pipe_fd: &mut [i32]) -> isize {
-    sys_pipe(pipe_fd)
+    sys_pipe(pipe_fd.as_mut_ptr())
 }
 
 pub fn close(fd: usize) -> isize {
     sys_close(fd)
+}
+
+//************ time ***************/
+pub fn get_timeofday(time_val: &mut TimeVal) -> isize {
+    sys_gettimeofday(time_val as *mut TimeVal as *mut usize, 0 as *mut usize)
+}
+
+//************ signal ***************/
+pub fn sigaction(sig_no: Sig, act: &SigAction, old_act: &mut SigAction) -> isize {
+    sys_sigaction(
+        sig_no.index(),
+        act as *const SigAction as *const usize,
+        old_act as *mut SigAction as *mut usize,
+    )
+}
+
+pub fn sigreturn() -> isize {
+    sys_sigreturn()
 }

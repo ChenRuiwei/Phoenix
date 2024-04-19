@@ -7,6 +7,9 @@ edition = "2018"
 [dependencies]
 buddy_system_allocator = "0.9"
 bitflags = "2.4"
+time = { path = "../modules/time/" }
+signal = { path = "../modules/signal/" }
+
 
 [features]
 preliminary = []

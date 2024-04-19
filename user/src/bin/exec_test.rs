@@ -9,6 +9,7 @@ use user_lib::{execve, fork, println, wait};
 
 #[no_mangle]
 fn main() -> i32 {
+    println!("begin exec_test");
     if fork() == 0 {
         execve(
             "hello_world\0",

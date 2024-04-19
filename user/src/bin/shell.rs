@@ -19,7 +19,7 @@ use alloc::{
 };
 
 use user_lib::{
-    close, console::getchar, dup, execve, exit, fork, openat, pipe, waitpid, OpenFlags,
+    close, console::getchar, dup, execve, exit, fork, openat, pipe, types::OpenFlags, waitpid,
 };
 
 #[derive(Debug)]

@@ -3,7 +3,9 @@ use core::fmt;
 use bitflags::*;
 
 pub const NSIG: usize = 64;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct Sig(i32);
 
 impl Sig {
