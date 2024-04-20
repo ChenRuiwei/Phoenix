@@ -36,9 +36,6 @@ pub trait CharDevice: Send + Sync {
     }
 }
 
-// Net Device
-pub trait NetDevice: smoltcp::phy::Device {}
-
 pub static BLOCK_DEVICE: Mutex<Option<Arc<dyn BlockDevice>>> = Mutex::new(None);
 
 struct Stdout;

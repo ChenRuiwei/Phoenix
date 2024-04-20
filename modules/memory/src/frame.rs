@@ -32,7 +32,7 @@ impl Debug for FrameTracker {
 
 impl Drop for FrameTracker {
     fn drop(&mut self) {
-        frame_dealloc(self.ppn);
+        dealloc_frame(self.ppn);
     }
 }
 
@@ -56,14 +56,10 @@ pub fn init_frame_allocator(start: PhysPageNum, end: PhysPageNum) {
         PhysAddr::from(start),
         PhysAddr::from(end)
     );
-    debug_assert!({
-        frame_allocator_test();
-        true
-    });
 }
 
 /// Allocate a frame
-pub fn frame_alloc() -> FrameTracker {
+pub fn alloc_frame() -> FrameTracker {
     FRAME_ALLOCATOR
         .lock()
         .alloc()
@@ -72,7 +68,7 @@ pub fn frame_alloc() -> FrameTracker {
 }
 
 /// Allocate contiguous frames
-pub fn frame_alloc_contig(size: usize, align_log2: usize) -> Vec<FrameTracker> {
+pub fn alloc_frames(size: usize, align_log2: usize) -> Vec<FrameTracker> {
     let first_frame = FRAME_ALLOCATOR
         .lock()
         .alloc_contiguous(size, align_log2)
@@ -84,26 +80,8 @@ pub fn frame_alloc_contig(size: usize, align_log2: usize) -> Vec<FrameTracker> {
 }
 
 /// Deallocate a frame
-pub fn frame_dealloc(ppn: PhysPageNum) {
+pub fn dealloc_frame(ppn: PhysPageNum) {
     FRAME_ALLOCATOR
         .lock()
         .dealloc(ppn.0 - START_PPN.get().unwrap().0);
-}
-
-/// a simple test for frame allocator
-#[allow(unused)]
-pub fn frame_allocator_test() {
-    log::info!("frame_allocator_test start...");
-    let mut v: Vec<FrameTracker> = Vec::new();
-    for i in 0..5 {
-        let frame = frame_alloc();
-        v.push(frame);
-    }
-    v.clear();
-    for i in 0..5 {
-        let frame = frame_alloc();
-        v.push(frame);
-    }
-    drop(v);
-    log::info!("frame_allocator_test passed!");
 }

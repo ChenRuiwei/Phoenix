@@ -25,9 +25,14 @@ fn main() {
     insert_app_data().unwrap();
 }
 
-static TARGET_PATH: &str = "./target/riscv64gc-unknown-none-elf/debug/";
-
 fn insert_app_data() -> Result<()> {
+    let mut target_path: String = String::from("./target/riscv64gc-unknown-none-elf/");
+    let mode = match option_env!("MODE") {
+        Some(str) => str,
+        None => "release",
+    };
+    target_path.push_str(mode);
+    target_path.push('/');
     let mut f = File::create("src/link_app.asm").unwrap();
     let mut apps: Vec<_> = read_dir("../user/src/bin")
         .unwrap()
@@ -95,7 +100,7 @@ _app_names:"#
 app_{0}_start:
     .incbin "{2}{1}"
 app_{0}_end:"#,
-            idx, app, TARGET_PATH
+            idx, app, target_path
         )?;
     }
     Ok(())

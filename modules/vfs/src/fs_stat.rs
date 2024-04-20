@@ -1,8 +1,8 @@
 use crate::FileSystemType;
 
-#[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct Stat {
+#[repr(C)]
+pub struct FsStat {
     // fs类型
     pub fs_type: FileSystemType,
     // 最优IO块大小

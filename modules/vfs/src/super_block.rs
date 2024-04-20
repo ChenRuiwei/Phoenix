@@ -2,7 +2,7 @@ use alloc::sync::Arc;
 
 use systype::SysResult;
 
-use crate::{file_system::FileSystem, inode::Inode, stat::Stat};
+use crate::{file_system::FileSystem, fs_stat::FsStat, inode::Inode};
 
 pub trait SuperBlock: Send + Sync {
     // 回写同步
@@ -11,7 +11,7 @@ pub trait SuperBlock: Send + Sync {
         Ok(())
     }
     // 获取文件系统信息stat
-    fn get_stat(&self) -> SysResult<Stat>;
+    fn fs_stat(&self) -> SysResult<FsStat>;
     // 获取超级块对应文件系统实例
     fn get_fs(&self) -> Arc<dyn FileSystem>;
     // 获取超级块对应的根inode

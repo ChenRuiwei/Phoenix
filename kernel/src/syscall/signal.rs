@@ -32,9 +32,7 @@ pub fn sys_sigaction(
         atype: match action.sa_handler {
             SIG_DFL => ActionType::default(signum),
             SIG_IGN => ActionType::Ignore,
-            entry => ActionType::User {
-                entry: entry.into(),
-            },
+            entry => ActionType::User { entry },
         },
         flags: action.sa_flags,
         mask: action.sa_mask,
@@ -42,7 +40,7 @@ pub fn sys_sigaction(
     let old = task.sig_handlers().replace(signum, new);
     // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
-        old_action.write(task, old.into());
+        old_action.write(task, old.into())?;
     }
     Ok(0)
 }
@@ -59,7 +57,7 @@ pub fn sys_sigprocmask(
     const SIGSETMASK: usize = 2;
     let task = current_task();
     if !old_set.is_null() {
-        old_set.write(task, *task.sig_mask());
+        old_set.write(task, *task.sig_mask())?;
     }
     if !set.is_null() {
         let set = set.read(task)?;

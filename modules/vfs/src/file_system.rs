@@ -20,7 +20,7 @@ pub trait FileSystem: Send + Sync {
     fn unmount(&self, super_block: Arc<dyn SuperBlock>) -> SysResult<()>;
 
     // 获取文件系统名称
-    fn get_fs_name(&self) -> String;
+    fn fs_name(&self) -> String;
 }
 
 impl dyn FileSystem {

@@ -4,8 +4,8 @@
 pub mod dentry;
 pub mod file;
 pub mod file_system;
+pub mod fs_stat;
 pub mod inode;
-pub mod stat;
 pub mod super_block;
 pub mod utils;
 

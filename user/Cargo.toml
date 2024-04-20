@@ -1,7 +1,6 @@
 [package]
 name = "user_lib"
 version = "0.1.0"
-authors = ["Peixin Tsang <893522573@qq.com>"]
 edition = "2018"
 
 [dependencies]
