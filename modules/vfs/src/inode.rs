@@ -24,12 +24,12 @@ pub struct InodeAttr {
 
 pub trait Inode: File {
     // 获取所在文件系统的超级块
-    fn get_super_block(&self) -> SysResult<Arc<dyn SuperBlock>> {
+    fn super_block(&self) -> SysResult<Arc<dyn SuperBlock>> {
         Err(SysError::ENOSYS)
     }
 
     /// Get the permission of this inode
-    fn get_node_perm(&self) -> NodePermission {
+    fn node_perm(&self) -> NodePermission {
         NodePermission::empty()
     }
 

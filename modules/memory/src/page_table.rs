@@ -7,7 +7,7 @@ use riscv::register::satp;
 
 use crate::{
     address::{PhysPageNum, VirtAddr, VirtPageNum},
-    frame::{frame_alloc, FrameTracker},
+    frame::{alloc_frame, FrameTracker},
     pte::PTEFlags,
     PageTableEntry,
 };
@@ -32,7 +32,7 @@ pub struct PageTable {
 impl PageTable {
     /// Create a new empty page table.
     pub fn new() -> Self {
-        let root_frame = frame_alloc();
+        let root_frame = alloc_frame();
         PageTable {
             root_ppn: root_frame.ppn,
             frames: vec![root_frame],
@@ -46,7 +46,7 @@ impl PageTable {
     ///
     /// There is only mapping from `VIRT_RAM_OFFSET`, but no MMIO mapping.
     pub fn from_kernel(kernel_page_table: &Self) -> Self {
-        let root_frame = frame_alloc();
+        let root_frame = alloc_frame();
 
         let kernel_start_vpn: VirtPageNum = VirtAddr::from(VIRT_RAM_OFFSET).into();
         let level_0_index = kernel_start_vpn.indices()[0];
@@ -101,7 +101,7 @@ impl PageTable {
                 return pte;
             }
             if !pte.is_valid() {
-                let frame = frame_alloc();
+                let frame = alloc_frame();
                 *pte = PageTableEntry::new(frame.ppn, PTEFlags::V);
                 self.frames.push(frame);
             }

@@ -16,7 +16,6 @@ pub struct MutexGuard<'a, T: ?Sized, S: MutexSupport> {
 
 /// `SpinMutex` can include different `MutexSupport` type
 pub struct SpinMutex<T: ?Sized, S: MutexSupport> {
-    // debug_cnt: UnsafeCell<usize>,
     lock: AtomicBool,
     _marker: PhantomData<S>,
     data: UnsafeCell<T>,
@@ -36,7 +35,6 @@ impl<T, S: MutexSupport> SpinMutex<T, S> {
             lock: AtomicBool::new(false),
             _marker: PhantomData,
             data: UnsafeCell::new(user_data),
-            // debug_cnt: UnsafeCell::new(0),
         }
     }
     /// Wait until the lock looks unlocked before retrying
@@ -104,7 +102,6 @@ impl<'a, T: ?Sized, S: MutexSupport> Drop for MutexGuard<'a, T, S> {
     /// from.
     #[inline(always)]
     fn drop(&mut self) {
-        // debug_assert!(self.mutex.lock.load(Ordering::Relaxed));
         self.mutex.lock.store(false, Ordering::Release);
         S::after_unlock(&mut self.support_guard);
     }

@@ -1,7 +1,7 @@
 use alloc::sync::{Arc, Weak};
 
 use config::{board::BLOCK_SIZE, mm::PAGE_SIZE};
-use memory::{frame_alloc, FrameTracker, PhysPageNum};
+use memory::{alloc_frame, FrameTracker, PhysPageNum};
 use sync::mutex::SleepLock;
 use systype::SysResult;
 use vfs::inode::Inode;
@@ -46,7 +46,7 @@ impl Page {
     /// Create a `Page` by allocating a frame.
     pub fn new() -> Self {
         Self {
-            frame: frame_alloc(),
+            frame: alloc_frame(),
             file_info: None,
         }
     }
@@ -58,7 +58,7 @@ impl Page {
             inode,
         };
         Self {
-            frame: frame_alloc(),
+            frame: alloc_frame(),
             file_info: Some(SleepLock::new(file_page_info)),
         }
     }
@@ -109,7 +109,7 @@ impl Page {
                         "[Page::sync] sync block of the page, file offset {file_offset:#x}",
                     );
                     // TODO: In case of truncate (Titanix)?
-                    file_info.inode().write_at(
+                    file_info.inode().write(
                         file_offset as u64,
                         self.bytes_array_range(page_offset..page_offset + BLOCK_SIZE),
                     )?;
@@ -131,7 +131,7 @@ impl Page {
                 let page_offset = idx * BLOCK_SIZE;
                 let file_offset = page_offset + file_info.file_offset;
                 log::trace!("outdated block, idx {idx}, file_off {file_offset:#x}",);
-                file_info.inode().read_at(
+                file_info.inode().read(
                     file_offset as u64,
                     self.bytes_array_range(page_offset..page_offset + BLOCK_SIZE),
                 )?;

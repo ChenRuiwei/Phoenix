@@ -1,12 +1,8 @@
 [package]
 name = "user_lib"
 version = "0.1.0"
-authors = ["Peixin Tsang <893522573@qq.com>"]
 edition = "2018"
 
 [dependencies]
 buddy_system_allocator = "0.9"
 bitflags = "2.4"
-
-[features]
-preliminary = []

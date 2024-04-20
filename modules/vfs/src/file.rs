@@ -3,17 +3,14 @@ use systype::{SysError, SysResult};
 use crate::utils::{DirEntry, PollEvents};
 
 pub trait File: Send + Sync {
-    // 在offset上读
-    fn read_at(&self, _offset: u64, _buf: &mut [u8]) -> SysResult<usize> {
+    fn read(&self, _offset: u64, _buf: &mut [u8]) -> SysResult<usize> {
         Err(SysError::ENOSYS)
     }
 
-    // 在offset上写
-    fn write_at(&self, _offset: u64, _buf: &[u8]) -> SysResult<usize> {
+    fn write(&self, _offset: u64, _buf: &[u8]) -> SysResult<usize> {
         Err(SysError::ENOSYS)
     }
 
-    // 读取dentry，返回合法的dentry或Error
     fn read_dir(&self, _start_index: usize) -> SysResult<Option<DirEntry>> {
         Err(SysError::ENOSYS)
     }

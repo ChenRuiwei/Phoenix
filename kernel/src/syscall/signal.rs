@@ -23,7 +23,6 @@ pub fn sys_sigaction(
     old_action: UserWritePtr<SigAction>,
 ) -> SyscallResult {
     let task = current_task();
-    let task = current_task();
     let signum = Sig::from_usize(signum);
     if !signum.is_valid() {
         return Err(SysError::EINVAL);
@@ -33,9 +32,7 @@ pub fn sys_sigaction(
         atype: match action.sa_handler {
             SIG_DFL => ActionType::default(signum),
             SIG_IGN => ActionType::Ignore,
-            entry => ActionType::User {
-                entry: entry.into(),
-            },
+            entry => ActionType::User { entry },
         },
         flags: action.sa_flags,
         mask: action.sa_mask,
@@ -43,7 +40,7 @@ pub fn sys_sigaction(
     let old = task.with_mut_signal(|signal| -> Action { signal.handlers.replace(signum, new) });
     // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
-        old_action.write(task, old.into());
+        old_action.write(task, old.into())?;
     }
     Ok(0)
 }
@@ -61,30 +58,31 @@ pub fn sys_sigprocmask(
     let task = current_task();
     if !old_set.is_null() {
         task.with_signal(|signal| {
-            old_set.write(task, signal.blocked);
-        });
-    }
-    if !set.is_null() {
-        let set = set.read(task)?;
-        return task.with_mut_signal(|signal| -> SyscallResult {
-            match how {
-                SIGBLOCK => {
-                    signal.blocked |= set;
-                }
-                SIGUNBLOCK => {
-                    signal.blocked.remove(set);
-                }
-                SIGSETMASK => {
-                    signal.blocked = set;
-                }
-                _ => {
-                    return Err(SysError::EINVAL);
-                }
-            }
+            old_set.write(task, signal.blocked)?;
             Ok(0)
-        });
+        })?;
     }
-    Ok(0)
+    if set.is_null() {
+        return Ok(0);
+    }
+    let set = set.read(task)?;
+    task.with_mut_signal(|signal| -> SyscallResult {
+        match how {
+            SIGBLOCK => {
+                signal.blocked |= set;
+            }
+            SIGUNBLOCK => {
+                signal.blocked.remove(set);
+            }
+            SIGSETMASK => {
+                signal.blocked = set;
+            }
+            _ => {
+                return Err(SysError::EINVAL);
+            }
+        }
+        Ok(0)
+    })
 }
 
 pub fn sys_sigreturn() -> SyscallResult {

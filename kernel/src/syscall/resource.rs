@@ -1,12 +1,10 @@
-use core::time::Duration;
-
 use systype::{SysError, SyscallResult};
 use time::timeval::TimeVal;
 
 use crate::{mm::UserWritePtr, processor::hart::current_task};
 
-#[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
+#[repr(C)]
 pub struct Rusage {
     pub utime: TimeVal, // This is the total amount of time spent executing in user mode
     pub stime: TimeVal, // This is the total amount of time spent executing in kernel mode
@@ -31,20 +29,21 @@ pub struct Rusage {
 /// - RUSAGE_SELF: Return resource usage statistics for the calling process,
 ///   which is the sum of resources used by all threads in the process.
 /// - RUSAGE_CHILDREN: Return  resource usage statistics for all children of the
-///   calling process that have terminated and been waited for.  These
-///   statistics will include the resources used by grandchildren, and further
-///   removed descendants, if all of  the  intervening  descendants waited on
-///   their terminated children.
-/// - RUSAGE_THREAD: Return  resource usage statistics for the calling thread.
+///   calling process that have terminated and been waited for. These statistics
+///   will include the resources used by grandchildren, and further removed
+///   descendants, if all of the intervening descendants waited on their
+///   terminated children.
+/// - RUSAGE_THREAD: Return resource usage statistics for the calling thread.
 pub fn sys_getrusage(who: i32, usage: UserWritePtr<Rusage>) -> SyscallResult {
+    let task = current_task();
     const RUSAGE_SELF: i32 = 0;
     const RUSAGE_CHILDREN: i32 = -1;
     const RUSAGE_THREAD: i32 = 1;
     let mut ret = Rusage::default();
     match who {
         RUSAGE_SELF => {
-            let (mut total_utime, mut totol_stime) = current_task().time_stat().user_system_time();
-            current_task().with_thread_group(|tg| {
+            let (mut total_utime, mut totol_stime) = task.time_stat().user_system_time();
+            task.with_thread_group(|tg| {
                 for thread in tg.iter() {
                     let (utime, stime) = thread.time_stat().user_system_time();
                     total_utime += utime;
@@ -54,7 +53,7 @@ pub fn sys_getrusage(who: i32, usage: UserWritePtr<Rusage>) -> SyscallResult {
 
             ret.utime = total_utime.into();
             ret.stime = totol_stime.into();
-            usage.write(current_task(), ret);
+            usage.write(task, ret)?;
         }
         RUSAGE_CHILDREN => {
             unimplemented!()
