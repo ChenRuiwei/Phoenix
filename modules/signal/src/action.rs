@@ -43,16 +43,17 @@ impl Action {
     }
 }
 
-// 存储着进程接收到的信号队列,当进程接收到一个信号时，就需要把接收到的信号添加到
-// pending 这个队列中
+/// 存储着进程接收到的信号队列,当进程接收到一个信号时，
+/// 就需要把接收到的信号添加到 pending 这个队列中。TODO:可否只留有一个bitmap?
 pub struct SigPending {
+    /// 接收到的所有信号
     pub queue: VecDeque<Sig>,
-    /// 比特位的内容代表是否收到信号
+    /// 比特位的内容代表是否收到信号，主要用来防止queue收到重复信号
     pub bitmap: SigSet,
 }
 
 impl SigPending {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             queue: VecDeque::new(),
             bitmap: SigSet::empty(),
@@ -119,24 +120,5 @@ impl SigHandlers {
         }
         self.actions[sig.index()] = new;
         old
-    }
-}
-
-pub struct Signal {
-    /// blocked 表示被屏蔽的信息，每个位代表一个被屏蔽的信号
-    pub blocked: SigSet,
-    /// 是一个函数指针数组，代表处理动作
-    pub handlers: SigHandlers,
-    /// 待处理的信号
-    pub pending: SigPending,
-}
-
-impl Signal {
-    pub fn new() -> Self {
-        Self {
-            blocked: SigSet::empty(),
-            handlers: SigHandlers::new(),
-            pending: SigPending::new(),
-        }
     }
 }

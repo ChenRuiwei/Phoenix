@@ -13,9 +13,12 @@ use core::{
 use arch::memory::sfence_vma_all;
 use config::{mm::USER_STACK_SIZE, process::INIT_PROC_PID};
 use memory::VirtAddr;
-use signal::{signal_stack::SignalStack, Signal};
-use spin::MutexGuard;
-use sync::mutex::{SpinNoIrq, SpinNoIrqLock};
+use signal::{
+    action::{SigHandlers, SigPending},
+    signal_stack::SignalStack,
+    sigset::SigSet,
+};
+use sync::mutex::SpinNoIrqLock;
 use time::stat::TaskTimeStat;
 
 use super::tid::{Pid, Tid, TidHandle};
@@ -64,8 +67,14 @@ pub struct Task {
     waker: SyncUnsafeCell<Option<Waker>>,
     ///
     thread_group: Shared<ThreadGroup>,
-    ///
-    signal: SpinNoIrqLock<Signal>,
+    /// received signals
+    sig_pending: SpinNoIrqLock<SigPending>,
+    /// 存储了对每个信号的处理方法。
+    sig_handlers: SyncUnsafeCell<SigHandlers>,
+    /// 信号掩码用于标识哪些信号被阻塞，不应该被该进程处理。
+    /// 这是进程级别的持续性设置，通常用于防止进程在关键操作期间被中断.
+    /// 注意与信号处理时期的临时掩码做区别
+    sig_mask: SyncUnsafeCell<SigSet>,
     /// User can set `sig_stack` by `sys_signalstack`.
     sig_stack: SyncUnsafeCell<Option<SignalStack>>,
 
@@ -120,7 +129,9 @@ impl Task {
             memory_space: new_shared(memory_space),
             waker: SyncUnsafeCell::new(None),
             thread_group: new_shared(ThreadGroup::new()),
-            signal: SpinNoIrqLock::new(Signal::new()),
+            sig_pending: SpinNoIrqLock::new(SigPending::new()),
+            sig_mask: SyncUnsafeCell::new(SigSet::empty()),
+            sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
         });
@@ -204,6 +215,20 @@ impl Task {
         *self.state.lock() == TaskState::Zombie
     }
 
+    pub fn sig_handlers(&self) -> &mut SigHandlers {
+        unsafe { &mut *self.sig_handlers.get() }
+    }
+
+    pub fn set_sig_handlers(&self, sig_handlers: SigHandlers) {
+        unsafe {
+            *self.sig_handlers.get() = sig_handlers;
+        }
+    }
+
+    pub fn sig_mask(&self) -> &mut SigSet {
+        unsafe { &mut *self.sig_mask.get() }
+    }
+
     pub fn signal_stack(&self) -> &mut Option<SignalStack> {
         unsafe { &mut *self.sig_stack.get() }
     }
@@ -275,7 +300,9 @@ impl Task {
             memory_space,
             waker: SyncUnsafeCell::new(None),
             thread_group,
-            signal: SpinNoIrqLock::new(Signal::new()),
+            sig_pending: SpinNoIrqLock::new(SigPending::new()),
+            sig_mask: SyncUnsafeCell::new(SigSet::empty()),
+            sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
         });
@@ -372,7 +399,7 @@ impl Task {
     with_!(children, BTreeMap<Tid, Arc<Task>>);
     with_!(memory_space, MemorySpace);
     with_!(thread_group, ThreadGroup);
-    with_!(signal, Signal);
+    with_!(sig_pending, SigPending);
 }
 
 /// Hold a group of threads which belongs to the same process.

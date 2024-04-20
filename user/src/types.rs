@@ -1,7 +1,7 @@
 pub use signal::sigset::Sig;
 use signal::sigset::SigSet;
 pub use time::timeval::TimeVal;
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct SigAction {
     /// sa_handler specifies the action to be associated with signum and can be

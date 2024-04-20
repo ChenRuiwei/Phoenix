@@ -147,7 +147,9 @@ pub fn getpid() -> isize {
 pub fn fork() -> isize {
     sys_fork()
 }
-
+pub fn kill(pid: isize, sig: Sig) -> isize {
+    sys_kill(pid as usize, sig.raw() as i32)
+}
 pub fn execve(cmd: &str, args: &[*const u8], env: &[*const u8]) -> isize {
     sys_execve(
         cmd.as_ptr(),

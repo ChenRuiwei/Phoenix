@@ -3,5 +3,3 @@
 pub mod action;
 pub mod signal_stack;
 pub mod sigset;
-
-pub use action::Signal;

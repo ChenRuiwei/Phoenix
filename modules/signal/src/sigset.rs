@@ -43,8 +43,8 @@ impl Sig {
     pub const SIGLEGACYMAX: Sig = Sig(32); // Legacy maximum signal
     pub const SIGMAX: Sig = Sig(64); // Maximum signal
 
-    pub fn from_usize(num: usize) -> Sig {
-        Sig(num as i32)
+    pub fn from_i32(signum: i32) -> Sig {
+        Sig(signum as i32)
     }
 
     pub fn is_valid(&self) -> bool {
@@ -77,7 +77,7 @@ impl From<usize> for Sig {
 }
 
 bitflags! {
-    #[derive(Copy, Clone)]
+    #[derive(Copy, Clone, Debug, Default)]
     pub struct SigSet: u64 {
         const SIGHUP    = 1 << 0 ;
         const SIGINT    = 1 << 1 ;
@@ -118,6 +118,10 @@ bitflags! {
 impl SigSet {
     pub fn add_signal(&mut self, sig: Sig) {
         self.insert(SigSet::from_bits(1 << sig.index()).unwrap())
+    }
+
+    pub fn add_signals(&mut self, sigset: SigSet) {
+        *self |= sigset
     }
 
     pub fn contain_signal(&self, sig: Sig) -> bool {

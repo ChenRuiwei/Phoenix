@@ -18,13 +18,12 @@ use crate::{
 /// 为空指针或者） 信号类型不存在返回 -1 ，否则返回 0 。
 /// syscall ID: 134
 pub fn sys_sigaction(
-    signum: usize,
+    signum: i32,
     action: UserReadPtr<SigAction>,
     old_action: UserWritePtr<SigAction>,
 ) -> SyscallResult {
     let task = current_task();
-    let task = current_task();
-    let signum = Sig::from_usize(signum);
+    let signum = Sig::from_i32(signum);
     if !signum.is_valid() {
         return Err(SysError::EINVAL);
     }
@@ -40,7 +39,7 @@ pub fn sys_sigaction(
         flags: action.sa_flags,
         mask: action.sa_mask,
     };
-    let old = task.with_mut_signal(|signal| -> Action { signal.handlers.replace(signum, new) });
+    let old = task.sig_handlers().replace(signum, new);
     // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
         old_action.write(task, old.into());
@@ -60,29 +59,24 @@ pub fn sys_sigprocmask(
     const SIGSETMASK: usize = 2;
     let task = current_task();
     if !old_set.is_null() {
-        task.with_signal(|signal| {
-            old_set.write(task, signal.blocked);
-        });
+        old_set.write(task, *task.sig_mask());
     }
     if !set.is_null() {
         let set = set.read(task)?;
-        return task.with_mut_signal(|signal| -> SyscallResult {
-            match how {
-                SIGBLOCK => {
-                    signal.blocked |= set;
-                }
-                SIGUNBLOCK => {
-                    signal.blocked.remove(set);
-                }
-                SIGSETMASK => {
-                    signal.blocked = set;
-                }
-                _ => {
-                    return Err(SysError::EINVAL);
-                }
+        match how {
+            SIGBLOCK => {
+                task.sig_mask().add_signals(set);
             }
-            Ok(0)
-        });
+            SIGUNBLOCK => {
+                task.sig_mask().remove(set);
+            }
+            SIGSETMASK => {
+                *task.sig_mask() = set;
+            }
+            _ => {
+                return Err(SysError::EINVAL);
+            }
+        };
     }
     Ok(0)
 }
@@ -91,11 +85,8 @@ pub fn sys_sigreturn() -> SyscallResult {
     let task = current_task();
     let cx = task.trap_context_mut();
     let ucontext_ptr = UserReadPtr::<UContext>::from_usize(cx.user_x[1]);
-
     let ucontext = ucontext_ptr.read(task)?;
-    task.with_mut_signal(|signal| {
-        signal.blocked = ucontext.uc_sigmask;
-    });
+    *task.sig_mask() = ucontext.uc_sigmask;
     task.set_signal_stack((ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack));
     cx.sepc = ucontext.uc_mcontext.sepc;
     cx.user_x = ucontext.uc_mcontext.user_x;
@@ -110,4 +101,36 @@ pub fn sys_signalstack(
         // old_ss.write(current_task(), current_task())
     }
     todo!()
+}
+
+/// The kill() system call can be used to send any signal to any process group
+/// or process.
+/// - If pid is positive, then signal sig is sent to the process with the ID
+///   specified by pid.
+/// - If pid equals 0, then sig is sent to every process in the process group of
+///   the calling process.
+/// - If  pid  equals  -1, then sig is sent to every process for which the
+///   calling process has permission to send signals, except for process 1
+///   (init)
+/// - If pid is less than -1, then sig is sent to every process in the process
+///   group whose ID is -pid.
+/// - If sig is 0, then no signal is sent, but existence and permission checks
+///   are still performed; this can be used to check for the existence of a
+///   process ID or process group ID that the caller is permitted to signal.
+///
+/// **RETURN VALUE** :On success (at least one signal was sent), zero is
+/// returned.  On error, -1 is returned, and errno is set appropriately
+pub fn sys_kill(pid: usize, sig: i32) -> SyscallResult {
+    let sig = Sig::from_i32(sig);
+    if !sig.is_valid() {
+        return Err(SysError::EINVAL);
+    }
+    match pid {
+        0 => {
+            // 进程组
+            unimplemented!()
+        }
+        _ => {}
+    }
+    Ok(0)
 }

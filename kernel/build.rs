@@ -36,13 +36,6 @@ fn insert_app_data() -> Result<()> {
             name_with_ext.drain(name_with_ext.find('.').unwrap()..name_with_ext.len());
             name_with_ext
         })
-        .filter(|name| {
-            name == "initproc"
-                || name == "shell"
-                || name == "runtestcase"
-                || name == "hello_world"
-                || name == "exec_test"
-        })
         .collect();
 
     apps.sort();

@@ -132,11 +132,12 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         SYSCALL_RT_SIGACTION => sys_handler!(
             sys_sigaction,
             (
-                args[0],
+                args[0] as i32,
                 UserReadPtr::<SigAction>::from(args[1]),
                 UserWritePtr::<SigAction>::from(args[2])
             )
         ),
+        SYSCALL_KILL => sys_handler!(sys_kill, (args[0], args[1] as i32)),
         SYSCALL_RT_SIGRETURN => sys_handler!(sys_sigreturn, ()),
         SYSCALL_GETTIMEOFDAY => sys_handler!(
             sys_gettimeofday,
