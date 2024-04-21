@@ -14,6 +14,22 @@
 #![feature(format_args_nl)]
 #![allow(clippy::mut_from_ref)]
 
+mod boot;
+mod impls;
+mod loader;
+mod mm;
+mod panic;
+mod processor;
+mod syscall;
+mod task;
+mod trap;
+mod utils;
+use core::{
+    arch::global_asm,
+    hint,
+    sync::atomic::{AtomicBool, Ordering},
+};
+
 use config::mm::HART_START_ADDR;
 use driver::sbi;
 
@@ -30,49 +46,11 @@ extern crate driver;
 #[macro_use]
 extern crate logging;
 
-mod boot;
-mod impls;
-mod loader;
-mod mm;
-mod panic;
-mod processor;
-mod syscall;
-mod task;
-mod trap;
-mod utils;
-
-use core::{
-    arch::global_asm,
-    hint,
-    sync::atomic::{AtomicBool, Ordering},
-};
-
 global_asm!(include_str!("trampoline.asm"));
 global_asm!(include_str!("link_app.asm"));
 
 static FIRST_HART: AtomicBool = AtomicBool::new(true);
 static INIT_FINISHED: AtomicBool = AtomicBool::new(false);
-
-fn hart_start(hart_id: usize) {
-    use crate::processor::hart::HARTS;
-
-    // only start two harts
-    let mut has_another = false;
-    let hart_num = unsafe { HARTS.len() };
-    for i in 0..hart_num {
-        if has_another {
-            break;
-        }
-        if i == hart_id {
-            continue;
-        }
-        let status = sbi::hart_start(i, HART_START_ADDR);
-        println!("[kernel] start to wake up hart {i}... status {status}");
-        if status == 0 {
-            has_another = true;
-        }
-    }
-}
 
 /// the rust entry-point of os
 #[no_mangle]
@@ -101,7 +79,7 @@ fn rust_main(hart_id: usize) {
         INIT_FINISHED.store(true, Ordering::SeqCst);
 
         #[cfg(feature = "smp")]
-        hart_start(hart_id);
+        boot::hart_start(hart_id);
     } else {
         // The other harts
         hart::init(hart_id);

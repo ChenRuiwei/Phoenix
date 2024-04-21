@@ -2,6 +2,7 @@
 #![no_main]
 
 extern crate alloc;
+
 use alloc::sync::Arc;
 use core::{
     fmt::{self, Write},
@@ -12,21 +13,21 @@ use sync::mutex::SpinNoIrqLock;
 
 use self::sbi::console_putchar;
 
+pub mod qemu;
 pub mod sbi;
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
 static PRINT_MUTEX: Mutex<()> = Mutex::new(());
 
-// Block Device
 pub trait BlockDevice: Send + Sync {
     /// Read data form block to buffer
     fn read_block(&self, block_id: usize, buf: &mut [u8]);
+
     /// Write data from buffer to block
     fn write_block(&self, block_id: usize, buf: &[u8]);
 }
 
-// Character Device
 pub trait CharDevice: Send + Sync {
     fn getchar(&self) -> u8;
     fn puts(&self, char: &[u8]);

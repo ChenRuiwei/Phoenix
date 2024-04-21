@@ -8,7 +8,7 @@ use core::{
 use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PTE_NUM_ONE_PAGE, PTE_SIZE};
 
 use super::{
-    impl_fmt,
+    impl_arithmetic_with_usize, impl_fmt, impl_step,
     offset::{OffsetAddr, OffsetPageNum},
 };
 use crate::{
@@ -24,6 +24,9 @@ pub struct PhysAddr(pub usize);
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysPageNum(pub usize);
 
+impl_arithmetic_with_usize!(PhysPageNum);
+impl_step!(PhysPageNum);
+
 impl From<usize> for PhysAddr {
     fn from(u: usize) -> Self {
         let tmp = u as isize >> PA_WIDTH_SV39;
@@ -31,6 +34,7 @@ impl From<usize> for PhysAddr {
         Self(u)
     }
 }
+
 impl From<usize> for PhysPageNum {
     fn from(u: usize) -> Self {
         let tmp = u as isize >> PPN_WIDTH_SV39;
@@ -38,11 +42,13 @@ impl From<usize> for PhysPageNum {
         Self(u)
     }
 }
+
 impl From<PhysAddr> for usize {
     fn from(pa: PhysAddr) -> Self {
         pa.0
     }
 }
+
 impl From<PhysPageNum> for usize {
     fn from(ppn: PhysPageNum) -> Self {
         ppn.0
@@ -50,6 +56,10 @@ impl From<PhysPageNum> for usize {
 }
 
 impl PhysAddr {
+    pub fn bits(&self) -> usize {
+        self.0
+    }
+
     /// `PhysAddr`->`PhysPageNum`
     pub fn floor(&self) -> PhysPageNum {
         PhysPageNum(self.0 / PAGE_SIZE)
