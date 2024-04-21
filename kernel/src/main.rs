@@ -15,6 +15,7 @@
 #![allow(clippy::mut_from_ref)]
 
 mod boot;
+mod fs;
 mod impls;
 mod loader;
 mod mm;
@@ -32,9 +33,11 @@ use core::{
 
 use config::mm::HART_START_ADDR;
 use driver::sbi;
+use vfs::OpenFlags;
 
-use crate::processor::hart;
+use crate::{fs::FILE_SYSTEM_MANAGER, processor::hart};
 
+#[macro_use]
 extern crate alloc;
 
 #[macro_use]
@@ -69,8 +72,10 @@ fn rust_main(hart_id: usize) {
 
         mm::init();
         trap::init();
+        driver::init();
         loader::init();
-
+        fs::init();
+        fs::test();
         task::spawn_kernel_task(async move {
             task::add_init_proc();
         });

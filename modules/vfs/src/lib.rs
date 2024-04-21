@@ -1,13 +1,11 @@
 #![no_std]
 #![no_main]
 
-pub mod dentry;
-pub mod file;
-pub mod file_system;
-pub mod fs_stat;
-pub mod inode;
-pub mod super_block;
-pub mod utils;
+mod dentry;
+mod file;
+mod inode;
+mod super_block;
+mod utils;
 
 #[macro_use]
 extern crate bitflags;
@@ -21,3 +19,7 @@ pub enum FileSystemType {
 
 // 权限长度
 pub const PERMISSION_LEN: usize = 9;
+
+pub use file::*;
+pub use inode::*;
+pub use utils::*;

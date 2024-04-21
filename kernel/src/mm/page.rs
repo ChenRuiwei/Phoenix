@@ -4,7 +4,7 @@ use config::{board::BLOCK_SIZE, mm::PAGE_SIZE};
 use memory::{alloc_frame, FrameTracker, PhysPageNum};
 use sync::mutex::SleepLock;
 use systype::SysResult;
-use vfs::inode::Inode;
+use vfs::Inode;
 
 pub struct Page {
     frame: FrameTracker,
@@ -110,7 +110,7 @@ impl Page {
                     );
                     // TODO: In case of truncate (Titanix)?
                     file_info.inode().write(
-                        file_offset as u64,
+                        file_offset,
                         self.bytes_array_range(page_offset..page_offset + BLOCK_SIZE),
                     )?;
                 }
@@ -132,7 +132,7 @@ impl Page {
                 let file_offset = page_offset + file_info.file_offset;
                 log::trace!("outdated block, idx {idx}, file_off {file_offset:#x}",);
                 file_info.inode().read(
-                    file_offset as u64,
+                    file_offset,
                     self.bytes_array_range(page_offset..page_offset + BLOCK_SIZE),
                 )?;
                 file_info.data_states[idx] = DataState::Coherent;

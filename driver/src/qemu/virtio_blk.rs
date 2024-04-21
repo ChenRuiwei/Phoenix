@@ -8,22 +8,20 @@ use virtio_drivers::{
 use super::VirtioHalImpl;
 use crate::BlockDevice;
 
-const VIRTIO0: usize = 0x10001000 + VIRT_RAM_OFFSET;
-
 pub struct VirtIOBlkDev(SpinNoIrqLock<VirtIOBlk<VirtioHalImpl, MmioTransport>>);
 
 unsafe impl Send for VirtIOBlkDev {}
 unsafe impl Sync for VirtIOBlkDev {}
 
 impl BlockDevice for VirtIOBlkDev {
-    fn read_block(&self, block_id: usize, buf: &mut [u8]) {
+    fn read_blocks(&self, block_id: usize, buf: &mut [u8]) {
         let res = self.0.lock().read_blocks(block_id, buf);
         if res.is_err() {
             panic!("Error when reading VirtIOBlk, block_id {}", block_id);
         }
     }
 
-    fn write_block(&self, block_id: usize, buf: &[u8]) {
+    fn write_blocks(&self, block_id: usize, buf: &[u8]) {
         self.0
             .lock()
             .write_blocks(block_id, buf)
@@ -33,6 +31,7 @@ impl BlockDevice for VirtIOBlkDev {
 
 impl VirtIOBlkDev {
     pub fn new() -> Self {
+        const VIRTIO0: usize = 0x10001000 + VIRT_RAM_OFFSET;
         unsafe {
             let header = &mut *(VIRTIO0 as *mut VirtIOHeader);
             Self(SpinNoIrqLock::new(

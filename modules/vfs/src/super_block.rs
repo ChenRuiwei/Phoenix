@@ -1,19 +1,34 @@
 use alloc::sync::Arc;
 
+use driver::BlockDevice;
 use systype::SysResult;
 
-use crate::{file_system::FileSystem, fs_stat::FsStat, inode::Inode};
+use crate::{dentry::Dentry, FileSystemType, FsStat};
+
+pub struct SuperBlockMeta {
+    /// Block device that hold this file system.
+    pub device: Arc<dyn BlockDevice>,
+    /// Size of a block in bytes.
+    pub block_size: usize,
+    /// File system type.
+    pub fs_type: FileSystemType,
+    /// File system statistics.
+    pub fs_stat: FsStat,
+}
 
 pub trait SuperBlock: Send + Sync {
-    // 回写同步
-    // 第二个参数指示是否应该等待其他回写操作结束再执行
-    fn sync_super_block(&self, _wait: bool) -> SysResult<()> {
-        Ok(())
-    }
-    // 获取文件系统信息stat
+    /// Get metadata of this super block.
+    fn meta(&self) -> &SuperBlockMeta;
+
+    /// Set metedata of this super block.
+    fn set_meta(&mut self, meta: SuperBlockMeta);
+
+    /// Get filesystem statistics.
     fn fs_stat(&self) -> SysResult<FsStat>;
-    // 获取超级块对应文件系统实例
-    fn get_fs(&self) -> Arc<dyn FileSystem>;
-    // 获取超级块对应的根inode
-    fn get_root_inode(&self) -> SysResult<Arc<dyn Inode>>;
+
+    /// Get the file system type of this super block.
+    fn fs_type(&self) -> FileSystemType;
+
+    /// Get the root dentry.
+    fn root_dentry(&self) -> SysResult<Arc<dyn Dentry>>;
 }

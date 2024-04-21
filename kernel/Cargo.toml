@@ -19,6 +19,7 @@ vfs = { path = "../modules/vfs/" }
 irq_count = { path = "../crates/irq_count/" }
 recycle_allocator = { path = "../crates/recycle_allocator/" }
 time = { path = "../modules/time/" }
+fat32 = { path = "../modules/fat32/" }
 timer = { path = "../modules/timer/" }
 
 cfg-if = "1.0"

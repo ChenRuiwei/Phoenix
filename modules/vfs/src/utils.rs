@@ -3,7 +3,59 @@ use alloc::{
     sync::{Arc, Weak},
 };
 
-use crate::{dentry::Dentry, PERMISSION_LEN};
+use crate::{FileSystemType, PERMISSION_LEN};
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone)]
+    pub struct OpenFlags: usize {
+        // reserve 3 bits for the access mode
+        const NONE          = 0;
+        const O_RDONLY      = 0;
+        const O_WRONLY      = 1;
+        const O_RDWR        = 2;
+        const O_ACCMODE     = 3;
+        const O_CREAT       = 0o100;
+        const O_EXCL        = 0o200;
+        const O_NOCTTY      = 0o400;
+        const O_TRUNC       = 0o1000;
+        const O_APPEND      = 0o2000;
+        const O_NONBLOCK    = 0o4000;
+        const O_DSYNC       = 0o10000;
+        const O_SYNC        = 0o4010000;
+        const O_RSYNC       = 0o4010000;
+        const O_DIRECTORY   = 0o200000;
+        const O_NOFOLLOW    = 0o400000;
+        const O_CLOEXEC     = 0o2000000;
+
+        const O_ASYNC       = 0o20000;
+        const O_DIRECT      = 0o40000;
+        const O_LARGEFILE   = 0o100000;
+        const O_NOATIME     = 0o1000000;
+        const O_PATH        = 0o10000000;
+        const O_TMPFILE     = 0o20200000;
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct FsStat {
+    // fs类型
+    pub fs_type: FileSystemType,
+    // 最优IO块大小
+    pub fs_io_block_size: i64,
+    // 总块数
+    pub fs_blocks: u64,
+    // 未分配块数
+    pub fs_blocks_free: u64,
+    // 用户视角下可用块数
+    pub fs_blocks_avail: u64,
+    // 总inode数，也是总文件数
+    pub fs_inodes: u64,
+    // 空闲inode数
+    pub fs_inodes_free: u64,
+    // 文件名长度限制
+    pub fs_name_max_len: isize,
+}
 
 bitflags::bitflags! {
     // 文件权限
@@ -103,118 +155,12 @@ impl NodePermission {
     }
 }
 
-// 文件与文件夹类型
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum NodeType {
-    // 未知类型
-    Unknown = 0,
-    // 先进先出类型（如管道）
-    Fifo = 0o1,
-    // 字符设备
-    CharDevice = 0o2,
-    // 文件夹
-    Dir = 0o4,
-    // 块设备
-    BlockDevice = 0o6,
-    // 普通文件
-    File = 0o10,
-    // 符号链接
-    SymLink = 0o12,
-    // 套接字
-    Socket = 0o14,
-}
-
-impl From<u8> for NodeType {
-    fn from(value: u8) -> Self {
-        match value {
-            0 => Self::Unknown,
-            0o1 => Self::Fifo,
-            0o2 => Self::CharDevice,
-            0o4 => Self::Dir,
-            0o6 => Self::BlockDevice,
-            0o10 => Self::File,
-            0o12 => Self::SymLink,
-            0o14 => Self::Socket,
-            _ => Self::Unknown,
-        }
-    }
-}
-
-impl From<char> for NodeType {
-    fn from(value: char) -> Self {
-        match value {
-            '-' => Self::File,
-            'd' => Self::Dir,
-            'l' => Self::SymLink,
-            'c' => Self::CharDevice,
-            'b' => Self::BlockDevice,
-            'p' => Self::Fifo,
-            's' => Self::Socket,
-            _ => Self::Unknown,
-        }
-    }
-}
-
-impl NodeType {
-    /// Tests whether this node type represents a regular file.
-    pub const fn is_file(self) -> bool {
-        matches!(self, Self::File)
-    }
-
-    /// Tests whether this node type represents a directory.
-    pub const fn is_dir(self) -> bool {
-        matches!(self, Self::Dir)
-    }
-
-    /// Tests whether this node type represents a symbolic link.
-    pub const fn is_symlink(self) -> bool {
-        matches!(self, Self::SymLink)
-    }
-
-    /// Returns `true` if this node type is a block device.
-    pub const fn is_block_device(self) -> bool {
-        matches!(self, Self::BlockDevice)
-    }
-
-    /// Returns `true` if this node type is a char device.
-    pub const fn is_char_device(self) -> bool {
-        matches!(self, Self::CharDevice)
-    }
-
-    /// Returns `true` if this node type is a fifo.
-    pub const fn is_fifo(self) -> bool {
-        matches!(self, Self::Fifo)
-    }
-
-    /// Returns `true` if this node type is a socket.
-    pub const fn is_socket(self) -> bool {
-        matches!(self, Self::Socket)
-    }
-
-    /// Returns a character representation of the node type.
-    ///
-    /// For example, `d` for directory, `-` for regular file, etc.
-    pub const fn as_char(self) -> char {
-        match self {
-            Self::Fifo => 'p',
-            Self::CharDevice => 'c',
-            Self::Dir => 'd',
-            Self::BlockDevice => 'b',
-            Self::File => '-',
-            Self::SymLink => 'l',
-            Self::Socket => 's',
-            _ => '?',
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct DirEntry {
     /// inode编号
     pub inode_num: u64,
     /// 文件类型
-    pub ty: NodeType,
+    pub ty: InodeType,
     /// 文件名
     pub name: String,
 }
@@ -233,13 +179,6 @@ bitflags! {
         /// 无效的 fd
         const INVAL = 0x0020;
     }
-}
-
-#[derive(Clone)]
-pub struct MountPoint {
-    pub root: Arc<dyn Dentry>,
-    pub mount_point: Weak<dyn Dentry>,
-    pub mount_flags: u32,
 }
 
 #[repr(C)]

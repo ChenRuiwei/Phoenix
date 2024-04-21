@@ -1,4 +1,4 @@
-mod virtio_blk;
+pub mod virtio_blk;
 
 use alloc::vec::Vec;
 use core::ptr::NonNull;

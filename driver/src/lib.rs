@@ -9,6 +9,8 @@ use core::{
     task::Waker,
 };
 
+use qemu::virtio_blk::VirtIOBlkDev;
+use spin::{Lazy, Once};
 use sync::mutex::SpinNoIrqLock;
 
 use self::sbi::console_putchar;
@@ -18,14 +20,12 @@ pub mod sbi;
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
-static PRINT_MUTEX: Mutex<()> = Mutex::new(());
-
 pub trait BlockDevice: Send + Sync {
     /// Read data form block to buffer
-    fn read_block(&self, block_id: usize, buf: &mut [u8]);
+    fn read_blocks(&self, block_id: usize, buf: &mut [u8]);
 
     /// Write data from buffer to block
-    fn write_block(&self, block_id: usize, buf: &[u8]);
+    fn write_blocks(&self, block_id: usize, buf: &[u8]);
 }
 
 pub trait CharDevice: Send + Sync {
@@ -37,7 +37,15 @@ pub trait CharDevice: Send + Sync {
     }
 }
 
-pub static BLOCK_DEVICE: Mutex<Option<Arc<dyn BlockDevice>>> = Mutex::new(None);
+pub fn init() {
+    init_block_device();
+}
+
+pub static BLOCK_DEVICE: Once<Arc<dyn BlockDevice>> = Once::new();
+
+fn init_block_device() {
+    BLOCK_DEVICE.call_once(|| Arc::new(VirtIOBlkDev::new()));
+}
 
 struct Stdout;
 
@@ -52,6 +60,7 @@ impl Write for Stdout {
 }
 
 pub fn print(args: fmt::Arguments<'_>) {
+    static PRINT_MUTEX: Mutex<()> = Mutex::new(());
     let _lock = PRINT_MUTEX.lock();
     Stdout.write_fmt(args).unwrap();
 }
