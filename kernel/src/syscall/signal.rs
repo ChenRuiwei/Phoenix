@@ -87,6 +87,7 @@ pub fn sys_sigreturn() -> SyscallResult {
     let task = current_task();
     let cx = task.trap_context_mut();
     let ucontext_ptr = UserReadPtr::<UContext>::from_usize(cx.user_x[2]);
+    log::trace!("[sys_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
     let ucontext = ucontext_ptr.read(task)?;
     *task.sig_mask() = ucontext.uc_sigmask;
     task.set_signal_stack((ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack));
