@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch and Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "target/riscv64gc-unknown-none-elf/debug/kernel",
+            "args": [],
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "riscv64-unknown-elf-gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "miDebuggerServerAddress": "localhost:1234",
+            // "preLaunchTask": "build kernel"  // 确保有一个名为 'build kernel' 的任务来构建你的内核
+        }
+    ]
+}

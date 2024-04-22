@@ -8,6 +8,7 @@ pub const NSIG: usize = 64;
 #[repr(transparent)]
 pub struct Sig(i32);
 
+/// Sig为0时表示空信号，从1开始才是有含义的信号
 impl Sig {
     pub const SIGHUP: Sig = Sig(1); // Hangup detected on controlling terminal or death of controlling process
     pub const SIGINT: Sig = Sig(2); // Interrupt from keyboard

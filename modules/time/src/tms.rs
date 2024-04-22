@@ -1,6 +1,7 @@
 use crate::stat::TaskTimeStat;
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct TMS {
     /// User CPU time used by caller
     tms_utime: usize,

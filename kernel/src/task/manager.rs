@@ -4,6 +4,7 @@ use config::process::INIT_PROC_PID;
 use hashbrown::HashMap;
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
+use systype::SysResult;
 
 use super::{task::Task, Tid};
 
@@ -34,6 +35,13 @@ impl TaskManager {
             Some(task) => task.upgrade(),
             None => None,
         }
+    }
+
+    pub fn for_each(&self, f: impl Fn(&Arc<Task>) -> SysResult<()>) -> SysResult<()> {
+        for task in self.0.lock().values() {
+            f(&task.upgrade().unwrap())?
+        }
+        Ok(())
     }
 
     pub fn total_num(&self) -> usize {

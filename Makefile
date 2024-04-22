@@ -36,7 +36,6 @@ else
 	TEST_DIR := ./testcase/$(TEST)
 endif
 
-
 # Crate features
 export STRACE :=
 export SUBMIT :=

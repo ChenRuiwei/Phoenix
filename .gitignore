@@ -1,6 +1,7 @@
 *.gdb
 .github
 .gdb_history
+.gdbinit
 target/
 vendor/
 fs-img/

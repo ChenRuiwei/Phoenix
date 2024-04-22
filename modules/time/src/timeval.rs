@@ -1,6 +1,7 @@
 use core::time::Duration;
 
 #[derive(Debug, Clone, Copy, Default)]
+#[repr(C)]
 pub struct TimeVal {
     /// second
     tv_sec: usize,

@@ -161,8 +161,6 @@ pub async fn sys_wait4(
         }
         yield_now().await;
     }
-
-    unreachable!()
 }
 
 /// execve() executes the program referred to by pathname. This causes the

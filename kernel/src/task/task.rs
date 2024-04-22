@@ -16,7 +16,7 @@ use memory::VirtAddr;
 use signal::{
     action::{SigHandlers, SigPending},
     signal_stack::SignalStack,
-    sigset::SigSet,
+    sigset::{Sig, SigSet},
 };
 use sync::mutex::SpinNoIrqLock;
 use time::stat::TaskTimeStat;
@@ -166,6 +166,7 @@ impl Task {
         self.children.lock().remove(&tid);
     }
 
+    /// the task is a process or a thread
     pub fn is_leader(&self) -> bool {
         self.is_leader
     }
@@ -217,12 +218,6 @@ impl Task {
 
     pub fn sig_handlers(&self) -> &mut SigHandlers {
         unsafe { &mut *self.sig_handlers.get() }
-    }
-
-    pub fn set_sig_handlers(&self, sig_handlers: SigHandlers) {
-        unsafe {
-            *self.sig_handlers.get() = sig_handlers;
-        }
     }
 
     pub fn sig_mask(&self) -> &mut SigSet {
