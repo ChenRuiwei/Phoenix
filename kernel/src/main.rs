@@ -33,9 +33,8 @@ use core::{
 
 use config::mm::HART_START_ADDR;
 use driver::sbi;
-use vfs::OpenFlags;
 
-use crate::{fs::FILE_SYSTEM_MANAGER, processor::hart};
+use crate::processor::hart;
 
 #[macro_use]
 extern crate alloc;
@@ -74,8 +73,8 @@ fn rust_main(hart_id: usize) {
         trap::init();
         driver::init();
         loader::init();
-        fs::init();
-        fs::test();
+        // fs::init();
+        // fs::test();
         task::spawn_kernel_task(async move {
             task::add_init_proc();
         });

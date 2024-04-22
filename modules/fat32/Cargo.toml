@@ -7,14 +7,12 @@ edition = "2021"
 
 [dependencies]
 driver = { path = "../../driver/" }
-vfs = { path = "../vfs/" }
+vfs-core = { path = "../vfs-core/" }
 sync = { path = "../sync/" }
 systype = { path = "../systype/" }
 
 log = "0.4"
-fatfs = { git = "https://github.com/rafalh/rust-fatfs", default-features = false, features = [
+fatfs = { git = "https://github.com/ChenRuiwei/rust-fatfs", default-features = false, features = [
     "alloc",
     "lfn",
-    "log_level_trace",
-    "unicode",
 ] }

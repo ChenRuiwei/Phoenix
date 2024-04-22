@@ -1,11 +1,11 @@
-use alloc::{string::String, sync::Arc, vec::Vec};
+use alloc::{rc::Weak, string::String, sync::Arc, vec::Vec};
 
 use systype::{SysError, SysResult};
 
 use crate::{
     file::File,
     utils::{FileStat, NodePermission, RenameFlag, Time, TimeSpec},
-    OpenFlags,
+    SuperBlock,
 };
 
 pub struct InodeAttr {
@@ -25,22 +25,41 @@ pub struct InodeAttr {
 pub struct InodeMeta {
     /// Inode number.
     pub ino: usize,
-    /// Type of inode.
-    pub inode_type: InodeType,
+    /// mode of inode.
+    pub mode: InodeMode,
+    /// Size of a file in bytes.
+    pub size: usize,
+    pub super_block: Weak<dyn SuperBlock>,
 }
 
-pub trait Inode {
-    fn open(&self, this: Arc<dyn Inode>) -> SysResult<Arc<dyn File>>;
+pub trait Inode: Send + Sync {
+    fn meta(&self) -> &InodeMeta;
 
-    fn lookup(&self, _name: &str) -> SysResult<Arc<dyn Inode>>;
+    fn set_meta(&self, meta: InodeMeta);
 
-    fn node_type(&self) -> InodeType;
+    /// Create a new node with the given `path` in the directory
+    fn create(&self, _name: &str) -> SysResult<Arc<dyn Inode>>;
+
+    /// Called by the VFS when an inode should be opened.
+    fn open(&self) -> SysResult<Arc<dyn File>>;
+
+    fn lookup(&self, name: &str) -> SysResult<Arc<dyn Inode>>;
+
+    fn get_attr(&self) -> SysResult<FileStat>;
+}
+
+// unsafe impl Sync for dyn Inode {}
+
+impl dyn Inode {
+    pub fn mode(&self) -> InodeMode {
+        self.meta().mode
+    }
 }
 
 // 文件与文件夹类型
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 #[repr(u8)]
-pub enum InodeType {
+pub enum InodeMode {
     // 未知类型
     Unknown = 0,
     // 先进先出类型（如管道）
@@ -59,7 +78,7 @@ pub enum InodeType {
     Socket = 0o14,
 }
 
-impl From<u8> for InodeType {
+impl From<u8> for InodeMode {
     fn from(value: u8) -> Self {
         match value {
             0 => Self::Unknown,
@@ -75,7 +94,7 @@ impl From<u8> for InodeType {
     }
 }
 
-impl From<char> for InodeType {
+impl From<char> for InodeMode {
     fn from(value: char) -> Self {
         match value {
             '-' => Self::File,
@@ -90,7 +109,7 @@ impl From<char> for InodeType {
     }
 }
 
-impl InodeType {
+impl InodeMode {
     /// Tests whether this node type represents a regular file.
     pub const fn is_file(self) -> bool {
         matches!(self, Self::File)

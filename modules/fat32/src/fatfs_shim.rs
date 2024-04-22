@@ -10,7 +10,9 @@ use fatfs::{Dir, File, LossyOemCpConverter, NullTimeProvider, Read, Seek, SeekFr
 use log::debug;
 use sync::mutex::SpinNoIrqLock;
 use systype::{SysError, SysResult};
-use vfs::{FileSystem, Inode};
+use vfs::Inode;
+
+use crate::FatFs;
 
 pub trait DiskOperation {
     fn read_block(index: usize, buf: &mut [u8]);
@@ -20,7 +22,7 @@ pub trait DiskOperation {
 type Mutex<T> = SpinNoIrqLock<T>;
 
 pub struct Fat32FileSystem {
-    inner: fatfs::FileSystem<DiskCursor, NullTimeProvider, LossyOemCpConverter>,
+    inner: FatFs,
 }
 
 unsafe impl Send for Fat32FileSystem {}
@@ -122,25 +124,6 @@ impl vfs::File for FatFile {
         Ok(buffer.len())
     }
 
-    fn read_dir(&self, _start_index: usize) -> SysResult<Option<vfs::DirEntry>> {
-        Err(SysError::ENOSYS)
-    }
-
-    fn poll(&self, event: vfs::PollEvents) -> SysResult<vfs::PollEvents> {
-        let mut res = vfs::PollEvents::empty();
-        if event.contains(vfs::PollEvents::IN) {
-            res |= vfs::PollEvents::IN;
-        }
-        if event.contains(vfs::PollEvents::OUT) {
-            res |= vfs::PollEvents::OUT;
-        }
-        Ok(res)
-    }
-
-    fn ioctl(&self, _cmd: u32, _arg: usize) -> SysResult<usize> {
-        Err(SysError::ENOSYS)
-    }
-
     fn flush(&self) -> SysResult<()> {
         Ok(())
     }
@@ -151,7 +134,7 @@ impl vfs::File for FatFile {
 }
 
 impl Inode for FatFile {
-    fn inode_type(&self) -> vfs::InodeType {
+    fn inode_type(&self) -> vfs::mode {
         todo!()
     }
 
@@ -162,7 +145,7 @@ impl Inode for FatFile {
     fn create(
         &self,
         _name: &str,
-        _ty: vfs::InodeType,
+        _ty: vfs::mode,
         _perm: vfs::NodePermission,
         _rdev: Option<u64>,
     ) -> SysResult<Arc<dyn Inode>> {
@@ -258,7 +241,7 @@ impl Inode for FatDir {
     fn create(
         &self,
         name: &str,
-        _ty: vfs::InodeType,
+        _ty: vfs::mode,
         _perm: vfs::NodePermission,
         _rdev: Option<u64>,
     ) -> SysResult<Arc<dyn Inode>> {
@@ -330,7 +313,7 @@ impl Inode for FatDir {
         Err(SysError::ENOSYS)
     }
 
-    fn inode_type(&self) -> vfs::InodeType {
+    fn inode_type(&self) -> vfs::mode {
         todo!()
     }
 

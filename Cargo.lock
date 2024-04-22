@@ -138,6 +138,7 @@ dependencies = [
  "irq_count",
  "log",
  "memory",
+ "spin",
  "sync",
  "systype",
  "virtio-drivers",
@@ -155,6 +156,28 @@ version = "0.1.0"
 dependencies = [
  "async-task",
  "sync",
+]
+
+[[package]]
+name = "fat32"
+version = "0.1.0"
+dependencies = [
+ "driver",
+ "fatfs",
+ "log",
+ "sync",
+ "systype",
+ "vfs-core",
+]
+
+[[package]]
+name = "fatfs"
+version = "0.4.0"
+source = "git+https://github.com/ChenRuiwei/rust-fatfs#6561f45e31d35ed171a78bc1655c4b326c47e8c9"
+dependencies = [
+ "bitflags",
+ "log",
+ "spin",
 ]
 
 [[package]]
@@ -203,6 +226,7 @@ dependencies = [
  "time",
  "timer",
  "vfs",
+ "vfs-core",
  "virtio-drivers",
  "xmas-elf",
 ]
@@ -395,8 +419,15 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "vfs"
 version = "0.1.0"
+
+[[package]]
+name = "vfs-core"
+version = "0.1.0"
 dependencies = [
  "bitflags",
+ "driver",
+ "log",
+ "sync",
  "systype",
 ]
 
