@@ -145,6 +145,7 @@ pub fn do_signal() -> SysResult<()> {
                     cx.user_x[1] = sigreturn_trampoline as usize;
                     // sp (it will be used later by sys_sigreturn to restore ucontext)
                     cx.user_x[2] = ucontext_ptr;
+                    task.set_sig_ucontext_ptr(ucontext_ptr);
                 }
             }
         }
