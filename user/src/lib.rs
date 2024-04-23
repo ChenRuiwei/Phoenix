@@ -7,6 +7,7 @@
 pub mod console;
 mod error;
 mod lang_items;
+#[allow(unused)]
 mod syscall;
 pub mod types;
 
@@ -15,13 +16,12 @@ extern crate bitflags;
 extern crate alloc;
 
 use alloc::vec::Vec;
-use core::ptr::null;
 
 use buddy_system_allocator::LockedHeap;
 pub use error::SyscallErr;
 use syscall::*;
 use time::timespec::{self, TimeSpec};
-use types::*;
+pub use types::*;
 
 // const USER_HEAP_SIZE: usize = 16384;
 const USER_HEAP_SIZE: usize = 0x32000;
@@ -190,7 +190,7 @@ pub fn nanosleep(req: &TimeSpec, rem: &mut TimeSpec) {
 //************ signal ***************/
 pub fn sigaction(sig_no: Sig, act: &SigAction, old_act: &mut SigAction) -> isize {
     sys_sigaction(
-        sig_no.index(),
+        sig_no.raw(),
         act as *const SigAction as *const usize,
         old_act as *mut SigAction as *mut usize,
     )

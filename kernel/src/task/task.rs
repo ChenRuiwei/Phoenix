@@ -6,7 +6,7 @@ use alloc::{
 };
 use core::{
     cell::SyncUnsafeCell,
-    sync::atomic::{AtomicI32, Ordering},
+    sync::atomic::{AtomicI32, AtomicUsize, Ordering},
     task::Waker,
 };
 
@@ -16,7 +16,7 @@ use memory::VirtAddr;
 use signal::{
     action::{SigHandlers, SigPending},
     signal_stack::SignalStack,
-    sigset::SigSet,
+    sigset::{Sig, SigSet},
 };
 use sync::mutex::SpinNoIrqLock;
 use time::stat::TaskTimeStat;
@@ -77,7 +77,7 @@ pub struct Task {
     sig_mask: SyncUnsafeCell<SigSet>,
     /// User can set `sig_stack` by `sys_signalstack`.
     sig_stack: SyncUnsafeCell<Option<SignalStack>>,
-
+    sig_ucontext_ptr: AtomicUsize,
     time_stat: SyncUnsafeCell<TaskTimeStat>,
 }
 
@@ -134,6 +134,7 @@ impl Task {
             sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
+            sig_ucontext_ptr: AtomicUsize::new(0),
         });
 
         task.thread_group.lock().push_leader(task.clone());
@@ -166,6 +167,7 @@ impl Task {
         self.children.lock().remove(&tid);
     }
 
+    /// the task is a process or a thread
     pub fn is_leader(&self) -> bool {
         self.is_leader
     }
@@ -219,12 +221,6 @@ impl Task {
         unsafe { &mut *self.sig_handlers.get() }
     }
 
-    pub fn set_sig_handlers(&self, sig_handlers: SigHandlers) {
-        unsafe {
-            *self.sig_handlers.get() = sig_handlers;
-        }
-    }
-
     pub fn sig_mask(&self) -> &mut SigSet {
         unsafe { &mut *self.sig_mask.get() }
     }
@@ -237,6 +233,14 @@ impl Task {
         unsafe {
             *self.sig_stack.get() = stack;
         }
+    }
+
+    pub fn sig_ucontext_ptr(&self) -> usize {
+        self.sig_ucontext_ptr.load(Ordering::Relaxed)
+    }
+
+    pub fn set_sig_ucontext_ptr(&self, ptr: usize) {
+        self.sig_ucontext_ptr.store(ptr, Ordering::Relaxed)
     }
 
     pub fn time_stat(&self) -> &mut TaskTimeStat {
@@ -305,6 +309,7 @@ impl Task {
             sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
+            sig_ucontext_ptr: AtomicUsize::new(0),
         });
 
         if flags.contains(CloneFlags::THREAD) {

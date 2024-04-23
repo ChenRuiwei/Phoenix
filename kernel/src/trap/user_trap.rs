@@ -97,20 +97,20 @@ pub async fn trap_handler(task: &Arc<Task>) {
 /// Trap return to user mode.
 #[no_mangle]
 pub fn trap_return(task: &Arc<Task>) {
-    unsafe {
-        disable_interrupt();
-        set_user_trap()
-    };
-
-    do_signal();
-
     extern "C" {
         fn __return_to_user(cx: *mut TrapContext);
     }
 
-    task.time_stat().record_trap_return();
+    do_signal();
 
     log::info!("[kernel] trap return to user...");
+    unsafe {
+        disable_interrupt();
+        set_user_trap()
+        // WARN: stvec can not be changed below. One hidden mistake is to use
+        // `UserPtr` implicitly which will change stvec to `__trap_from_kernel`.
+    };
+    task.time_stat().record_trap_return();
     unsafe {
         __return_to_user(task.trap_context_mut());
         // NOTE: next time when user traps into kernel, it will come back here

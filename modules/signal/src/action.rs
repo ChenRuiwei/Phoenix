@@ -15,8 +15,8 @@ pub enum ActionType {
 impl ActionType {
     pub fn default(sig: Sig) -> Self {
         match sig {
-            Sig::SIGCHLD | Sig::SIGURG => ActionType::Ignore,
-            Sig::SIGSTOP => ActionType::Stop,
+            Sig::SIGCHLD | Sig::SIGURG | Sig::SIGWINCH => ActionType::Ignore,
+            Sig::SIGSTOP | Sig::SIGTSTP | Sig::SIGTTIN | Sig::SIGTTOU => ActionType::Stop,
             Sig::SIGCONT => ActionType::Cont,
             _ => ActionType::Kill,
         }

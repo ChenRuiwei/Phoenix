@@ -1,3 +1,4 @@
+use config::process::INIT_PROC_PID;
 use signal::{
     action::{Action, ActionType},
     signal_stack::{SignalStack, UContext},
@@ -8,7 +9,10 @@ use systype::{SysError, SyscallResult};
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
-    task::signal::{SigAction, SIG_DFL, SIG_IGN},
+    task::{
+        signal::{SigAction, SIG_DFL, SIG_IGN},
+        TASK_MANAGER,
+    },
 };
 
 /// 功能：为当前进程设置某种信号的处理函数，同时保存设置之前的处理函数。
@@ -82,7 +86,8 @@ pub fn sys_sigprocmask(
 pub fn sys_sigreturn() -> SyscallResult {
     let task = current_task();
     let cx = task.trap_context_mut();
-    let ucontext_ptr = UserReadPtr::<UContext>::from_usize(cx.user_x[1]);
+    let ucontext_ptr = UserReadPtr::<UContext>::from_usize(task.sig_ucontext_ptr());
+    log::trace!("[sys_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
     let ucontext = ucontext_ptr.read(task)?;
     *task.sig_mask() = ucontext.uc_sigmask;
     task.set_signal_stack((ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack));
@@ -118,7 +123,7 @@ pub fn sys_signalstack(
 ///
 /// **RETURN VALUE** :On success (at least one signal was sent), zero is
 /// returned.  On error, -1 is returned, and errno is set appropriately
-pub fn sys_kill(pid: usize, sig: i32) -> SyscallResult {
+pub fn sys_kill(pid: isize, sig: i32) -> SyscallResult {
     let sig = Sig::from_i32(sig);
     if !sig.is_valid() {
         return Err(SysError::EINVAL);
@@ -128,7 +133,31 @@ pub fn sys_kill(pid: usize, sig: i32) -> SyscallResult {
             // 进程组
             unimplemented!()
         }
-        _ => {}
+        -1 => {
+            TASK_MANAGER.for_each(|task| {
+                if task.pid() != INIT_PROC_PID && task.is_leader() && sig.raw() != 0 {
+                    task.receive_signal(sig);
+                }
+                Ok(())
+            })?;
+        }
+        _ if pid > 0 => {
+            if let Some(task) = TASK_MANAGER.get(pid as usize) {
+                if task.is_leader() {
+                    task.receive_signal(sig);
+                } else {
+                    // sys_kill is sent to process not thread
+                    return Err(SysError::ESRCH);
+                }
+            } else {
+                return Err(SysError::ESRCH);
+            }
+        }
+        _ => {
+            // pid < -1
+            // sig is sent to every process in the process group whose ID is -pid.
+            unimplemented!()
+        }
     }
     Ok(0)
 }

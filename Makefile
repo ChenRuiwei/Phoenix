@@ -36,7 +36,6 @@ else
 	TEST_DIR := ./testcase/$(TEST)
 endif
 
-
 # Crate features
 export STRACE :=
 export SUBMIT :=
@@ -164,6 +163,10 @@ trace:
 
 PHONY += drun
 drun: fmt clean user kernel
+	$(QEMU) $(QEMU_ARGS) -s -S
+
+PHONY += debug
+debug:
 	$(QEMU) $(QEMU_ARGS) -s -S
 
 PHONY += gdb

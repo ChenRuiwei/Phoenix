@@ -37,6 +37,7 @@ impl SignalStack {
 }
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct UContext {
     /// 当前上下文返回时将恢复执行的下一个上下文的指针
     pub uc_link: usize,
@@ -49,6 +50,7 @@ pub struct UContext {
 }
 
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct MContext {
     pub sepc: usize,
     pub user_x: [usize; 32],
