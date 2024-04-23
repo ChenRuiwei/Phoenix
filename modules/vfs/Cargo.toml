@@ -6,3 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+vfs-core = { path = "../vfs-core/" }
+fat32 = { path = "../fat32/" }

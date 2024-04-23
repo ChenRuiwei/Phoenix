@@ -25,13 +25,13 @@ pub struct DentryMeta {
 impl DentryMeta {
     pub fn new(
         name: &str,
-        super_block: Weak<dyn SuperBlock>,
+        super_block: Arc<dyn SuperBlock>,
         inode: Arc<dyn Inode>,
         parent: Option<Weak<dyn Dentry>>,
     ) -> Self {
         Self {
             name: name.to_string(),
-            super_block,
+            super_block: Arc::downgrade(&super_block),
             inode,
             parent,
             children: Mutex::new(BTreeMap::new()),

@@ -7,7 +7,7 @@ use alloc::{
 use driver::BlockDevice;
 use systype::SysResult;
 
-use crate::{File, MountFlags, Mutex, SuperBlock};
+use crate::{Dentry, File, MountFlags, Mutex, SuperBlock};
 
 pub struct FileSystemTypeMeta {
     /// Name of this file system type.
@@ -36,24 +36,24 @@ pub trait FileSystemType: Send + Sync {
         abs_mount_path: &str,
         flags: MountFlags,
         dev: Option<Arc<dyn BlockDevice>>,
-    ) -> SysResult<Arc<dyn SuperBlock>>
+    ) -> SysResult<Arc<dyn Dentry>>
     where
         Self: Sized;
 
     /// Call when an instance of this filesystem should be shut down.
     fn kill_sb(&self, sb: Arc<dyn SuperBlock>) -> SysResult<()>;
+
+    fn insert_sb(&self, abs_mount_path: &str, super_block: Arc<dyn SuperBlock>) {
+        self.meta()
+            .supers
+            .lock()
+            .insert(abs_mount_path.to_string(), super_block);
+    }
 }
 
 impl dyn FileSystemType {
     fn fs_name(&self) -> String {
         self.meta().name.clone()
-    }
-
-    fn insert(&self, abs_mount_path: String, super_block: Arc<dyn SuperBlock>) {
-        self.meta()
-            .supers
-            .lock()
-            .insert(abs_mount_path, super_block);
     }
 }
 

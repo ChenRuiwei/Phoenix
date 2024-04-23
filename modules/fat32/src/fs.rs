@@ -4,7 +4,7 @@ use vfs_core::{
     DentryMeta, FileSystemType, FileSystemTypeMeta, InodeMode, SuperBlock, SuperBlockMeta,
 };
 
-use crate::{dentry::FatDentry, fatfs_shim::DiskCursor, inode::dir::FatDirInode, FatFs, Mutex};
+use crate::{dentry::FatDentry, inode::dir::FatDirInode, DiskCursor, FatFs, Mutex};
 
 pub struct FatFsType {
     meta: FileSystemTypeMeta,
@@ -25,20 +25,18 @@ impl FileSystemType for FatFsType {
 
     fn mount(
         self: &Arc<Self>,
-        abs_mount_path: &str,
+        abs_mnt_path: &str,
         flags: vfs_core::MountFlags,
         dev: Option<Arc<dyn driver::BlockDevice>>,
-    ) -> systype::SysResult<Arc<dyn vfs_core::SuperBlock>> {
-        let dev = dev.unwrap()?;
-        let sb = FatSuperBlock::new(SuperBlockMeta::new(dev, Arc::downgrade(self)));
-        let root_inode = FatDirInode::new(sb, sb.fs.root_dir());
-        let root_dentry = FatDentry::new(DentryMeta::new(
-            "/",
-            Arc::downgrade(sb),
-            sb.fs.root_dir(),
-            None,
-        ));
-        sb.set_root_dentry(root_dentry)
+    ) -> systype::SysResult<Arc<dyn vfs_core::Dentry>> {
+        let dev = dev.unwrap();
+        let sb = FatSuperBlock::new(SuperBlockMeta::new(dev, self.clone()));
+        let root_inode = FatDirInode::new(sb.clone(), sb.fs.root_dir());
+        let root_dentry =
+            FatDentry::new(DentryMeta::new(abs_mnt_path, sb.clone(), root_inode, None));
+        sb.set_root_dentry(root_dentry.clone());
+        self.insert_sb(abs_mnt_path, sb);
+        Ok(root_dentry)
     }
 
     fn kill_sb(&self, sb: Arc<dyn vfs_core::SuperBlock>) -> systype::SysResult<()> {
@@ -53,9 +51,18 @@ pub struct FatSuperBlock {
 
 impl FatSuperBlock {
     pub fn new(meta: SuperBlockMeta) -> Arc<Self> {
+        let blk_dev = meta.device.clone();
         Arc::new(Self {
             meta,
-            fs: FatFs::new(DiskCursor, fatfs::FsOptions::new()).unwrap(),
+            fs: FatFs::new(
+                DiskCursor {
+                    sector: 0,
+                    offset: 0,
+                    blk_dev,
+                },
+                fatfs::FsOptions::new(),
+            )
+            .unwrap(),
         })
     }
 }

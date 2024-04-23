@@ -27,13 +27,13 @@ pub struct SuperBlockMeta {
 }
 
 impl SuperBlockMeta {
-    pub fn new(device: Arc<dyn BlockDevice>, fs_type: &Arc<dyn FileSystemType>) -> Self {
+    pub fn new(device: Arc<dyn BlockDevice>, fs_type: Arc<dyn FileSystemType>) -> Self {
         let block_size = device.block_size();
         Self {
             device,
             block_size,
             root_dentry: Once::new(),
-            fs_type: Arc::downgrade(fs_type),
+            fs_type: Arc::downgrade(&fs_type),
             inodes: Mutex::new(Vec::new()),
             dirty: Mutex::new(Vec::new()),
         }
@@ -50,13 +50,13 @@ pub trait SuperBlock: Send + Sync {
     /// Called when VFS is writing out all dirty data associated with a
     /// superblock.
     fn sync_fs(&self, wait: isize) -> SysResult<()>;
+
+    fn set_root_dentry(&self, root_dentry: Arc<dyn Dentry>) {
+        self.meta().root_dentry.call_once(|| root_dentry);
+    }
 }
 
 impl dyn SuperBlock {
-    pub fn set_root_dentry(&self, root_dentry: Arc<dyn Dentry>) {
-        self.meta().root_dentry.call_once(|| root_dentry);
-    }
-
     /// Get the file system type of this super block.
     pub fn fs_type(&self) -> Arc<dyn FileSystemType> {
         self.meta().fs_type.upgrade().unwrap()

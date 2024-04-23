@@ -10,13 +10,13 @@ pub struct FatDirInode {
 }
 
 impl FatDirInode {
-    pub fn new(super_block: &Arc<dyn SuperBlock>, dir: FatDir) -> Self {
+    pub fn new(super_block: Arc<dyn SuperBlock>, dir: FatDir) -> Arc<Self> {
         // TODO: Dir size is zero?
-        let inode = Self {
-            meta: InodeMeta::new(InodeMode::Dir, super_block, 0),
+        let inode = Arc::new(Self {
+            meta: InodeMeta::new(InodeMode::Dir, &super_block, 0),
             dir,
-        };
-        super_block.push_inode(inode);
+        });
+        super_block.push_inode(inode.clone());
         inode
     }
 }

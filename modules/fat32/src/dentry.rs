@@ -1,3 +1,5 @@
+use alloc::sync::Arc;
+
 use vfs_core::{Dentry, DentryMeta, Inode};
 
 pub struct FatDentry {
@@ -5,8 +7,8 @@ pub struct FatDentry {
 }
 
 impl FatDentry {
-    pub fn new(meta: DentryMeta) -> Self {
-        Self { meta }
+    pub fn new(meta: DentryMeta) -> Arc<Self> {
+        Arc::new(Self { meta })
     }
 }
 
