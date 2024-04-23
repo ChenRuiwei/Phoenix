@@ -20,6 +20,7 @@ use core::ptr::null;
 use buddy_system_allocator::LockedHeap;
 pub use error::SyscallErr;
 use syscall::*;
+use time::timespec::{self, TimeSpec};
 use types::*;
 
 // const USER_HEAP_SIZE: usize = 16384;
@@ -175,8 +176,15 @@ pub fn close(fd: usize) -> isize {
 }
 
 //************ time ***************/
-pub fn get_timeofday(time_val: &mut TimeVal) -> isize {
+pub fn gettimeofday(time_val: &mut TimeVal) -> isize {
     sys_gettimeofday(time_val as *mut TimeVal as *mut usize, 0 as *mut usize)
+}
+
+pub fn nanosleep(req: &TimeSpec, rem: &mut TimeSpec) {
+    sys_nanosleep(
+        req as *const TimeSpec as *const usize,
+        rem as *mut TimeSpec as *mut usize,
+    );
 }
 
 //************ signal ***************/

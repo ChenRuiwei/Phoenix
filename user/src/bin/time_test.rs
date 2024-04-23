@@ -2,7 +2,7 @@
 #![no_main]
 
 use time::timeval::TimeVal;
-use user_lib::{get_timeofday, println};
+use user_lib::{gettimeofday, println};
 
 extern crate user_lib;
 
@@ -12,7 +12,7 @@ extern crate alloc;
 fn main() -> i32 {
     println!("begin time test");
     let mut timeval = TimeVal::default();
-    get_timeofday(&mut timeval);
+    gettimeofday(&mut timeval);
     println!("timeval: {:?}", timeval);
     0
 }

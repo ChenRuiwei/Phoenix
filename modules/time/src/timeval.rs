@@ -24,4 +24,8 @@ impl TimeVal {
             tv_usec: usec % 1_000_000,
         }
     }
+
+    pub fn into_usec(&self) -> usize {
+        self.tv_sec * 1_000_000 + self.tv_usec
+    }
 }
