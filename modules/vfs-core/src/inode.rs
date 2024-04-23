@@ -1,10 +1,18 @@
-use alloc::{rc::Weak, string::String, sync::Arc, vec::Vec};
+use alloc::{
+    string::String,
+    sync::{Arc, Weak},
+    vec::Vec,
+};
+use core::sync::atomic::AtomicUsize;
 
+use spin::Mutex;
 use systype::{SysError, SysResult};
 
 use crate::{
+    alloc_ino,
     file::File,
-    utils::{FileStat, NodePermission, RenameFlag, Time, TimeSpec},
+    super_block,
+    utils::{NodePermission, RenameFlag, Stat, Time, TimeSpec},
     SuperBlock,
 };
 
@@ -27,15 +35,29 @@ pub struct InodeMeta {
     pub ino: usize,
     /// mode of inode.
     pub mode: InodeMode,
+    pub super_block: Weak<dyn SuperBlock>,
+
+    pub inner: Mutex<InodeMetaInner>,
+}
+
+pub struct InodeMetaInner {
     /// Size of a file in bytes.
     pub size: usize,
-    pub super_block: Weak<dyn SuperBlock>,
+}
+
+impl InodeMeta {
+    pub fn new(mode: InodeMode, super_block: &Arc<dyn SuperBlock>, size: usize) -> Self {
+        Self {
+            ino: alloc_ino(),
+            mode,
+            super_block: Arc::downgrade(super_block),
+            inner: Mutex::new(InodeMetaInner { size }),
+        }
+    }
 }
 
 pub trait Inode: Send + Sync {
     fn meta(&self) -> &InodeMeta;
-
-    fn set_meta(&self, meta: InodeMeta);
 
     /// Create a new node with the given `path` in the directory
     fn create(&self, _name: &str) -> SysResult<Arc<dyn Inode>>;
@@ -45,10 +67,8 @@ pub trait Inode: Send + Sync {
 
     fn lookup(&self, name: &str) -> SysResult<Arc<dyn Inode>>;
 
-    fn get_attr(&self) -> SysResult<FileStat>;
+    fn get_attr(&self) -> SysResult<Stat>;
 }
-
-// unsafe impl Sync for dyn Inode {}
 
 impl dyn Inode {
     pub fn mode(&self) -> InodeMode {

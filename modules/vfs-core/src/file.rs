@@ -25,8 +25,6 @@ pub struct FileMeta {
 pub trait File: Send + Sync {
     fn meta(&self) -> &FileMeta;
 
-    fn set_meta(&self, meta: FileMeta);
-
     /// Called when the VFS needs to move the file position index.
     ///
     /// Return the result offset.

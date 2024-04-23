@@ -1,4 +1,4 @@
-use config::mm::VIRT_RAM_OFFSET;
+use config::{board::BLOCK_SIZE, mm::VIRT_RAM_OFFSET};
 use sync::mutex::SpinNoIrqLock;
 use virtio_drivers::{
     device::blk::VirtIOBlk,
@@ -26,6 +26,10 @@ impl BlockDevice for VirtIOBlkDev {
             .lock()
             .write_blocks(block_id, buf)
             .expect("Error when writing VirtIOBlk");
+    }
+
+    fn block_size(&self) -> usize {
+        BLOCK_SIZE
     }
 }
 

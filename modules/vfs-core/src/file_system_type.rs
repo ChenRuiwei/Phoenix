@@ -1,4 +1,8 @@
-use alloc::{collections::BTreeMap, string::String, sync::Arc};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    sync::Arc,
+};
 
 use driver::BlockDevice;
 use systype::SysResult;
@@ -12,18 +16,29 @@ pub struct FileSystemTypeMeta {
     supers: Mutex<BTreeMap<String, Arc<dyn SuperBlock>>>,
 }
 
+impl FileSystemTypeMeta {
+    pub fn new(name: &str) -> FileSystemTypeMeta {
+        Self {
+            name: name.to_string(),
+            supers: Mutex::new(BTreeMap::new()),
+        }
+    }
+}
+
 pub trait FileSystemType: Send + Sync {
     fn meta(&self) -> &FileSystemTypeMeta;
 
-    fn set_meta(&self, meta: FileSystemTypeMeta);
-
     /// Call when a new instance of this filesystem should be mounted.
+    // NOTE: `&Arc<Self>` in a trait that `Self` has to be sized
+    // https://stackoverflow.com/questions/70814508/understanding-the-trait-x-cannot-be-made-into-an-object-for-mut-boxself-p
     fn mount(
-        self: &Self,
+        self: &Arc<Self>,
         abs_mount_path: &str,
         flags: MountFlags,
         dev: Option<Arc<dyn BlockDevice>>,
-    ) -> SysResult<Arc<dyn SuperBlock>>;
+    ) -> SysResult<Arc<dyn SuperBlock>>
+    where
+        Self: Sized;
 
     /// Call when an instance of this filesystem should be shut down.
     fn kill_sb(&self, sb: Arc<dyn SuperBlock>) -> SysResult<()>;
@@ -32,6 +47,13 @@ pub trait FileSystemType: Send + Sync {
 impl dyn FileSystemType {
     fn fs_name(&self) -> String {
         self.meta().name.clone()
+    }
+
+    fn insert(&self, abs_mount_path: String, super_block: Arc<dyn SuperBlock>) {
+        self.meta()
+            .supers
+            .lock()
+            .insert(abs_mount_path, super_block);
     }
 }
 

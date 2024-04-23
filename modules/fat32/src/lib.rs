@@ -8,8 +8,10 @@ use sync::mutex::SpinNoIrqLock;
 #[macro_use]
 extern crate alloc;
 
+mod dentry;
 pub mod fatfs_shim;
 mod fs;
+mod inode;
 
 type Mutex<T> = SpinNoIrqLock<T>;
 

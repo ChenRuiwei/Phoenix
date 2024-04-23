@@ -427,6 +427,7 @@ dependencies = [
  "bitflags",
  "driver",
  "log",
+ "spin",
  "sync",
  "systype",
 ]

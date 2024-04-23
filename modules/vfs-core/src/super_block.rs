@@ -4,6 +4,7 @@ use alloc::{
 };
 
 use driver::BlockDevice;
+use spin::Once;
 use systype::SysResult;
 
 use crate::{Dentry, FileSystemType, Inode, Mutex, StatFs};
@@ -16,10 +17,8 @@ pub struct SuperBlockMeta {
     pub block_size: usize,
     /// File system type.
     pub fs_type: Weak<dyn FileSystemType>,
-    /// File system statistics.
-    pub stat_fs: StatFs,
     /// Root dentry points to the mount point.
-    pub root_dentry: Arc<dyn Dentry>,
+    pub root_dentry: Once<Arc<dyn Dentry>>,
 
     /// All inodes.
     pub inodes: Mutex<Vec<Arc<dyn Inode>>>,
@@ -27,12 +26,23 @@ pub struct SuperBlockMeta {
     pub dirty: Mutex<Vec<Arc<dyn Inode>>>,
 }
 
+impl SuperBlockMeta {
+    pub fn new(device: Arc<dyn BlockDevice>, fs_type: &Arc<dyn FileSystemType>) -> Self {
+        let block_size = device.block_size();
+        Self {
+            device,
+            block_size,
+            root_dentry: Once::new(),
+            fs_type: Arc::downgrade(fs_type),
+            inodes: Mutex::new(Vec::new()),
+            dirty: Mutex::new(Vec::new()),
+        }
+    }
+}
+
 pub trait SuperBlock: Send + Sync {
     /// Get metadata of this super block.
     fn meta(&self) -> &SuperBlockMeta;
-
-    /// Set metedata of this super block.
-    fn set_meta(&mut self, meta: SuperBlockMeta);
 
     /// Get filesystem statistics.
     fn fs_stat(&self) -> SysResult<StatFs>;
@@ -43,13 +53,21 @@ pub trait SuperBlock: Send + Sync {
 }
 
 impl dyn SuperBlock {
+    pub fn set_root_dentry(&self, root_dentry: Arc<dyn Dentry>) {
+        self.meta().root_dentry.call_once(|| root_dentry);
+    }
+
     /// Get the file system type of this super block.
-    fn fs_type(&self) -> Arc<dyn FileSystemType> {
+    pub fn fs_type(&self) -> Arc<dyn FileSystemType> {
         self.meta().fs_type.upgrade().unwrap()
     }
 
     /// Get the root dentry.
-    fn root_dentry(&self) -> Arc<dyn Dentry> {
-        self.meta().root_dentry.clone()
+    pub fn root_dentry(&self) -> Arc<dyn Dentry> {
+        self.meta().root_dentry.get().unwrap().clone()
+    }
+
+    pub fn push_inode(&self, inode: Arc<dyn Inode>) {
+        self.meta().inodes.lock().push(inode)
     }
 }

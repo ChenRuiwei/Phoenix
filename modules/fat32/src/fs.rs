@@ -1,11 +1,21 @@
 use alloc::{collections::BTreeMap, sync::Arc};
 
-use vfs::{FileSystemType, FileSystemTypeMeta, SuperBlockMeta};
+use vfs_core::{
+    DentryMeta, FileSystemType, FileSystemTypeMeta, InodeMode, SuperBlock, SuperBlockMeta,
+};
 
-use crate::Mutex;
+use crate::{dentry::FatDentry, fatfs_shim::DiskCursor, inode::dir::FatDirInode, FatFs, Mutex};
 
 pub struct FatFsType {
     meta: FileSystemTypeMeta,
+}
+
+impl FatFsType {
+    pub fn new() -> FatFsType {
+        Self {
+            meta: FileSystemTypeMeta::new("fat32"),
+        }
+    }
 }
 
 impl FileSystemType for FatFsType {
@@ -13,24 +23,53 @@ impl FileSystemType for FatFsType {
         &self.meta
     }
 
-    fn set_meta(&self, meta: FileSystemTypeMeta) {
-        self.meta = meta
-    }
-
     fn mount(
-        self: &Self,
+        self: &Arc<Self>,
         abs_mount_path: &str,
-        flags: vfs::MountFlags,
+        flags: vfs_core::MountFlags,
         dev: Option<Arc<dyn driver::BlockDevice>>,
-    ) -> systype::SysResult<Arc<dyn vfs::SuperBlock>> {
-        todo!()
+    ) -> systype::SysResult<Arc<dyn vfs_core::SuperBlock>> {
+        let dev = dev.unwrap()?;
+        let sb = FatSuperBlock::new(SuperBlockMeta::new(dev, Arc::downgrade(self)));
+        let root_inode = FatDirInode::new(sb, sb.fs.root_dir());
+        let root_dentry = FatDentry::new(DentryMeta::new(
+            "/",
+            Arc::downgrade(sb),
+            sb.fs.root_dir(),
+            None,
+        ));
+        sb.set_root_dentry(root_dentry)
     }
 
-    fn kill_sb(&self, sb: Arc<dyn vfs::SuperBlock>) -> systype::SysResult<()> {
+    fn kill_sb(&self, sb: Arc<dyn vfs_core::SuperBlock>) -> systype::SysResult<()> {
         todo!()
     }
 }
 
-pub struct FatFsSuperBlock {
+pub struct FatSuperBlock {
     meta: SuperBlockMeta,
+    fs: FatFs,
+}
+
+impl FatSuperBlock {
+    pub fn new(meta: SuperBlockMeta) -> Arc<Self> {
+        Arc::new(Self {
+            meta,
+            fs: FatFs::new(DiskCursor, fatfs::FsOptions::new()).unwrap(),
+        })
+    }
+}
+
+impl SuperBlock for FatSuperBlock {
+    fn meta(&self) -> &SuperBlockMeta {
+        &self.meta
+    }
+
+    fn fs_stat(&self) -> systype::SysResult<vfs_core::StatFs> {
+        todo!()
+    }
+
+    fn sync_fs(&self, wait: isize) -> systype::SysResult<()> {
+        todo!()
+    }
 }

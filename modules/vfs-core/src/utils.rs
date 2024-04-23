@@ -36,7 +36,7 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct StatFs {
     /// 是个 magic number，每个知名的 fs 都各有定义，但显然我们没有
@@ -195,7 +195,7 @@ pub struct TimeSpec {
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 #[repr(C)]
-pub struct FileStat {
+pub struct Stat {
     pub st_dev: u64,
     pub st_ino: u64,
     pub st_mode: u32,

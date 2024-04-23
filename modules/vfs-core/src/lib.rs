@@ -14,6 +14,8 @@ extern crate alloc;
 
 pub const PERMISSION_LEN: usize = 9;
 
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 pub use dentry::*;
 pub use file::*;
 pub use file_system_type::*;
@@ -23,3 +25,9 @@ use sync::mutex::SpinNoIrqLock;
 pub use utils::*;
 
 type Mutex<T> = SpinNoIrqLock<T>;
+
+static INODE_NUMBER: AtomicUsize = AtomicUsize::new(0);
+
+fn alloc_ino() -> usize {
+    INODE_NUMBER.fetch_add(1, Ordering::Relaxed)
+}

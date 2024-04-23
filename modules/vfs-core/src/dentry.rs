@@ -6,7 +6,7 @@ use alloc::{
 
 use systype::SysResult;
 
-use crate::{inode::Inode, Mutex, SuperBlock};
+use crate::{inode::Inode, super_block, InodeMode, Mutex, SuperBlock};
 
 pub struct DentryMeta {
     /// Name of this file or directory.
@@ -17,15 +17,30 @@ pub struct DentryMeta {
     /// Parent dentry. `None` if root dentry.
     pub parent: Option<Weak<dyn Dentry>>,
 
-    /// Children dentries.
+    /// Children dentries. Key value pair is <name, dentry>.
     // PERF: may be no need to be BTreeMap, since we will look up in hash table
     pub children: Mutex<BTreeMap<String, Arc<dyn Dentry>>>,
 }
 
+impl DentryMeta {
+    pub fn new(
+        name: &str,
+        super_block: Weak<dyn SuperBlock>,
+        inode: Arc<dyn Inode>,
+        parent: Option<Weak<dyn Dentry>>,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            super_block,
+            inode,
+            parent,
+            children: Mutex::new(BTreeMap::new()),
+        }
+    }
+}
+
 pub trait Dentry: Send + Sync {
     fn meta(&self) -> &DentryMeta;
-
-    fn set_meta(&self, meta: DentryMeta);
 }
 
 impl dyn Dentry {
@@ -61,17 +76,38 @@ impl dyn Dentry {
         self.meta().children.lock().remove(name)
     }
 
-    /// Lookup a dentry in the directory
-    fn find(&self, path: &str) -> Option<Arc<dyn Dentry>> {
-        todo!()
+    /// Lookup a dentry with `name` in the directory.
+    fn find(&self, name: &str) -> Option<Arc<dyn Dentry>> {
+        let meta = self.meta();
+        let mode = meta.inode.mode();
+        match mode {
+            InodeMode::Dir => meta.children.lock().get(name).map(|item| item.clone()),
+            _ => None,
+        }
     }
 
     /// Get the path of this dentry.
-    pub fn path(&self) -> String {
+    fn path(&self) -> String {
         if let Some(p) = self.parent() {
-            let path = String::from("/") + self.name().as_str();
-            return p.path() + path.as_str();
+            let path = if self.name() == "/" {
+                String::from("")
+            } else {
+                String::from("/") + self.name().as_str()
+            };
+            let parent_name = p.name();
+            return if parent_name == "/" {
+                if p.parent().is_some() {
+                    // p is a mount point
+                    p.parent().unwrap().path() + path.as_str()
+                } else {
+                    path
+                }
+            } else {
+                // p is not root
+                p.path() + path.as_str()
+            };
         } else {
+            log::warn!("dentry has no parent");
             String::from("/")
         }
     }
