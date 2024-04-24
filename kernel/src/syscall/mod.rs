@@ -147,8 +147,8 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         SYSCALL_NANOSLEEP => sys_handler!(
             sys_nanosleep,
             (
-                UserReadPtr::<TimeSpec>::from(args[1]),
-                UserWritePtr::<TimeSpec>::from(args[2])
+                UserReadPtr::<TimeSpec>::from(args[0]),
+                UserWritePtr::<TimeSpec>::from(args[1])
             ),
             await
         ),

@@ -1,29 +1,36 @@
 #![no_std]
 #![no_main]
 
-#[macro_use]
 extern crate user_lib;
 
-use time::{timespec::TimeSpec, timeval::TimeVal};
-use user_lib::{exit, fork, gettimeofday, nanosleep, waitpid};
+use user_lib::*;
 
 fn sleepy() {
     let time: usize = 1000;
-    for i in 0..5 {
+    for i in 1..=5 {
         let mut rem = TimeSpec::from_ms(0);
-        nanosleep(&TimeSpec::from_ms(time), &mut rem);
-        println!("sleep {} x {} msecs.", i + 1, time);
+        if nanosleep(&TimeSpec::from_ms(time), &mut rem) != 0 {
+            println!("Interrupted, remaining {} msecs", rem.into_ms());
+        }
+        println!("sleep {} x {} msecs.", i, time);
     }
     exit(0);
 }
 
 #[no_mangle]
 pub fn main() -> i32 {
+    println!("begin sleep test");
     let mut old_time_val = TimeVal::from_usec(0);
     gettimeofday(&mut old_time_val);
     let pid = fork();
+    if pid == -1 {
+        println!("fork failed");
+        return -1;
+    }
+    println!("sleep test main process pid: {}", pid);
     let mut exit_code: i32 = 0;
     if pid == 0 {
+        println!("Child process begins sleepy");
         sleepy();
     }
     assert!(waitpid(pid as usize, &mut exit_code) == pid && exit_code == 0);

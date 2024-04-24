@@ -4,13 +4,14 @@ use alloc::sync::Arc;
 
 use arch::{
     interrupts::{disable_interrupt, enable_interrupt},
-    time::set_next_timer_irq,
+    time::{get_time_duration, set_next_timer_irq},
 };
 use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
     sepc, stval,
 };
+use timer::timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
 use crate::{
@@ -82,7 +83,7 @@ pub async fn trap_handler(task: &Arc<Task>) {
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");
-            // TODO: handle timeout events
+            TIMER_MANAGER.check(get_time_duration());
             unsafe { set_next_timer_irq() };
             yield_now().await;
         }

@@ -82,7 +82,7 @@ impl SigPending {
 
     pub fn has_signal_to_handle(&self, blocked: SigSet) -> bool {
         // if there is any signal in pending list and it haven't been blocked
-        (!blocked & self.bitmap).is_empty()
+        !(!blocked & self.bitmap).is_empty()
     }
 
     pub fn contain(&self, sig: Sig) -> bool {

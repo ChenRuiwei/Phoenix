@@ -117,55 +117,55 @@ macro_rules! syscall {
             syscall($id, [0, 0, 0, 0, 0, 0])
         }
     };
-    ($name:ident, $id:expr, $t:ty) => {
-        pub fn $name(a: $t) -> isize {
-            syscall($id, [a as usize, 0, 0, 0, 0, 0])
+    ($name:ident, $id:expr, $t0:ty) => {
+        pub fn $name(a0: $t0) -> isize {
+            syscall($id, [a0 as usize, 0, 0, 0, 0, 0])
         }
     };
-    ($name:ident, $id:expr, $t1:ty, $t2:ty) => {
-        pub fn $name(a1: $t1, a2: $t2) -> isize {
-            syscall($id, [a1 as usize, a2 as usize, 0, 0, 0, 0])
+    ($name:ident, $id:expr, $t0:ty, $t1:ty) => {
+        pub fn $name(a0: $t0, a1: $t1) -> isize {
+            syscall($id, [a0 as usize, a1 as usize, 0, 0, 0, 0])
         }
     };
-    ($name:ident, $id:expr, $t1:ty, $t2:ty, $t3:ty) => {
-        pub fn $name(a1: $t1, a2: $t2, a3: $t3) -> isize {
-            syscall($id, [a1 as usize, a2 as usize, a3 as usize, 0, 0, 0])
+    ($name:ident, $id:expr, $t0:ty, $t1:ty, $t2:ty) => {
+        pub fn $name(a0: $t0, a1: $t1, a2: $t2) -> isize {
+            syscall($id, [a0 as usize, a1 as usize, a2 as usize, 0, 0, 0])
         }
     };
-    ($name:ident, $id:expr, $t1:ty, $t2:ty, $t3:ty, $t4:ty) => {
-        pub fn $name(a1: $t1, a2: $t2, a3: $t3, a4: $t4) -> isize {
+    ($name:ident, $id:expr, $t0:ty, $t1:ty, $t2:ty, $t3:ty) => {
+        pub fn $name(a0: $t0, a1: $t1, a2: $t2, a3: $t3) -> isize {
             syscall(
                 $id,
-                [a1 as usize, a2 as usize, a3 as usize, a4 as usize, 0, 0],
+                [a0 as usize, a1 as usize, a2 as usize, a3 as usize, 0, 0],
             )
         }
     };
-    ($name:ident, $id:expr, $t1:ty, $t2:ty, $t3:ty, $t4:ty, $t5:ty) => {
-        pub fn $name(a1: $t1, a2: $t2, a3: $t3, a4: $t4, a5: $t5) -> isize {
+    ($name:ident, $id:expr, $t0:ty, $t1:ty, $t2:ty, $t3:ty, $t4:ty) => {
+        pub fn $name(a0: $t0, a1: $t1, a2: $t2, a3: $t3, a4: $t4) -> isize {
             syscall(
                 $id,
                 [
+                    a0 as usize,
                     a1 as usize,
                     a2 as usize,
                     a3 as usize,
                     a4 as usize,
-                    a5 as usize,
                     0,
                 ],
             )
         }
     };
-    ($name:ident, $id:expr, $t1:ty, $t2:ty, $t3:ty, $t4:ty, $t5:ty, $t6:ty) => {
-        pub fn $name(a1: $t1, a2: $t2, a3: $t3, a4: $t4, a5: $t5, a6: $t6) -> isize {
+    ($name:ident, $id:expr, $t0:ty, $t1:ty, $t2:ty, $t3:ty, $t4:ty, $t5:ty) => {
+        pub fn $name(a0: $t0, a1: $t1, a2: $t2, a3: $t3, a4: $t4, a5: $t5) -> isize {
             syscall(
                 $id,
                 [
+                    a0 as usize,
                     a1 as usize,
                     a2 as usize,
                     a3 as usize,
                     a4 as usize,
                     a5 as usize,
-                    a6 as usize,
                 ],
             )
         }

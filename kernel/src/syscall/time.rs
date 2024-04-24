@@ -48,6 +48,10 @@ pub async fn sys_nanosleep(
     rem: UserWritePtr<TimeSpec>,
 ) -> SyscallResult {
     let task = current_task();
+    if req.is_null() {
+        log::info!("[sys_nanosleep] sleep request is null");
+        return Ok(0);
+    }
     let req = req.read(task)?;
     let sleep_ms = req.into_ms();
     let current_ms = get_time_ms();

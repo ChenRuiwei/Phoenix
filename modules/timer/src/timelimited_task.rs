@@ -40,6 +40,7 @@ impl<F: Future + Send + 'static> Future for TimeLimitedTaskFuture<F> {
         match ret {
             Poll::Pending => {
                 if get_time_duration() >= this.expire {
+                    log::info!("[TimeLimitedTaskFuture] time out");
                     Poll::Ready(TimeLimitedTaskOutput::TimeOut)
                 } else {
                     if !this.in_timermanager {
@@ -48,6 +49,7 @@ impl<F: Future + Send + 'static> Future for TimeLimitedTaskFuture<F> {
                             callback: Some(cx.waker().clone()),
                         });
                         this.in_timermanager = true;
+                        log::info!("[TimeLimitedTaskFuture] first add into TIME_MANAGER");
                     }
                     Poll::Pending
                 }

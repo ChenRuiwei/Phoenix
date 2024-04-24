@@ -1,6 +1,6 @@
 pub use signal::sigset::Sig;
 use signal::sigset::SigSet;
-pub use time::timeval::TimeVal;
+pub use time::{timespec::TimeSpec, timeval::TimeVal};
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct SigAction {

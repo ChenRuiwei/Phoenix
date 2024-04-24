@@ -12,7 +12,7 @@ fn main() -> i32 {
     println!("begin exec_test");
     if fork() == 0 {
         execve(
-            "sig_simple\0",
+            "sleep_test\0",
             &[
                 "busybox\0".as_ptr(),
                 "sh\0".as_ptr(),

@@ -2,19 +2,38 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "build kernel",
+            "label": "launch qemu gdb server",
             "type": "shell",
             "command": "make",
-            "args": [
-                "drun",
-                "MODE=debug"
-            ],
+            "args": ["debug"],
             "isBackground": true,
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "problemMatcher": []
+            "problemMatcher": [
+                {
+                    "pattern": [
+                        {
+                            "regexp": ".*",
+                            "file": 1,
+                            "location": 2,
+                            "message": 3
+                        }
+                    ],
+                    "background": {
+                        "activeOnStart": true,
+                        "beginsPattern": "^.*qemu-system.*",
+                        "endsPattern": "^.*Ready to accept GDB connection.*"
+                    }
+                }
+            ],
+            "presentation": {
+                "reveal": "always",
+                "focus": true,
+                "panel": "new",
+                "clear": true
+            }
         }
     ]
 }

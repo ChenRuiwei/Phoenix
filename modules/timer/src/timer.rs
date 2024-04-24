@@ -44,6 +44,21 @@ impl TimerManager {
     pub fn add_timer(&self, timer: Timer) {
         self.timers.lock().push(Reverse(timer));
     }
+
+    pub fn check(&self, current: Duration) {
+        let mut timers = self.timers.lock();
+        if let Some(timer) = timers.peek() {
+            if current >= timer.0.expire {
+                log::info!(
+                    "[Timer Manager] there is a timer expired, current:{:?}, expire:{:?}",
+                    current,
+                    timer.0.expire
+                );
+                let mut timer = timers.pop().unwrap().0;
+                timer.callback.take().unwrap().wake();
+            }
+        }
+    }
 }
 
 pub static TIMER_MANAGER: Lazy<TimerManager> = Lazy::new(TimerManager::new);

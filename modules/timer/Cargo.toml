@@ -9,3 +9,4 @@ edition = "2021"
 sync = { path = "../sync/" }
 spin = { version = "0.9", features = ["lazy"] }
 arch = { path = "../../arch" }
+log = "0.4"

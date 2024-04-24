@@ -129,16 +129,17 @@ pub async fn sys_wait4(
         let res_task = match target {
             WaitFor::AnyChild => children.values().find(|c| c.is_zombie()),
             WaitFor::Pid(pid) => {
-                let c = children.get(&pid).ok_or({
-                    log::error!("[sys_wait4] fail: no child with pid {pid}");
-                    SysError::ECHILD
-                })?;
-                if c.is_zombie() {
-                    task.time_stat()
-                        .update_child_time(c.time_stat().user_system_time());
-                    Some(c)
+                if let Some(child) = children.get(&pid) {
+                    if child.is_zombie() {
+                        task.time_stat()
+                            .update_child_time(child.time_stat().user_system_time());
+                        Some(child)
+                    } else {
+                        None
+                    }
                 } else {
-                    None
+                    log::error!("[sys_wait4] fail: no child with pid {pid}");
+                    return Err(SysError::ECHILD);
                 }
             }
             WaitFor::PGid(_) => unimplemented!(),
