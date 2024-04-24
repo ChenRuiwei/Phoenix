@@ -38,4 +38,3 @@ impl From<TimeSpec> for Duration {
         Duration::new(time_spec.tv_sec as u64, time_spec.tv_nsec as u32)
     }
 }
-

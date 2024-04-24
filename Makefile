@@ -126,6 +126,7 @@ fs-img:
 	@mkdir -p mnt
 	@mount -t vfat -o user,umask=000,utf8=1 --source $(FS_IMG) --target mnt
 	@cp -r $(TEST_DIR)/* mnt
+	@cp -r $(USER_ELFS) mnt
 	@umount mnt
 	@rm -rf mnt
 	@chmod -R 777 $(FS_IMG_DIR)

@@ -28,7 +28,10 @@ use crate::{
         misc::UtsName,
         resource::{sys_getrusage, Rusage},
         signal::{sys_sigaction, sys_sigreturn},
-        time::{sys_clock_getres, sys_clock_gettime, sys_clock_settime, sys_gettimeofday, sys_nanosleep, sys_times},
+        time::{
+            sys_clock_getres, sys_clock_gettime, sys_clock_settime, sys_gettimeofday,
+            sys_nanosleep, sys_times,
+        },
     },
     task::signal::SigAction,
 };

@@ -50,7 +50,7 @@ fn main() -> i32 {
     ];
     if fork() == 0 {
         execve(
-            "sleep_test\0",
+            "hello_world\0",
             &[
                 "busybox\0".as_ptr(),
                 "sh\0".as_ptr(),
