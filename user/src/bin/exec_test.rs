@@ -10,9 +10,47 @@ use user_lib::{execve, fork, println, wait};
 #[no_mangle]
 fn main() -> i32 {
     println!("begin exec_test");
+    let tests = [
+        "brk",
+        "chdir",
+        "clone",
+        "close",
+        "dup",
+        "dup2",
+        "execve",
+        "exit",
+        "fork",
+        "fstat",
+        "getcwd",
+        "getdents",
+        "getpid",
+        "getppid",
+        "gettimeofday",
+        "mkdir_",
+        "mmap",
+        "mnt",
+        "mount",
+        "munmap",
+        "open",
+        "openat",
+        "pipe",
+        "read",
+        "run-all.sh",
+        "sleep",
+        "test_echo",
+        "text.txt",
+        "times",
+        "umount",
+        "uname",
+        "unlink",
+        "wait",
+        "waitpid",
+        "write",
+        "yield",
+    ];
     if fork() == 0 {
         execve(
-            "hello_world\0",
+            "yield\0",
             &[
                 "busybox\0".as_ptr(),
                 "sh\0".as_ptr(),

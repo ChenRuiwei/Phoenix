@@ -1,11 +1,11 @@
 use alloc::sync::{Arc, Weak};
 
 use systype::SysError;
-use vfs_core::{Dentry, DentryMeta, Inode, SuperBlock};
+use vfs_core::{Dentry, DentryMeta, Inode, InodeMode, SuperBlock};
 
 use crate::{
     as_sys_err,
-    file::FatFileFile,
+    file::{FatDirFile, FatFileFile},
     inode::{dir::FatDirInode, file::FatFileInode},
 };
 
@@ -42,10 +42,22 @@ impl Dentry for FatDentry {
     }
 
     fn open(&self) -> systype::SysResult<Arc<dyn vfs_core::File>> {
-        if let Ok(inode) = self.inode().downcast_arc::<FatFileInode>() {
-            Ok(FatFileFile::new(self.path(), inode))
-        } else {
-            Err(SysError::EISDIR)
+        match self.inode().mode() {
+            InodeMode::File => {
+                let inode = self
+                    .inode()
+                    .downcast_arc::<FatFileInode>()
+                    .map_err(|_| SysError::EIO)?;
+                Ok(FatFileFile::new(self.path(), inode))
+            }
+            InodeMode::Dir => {
+                let inode = self
+                    .inode()
+                    .downcast_arc::<FatDirInode>()
+                    .map_err(|_| SysError::EIO)?;
+                Ok(FatDirFile::new(self.path(), inode))
+            }
+            _ => Err(SysError::EPERM),
         }
     }
 

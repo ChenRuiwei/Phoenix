@@ -88,7 +88,7 @@ pub fn will_write_fail(vaddr: usize) -> bool {
                 let scause: Scause = try_op_ret.scause();
                 match scause.cause() {
                     scause::Trap::Interrupt(i) => unreachable!("{:?}", i),
-                    scause::Trap::Exception(e) => assert_eq!(e, Exception::LoadPageFault),
+                    scause::Trap::Exception(e) => assert_eq!(e, Exception::StorePageFault),
                 };
             });
             true

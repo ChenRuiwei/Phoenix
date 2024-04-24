@@ -9,6 +9,7 @@ edition = "2021"
 driver = { path = "../../driver/" }
 systype = { path = "../systype/" }
 sync = { path = "../sync/" }
+config = { path = "../../config/" }
 
 bitflags = "2.5"
 log = "0.4"

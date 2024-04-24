@@ -164,8 +164,9 @@ impl NodePermission {
     }
 }
 
+/// Directory entry.
 #[derive(Debug, Clone)]
-pub struct DirEntry {
+pub struct DirEnt {
     pub ino: u64,
     pub ty: InodeMode,
     pub name: String,

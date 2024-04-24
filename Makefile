@@ -30,7 +30,9 @@ USER_BINS := $(patsubst $(USER_APPS_DIR)/%.rs, $(TARGET_DIR)/%.bin, $(USER_APPS)
 FS_IMG_DIR := ./fs-img
 FS_IMG := $(FS_IMG_DIR)/sdcard.img
 TEST := 23
-TEST_DIR := ./testcase/$(TEST)
+# TEST_DIR := ./testcase/$(TEST)
+TEST_DIR := ./testcase/24/preliminary/
+
 
 # Crate features
 export STRACE :=

@@ -1,5 +1,8 @@
 #![no_std]
 #![no_main]
+#![feature(format_args_nl)]
+
+pub mod fd_table;
 
 extern crate alloc;
 
@@ -9,10 +12,10 @@ use alloc::{
     sync::Arc,
 };
 
-use driver::BLOCK_DEVICE;
+use driver::{println, BLOCK_DEVICE};
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
-use vfs_core::{Dentry, DentryMeta, File, FileMeta, FileSystemType, MountFlags};
+use vfs_core::{Dentry, DentryMeta, DirEnt, File, FileMeta, FileSystemType, MountFlags};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
@@ -21,7 +24,7 @@ pub static FS_MANAGER: Mutex<BTreeMap<String, Arc<dyn FileSystemType>>> =
 
 type DiskFsType = fat32::FatFsType;
 
-const DISK_FS_NAME: &str = "fat32";
+pub const DISK_FS_NAME: &str = "fat32";
 
 fn register_all_fs() {
     let diskfs = DiskFsType::new();
@@ -39,7 +42,7 @@ pub fn init_filesystem() -> SysResult<()> {
         MountFlags::empty(),
         Some(BLOCK_DEVICE.get().unwrap().clone()),
     )?;
-    test();
+    test()?;
     Ok(())
 }
 
@@ -54,11 +57,16 @@ pub fn test() -> SysResult<()> {
 
     let root_dentry = sb.root_dentry();
 
-    let dentry = root_dentry.lookup("busybox")?;
-    let file = dentry.open()?;
-    file.read(0, &mut buf);
+    // let root_dir = root_dentry.open()?;
+    // while let Some(dirent) = root_dir.read_dir()? {
+    //     println!("{}", dirent.name);
+    // }
 
-    log::info!("{}", file.path());
-    log::info!("{:?}", buf);
+    // let dentry = root_dentry.lookup("busybox")?;
+    // let file = dentry.open()?;
+    // file.read(0, &mut buf);
+    // log::info!("{}", file.path());
+    // log::info!("{:?}", buf);
+
     Ok(())
 }
