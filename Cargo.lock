@@ -16,9 +16,9 @@ dependencies = [
 
 [[package]]
 name = "allocator-api2"
-version = "0.2.16"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0942ffc6dcaadf03badf6e6a2d0228460359d5e34b57ccdc720b7382dfbd5ec5"
+checksum = "5c6cb57a04249c6480766f7f7cef5467412af1490f8d1e243141daddada3264f"
 
 [[package]]
 name = "arch"
@@ -48,9 +48,9 @@ dependencies = [
 
 [[package]]
 name = "autocfg"
-version = "1.1.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
+checksum = "f1fdabc7756949593fe60f30ec81974b613357de856987752631dea1e3394c80"
 
 [[package]]
 name = "bit_field"
@@ -130,6 +130,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "248e3bacc7dc6baa3b21e405ee045c3047101a49145e7e9eca583ab4c2ca5345"
 
 [[package]]
+name = "downcast-rs"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
+
+[[package]]
 name = "driver"
 version = "0.1.0"
 dependencies = [
@@ -138,6 +144,7 @@ dependencies = [
  "irq_count",
  "log",
  "memory",
+ "spin",
  "sync",
  "systype",
  "virtio-drivers",
@@ -155,6 +162,29 @@ version = "0.1.0"
 dependencies = [
  "async-task",
  "sync",
+]
+
+[[package]]
+name = "fat32"
+version = "0.1.0"
+dependencies = [
+ "downcast-rs",
+ "driver",
+ "fatfs",
+ "log",
+ "sync",
+ "systype",
+ "vfs-core",
+]
+
+[[package]]
+name = "fatfs"
+version = "0.4.0"
+source = "git+https://github.com/ChenRuiwei/rust-fatfs#35a9dd0363257fd855c111cb95eb04f751f14760"
+dependencies = [
+ "bitflags",
+ "log",
+ "spin",
 ]
 
 [[package]]
@@ -203,6 +233,7 @@ dependencies = [
  "time",
  "timer",
  "vfs",
+ "vfs-core",
  "virtio-drivers",
  "xmas-elf",
 ]
@@ -219,9 +250,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.20"
+version = "0.4.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
+checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 
 [[package]]
 name = "logging"
@@ -259,18 +290,18 @@ checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.78"
+version = "1.0.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2422ad645d89c99f8f3e6b88a9fdeca7fabeac836b1002371c4367c8f984aae"
+checksum = "3d1597b0c024618f09a9c3b8655b7e430397a36d23fdafec26d6965e9eec3eba"
 dependencies = [
  "unicode-ident",
 ]
 
 [[package]]
 name = "quote"
-version = "1.0.35"
+version = "1.0.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "291ec9ab5efd934aaf503a6466c5d5251535d108ee747472c3977cc5acc868ef"
+checksum = "0fa76aaf39101c457836aec0ce2316dbdc3ab723cdda1c6bd4e6ad4208acaca7"
 dependencies = [
  "proc-macro2",
 ]
@@ -331,9 +362,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.55"
+version = "2.0.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "002a1b3dbf967edfafc32655d0f377ab0bb7b994aa1d32c8cc7e9b8bf3ebb8f0"
+checksum = "909518bc7b1c9b779f1bbf07f2929d35af9f0f37e47c6e9ef7f9dddc1e1821f3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -397,7 +428,25 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 name = "vfs"
 version = "0.1.0"
 dependencies = [
+ "driver",
+ "fat32",
+ "log",
+ "sync",
+ "systype",
+ "vfs-core",
+]
+
+[[package]]
+name = "vfs-core"
+version = "0.1.0"
+dependencies = [
  "bitflags",
+ "config",
+ "downcast-rs",
+ "driver",
+ "log",
+ "spin",
+ "sync",
  "systype",
 ]
 

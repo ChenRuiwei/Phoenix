@@ -14,8 +14,9 @@ pub type ASyscallResult<'a> = SysFuture<'a, SyscallResult>;
 pub type ASysResult<'a, T> = SysFuture<'a, SysResult<T>>;
 
 /// Linux specific error codes defined in `errno.h`.
-#[repr(i32)]
+// See in "asm-generic/errno-base.h" and "asm-generic/errno.h".
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(i32)]
 pub enum SysError {
     /// Operation not permitted
     EPERM = 1,

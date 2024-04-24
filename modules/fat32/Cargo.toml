@@ -1,0 +1,19 @@
+[package]
+name = "fat32"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+driver = { path = "../../driver/" }
+vfs-core = { path = "../vfs-core/" }
+sync = { path = "../sync/" }
+systype = { path = "../systype/" }
+
+log = "0.4"
+fatfs = { git = "https://github.com/ChenRuiwei/rust-fatfs", default-features = false, features = [
+    "alloc",
+    "lfn",
+] }
+downcast-rs = { version = "1.2", default-features = false }

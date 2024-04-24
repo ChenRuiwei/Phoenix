@@ -16,6 +16,7 @@ systype = { path = "../modules/systype/" }
 memory = { path = "../modules/memory/" }
 async_utils = { path = "../modules/async_utils/" }
 vfs = { path = "../modules/vfs/" }
+vfs-core = { path = "../modules/vfs-core/" }
 irq_count = { path = "../crates/irq_count/" }
 recycle_allocator = { path = "../crates/recycle_allocator/" }
 time = { path = "../modules/time/" }

@@ -1,0 +1,17 @@
+[package]
+name = "vfs-core"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+driver = { path = "../../driver/" }
+systype = { path = "../systype/" }
+sync = { path = "../sync/" }
+config = { path = "../../config/" }
+
+bitflags = "2.5"
+log = "0.4"
+spin = "0.9"
+downcast-rs = { version = "1.2", default-features = false }

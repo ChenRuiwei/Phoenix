@@ -3,6 +3,7 @@
 use alloc::{string::String, vec::Vec};
 
 use systype::{SysError, SysResult, SyscallResult};
+use vfs::{DISK_FS_NAME, FS_MANAGER};
 
 use crate::{
     loader::get_app_data_by_name,
@@ -239,8 +240,23 @@ pub fn sys_execve(
     // };
     //
 
+    let mut buf = [0; 512];
+    let sb = FS_MANAGER
+        .lock()
+        .get(DISK_FS_NAME)
+        .unwrap()
+        .get_sb("/")
+        .unwrap();
+
+    let root_dentry = sb.root_dentry();
+    let mut elf_data = Vec::new();
+    let test_dentry = root_dentry.lookup(&path_str).unwrap();
+    let test_file = test_dentry.open().unwrap();
+    test_file.read_all_from_start(&mut elf_data);
+
     // TODO: now we just load app data into kernel and read it
-    task.do_execve(get_app_data_by_name(path_str.as_str()).unwrap(), argv, envp);
+    // task.do_execve(get_app_data_by_name(path_str.as_str()).unwrap(), argv, envp);
+    task.do_execve(&elf_data, argv, envp);
     Ok(0)
 }
 
@@ -260,7 +276,8 @@ pub fn sys_clone(
     _tls_ptr: usize,
     _chilren_tid_ptr: usize,
 ) -> SyscallResult {
-    let flags = CloneFlags::from_bits(flags.try_into().unwrap()).unwrap();
+    let exit_signal = flags & 0xff;
+    let flags = CloneFlags::from_bits(flags as u64 & !0xff).unwrap();
 
     let stack_begin = if stack_ptr != 0 {
         Some(stack_ptr.into())
