@@ -5,7 +5,7 @@ use alloc::{
 };
 
 use driver::BlockDevice;
-use systype::SysResult;
+use systype::{SysError, SysResult};
 
 use crate::{Dentry, File, MountFlags, Mutex, SuperBlock};
 
@@ -31,7 +31,7 @@ pub trait FileSystemType: Send + Sync {
     /// Call when a new instance of this filesystem should be mounted.
     // NOTE: cannot be `&Arc<Self>` for object safety
     // https://doc.rust-lang.org/reference/items/traits.html#object-safety
-    fn mount(
+    fn arc_mount(
         self: Arc<Self>,
         abs_mount_path: &str,
         flags: MountFlags,
@@ -54,17 +54,22 @@ pub trait FileSystemType: Send + Sync {
 }
 
 impl dyn FileSystemType {
-    /// create a fs instance or return the old one if this fs only allow one
-    /// instance
-    ///
-    /// It likes [`VfsFsType::mount`], but it will not take ownership of `self`
-    pub fn i_mount(
+    pub fn mount(
         self: &Arc<Self>,
         abs_mount_path: &str,
         flags: MountFlags,
         dev: Option<Arc<dyn BlockDevice>>,
     ) -> SysResult<Arc<dyn Dentry>> {
-        self.clone().mount(abs_mount_path, flags, dev)
+        self.clone().arc_mount(abs_mount_path, flags, dev)
+    }
+
+    pub fn get_sb(&self, abs_mount_path: &str) -> SysResult<Arc<dyn SuperBlock>> {
+        self.meta()
+            .supers
+            .lock()
+            .get(abs_mount_path)
+            .map(Arc::clone)
+            .ok_or(SysError::ENOENT)
     }
 }
 

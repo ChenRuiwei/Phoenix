@@ -1,9 +1,16 @@
-use alloc::sync::Arc;
+use alloc::{
+    string::{String, ToString},
+    sync::Arc,
+};
 
 use fatfs::{Read, Seek, Write};
 use vfs_core::{File, FileMeta, Inode};
 
-use crate::{as_sys_err, FatFile, Shared};
+use crate::{
+    as_sys_err,
+    inode::{self, file::FatFileInode},
+    FatFile, Shared,
+};
 
 pub struct FatFileFile {
     meta: FileMeta,
@@ -11,8 +18,11 @@ pub struct FatFileFile {
 }
 
 impl FatFileFile {
-    pub fn new(inode: Arc<dyn Inode>, file: Shared<FatFile>) -> Arc<Self> {
-        todo!()
+    pub fn new(path: String, inode: Arc<FatFileInode>) -> Arc<Self> {
+        Arc::new(Self {
+            meta: FileMeta::new(path, inode.clone()),
+            file: inode.file.clone(),
+        })
     }
 }
 
@@ -67,10 +77,6 @@ impl File for FatFileFile {
     }
 
     fn flush(&self) -> systype::SysResult<usize> {
-        todo!()
-    }
-
-    fn open(&self, inode: Arc<dyn Inode>) -> systype::SysResult<Arc<dyn File>> {
         todo!()
     }
 }

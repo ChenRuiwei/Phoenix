@@ -3,22 +3,29 @@
 
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, string::String, sync::Arc};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    sync::Arc,
+};
 
 use driver::BLOCK_DEVICE;
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
-use vfs_core::{FileSystemType, MountFlags};
+use vfs_core::{Dentry, DentryMeta, File, FileMeta, FileSystemType, MountFlags};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
-pub static FS_TYPES: Mutex<BTreeMap<String, Arc<dyn FileSystemType>>> = Mutex::new(BTreeMap::new());
+pub static FS_MANAGER: Mutex<BTreeMap<String, Arc<dyn FileSystemType>>> =
+    Mutex::new(BTreeMap::new());
 
 type DiskFsType = fat32::FatFsType;
 
+const DISK_FS_NAME: &str = "fat32";
+
 fn register_all_fs() {
     let diskfs = DiskFsType::new();
-    FS_TYPES.lock().insert(diskfs.fs_name(), diskfs);
+    FS_MANAGER.lock().insert(diskfs.fs_name(), diskfs);
 
     log::info!("[vfs] register fs success");
 }
@@ -26,11 +33,32 @@ fn register_all_fs() {
 /// Init the filesystem
 pub fn init_filesystem() -> SysResult<()> {
     register_all_fs();
-    let diskfs = FS_TYPES.lock().get("fat32").unwrap().clone();
-    let diskfs_root = diskfs.i_mount(
+    let diskfs = FS_MANAGER.lock().get(DISK_FS_NAME).unwrap().clone();
+    let diskfs_root = diskfs.mount(
         "/",
         MountFlags::empty(),
         Some(BLOCK_DEVICE.get().unwrap().clone()),
     )?;
+    test();
+    Ok(())
+}
+
+pub fn test() -> SysResult<()> {
+    let mut buf = [0; 512];
+    let sb = FS_MANAGER
+        .lock()
+        .get(DISK_FS_NAME)
+        .unwrap()
+        .get_sb("/")
+        .unwrap();
+
+    let root_dentry = sb.root_dentry();
+
+    let dentry = root_dentry.lookup("busybox")?;
+    let file = dentry.open()?;
+    file.read(0, &mut buf);
+
+    log::info!("{}", file.path());
+    log::info!("{:?}", buf);
     Ok(())
 }

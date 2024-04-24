@@ -2,7 +2,7 @@
 DOCKER_NAME = phoenix
 BOARD := qemu
 export TARGET = riscv64gc-unknown-none-elf
-export MODE = release
+export MODE = debug
 export LOG = error
 
 
@@ -30,19 +30,11 @@ USER_BINS := $(patsubst $(USER_APPS_DIR)/%.rs, $(TARGET_DIR)/%.bin, $(USER_APPS)
 FS_IMG_DIR := ./fs-img
 FS_IMG := $(FS_IMG_DIR)/sdcard.img
 TEST := 23
-ifeq ($(TEST), rootfs)
-	TEST_DIR := ./Titanix-rootfs/rootfs
-else
-	TEST_DIR := ./testcase/$(TEST)
-endif
-
+TEST_DIR := ./testcase/$(TEST)
 
 # Crate features
 export STRACE :=
-export SUBMIT :=
-export TMPFS :=
 export SMP :=
-export PRELIMINARY :=
 
 
 # Args

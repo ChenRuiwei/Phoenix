@@ -14,6 +14,7 @@ extern crate alloc;
 
 pub const PERMISSION_LEN: usize = 9;
 
+use alloc::sync::Arc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub use dentry::*;
@@ -22,6 +23,7 @@ pub use file_system_type::*;
 pub use inode::*;
 pub use super_block::*;
 use sync::mutex::SpinNoIrqLock;
+use systype::SysResult;
 pub use utils::*;
 
 type Mutex<T> = SpinNoIrqLock<T>;

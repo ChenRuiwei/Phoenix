@@ -16,3 +16,4 @@ fatfs = { git = "https://github.com/ChenRuiwei/rust-fatfs", default-features = f
     "alloc",
     "lfn",
 ] }
+downcast-rs = { version = "1.2", default-features = false }

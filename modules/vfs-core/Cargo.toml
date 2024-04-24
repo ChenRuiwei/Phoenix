@@ -13,3 +13,4 @@ sync = { path = "../sync/" }
 bitflags = "2.5"
 log = "0.4"
 spin = "0.9"
+downcast-rs = { version = "1.2", default-features = false }

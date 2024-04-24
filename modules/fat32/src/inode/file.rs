@@ -1,13 +1,13 @@
 use alloc::sync::Arc;
 
 use systype::{SysError, SysResult};
-use vfs_core::{Inode, InodeMeta, InodeMode, SuperBlock};
+use vfs_core::{Dentry, Inode, InodeMeta, InodeMode, SuperBlock};
 
 use crate::{file::FatFileFile, FatFile, Mutex, Shared};
 
 pub struct FatFileInode {
     meta: InodeMeta,
-    file: Shared<FatFile>,
+    pub file: Shared<FatFile>,
 }
 
 impl FatFileInode {
@@ -28,10 +28,6 @@ impl Inode for FatFileInode {
     }
 
     fn create(&self, dentry: Arc<dyn vfs_core::Dentry>, mode: InodeMode) -> systype::SysResult<()> {
-        Err(SysError::EIO)
-    }
-
-    fn lookup(&self, dentry: Arc<dyn vfs_core::Dentry>) -> systype::SysResult<()> {
         Err(SysError::EIO)
     }
 

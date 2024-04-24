@@ -23,7 +23,7 @@ impl FileSystemType for FatFsType {
         &self.meta
     }
 
-    fn mount(
+    fn arc_mount(
         self: Arc<Self>,
         abs_mnt_path: &str,
         flags: vfs_core::MountFlags,

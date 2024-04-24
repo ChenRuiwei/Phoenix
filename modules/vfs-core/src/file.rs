@@ -77,9 +77,6 @@ pub trait File: Send + Sync {
     /// is incremented by the number of bytes actually written.
     fn write(&self, offset: usize, buf: &[u8]) -> SysResult<usize>;
 
-    /// Called by the VFS when an inode should be opened.
-    fn open(&self, inode: Arc<dyn Inode>) -> SysResult<Arc<dyn File>>;
-
     fn flush(&self) -> SysResult<usize>;
 
     fn inode(&self) -> Arc<dyn Inode> {
@@ -87,4 +84,8 @@ pub trait File: Send + Sync {
     }
 }
 
-impl dyn File {}
+impl dyn File {
+    pub fn path(&self) -> String {
+        self.meta().path.clone()
+    }
+}

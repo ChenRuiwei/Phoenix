@@ -130,6 +130,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "248e3bacc7dc6baa3b21e405ee045c3047101a49145e7e9eca583ab4c2ca5345"
 
 [[package]]
+name = "downcast-rs"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
+
+[[package]]
 name = "driver"
 version = "0.1.0"
 dependencies = [
@@ -162,6 +168,7 @@ dependencies = [
 name = "fat32"
 version = "0.1.0"
 dependencies = [
+ "downcast-rs",
  "driver",
  "fatfs",
  "log",
@@ -433,6 +440,7 @@ name = "vfs-core"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "downcast-rs",
  "driver",
  "log",
  "spin",

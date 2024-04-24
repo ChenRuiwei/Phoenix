@@ -5,6 +5,7 @@ use alloc::{
 };
 use core::sync::atomic::AtomicUsize;
 
+use downcast_rs::{impl_downcast, DowncastSync};
 use spin::Mutex;
 use systype::{SysError, SysResult};
 
@@ -53,21 +54,12 @@ impl InodeMeta {
     }
 }
 
-pub trait Inode: Send + Sync {
+pub trait Inode: Send + Sync + DowncastSync {
     fn meta(&self) -> &InodeMeta;
 
     /// Called by the open(2) and creat(2) system calls. Create a inode for a
     /// dentry in the directory inode.
     fn create(&self, dentry: Arc<dyn Dentry>, mode: InodeMode) -> SysResult<()>;
-
-    /// Called when the VFS needs to look up an inode in a parent directory.
-    ///
-    /// If the named inode does not exist a NULL inode should be inserted into
-    /// the dentry (this is called a negative dentry). Returning an error code
-    /// from this routine must only be done on a real error, otherwise creating
-    /// inodes with system calls like create(2), mknod(2), mkdir(2) and so on
-    /// will fail.
-    fn lookup(&self, dentry: Arc<dyn Dentry>) -> SysResult<()>;
 
     fn get_attr(&self) -> SysResult<Stat>;
 }
@@ -85,6 +77,8 @@ impl dyn Inode {
         self.meta().inner.lock().size = size;
     }
 }
+
+impl_downcast!(sync Inode);
 
 // 文件与文件夹类型
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
