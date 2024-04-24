@@ -29,16 +29,14 @@ pub trait FileSystemType: Send + Sync {
     fn meta(&self) -> &FileSystemTypeMeta;
 
     /// Call when a new instance of this filesystem should be mounted.
-    // NOTE: `&Arc<Self>` in a trait that `Self` has to be sized
-    // https://stackoverflow.com/questions/70814508/understanding-the-trait-x-cannot-be-made-into-an-object-for-mut-boxself-p
+    // NOTE: cannot be `&Arc<Self>` for object safety
+    // https://doc.rust-lang.org/reference/items/traits.html#object-safety
     fn mount(
-        self: &Arc<Self>,
+        self: Arc<Self>,
         abs_mount_path: &str,
         flags: MountFlags,
         dev: Option<Arc<dyn BlockDevice>>,
-    ) -> SysResult<Arc<dyn Dentry>>
-    where
-        Self: Sized;
+    ) -> SysResult<Arc<dyn Dentry>>;
 
     /// Call when an instance of this filesystem should be shut down.
     fn kill_sb(&self, sb: Arc<dyn SuperBlock>) -> SysResult<()>;
@@ -49,11 +47,24 @@ pub trait FileSystemType: Send + Sync {
             .lock()
             .insert(abs_mount_path.to_string(), super_block);
     }
+
+    fn fs_name(&self) -> String {
+        self.meta().name.clone()
+    }
 }
 
 impl dyn FileSystemType {
-    fn fs_name(&self) -> String {
-        self.meta().name.clone()
+    /// create a fs instance or return the old one if this fs only allow one
+    /// instance
+    ///
+    /// It likes [`VfsFsType::mount`], but it will not take ownership of `self`
+    pub fn i_mount(
+        self: &Arc<Self>,
+        abs_mount_path: &str,
+        flags: MountFlags,
+        dev: Option<Arc<dyn BlockDevice>>,
+    ) -> SysResult<Arc<dyn Dentry>> {
+        self.clone().mount(abs_mount_path, flags, dev)
     }
 }
 

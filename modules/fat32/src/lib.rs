@@ -4,7 +4,7 @@
 use alloc::sync::Arc;
 
 use driver::BlockDevice;
-use fatfs::{DefaultTimeProvider, Dir, File, FileSystem, LossyOemCpConverter};
+use fatfs::{DefaultTimeProvider, Dir, Error, File, FileSystem, LossyOemCpConverter};
 use sync::mutex::SpinNoIrqLock;
 use systype::SysError;
 
@@ -12,10 +12,18 @@ use systype::SysError;
 extern crate alloc;
 
 mod dentry;
+mod file;
 mod fs;
 mod inode;
 
+pub use fs::FatFsType;
+
 type Mutex<T> = SpinNoIrqLock<T>;
+type Shared<T> = Arc<Mutex<T>>;
+
+fn new_shared<T>(val: T) -> Shared<T> {
+    Arc::new(Mutex::new(val))
+}
 
 type FatDir = Dir<DiskCursor, DefaultTimeProvider, LossyOemCpConverter>;
 type FatFile = File<DiskCursor, DefaultTimeProvider, LossyOemCpConverter>;
@@ -23,6 +31,7 @@ type FatFs = FileSystem<DiskCursor, DefaultTimeProvider, LossyOemCpConverter>;
 
 pub const fn as_sys_err(err: fatfs::Error<()>) -> systype::SysError {
     match err {
+        Error::NotFound => SysError::ENOENT,
         _ => SysError::EIO,
     }
 }

@@ -75,6 +75,7 @@ fn rust_main(hart_id: usize) {
         loader::init();
         // fs::init();
         // fs::test();
+        vfs::init_filesystem();
         task::spawn_kernel_task(async move {
             task::add_init_proc();
         });

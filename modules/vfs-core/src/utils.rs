@@ -14,6 +14,7 @@ bitflags::bitflags! {
         const O_WRONLY      = 1;
         const O_RDWR        = 2;
         const O_ACCMODE     = 3;
+        /// If pathname does not exist, create it as a regular file.
         const O_CREAT       = 0o100;
         const O_EXCL        = 0o200;
         const O_NOCTTY      = 0o400;

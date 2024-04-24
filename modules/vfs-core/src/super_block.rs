@@ -45,7 +45,7 @@ pub trait SuperBlock: Send + Sync {
     fn meta(&self) -> &SuperBlockMeta;
 
     /// Get filesystem statistics.
-    fn fs_stat(&self) -> SysResult<StatFs>;
+    fn stat_fs(&self) -> SysResult<StatFs>;
 
     /// Called when VFS is writing out all dirty data associated with a
     /// superblock.

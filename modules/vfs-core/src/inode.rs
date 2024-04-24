@@ -13,22 +13,8 @@ use crate::{
     file::File,
     super_block,
     utils::{NodePermission, RenameFlag, Stat, Time, TimeSpec},
-    SuperBlock,
+    Dentry, SuperBlock,
 };
-
-pub struct InodeAttr {
-    /// File mode.
-    pub mode: u32,
-    pub uid: u32,
-    pub gid: u32,
-    /// File size, in bytes.
-    ///
-    /// For truncate
-    pub size: u64,
-    pub atime: TimeSpec, // 最后访问时间
-    pub mtime: TimeSpec, // 最后修改时间
-    pub ctime: TimeSpec, // 最后改变时间
-}
 
 pub struct InodeMeta {
     /// Inode number.
@@ -43,15 +29,26 @@ pub struct InodeMeta {
 pub struct InodeMetaInner {
     /// Size of a file in bytes.
     pub size: usize,
+    /// Last access time.
+    pub atime: TimeSpec,
+    /// Last modification time.
+    pub mtime: TimeSpec,
+    /// Last status change time.
+    pub ctime: TimeSpec,
 }
 
 impl InodeMeta {
-    pub fn new(mode: InodeMode, super_block: &Arc<dyn SuperBlock>, size: usize) -> Self {
+    pub fn new(mode: InodeMode, super_block: Arc<dyn SuperBlock>, size: usize) -> Self {
         Self {
             ino: alloc_ino(),
             mode,
-            super_block: Arc::downgrade(super_block),
-            inner: Mutex::new(InodeMetaInner { size }),
+            super_block: Arc::downgrade(&super_block),
+            inner: Mutex::new(InodeMetaInner {
+                size,
+                atime: TimeSpec::default(),
+                mtime: TimeSpec::default(),
+                ctime: TimeSpec::default(),
+            }),
         }
     }
 }
@@ -59,13 +56,18 @@ impl InodeMeta {
 pub trait Inode: Send + Sync {
     fn meta(&self) -> &InodeMeta;
 
-    /// Create a new node with the given `path` in the directory
-    fn create(&self, _name: &str) -> SysResult<Arc<dyn Inode>>;
+    /// Called by the open(2) and creat(2) system calls. Create a inode for a
+    /// dentry in the directory inode.
+    fn create(&self, dentry: Arc<dyn Dentry>, mode: InodeMode) -> SysResult<()>;
 
-    /// Called by the VFS when an inode should be opened.
-    fn open(&self) -> SysResult<Arc<dyn File>>;
-
-    fn lookup(&self, name: &str) -> SysResult<Arc<dyn Inode>>;
+    /// Called when the VFS needs to look up an inode in a parent directory.
+    ///
+    /// If the named inode does not exist a NULL inode should be inserted into
+    /// the dentry (this is called a negative dentry). Returning an error code
+    /// from this routine must only be done on a real error, otherwise creating
+    /// inodes with system calls like create(2), mknod(2), mkdir(2) and so on
+    /// will fail.
+    fn lookup(&self, dentry: Arc<dyn Dentry>) -> SysResult<()>;
 
     fn get_attr(&self) -> SysResult<Stat>;
 }
@@ -73,6 +75,14 @@ pub trait Inode: Send + Sync {
 impl dyn Inode {
     pub fn mode(&self) -> InodeMode {
         self.meta().mode
+    }
+
+    pub fn size(&self) -> usize {
+        self.meta().inner.lock().size
+    }
+
+    pub fn set_size(&self, size: usize) {
+        self.meta().inner.lock().size = size;
     }
 }
 

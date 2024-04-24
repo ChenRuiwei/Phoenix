@@ -1,20 +1,20 @@
 use alloc::{collections::BTreeMap, sync::Arc};
 
 use vfs_core::{
-    DentryMeta, FileSystemType, FileSystemTypeMeta, InodeMode, SuperBlock, SuperBlockMeta,
+    DentryMeta, FileSystemType, FileSystemTypeMeta, InodeMode, StatFs, SuperBlock, SuperBlockMeta,
 };
 
-use crate::{dentry::FatDentry, inode::dir::FatDirInode, DiskCursor, FatFs, Mutex};
+use crate::{as_sys_err, dentry::FatDentry, inode::dir::FatDirInode, DiskCursor, FatFs, Mutex};
 
 pub struct FatFsType {
     meta: FileSystemTypeMeta,
 }
 
 impl FatFsType {
-    pub fn new() -> FatFsType {
-        Self {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
             meta: FileSystemTypeMeta::new("fat32"),
-        }
+        })
     }
 }
 
@@ -24,7 +24,7 @@ impl FileSystemType for FatFsType {
     }
 
     fn mount(
-        self: &Arc<Self>,
+        self: Arc<Self>,
         abs_mnt_path: &str,
         flags: vfs_core::MountFlags,
         dev: Option<Arc<dyn driver::BlockDevice>>,
@@ -32,8 +32,8 @@ impl FileSystemType for FatFsType {
         let dev = dev.unwrap();
         let sb = FatSuperBlock::new(SuperBlockMeta::new(dev, self.clone()));
         let root_inode = FatDirInode::new(sb.clone(), sb.fs.root_dir());
-        let root_dentry =
-            FatDentry::new(DentryMeta::new(abs_mnt_path, sb.clone(), root_inode, None));
+        // FIXME: abs_mnt_path should not passed into dentry.
+        let root_dentry = FatDentry::new_with_inode(abs_mnt_path, sb.clone(), root_inode, None);
         sb.set_root_dentry(root_dentry.clone());
         self.insert_sb(abs_mnt_path, sb);
         Ok(root_dentry)
@@ -72,8 +72,28 @@ impl SuperBlock for FatSuperBlock {
         &self.meta
     }
 
-    fn fs_stat(&self) -> systype::SysResult<vfs_core::StatFs> {
-        todo!()
+    fn stat_fs(&self) -> systype::SysResult<vfs_core::StatFs> {
+        let stat_fs = self.fs.stats().map_err(as_sys_err)?;
+        let ft = self.fs.fat_type();
+        let f_type = match ft {
+            fatfs::FatType::Fat12 => 0x01,
+            fatfs::FatType::Fat16 => 0x04,
+            fatfs::FatType::Fat32 => 0x0c,
+        };
+        Ok(StatFs {
+            f_type,
+            f_bsize: stat_fs.cluster_size() as i64,
+            f_blocks: stat_fs.total_clusters() as u64,
+            f_bfree: stat_fs.free_clusters() as u64,
+            f_bavail: stat_fs.free_clusters() as u64,
+            f_files: 0,
+            f_ffree: 0,
+            f_fsid: [0, 0],
+            f_namelen: 255,
+            f_frsize: 0,
+            f_flags: 0,
+            f_spare: [0; 4],
+        })
     }
 
     fn sync_fs(&self, wait: isize) -> systype::SysResult<()> {
