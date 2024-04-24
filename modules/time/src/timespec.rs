@@ -1,4 +1,8 @@
+use core::time::Duration;
+
 #[derive(Clone, Copy)]
+#[repr(C)]
+/// Describes times in seconds and nanoseconds.
 pub struct TimeSpec {
     tv_sec: usize,
     tv_nsec: usize,
@@ -15,4 +19,23 @@ impl TimeSpec {
             tv_nsec: (ms % 1000) * 1000,
         }
     }
+
+    pub fn is_valid(&self) -> bool {
+        (self.tv_sec as isize > 0) && (self.tv_nsec as isize > 0) && (self.tv_nsec < 1_000_000_000)
+    }
 }
+
+impl From<Duration> for TimeSpec {
+    fn from(duration: Duration) -> Self {
+        Self {
+            tv_sec: duration.as_secs() as usize,
+            tv_nsec: duration.subsec_nanos() as usize,
+        }
+    }
+}
+impl From<TimeSpec> for Duration {
+    fn from(time_spec: TimeSpec) -> Self {
+        Duration::new(time_spec.tv_sec as u64, time_spec.tv_nsec as u32)
+    }
+}
+

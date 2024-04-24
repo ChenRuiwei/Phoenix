@@ -43,6 +43,10 @@ impl TaskTimeStat {
         (self.cutime, self.cstime)
     }
 
+    pub fn cpu_time(&self) -> Duration {
+        self.utime + self.stime
+    }
+
     pub fn update_child_time(&mut self, (utime, stime): (Duration, Duration)) {
         self.cutime += utime;
         self.cstime += stime;

@@ -4,7 +4,6 @@ mod schedule;
 pub mod signal;
 pub mod task;
 mod tid;
-pub mod timer;
 
 pub use manager::TASK_MANAGER;
 pub use schedule::{spawn_kernel_task, spawn_user_task, yield_now};

@@ -28,7 +28,7 @@ use crate::{
         misc::UtsName,
         resource::{sys_getrusage, Rusage},
         signal::{sys_sigaction, sys_sigreturn},
-        time::{sys_gettimeofday, sys_nanosleep, sys_times},
+        time::{sys_clock_getres, sys_clock_gettime, sys_clock_settime, sys_gettimeofday, sys_nanosleep, sys_times},
     },
     task::signal::SigAction,
 };
@@ -139,6 +139,8 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         ),
         SYSCALL_KILL => sys_handler!(sys_kill, (args[0] as isize, args[1] as i32)),
         SYSCALL_RT_SIGRETURN => sys_handler!(sys_sigreturn, ()),
+
+        // times
         SYSCALL_GETTIMEOFDAY => sys_handler!(
             sys_gettimeofday,
             (UserWritePtr::<TimeVal>::from(args[0]), args[1])
@@ -151,6 +153,18 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 UserWritePtr::<TimeSpec>::from(args[1])
             ),
             await
+        ),
+        SYSCALL_CLOCK_GETTIME => sys_handler!(
+            sys_clock_gettime,
+            (args[0], UserWritePtr::<TimeSpec>::from(args[1]))
+        ),
+        SYSCALL_CLOCK_SETTIME => sys_handler!(
+            sys_clock_settime,
+            (args[0], UserReadPtr::<TimeSpec>::from(args[1]))
+        ),
+        SYSCALL_CLOCK_GETRES => sys_handler!(
+            sys_clock_getres,
+            (args[0], UserWritePtr::<TimeSpec>::from(args[1]))
         ),
         // Miscellaneous
         SYSCALL_UNAME => sys_handler!(sys_uname, (UserWritePtr::<UtsName>::from(args[0]))),

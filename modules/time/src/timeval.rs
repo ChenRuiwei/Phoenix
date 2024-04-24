@@ -2,6 +2,7 @@ use core::time::Duration;
 
 #[derive(Debug, Clone, Copy, Default)]
 #[repr(C)]
+/// Describes times in seconds and microseconds.
 pub struct TimeVal {
     /// second
     tv_sec: usize,
