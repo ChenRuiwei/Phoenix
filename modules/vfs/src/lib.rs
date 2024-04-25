@@ -13,6 +13,7 @@ use alloc::{
 };
 
 use driver::{println, BLOCK_DEVICE};
+use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
 use vfs_core::{Dentry, DentryMeta, DirEnt, File, FileMeta, FileSystemType, MountFlags};
@@ -21,6 +22,8 @@ type Mutex<T> = SpinNoIrqLock<T>;
 
 pub static FS_MANAGER: Mutex<BTreeMap<String, Arc<dyn FileSystemType>>> =
     Mutex::new(BTreeMap::new());
+
+static SYS_ROOT_DENTRY: Once<Arc<dyn Dentry>> = Once::new();
 
 type DiskFsType = fat32::FatFsType;
 
@@ -42,8 +45,13 @@ pub fn init_filesystem() -> SysResult<()> {
         MountFlags::empty(),
         Some(BLOCK_DEVICE.get().unwrap().clone()),
     )?;
+    SYS_ROOT_DENTRY.call_once(|| diskfs_root);
     test()?;
     Ok(())
+}
+
+pub fn sys_root_dentry() -> Arc<dyn Dentry> {
+    SYS_ROOT_DENTRY.get().unwrap().clone()
 }
 
 pub fn test() -> SysResult<()> {

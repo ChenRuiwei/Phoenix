@@ -5,6 +5,7 @@ mod dentry;
 mod file;
 mod file_system_type;
 mod inode;
+mod path;
 mod super_block;
 mod utils;
 
@@ -21,6 +22,7 @@ pub use dentry::*;
 pub use file::*;
 pub use file_system_type::*;
 pub use inode::*;
+pub use path::*;
 pub use super_block::*;
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;

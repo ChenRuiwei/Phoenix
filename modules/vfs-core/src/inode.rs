@@ -5,6 +5,7 @@ use alloc::{
 };
 use core::sync::atomic::AtomicUsize;
 
+use bitflags::Flags;
 use downcast_rs::{impl_downcast, DowncastSync};
 use spin::Mutex;
 use systype::{SysError, SysResult};
@@ -21,7 +22,7 @@ pub struct InodeMeta {
     /// Inode number.
     pub ino: usize,
     /// mode of inode.
-    pub mode: InodeMode,
+    pub mode: InodeType,
     pub super_block: Weak<dyn SuperBlock>,
 
     pub inner: Mutex<InodeMetaInner>,
@@ -39,7 +40,7 @@ pub struct InodeMetaInner {
 }
 
 impl InodeMeta {
-    pub fn new(mode: InodeMode, super_block: Arc<dyn SuperBlock>, size: usize) -> Self {
+    pub fn new(mode: InodeType, super_block: Arc<dyn SuperBlock>, size: usize) -> Self {
         Self {
             ino: alloc_ino(),
             mode,
@@ -65,8 +66,8 @@ pub trait Inode: Send + Sync + DowncastSync {
 }
 
 impl dyn Inode {
-    pub fn mode(&self) -> InodeMode {
-        self.meta().mode
+    pub fn node_type(&self) -> InodeType {
+        self.meta().mode.into()
     }
 
     pub fn size(&self) -> usize {
@@ -80,29 +81,81 @@ impl dyn Inode {
 
 impl_downcast!(sync Inode);
 
-// 文件与文件夹类型
+bitflags! {
+    #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+    pub struct InodeMode: u32 {
+        /// Type.
+        const TYPE_MASK = 0o170000;
+        /// FIFO.
+        const FIFO  = 0o010000;
+        /// Character device.
+        const CHAR  = 0o020000;
+        /// Directory
+        const DIR   = 0o040000;
+        /// Block device
+        const BLOCK = 0o060000;
+        /// Regular file.
+        const FILE  = 0o100000;
+        /// Symbolic link.
+        const LINK  = 0o120000;
+        /// Socket
+        const SOCKET = 0o140000;
+
+        /// Set-user-ID on execution.
+        const SET_UID = 0o4000;
+        /// Set-group-ID on execution.
+        const SET_GID = 0o2000;
+        /// sticky bit
+        const STICKY = 0o1000;
+        /// Read, write, execute/search by owner.
+        const OWNER_MASK = 0o700;
+        /// Read permission, owner.
+        const OWNER_READ = 0o400;
+        /// Write permission, owner.
+        const OWNER_WRITE = 0o200;
+        /// Execute/search permission, owner.
+        const OWNER_EXEC = 0o100;
+
+        /// Read, write, execute/search by group.
+        const GROUP_MASK = 0o70;
+        /// Read permission, group.
+        const GROUP_READ = 0o40;
+        /// Write permission, group.
+        const GROUP_WRITE = 0o20;
+        /// Execute/search permission, group.
+        const GROUP_EXEC = 0o10;
+
+        /// Read, write, execute/search by others.
+        const OTHER_MASK = 0o7;
+        /// Read permission, others.
+        const OTHER_READ = 0o4;
+        /// Write permission, others.
+        const OTHER_WRITE = 0o2;
+        /// Execute/search permission, others.
+        const OTHER_EXEC = 0o1;
+    }
+}
+
+impl InodeMode {
+    pub fn to_type(&self) -> InodeType {
+        (*self).into()
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 #[repr(u8)]
-pub enum InodeMode {
-    // 未知类型
+pub enum InodeType {
     Unknown = 0,
-    // 先进先出类型（如管道）
     Fifo = 0o1,
-    // 字符设备
     CharDevice = 0o2,
-    // 文件夹
     Dir = 0o4,
-    // 块设备
     BlockDevice = 0o6,
-    // 普通文件
     File = 0o10,
-    // 符号链接
     SymLink = 0o12,
-    // 套接字
     Socket = 0o14,
 }
 
-impl From<u8> for InodeMode {
+impl From<u8> for InodeType {
     fn from(value: u8) -> Self {
         match value {
             0 => Self::Unknown,
@@ -118,7 +171,7 @@ impl From<u8> for InodeMode {
     }
 }
 
-impl From<char> for InodeMode {
+impl From<char> for InodeType {
     fn from(value: char) -> Self {
         match value {
             '-' => Self::File,
@@ -133,7 +186,22 @@ impl From<char> for InodeMode {
     }
 }
 
-impl InodeMode {
+impl From<InodeMode> for InodeType {
+    fn from(mode: InodeMode) -> Self {
+        match mode.intersection(InodeMode::TYPE_MASK) {
+            InodeMode::DIR => InodeType::Dir,
+            InodeMode::FILE => InodeType::File,
+            InodeMode::LINK => InodeType::SymLink,
+            InodeMode::CHAR => InodeType::CharDevice,
+            InodeMode::BLOCK => InodeType::BlockDevice,
+            InodeMode::FIFO => InodeType::Fifo,
+            InodeMode::SOCKET => InodeType::Socket,
+            _ => InodeType::Unknown,
+        }
+    }
+}
+
+impl InodeType {
     /// Tests whether this node type represents a regular file.
     pub const fn is_file(self) -> bool {
         matches!(self, Self::File)

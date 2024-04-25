@@ -4,7 +4,6 @@ use alloc::{
     vec::Vec,
 };
 use core::{
-    default, result,
     sync::atomic::{AtomicUsize, Ordering},
     usize,
 };
@@ -12,11 +11,11 @@ use core::{
 use config::mm::PAGE_SIZE;
 use systype::{SysError, SysResult};
 
-use crate::{DirEnt, Inode, SeekFrom};
+use crate::{Dentry, DirEnt, Inode, SeekFrom};
 
 pub struct FileMeta {
-    /// Path of this file.
-    pub path: String,
+    /// Dentry which pointes to this file.
+    pub dentry: Arc<dyn Dentry>,
     pub inode: Arc<dyn Inode>,
 
     /// Offset position of this file.
@@ -25,9 +24,9 @@ pub struct FileMeta {
 }
 
 impl FileMeta {
-    pub fn new(path: String, inode: Arc<dyn Inode>) -> Self {
+    pub fn new(dentry: Arc<dyn Dentry>, inode: Arc<dyn Inode>) -> Self {
         Self {
-            path,
+            dentry,
             inode,
             pos: 0.into(),
         }
@@ -97,8 +96,8 @@ pub trait File: Send + Sync {
 }
 
 impl dyn File {
-    pub fn path(&self) -> String {
-        self.meta().path.clone()
+    pub fn dentry(&self) -> Arc<dyn Dentry> {
+        self.meta().dentry.clone()
     }
 
     /// Read all data from this file synchronously.

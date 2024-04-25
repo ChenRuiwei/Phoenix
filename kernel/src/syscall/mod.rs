@@ -121,7 +121,17 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         SYSCALL_WRITE => {
             sys_handler!(sys_write, (args[0], UserReadPtr::<u8>::from(args[1]), args[2]), await)
         }
-
+        SYSCALL_OPENAT => {
+            sys_handler!(
+                sys_openat,
+                (
+                    args[0] as isize,
+                    UserReadPtr::<u8>::from(args[1]),
+                    args[2] as i32,
+                    args[3] as u32
+                )
+            )
+        }
         // Signal
         SYSCALL_RT_SIGPROCMASK => sys_handler!(
             sys_sigprocmask,

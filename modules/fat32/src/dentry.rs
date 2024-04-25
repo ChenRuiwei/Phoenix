@@ -1,7 +1,7 @@
 use alloc::sync::{Arc, Weak};
 
 use systype::SysError;
-use vfs_core::{Dentry, DentryMeta, Inode, InodeMode, SuperBlock};
+use vfs_core::{Dentry, DentryMeta, Inode, InodeType, SuperBlock};
 
 use crate::{
     as_sys_err,
@@ -41,21 +41,21 @@ impl Dentry for FatDentry {
         &self.meta
     }
 
-    fn open(&self) -> systype::SysResult<Arc<dyn vfs_core::File>> {
-        match self.inode().mode() {
-            InodeMode::File => {
+    fn arc_open(self: Arc<Self>) -> systype::SysResult<Arc<dyn vfs_core::File>> {
+        match self.inode()?.node_type() {
+            InodeType::File => {
                 let inode = self
-                    .inode()
+                    .inode()?
                     .downcast_arc::<FatFileInode>()
                     .map_err(|_| SysError::EIO)?;
-                Ok(FatFileFile::new(self.path(), inode))
+                Ok(FatFileFile::new(self.clone(), inode))
             }
-            InodeMode::Dir => {
+            InodeType::Dir => {
                 let inode = self
-                    .inode()
+                    .inode()?
                     .downcast_arc::<FatDirInode>()
                     .map_err(|_| SysError::EIO)?;
-                Ok(FatDirFile::new(self.path(), inode))
+                Ok(FatDirFile::new(self.clone(), inode))
             }
             _ => Err(SysError::EPERM),
         }
@@ -66,7 +66,7 @@ impl Dentry for FatDentry {
         // TODO: if children already exists
         let new_dentry: Arc<dyn Dentry> = FatDentry::new(&name, sb.clone(), Some(self.clone()));
         let inode = self
-            .inode()
+            .inode()?
             .downcast_arc::<FatDirInode>()
             .map_err(|_| SysError::ENOTDIR)?;
         let dir = inode.dir.lock();

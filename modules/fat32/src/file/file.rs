@@ -5,10 +5,11 @@ use alloc::{
 
 use fatfs::{Read, Seek, Write};
 use systype::SysError;
-use vfs_core::{DirEnt, File, FileMeta, Inode, InodeMode, SeekFrom};
+use vfs_core::{Dentry, DirEnt, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
 
 use crate::{
     as_sys_err,
+    dentry::{self, FatDentry},
     inode::{self, dir::FatDirInode, file::FatFileInode},
     FatFile, Shared,
 };
@@ -19,9 +20,9 @@ pub struct FatFileFile {
 }
 
 impl FatFileFile {
-    pub fn new(path: String, inode: Arc<FatFileInode>) -> Arc<Self> {
+    pub fn new(dentry: Arc<FatDentry>, inode: Arc<FatFileInode>) -> Arc<Self> {
         Arc::new(Self {
-            meta: FileMeta::new(path, inode.clone()),
+            meta: FileMeta::new(dentry.clone(), inode.clone()),
             file: inode.file.clone(),
         })
     }
@@ -33,8 +34,8 @@ impl File for FatFileFile {
     }
 
     fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
-        match self.inode().mode() {
-            InodeMode::File => {
+        match self.inode().node_type() {
+            InodeType::File => {
                 let mut file = self.file.lock();
                 let fat_offset = file.offset() as usize;
                 if offset != fat_offset {
@@ -61,8 +62,8 @@ impl File for FatFileFile {
         if buf.is_empty() {
             return Ok(0);
         }
-        match self.inode().mode() {
-            InodeMode::File => {
+        match self.inode().node_type() {
+            InodeType::File => {
                 let mut file = self.file.lock();
                 let size = self.inode().size();
                 if offset > size {
@@ -92,8 +93,8 @@ impl File for FatFileFile {
     }
 
     fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEnt>> {
-        match self.inode().mode() {
-            InodeMode::Dir => {
+        match self.inode().node_type() {
+            InodeType::Dir => {
                 let inode = self
                     .inode()
                     .downcast_arc::<FatDirInode>()
@@ -105,9 +106,9 @@ impl File for FatFileFile {
                         Ok(entry) => {
                             self.seek(vfs_core::SeekFrom::Current(1));
                             let ty = if entry.is_dir() {
-                                InodeMode::Dir
+                                InodeMode::DIR
                             } else {
-                                InodeMode::File
+                                InodeMode::FILE
                             };
                             let entry = DirEnt {
                                 ino: 1,

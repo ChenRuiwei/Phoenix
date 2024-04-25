@@ -5,10 +5,11 @@ use alloc::{
 
 use fatfs::{Read, Seek, Write};
 use systype::SysError;
-use vfs_core::{DirEnt, File, FileMeta, Inode, InodeMode, SeekFrom};
+use vfs_core::{Dentry, DirEnt, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
 
 use crate::{
     as_sys_err,
+    dentry::FatDentry,
     inode::{self, dir::FatDirInode},
     FatDir, Shared,
 };
@@ -19,9 +20,9 @@ pub struct FatDirFile {
 }
 
 impl FatDirFile {
-    pub fn new(path: String, inode: Arc<FatDirInode>) -> Arc<Self> {
+    pub fn new(dentry: Arc<FatDentry>, inode: Arc<FatDirInode>) -> Arc<Self> {
         Arc::new(Self {
-            meta: FileMeta::new(path, inode.clone()),
+            meta: FileMeta::new(dentry.clone(), inode.clone()),
             dir: inode.dir.clone(),
         })
     }
@@ -56,9 +57,9 @@ impl File for FatDirFile {
                 Ok(entry) => {
                     self.seek(vfs_core::SeekFrom::Current(1));
                     let ty = if entry.is_dir() {
-                        InodeMode::Dir
+                        InodeMode::DIR
                     } else {
-                        InodeMode::File
+                        InodeMode::FILE
                     };
                     let entry = DirEnt {
                         ino: 1,

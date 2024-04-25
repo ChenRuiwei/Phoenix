@@ -75,13 +75,13 @@ impl dyn FileSystemType {
 
 bitflags! {
     pub struct FileSystemFlags:u32{
-         /// The file system requires a device.
-         const REQUIRES_DEV = 0x1;
+        /// The file system requires a device.
+        const REQUIRES_DEV = 0x1;
         /// The options provided when mounting are in binary form.
         const BINARY_MOUNTDATA = 0x2;
         /// The file system has a subtype. It is extracted from the name and passed in as a parameter.
         const HAS_SUBTYPE = 0x4;
-         /// The file system can be mounted by userns root.
+        /// The file system can be mounted by userns root.
         const USERNS_MOUNT = 0x8;
         /// Disables fanotify permission events.
         const DISALLOW_NOTIFY_PERM = 0x10;

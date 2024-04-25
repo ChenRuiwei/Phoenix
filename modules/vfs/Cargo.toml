@@ -12,4 +12,5 @@ sync = { path = "../sync/" }
 driver = { path = "../../driver/" }
 systype = { path = "../systype/" }
 
+spin = "0.9"
 log = "0.4"
