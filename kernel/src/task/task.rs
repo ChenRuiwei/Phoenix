@@ -241,6 +241,14 @@ impl Task {
         unsafe { &mut *self.sig_mask.get() }
     }
 
+    /// important: new mask can't block SIGKILL or SIGSTOP
+    pub fn sig_mask_replace(&self, new: &mut SigSet) -> SigSet {
+        new.remove(SigSet::SIGSTOP | SigSet::SIGKILL);
+        let old = unsafe { *self.sig_mask.get() };
+        unsafe { *self.sig_mask.get() = *new };
+        old
+    }
+
     pub fn signal_stack(&self) -> &mut Option<SignalStack> {
         unsafe { &mut *self.sig_stack.get() }
     }
