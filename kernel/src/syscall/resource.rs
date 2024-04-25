@@ -1,3 +1,5 @@
+use core::time::Duration;
+
 use systype::{SysError, SyscallResult};
 use time::timeval::TimeVal;
 
@@ -42,7 +44,7 @@ pub fn sys_getrusage(who: i32, usage: UserWritePtr<Rusage>) -> SyscallResult {
     let mut ret = Rusage::default();
     match who {
         RUSAGE_SELF => {
-            let (mut total_utime, mut totol_stime) = task.time_stat().user_system_time();
+            let (mut total_utime, mut totol_stime) = (Duration::ZERO,Duration::ZERO);
             task.with_thread_group(|tg| {
                 for thread in tg.iter() {
                     let (utime, stime) = thread.time_stat().user_system_time();

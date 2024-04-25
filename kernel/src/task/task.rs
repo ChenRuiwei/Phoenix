@@ -441,7 +441,6 @@ impl Task {
 /// Hold a group of threads which belongs to the same process.
 pub struct ThreadGroup {
     members: BTreeMap<Tid, Weak<Task>>,
-    // leader: Option<Weak<Task>>,
 }
 
 impl ThreadGroup {
@@ -451,13 +450,6 @@ impl ThreadGroup {
         }
     }
 
-    // pub fn push_leader(&mut self, leader: Arc<Task>) {
-    //     debug_assert!(self.leader.is_none());
-    //     debug_assert!(self.members.is_empty());
-    //     self.leader = Some(Arc::downgrade(&leader));
-    //     self.members.insert(leader.tid(), Arc::downgrade(&leader));
-    // }
-
     pub fn push(&mut self, task: Arc<Task>) {
         self.members.insert(task.tid(), Arc::downgrade(&task));
     }
@@ -465,10 +457,6 @@ impl ThreadGroup {
     pub fn remove(&mut self, thread: &Task) {
         self.members.remove(&thread.tid());
     }
-
-    // pub fn tgid(&self) -> Tid {
-    //     self.leader.as_ref().unwrap().upgrade().unwrap().tid()
-    // }
 
     pub fn iter(&self) -> impl Iterator<Item = Arc<Task>> + '_ {
         self.members.values().map(|t| t.upgrade().unwrap())
