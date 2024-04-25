@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeMap, sync::Arc};
 
 use vfs_core::{
-    DentryMeta, FileSystemType, FileSystemTypeMeta, InodeMode, StatFs, SuperBlock, SuperBlockMeta,
+    DentryMeta, FileSystemType, FileSystemTypeMeta, InodeType, StatFs, SuperBlock, SuperBlockMeta,
 };
 
 use crate::{as_sys_err, dentry::FatDentry, inode::dir::FatDirInode, DiskCursor, FatFs, Mutex};
@@ -33,6 +33,7 @@ impl FileSystemType for FatFsType {
         let sb = FatSuperBlock::new(SuperBlockMeta::new(dev, self.clone()));
         let root_inode = FatDirInode::new(sb.clone(), sb.fs.root_dir());
         // FIXME: abs_mnt_path should not passed into dentry.
+        // FIXME: parent dentry should be inserted if this is not "/"
         let root_dentry = FatDentry::new_with_inode(abs_mnt_path, sb.clone(), root_inode, None);
         sb.set_root_dentry(root_dentry.clone());
         self.insert_sb(abs_mnt_path, sb);

@@ -3,11 +3,11 @@ use alloc::{
     sync::{Arc, Weak},
 };
 
-use crate::{FileSystemType, InodeMode, PERMISSION_LEN};
+use crate::{FileSystemType, InodeMode, InodeType, PERMISSION_LEN};
 
 bitflags::bitflags! {
     #[derive(Debug, Clone)]
-    pub struct OpenFlags: usize {
+    pub struct OpenFlags: i32 {
         // reserve 3 bits for the access mode
         const NONE          = 0;
         const O_RDONLY      = 0;
@@ -316,3 +316,13 @@ pub enum SeekFrom {
     /// seek before byte 0.
     Current(i64),
 }
+
+/// Special value used to indicate the *at functions should use the current
+/// working directory.
+pub const AT_FDCWD: i32 = -100;
+/// Do not follow symbolic links.
+pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
+/// Remove directory instead of unlinking file.
+pub const AT_REMOVEDIR: i32 = 0x200;
+/// Follow symbolic links.
+pub const AT_SYMLINK_FOLLOW: i32 = 0x400;

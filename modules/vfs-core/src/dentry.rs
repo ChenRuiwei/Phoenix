@@ -5,9 +5,9 @@ use alloc::{
 };
 
 use spin::Once;
-use systype::SysResult;
+use systype::{SysError, SysResult};
 
-use crate::{inode::Inode, super_block, File, InodeMode, Mutex, SuperBlock};
+use crate::{inode::Inode, super_block, File, InodeType, Mutex, SuperBlock};
 
 pub struct DentryMeta {
     /// Name of this file or directory.
@@ -57,12 +57,17 @@ impl DentryMeta {
 pub trait Dentry: Send + Sync {
     fn meta(&self) -> &DentryMeta;
 
-    fn inode(&self) -> Arc<dyn Inode> {
-        self.meta().inode.lock().as_ref().unwrap().clone()
+    fn inode(&self) -> SysResult<Arc<dyn Inode>> {
+        self.meta()
+            .inode
+            .lock()
+            .as_ref()
+            .ok_or(SysError::ENOENT)
+            .cloned()
     }
 
     /// Open a file associated with the inode that this dentry points to.
-    fn open(&self) -> SysResult<Arc<dyn File>>;
+    fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>>;
 
     /// Look up in a directory inode and find file with `name`.
     fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>>;
@@ -134,28 +139,18 @@ impl dyn Dentry {
     /// Lookup a dentry with `name` in the directory.
     pub fn find(&self, name: &str) -> Option<Arc<dyn Dentry>> {
         let meta = self.meta();
-        let mode = self.inode().mode();
+        let mode = self.inode().unwrap().node_type();
         match mode {
-            InodeMode::Dir => meta.children.lock().get(name).map(|item| item.clone()),
+            InodeType::Dir => meta.children.lock().get(name).map(|item| item.clone()),
             _ => None,
         }
     }
 
+    pub fn open(self: &Arc<Self>) -> SysResult<Arc<dyn File>> {
+        self.clone().arc_open()
+    }
+
     pub fn lookup(self: &Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
         self.clone().arc_lookup(name)
-    }
-}
-
-impl Dentry for DentryMeta {
-    fn meta(&self) -> &DentryMeta {
-        self
-    }
-
-    fn open(&self) -> SysResult<Arc<dyn File>> {
-        todo!()
-    }
-
-    fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
-        todo!()
     }
 }

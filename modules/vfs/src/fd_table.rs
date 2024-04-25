@@ -17,36 +17,41 @@ impl FileRef {
 }
 
 pub struct FdTable {
-    pub table: Vec<Option<FileRef>>,
+    table: Vec<Option<Arc<dyn File>>>,
 }
 
 impl FdTable {
     pub fn new() -> Self {
-        Self { table: Vec::new() }
+        let mut vec: Vec<Option<Arc<dyn File>>> = Vec::new();
+        // TODO: alloc stdio fd
+        vec.push(None);
+        vec.push(None);
+        vec.push(None);
+        Self { table: vec }
     }
 
     fn find_free_slot(&self) -> Option<usize> {
         (0..self.table.len()).find(|fd| self.table[*fd].is_none())
     }
 
-    // alloc finds a fd and insert the file descriptor into the table
-    pub fn alloc(&mut self) -> SysResult<usize> {
+    // finds a fd and insert the file descriptor into the table
+    pub fn alloc(&mut self, file: Arc<dyn File>) -> SysResult<usize> {
         if let Some(fd) = self.find_free_slot() {
+            self.table[fd] = Some(file);
             Ok(fd)
         } else {
-            self.table.push(None);
+            self.table.push(Some(file));
             Ok(self.table.len() - 1)
         }
     }
 
-    pub fn put(&mut self, fd: Fd, file: FileRef) {
+    pub fn put(&mut self, fd: Fd, file: Arc<dyn File>) {
         assert!(fd < self.table.len());
         assert!(self.table[fd].is_none());
         self.table[fd] = Some(file);
     }
 
-    /// Get the ownership of the given fd by clone
-    pub fn get(&self, fd: Fd) -> Option<FileRef> {
+    pub fn get(&self, fd: Fd) -> Option<Arc<dyn File>> {
         if fd >= self.table.len() {
             None
         } else {
@@ -54,17 +59,8 @@ impl FdTable {
         }
     }
 
-    /// Get the ownership of the given fd by clone
-    pub fn get_mut(&mut self, fd: Fd) -> Option<&mut FileRef> {
-        if fd >= self.table.len() {
-            None
-        } else {
-            self.table[fd].as_mut()
-        }
-    }
-
-    /// Take the ownership of the given fd
-    pub fn take(&mut self, fd: Fd) -> Option<FileRef> {
+    /// Take the ownership of the given fd.
+    pub fn take(&mut self, fd: Fd) -> Option<Arc<dyn File>> {
         if fd >= self.table.len() {
             None
         } else {

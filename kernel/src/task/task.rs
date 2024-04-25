@@ -21,6 +21,8 @@ use signal::{
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 use time::{stat::TaskTimeStat, timeval::ITimerVal};
+use vfs::{fd_table::FdTable, sys_root_dentry};
+use vfs_core::Dentry;
 
 use super::{
     signal::ITimer,
@@ -72,6 +74,10 @@ pub struct Task {
     waker: SyncUnsafeCell<Option<Waker>>,
     ///
     thread_group: Shared<ThreadGroup>,
+    /// Fd table
+    fd_table: Shared<FdTable>,
+    /// Current working directory dentry.
+    cwd: Shared<Arc<dyn Dentry>>,
     /// received signals
     sig_pending: SpinNoIrqLock<SigPending>,
     /// 存储了对每个信号的处理方法。
@@ -136,6 +142,8 @@ impl Task {
             memory_space: new_shared(memory_space),
             waker: SyncUnsafeCell::new(None),
             thread_group: new_shared(ThreadGroup::new()),
+            fd_table: new_shared(FdTable::new()),
+            cwd: new_shared(sys_root_dentry()),
             sig_pending: SpinNoIrqLock::new(SigPending::new()),
             sig_mask: SyncUnsafeCell::new(SigSet::empty()),
             sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
@@ -229,6 +237,14 @@ impl Task {
         *self.state.lock() == TaskState::Zombie
     }
 
+    pub fn cwd(&self) -> Arc<dyn Dentry> {
+        self.cwd.lock().clone()
+    }
+
+    pub fn set_cwd(&self, dentry: Arc<dyn Dentry>) {
+        *self.cwd.lock() = dentry;
+    }
+
     pub fn sig_handlers(&self) -> &mut SigHandlers {
         unsafe { &mut *self.sig_handlers.get() }
     }
@@ -283,6 +299,7 @@ impl Task {
         let trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
         let _exit_code = AtomicI32::new(self.exit_code());
+        let cwd = self.cwd.clone();
 
         let is_leader;
         let parent;
@@ -323,6 +340,7 @@ impl Task {
             tid,
             leader: Once::new(),
             is_leader,
+            cwd,
             state,
             parent,
             children,
@@ -331,6 +349,7 @@ impl Task {
             memory_space,
             waker: SyncUnsafeCell::new(None),
             thread_group,
+            fd_table: new_shared(FdTable::new()),
             sig_pending: SpinNoIrqLock::new(SigPending::new()),
             sig_mask: SyncUnsafeCell::new(SigSet::empty()),
             sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
@@ -431,6 +450,7 @@ impl Task {
         }
     }
 
+    with_!(fd_table, FdTable);
     with_!(children, BTreeMap<Tid, Arc<Task>>);
     with_!(memory_space, MemorySpace);
     with_!(thread_group, ThreadGroup);

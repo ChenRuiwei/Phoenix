@@ -1,7 +1,7 @@
 use alloc::{rc::Weak, sync::Arc};
 
 use systype::SysError;
-use vfs_core::{Dentry, Inode, InodeMeta, InodeMode, SuperBlock};
+use vfs_core::{Dentry, Inode, InodeMeta, InodeMode, InodeType, SuperBlock};
 
 use super::file::FatFileInode;
 use crate::{
@@ -19,7 +19,7 @@ impl FatDirInode {
     pub fn new(super_block: Arc<dyn SuperBlock>, dir: FatDir) -> Arc<Self> {
         // TODO: Dir size is zero?
         let inode = Arc::new(Self {
-            meta: InodeMeta::new(InodeMode::Dir, super_block.clone(), 0),
+            meta: InodeMeta::new(InodeType::Dir, super_block.clone(), 0),
             dir: Arc::new(Mutex::new(dir)),
         });
         super_block.push_inode(inode.clone());
@@ -35,14 +35,14 @@ impl Inode for FatDirInode {
     fn create(&self, dentry: Arc<dyn vfs_core::Dentry>, mode: InodeMode) -> systype::SysResult<()> {
         let sb = dentry.super_block();
         let name = dentry.name();
-        match mode {
-            InodeMode::Dir => {
+        match mode.to_type() {
+            InodeType::Dir => {
                 let new_dir = self.dir.lock().create_dir(&name).map_err(as_sys_err)?;
                 let inode = FatDirInode::new(sb, new_dir);
                 dentry.set_inode(inode);
                 Ok(())
             }
-            InodeMode::File => {
+            InodeType::File => {
                 let new_file = self.dir.lock().create_file(&name).map_err(as_sys_err)?;
                 let inode = FatFileInode::new(sb, new_file);
                 dentry.set_inode(inode);

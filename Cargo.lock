@@ -432,6 +432,7 @@ dependencies = [
  "driver",
  "fat32",
  "log",
+ "spin",
  "sync",
  "systype",
  "vfs-core",
