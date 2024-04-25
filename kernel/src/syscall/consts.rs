@@ -46,6 +46,7 @@ pub(super) const SYSCALL_FUTEX: usize = 98;
 pub(super) const SYSCALL_SET_ROBUST_LIST: usize = 99;
 pub(super) const SYSCALL_GET_ROBUST_LIST: usize = 100;
 pub(super) const SYSCALL_NANOSLEEP: usize = 101;
+pub(super) const SYSCALL_GETITIMER: usize = 102;
 pub(super) const SYSCALL_SETITIMER: usize = 103;
 pub(super) const SYSCALL_CLOCK_SETTIME: usize = 112;
 pub(super) const SYSCALL_CLOCK_GETTIME: usize = 113;

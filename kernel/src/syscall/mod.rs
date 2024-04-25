@@ -10,7 +10,11 @@ mod signal;
 mod time;
 
 use ::signal::sigset::SigSet;
-use ::time::{timespec::TimeSpec, timeval::TimeVal, tms::TMS};
+use ::time::{
+    timespec::TimeSpec,
+    timeval::{ITimerVal, TimeVal},
+    tms::TMS,
+};
 use consts::*;
 use fs::*;
 use log::error;
@@ -29,8 +33,8 @@ use crate::{
         resource::{sys_getrusage, Rusage},
         signal::{sys_sigaction, sys_sigreturn},
         time::{
-            sys_clock_getres, sys_clock_gettime, sys_clock_settime, sys_gettimeofday,
-            sys_nanosleep, sys_times,
+            sys_clock_getres, sys_clock_gettime, sys_clock_settime, sys_getitier, sys_gettimeofday,
+            sys_nanosleep, sys_setitier, sys_times,
         },
     },
     task::signal::SigAction,
@@ -175,6 +179,18 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         SYSCALL_CLOCK_GETRES => sys_handler!(
             sys_clock_getres,
             (args[0], UserWritePtr::<TimeSpec>::from(args[1]))
+        ),
+        SYSCALL_GETITIMER => sys_handler!(
+            sys_getitier,
+            (args[0] as i32, UserWritePtr::<ITimerVal>::from(args[1]))
+        ),
+        SYSCALL_SETITIMER => sys_handler!(
+            sys_setitier,
+            (
+                args[0] as i32,
+                UserReadPtr::<ITimerVal>::from(args[1]),
+                UserWritePtr::<ITimerVal>::from(args[2])
+            )
         ),
         // Miscellaneous
         SYSCALL_UNAME => sys_handler!(sys_uname, (UserWritePtr::<UtsName>::from(args[0]))),

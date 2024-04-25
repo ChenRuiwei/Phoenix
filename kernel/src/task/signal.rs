@@ -4,9 +4,10 @@ use core::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 
-use arch::time::get_time_ms;
+use arch::time::{get_time_duration, get_time_ms};
 use signal::{
     action::{Action, ActionType},
     signal_stack::{MContext, UContext},
@@ -237,4 +238,52 @@ impl Future for WaitHandlableSignal {
                 }
             })
     }
+}
+
+/// A process has only one of each of the three types of timers.
+pub struct ITimer {
+    interval: Duration,
+    next_expire: Duration,
+    now: fn(&Task) -> Duration,
+    activated: bool,
+    sig: Sig,
+}
+
+impl ITimer {
+    pub fn new_real() -> Self {
+        Self {
+            interval: Duration::ZERO,
+            next_expire: Duration::ZERO,
+            now: |_| get_time_duration(),
+            activated: false,
+            sig: Sig::SIGALRM,
+        }
+    }
+
+    pub fn new_virtual() -> Self {
+        Self {
+            interval: Duration::ZERO,
+            next_expire: Duration::ZERO,
+            // now: |task| {
+            //     let leader = task.
+            // },
+            now: |_| get_time_duration(),
+            activated: false,
+            sig: Sig::SIGVTALRM,
+        }
+    }
+
+    pub fn new_prof() -> Self {
+        Self {
+            interval: Duration::ZERO,
+            next_expire: Duration::ZERO,
+            now: |_| get_time_duration(),
+            activated: false,
+            sig: Sig::SIGPROF,
+        }
+    }
+}
+
+impl Task {
+    pub fn update_itimers(&self) {}
 }
