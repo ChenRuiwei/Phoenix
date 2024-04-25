@@ -225,6 +225,7 @@ impl<P: Read> UserPtr<u8, P> {
 }
 
 impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
+    // FIXME: this function will not handle page fault because writing is outside
     pub fn into_mut(self, task: &Arc<Task>) -> SysResult<&mut T> {
         debug_assert!(self.not_null());
         task.just_ensure_user_area(
@@ -236,6 +237,7 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         Ok(res)
     }
 
+    // FIXME: this function will not handle page fault because writing is outside
     pub fn into_mut_slice(self, task: &Arc<Task>, n: usize) -> SysResult<&mut [T]> {
         debug_assert!(n == 0 || self.not_null());
         task.just_ensure_user_area(

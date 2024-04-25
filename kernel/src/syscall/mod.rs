@@ -122,6 +122,9 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
             sys_handler!(sys_brk, (VirtAddr::from(args[0])))
         }
         // File system
+        SYSCALL_READ => {
+            sys_handler!(sys_read, (args[0], UserWritePtr::<u8>::from(args[1]), args[2]), await)
+        }
         SYSCALL_WRITE => {
             sys_handler!(sys_write, (args[0], UserReadPtr::<u8>::from(args[1]), args[2]), await)
         }
@@ -135,6 +138,9 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                     args[3] as u32
                 )
             )
+        }
+        SYSCALL_CLOSE => {
+            sys_handler!(sys_close, (args[0]))
         }
         // Signal
         SYSCALL_RT_SIGPROCMASK => sys_handler!(
