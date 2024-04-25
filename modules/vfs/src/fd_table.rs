@@ -1,6 +1,6 @@
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
-use systype::SysResult;
+use systype::{SysError, SysResult};
 use vfs_core::File;
 
 pub type Fd = usize;
@@ -31,7 +31,8 @@ impl FdTable {
     }
 
     fn find_free_slot(&self) -> Option<usize> {
-        (0..self.table.len()).find(|fd| self.table[*fd].is_none())
+        // FIXME: search from 0, howerver, it need fd table to have stdio file now
+        (3..self.table.len()).find(|fd| self.table[*fd].is_none())
     }
 
     // finds a fd and insert the file descriptor into the table
@@ -56,6 +57,15 @@ impl FdTable {
             None
         } else {
             self.table[fd].clone()
+        }
+    }
+
+    pub fn remove(&mut self, fd: Fd) -> SysResult<()> {
+        if fd >= self.table.len() {
+            Err(SysError::EBADF)
+        } else {
+            self.table[fd] = None;
+            Ok(())
         }
     }
 

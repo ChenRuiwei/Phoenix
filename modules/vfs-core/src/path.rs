@@ -1,4 +1,8 @@
-use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
+};
 
 use systype::{SysError, SysResult};
 
@@ -38,6 +42,7 @@ impl Path {
         } else {
             self.start.clone()
         };
+        log::debug!("[Path::walk] {:?}", split_path(path));
         for p in split_path(path) {
             match p {
                 ".." => {
@@ -63,6 +68,6 @@ pub fn is_relative_path(path: &str) -> bool {
 pub fn split_path(path_name: &str) -> Vec<&str> {
     path_name
         .split('/')
-        .filter(|name| !name.is_empty() || *name != ".")
+        .filter(|name| !name.is_empty() && *name != ".")
         .collect()
 }

@@ -1,10 +1,13 @@
-use alloc::{string::ToString, sync::Arc};
+use alloc::{string::ToString, sync::Arc, vec::Vec};
 
 use systype::{SysError, SysResult, SyscallResult};
 use vfs::sys_root_dentry;
 use vfs_core::{is_relative_path, Dentry, OpenFlags, Path, AT_FDCWD};
 
-use crate::{mm::UserReadPtr, processor::hart::current_task};
+use crate::{
+    mm::{UserReadPtr, UserWritePtr},
+    processor::hart::current_task,
+};
 
 // "brk",
 // "chdir",
@@ -45,16 +48,37 @@ use crate::{mm::UserReadPtr, processor::hart::current_task};
 
 // TODO:
 pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallResult {
-    let buf = buf.read_array(current_task(), len)?;
+    let task = current_task();
+    let buf = buf.read_array(task, len)?;
     // TODO: now do not support char device
     if fd == 1 {
-        for b in buf {
+        for &b in buf.iter() {
             print!("{}", b as char);
         }
+        return Ok(buf.len());
     } else {
         // get file and write
     }
-    Ok(0)
+    let file = task.with_fd_table(|table| table.get(fd).ok_or(SysError::EBADF))?;
+    let ret = file.write(file.pos(), &buf)?;
+    Ok(ret)
+}
+
+pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallResult {
+    let task = current_task();
+    let file = task.with_fd_table(|table| table.get(fd).ok_or(SysError::EBADF))?;
+    if file.inode().node_type().is_dir() {
+        return Err(SysError::EISDIR);
+    }
+    // let buf = buf.into_mut_slice(task, len)?;
+    // let ret = file.read(file.pos(), buf)?;
+    // HACK:
+    let mut buffer = Vec::with_capacity(len);
+    unsafe { buffer.set_len(len) };
+    let ret = file.read(file.pos(), &mut buffer)?;
+    log::debug!("{:?}", buffer);
+    buf.write_array(task, &buffer)?;
+    Ok(ret)
 }
 
 // TODO:
@@ -62,9 +86,16 @@ pub fn sys_openat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32, mode: u32
     let task = current_task();
     let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     let pathname = pathname.read_cstr(task)?;
+    // FIXME: with flags O_CREAT
     let dentry = at_helper(dirfd, &pathname)?;
     let file = dentry.open()?;
     task.with_mut_fd_table(|table| table.alloc(file))
+}
+
+pub fn sys_close(fd: usize) -> SyscallResult {
+    let task = current_task();
+    task.with_mut_fd_table(|table| table.remove(fd))?;
+    Ok(0)
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as
