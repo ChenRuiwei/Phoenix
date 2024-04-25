@@ -28,7 +28,10 @@ use crate::{
         misc::UtsName,
         resource::{sys_getrusage, Rusage},
         signal::{sys_sigaction, sys_sigreturn},
-        time::{sys_clock_getres, sys_clock_gettime, sys_clock_settime, sys_gettimeofday, sys_nanosleep, sys_times},
+        time::{
+            sys_clock_getres, sys_clock_gettime, sys_clock_settime, sys_gettimeofday,
+            sys_nanosleep, sys_times,
+        },
     },
     task::signal::SigAction,
 };
@@ -138,8 +141,15 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
             )
         ),
         SYSCALL_KILL => sys_handler!(sys_kill, (args[0] as isize, args[1] as i32)),
+        SYSCALL_TKILL => sys_handler!(sys_tkill, (args[0] as isize, args[1] as i32)),
+        SYSCALL_TGKILL => sys_handler!(
+            sys_tgkill,
+            (args[0] as isize, args[1] as isize, args[2] as i32)
+        ),
         SYSCALL_RT_SIGRETURN => sys_handler!(sys_sigreturn, ()),
-
+        SYSCALL_RT_SIGSUSPEND => {
+            sys_handler!(sys_sigsuspend, (UserReadPtr::<SigSet>::from(args[0])), await)
+        }
         // times
         SYSCALL_GETTIMEOFDAY => sys_handler!(
             sys_gettimeofday,

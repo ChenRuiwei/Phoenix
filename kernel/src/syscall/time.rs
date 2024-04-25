@@ -145,7 +145,7 @@ pub fn sys_clock_settime(clockid: usize, tp: UserReadPtr<TimeSpec>) -> SyscallRe
 
 /// finds the resolution (precision) of the specified clock clockid
 pub fn sys_clock_getres(_clockid: usize, res: UserWritePtr<TimeSpec>) -> SyscallResult {
-    if res.is_null(){
+    if res.is_null() {
         return Ok(0);
     }
     res.write(current_task(), Duration::from_nanos(1).into())?;

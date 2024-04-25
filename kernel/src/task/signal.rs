@@ -64,29 +64,36 @@ impl From<Action> for SigAction {
 }
 
 impl Task {
-    /// 当一个信号被发送到进程时，
-    /// 内核会选择一个未阻塞该信号的线程来处理这个信号。当一个信号发送给线程时，
-    /// 就直接处理
-    pub fn receive_signal(&self, sig: Sig) {
-        if self.is_leader() {
-            self.with_mut_thread_group(|tg| {
-                for task in tg.iter() {
-                    if task.sig_mask().contain_signal(sig) {
-                        continue;
+    /// A signal may be process-directed or thread-directed
+    /// A process-directed signal is targeted at  a  thread  group and is
+    /// delivered to an arbitrarily selected thread from among those that are
+    /// not blocking the signal
+    /// A thread-directed signal is targeted at
+    /// (i.e., delivered to) a specific thread.
+    pub fn receive_signal(&self, sig: Sig, thread_directed: bool) {
+        match thread_directed {
+            false => {
+                debug_assert!(self.is_leader());
+                self.with_mut_thread_group(|tg| {
+                    for task in tg.iter() {
+                        if task.sig_mask().contain_signal(sig) {
+                            continue;
+                        }
+                        task.with_mut_sig_pending(|pending| {
+                            pending.add(sig);
+                        });
+                        break;
                     }
-                    task.with_mut_sig_pending(|pending| {
-                        pending.add(sig);
-                    });
-                    break;
-                }
-            })
-        } else {
-            if self.sig_mask().contain_signal(sig) {
-                return;
+                })
             }
-            self.with_mut_sig_pending(|pending| {
-                pending.add(sig);
-            });
+            true => {
+                if self.sig_mask().contain_signal(sig) {
+                    return;
+                }
+                self.with_mut_sig_pending(|pending| {
+                    pending.add(sig);
+                });
+            }
         }
     }
 }

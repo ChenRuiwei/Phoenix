@@ -1,3 +1,5 @@
+use core::mem;
+
 use config::process::INIT_PROC_PID;
 use signal::{
     action::{Action, ActionType},
@@ -10,8 +12,8 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     task::{
-        signal::{SigAction, SIG_DFL, SIG_IGN},
-        TASK_MANAGER,
+        signal::{do_signal, SigAction, SIG_DFL, SIG_IGN},
+        yield_now, TASK_MANAGER,
     },
 };
 
@@ -123,8 +125,8 @@ pub fn sys_signalstack(
 ///
 /// **RETURN VALUE** :On success (at least one signal was sent), zero is
 /// returned.  On error, -1 is returned, and errno is set appropriately
-pub fn sys_kill(pid: isize, sig: i32) -> SyscallResult {
-    let sig = Sig::from_i32(sig);
+pub fn sys_kill(pid: isize, signum: i32) -> SyscallResult {
+    let sig = Sig::from_i32(signum);
     if !sig.is_valid() {
         return Err(SysError::EINVAL);
     }
@@ -136,7 +138,7 @@ pub fn sys_kill(pid: isize, sig: i32) -> SyscallResult {
         -1 => {
             TASK_MANAGER.for_each(|task| {
                 if task.pid() != INIT_PROC_PID && task.is_leader() && sig.raw() != 0 {
-                    task.receive_signal(sig);
+                    task.receive_signal(sig, false);
                 }
                 Ok(())
             })?;
@@ -144,7 +146,7 @@ pub fn sys_kill(pid: isize, sig: i32) -> SyscallResult {
         _ if pid > 0 => {
             if let Some(task) = TASK_MANAGER.get(pid as usize) {
                 if task.is_leader() {
-                    task.receive_signal(sig);
+                    task.receive_signal(sig, false);
                 } else {
                     // sys_kill is sent to process not thread
                     return Err(SysError::ESRCH);
@@ -160,4 +162,70 @@ pub fn sys_kill(pid: isize, sig: i32) -> SyscallResult {
         }
     }
     Ok(0)
+}
+
+/// sends the signal sigum to the thread with the thread ID tid in the thread
+/// group tgid.  (By contrast, kill(2) can be used to send a signal only to a
+/// process (i.e., thread group) as a whole, and the signal will be delivered to
+/// an arbitrary thread within that process.)
+pub fn sys_tgkill(tgid: isize, tid: isize, signum: i32) -> SyscallResult {
+    let sig = Sig::from_i32(signum);
+    if !sig.is_valid() || tgid < 0 || tid < 0 {
+        return Err(SysError::EINVAL);
+    }
+    let task = TASK_MANAGER.get(tgid as usize).ok_or(SysError::ESRCH)?;
+    if !task.is_leader() {
+        return Err(SysError::ESRCH);
+    }
+    task.with_mut_thread_group(|tg| -> SyscallResult {
+        for thread in tg.iter() {
+            if thread.tid() == tid as usize {
+                thread.receive_signal(sig, true);
+                return Ok(0);
+            }
+        }
+        return Err(SysError::ESRCH);
+    })
+}
+
+/// An  obsolete predecessor to tgkill().  It allows only the target thread ID
+/// to be specified, which may result in the wrong thread being signaled if a
+/// thread terminates and its thread ID is recycled.  Avoid using this system
+/// call.
+pub fn sys_tkill(tid: isize, signum: i32) -> SyscallResult {
+    let sig = Sig::from_i32(signum);
+    if !sig.is_valid() || tid < 0 {
+        return Err(SysError::EINVAL);
+    }
+    let task = TASK_MANAGER.get(tid as usize).ok_or(SysError::ESRCH)?;
+    task.receive_signal(sig, true);
+    Ok(0)
+}
+
+/// temporarily replaces the signal mask of the calling thread with the mask
+/// given by mask and then suspends the thread until delivery of a signal whose
+/// action is to invoke a signal handler or to terminate a process
+///
+/// If the signal terminates the process, then sigsuspend() does not return.  If
+/// the signal is caught, then sigsuspend() returns after the signal handler
+/// returns, and the signal mask is restored to the state before the call to
+/// sigsuspend().
+///
+/// It is not possible to block SIGKILL or SIGSTOP; specifying these signals in
+/// mask, has no effect on the thread's signal mask.
+pub async fn sys_sigsuspend(mask: UserReadPtr<SigSet>) -> SyscallResult {
+    let task = current_task();
+    let mut mask = mask.read(task)?;
+    let oldmask = task.sig_mask_replace(&mut mask);
+    loop {
+        yield_now().await;
+        if task.with_mut_sig_pending(|pending| -> bool {
+            pending.has_signal_to_handle(*task.sig_mask())
+        }) {
+            *task.sig_mask() = oldmask;
+            // TODO: 根据Linux这里理论上应该等到signal
+            // handler返回时sys_sigsuspend再返回，但是貌似其他队都没有这样做
+            break Err(SysError::EINTR);
+        }
+    }
 }
