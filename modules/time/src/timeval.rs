@@ -19,6 +19,12 @@ impl From<Duration> for TimeVal {
     }
 }
 
+impl Into<Duration> for TimeVal {
+    fn into(self) -> Duration {
+        Duration::new(self.tv_sec as u64, (self.tv_usec * 1000) as u32)
+    }
+}
+
 impl TimeVal {
     pub fn from_usec(usec: usize) -> Self {
         Self {
@@ -29,5 +35,24 @@ impl TimeVal {
 
     pub fn into_usec(&self) -> usize {
         self.tv_sec * 1_000_000 + self.tv_usec
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+#[repr(C)]
+pub struct ITimerVal {
+    /// Interval for periodic timer
+    it_interval: TimeVal,
+    /// Time until next expiration
+    it_value: TimeVal,
+}
+
+impl ITimerVal {
+    pub fn interval_duration(&self) -> Duration {
+        self.it_interval.into()
+    }
+
+    pub fn value_duration(&self) -> Duration {
+        self.it_value.into()
     }
 }

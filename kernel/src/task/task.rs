@@ -18,12 +18,16 @@ use signal::{
     signal_stack::SignalStack,
     sigset::{Sig, SigSet},
 };
+use spin::Once;
 use sync::mutex::SpinNoIrqLock;
-use time::stat::TaskTimeStat;
+use time::{stat::TaskTimeStat, timeval::ITimerVal};
 use vfs::{fd_table::FdTable, sys_root_dentry};
 use vfs_core::Dentry;
 
-use super::tid::{Pid, Tid, TidHandle};
+use super::{
+    signal::ITimer,
+    tid::{Pid, Tid, TidHandle},
+};
 use crate::{
     mm::MemorySpace,
     syscall,
@@ -45,6 +49,7 @@ pub struct Task {
     // Immutable
     /// Tid of the task.
     tid: TidHandle,
+    leader: Once<Weak<Task>>,
     /// Whether the task is the leader.
     is_leader: bool,
 
@@ -85,6 +90,7 @@ pub struct Task {
     sig_stack: SyncUnsafeCell<Option<SignalStack>>,
     sig_ucontext_ptr: AtomicUsize,
     time_stat: SyncUnsafeCell<TaskTimeStat>,
+    itimers: Shared<[ITimer; 3]>,
 }
 
 impl core::fmt::Debug for Task {
@@ -126,6 +132,7 @@ impl Task {
         let trap_context = TrapContext::new(entry_point, user_sp_top);
         let task = Arc::new(Self {
             tid: alloc_tid(),
+            leader: Once::new(),
             is_leader: true,
             state: SpinNoIrqLock::new(TaskState::Running),
             parent: new_shared(None),
@@ -143,9 +150,14 @@ impl Task {
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
+            itimers: new_shared([
+                ITimer::new_real(),
+                ITimer::new_virtual(),
+                ITimer::new_prof(),
+            ]),
         });
-
-        task.thread_group.lock().push_leader(task.clone());
+        task.leader.call_once(|| Arc::downgrade(&task));
+        task.thread_group.lock().push(task.clone());
 
         TASK_MANAGER.add(&task);
         log::debug!("create a new process, pid {}", task.tid());
@@ -182,7 +194,7 @@ impl Task {
 
     /// Pid means tgid.
     pub fn pid(&self) -> Pid {
-        self.thread_group.lock().tgid()
+        self.leader.get().unwrap().upgrade().unwrap().tid()
     }
 
     pub fn tid(&self) -> Tid {
@@ -293,18 +305,24 @@ impl Task {
         let parent;
         let children;
         let thread_group;
-
+        let itimers;
         if flags.contains(CloneFlags::THREAD) {
             is_leader = false;
             parent = self.parent.clone();
             children = self.children.clone();
             // will add the new task into the group later
             thread_group = self.thread_group.clone();
+            itimers = self.itimers.clone();
         } else {
             is_leader = true;
             parent = new_shared(Some(Arc::downgrade(self)));
             children = new_shared(BTreeMap::new());
             thread_group = new_shared(ThreadGroup::new());
+            itimers = new_shared([
+                ITimer::new_real(),
+                ITimer::new_virtual(),
+                ITimer::new_prof(),
+            ])
         }
 
         let memory_space;
@@ -320,6 +338,7 @@ impl Task {
 
         let new = Arc::new(Self {
             tid,
+            leader: Once::new(),
             is_leader,
             cwd,
             state,
@@ -337,14 +356,16 @@ impl Task {
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
+            itimers,
         });
 
         if flags.contains(CloneFlags::THREAD) {
-            new.with_mut_thread_group(|tg| tg.push(new.clone()));
+            new.leader.call_once(|| self.leader.get().unwrap().clone());
         } else {
-            new.with_mut_thread_group(|g| g.push_leader(new.clone()));
+            new.leader.call_once(|| Arc::downgrade(&new));
             self.add_child(new.clone());
         }
+        new.with_mut_thread_group(|tg| tg.push(new.clone()));
 
         TASK_MANAGER.add(&new);
         new
@@ -401,7 +422,8 @@ impl Task {
         // TODO: send SIGCHLD to parent if this is the leader
         if self.is_leader() {
             if let Some(parent) = self.parent() {
-                let _parent = parent.upgrade().unwrap();
+                let parent = parent.upgrade().unwrap();
+                parent.receive_signal(Sig::SIGCHLD, false);
             }
         }
 
@@ -433,42 +455,27 @@ impl Task {
     with_!(memory_space, MemorySpace);
     with_!(thread_group, ThreadGroup);
     with_!(sig_pending, SigPending);
+    with_!(itimers, [ITimer; 3]);
 }
 
 /// Hold a group of threads which belongs to the same process.
-// PERF: move leader out to decrease lock granularity
 pub struct ThreadGroup {
     members: BTreeMap<Tid, Weak<Task>>,
-    leader: Option<Weak<Task>>,
 }
 
 impl ThreadGroup {
     pub fn new() -> Self {
         Self {
             members: BTreeMap::new(),
-            leader: None,
         }
     }
 
-    pub fn push_leader(&mut self, leader: Arc<Task>) {
-        debug_assert!(self.leader.is_none());
-        debug_assert!(self.members.is_empty());
-        self.leader = Some(Arc::downgrade(&leader));
-        self.members.insert(leader.tid(), Arc::downgrade(&leader));
-    }
-
     pub fn push(&mut self, task: Arc<Task>) {
-        debug_assert!(self.leader.is_some());
         self.members.insert(task.tid(), Arc::downgrade(&task));
     }
 
     pub fn remove(&mut self, thread: &Task) {
-        debug_assert!(self.leader.is_some());
         self.members.remove(&thread.tid());
-    }
-
-    pub fn tgid(&self) -> Tid {
-        self.leader.as_ref().unwrap().upgrade().unwrap().tid()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Arc<Task>> + '_ {

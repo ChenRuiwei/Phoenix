@@ -4,8 +4,11 @@ use arch::time::{get_time_duration, get_time_ms, get_time_us};
 use async_utils::{Select2Futures, SelectOutput};
 use systype::{SysError, SysResult, SyscallResult};
 use time::{
-    timespec::TimeSpec, timeval::TimeVal, tms::TMS, CLOCK_DEVIATION, CLOCK_MONOTONIC,
-    CLOCK_PROCESS_CPUTIME_ID, CLOCK_REALTIME, CLOCK_THREAD_CPUTIME_ID,
+    timespec::TimeSpec,
+    timeval::{ITimerVal, TimeVal},
+    tms::TMS,
+    CLOCK_DEVIATION, CLOCK_MONOTONIC, CLOCK_PROCESS_CPUTIME_ID, CLOCK_REALTIME,
+    CLOCK_THREAD_CPUTIME_ID,
 };
 use timer::timelimited_task::ksleep_ms;
 
@@ -149,5 +152,30 @@ pub fn sys_clock_getres(_clockid: usize, res: UserWritePtr<TimeSpec>) -> Syscall
         return Ok(0);
     }
     res.write(current_task(), Duration::from_nanos(1).into())?;
+    Ok(0)
+}
+
+/// provide access to interval timers, that is, timers that initially expire at
+/// some point in the future, and (optionally) at regular intervals after that.
+/// When a timer expires, a signal is generated for the calling process, and the
+/// timer is reset to the specified interval (if the interval is nonzero).
+/// Three  types  of  timers—specified via the which argument—are provided, each
+/// of which counts against a different clock and generates a different signal
+/// on timer expiration:
+pub fn sys_setitier(
+    which: i32,
+    new_value: UserReadPtr<ITimerVal>,
+    old_value: UserWritePtr<ITimerVal>,
+) -> SyscallResult {
+    // if which != ITIMER_REAL && which != ITIMER_VIRTUAL && which != ITIMER_PROF{
+    //     return Err(SysError::EINVAL);
+    // }
+    // if old_value.not_null(){
+
+    // }
+    Ok(0)
+}
+
+pub fn sys_getitier(which: i32, curr_value: UserWritePtr<ITimerVal>) -> SyscallResult {
     Ok(0)
 }
