@@ -52,7 +52,7 @@ macro_rules! strace {
             processor::hart::{local_hart, current_task}
         };
         $crate::impls::print_in_color(
-            format_args!(concat!("[SYSCALL][{},{}] ", $fmt, "\n"),
+            format_args!(concat!("[SYSCALL][H{},T{}] ", $fmt, "\n"),
             local_hart().hart_id(),
             current_task().pid()
             $(, $($arg)+)?),

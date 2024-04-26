@@ -3,10 +3,11 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
+use core::fmt::Error;
 
 use systype::{SysError, SysResult};
 
-use crate::Dentry;
+use crate::{dentry, Dentry, InodeMode, OpenFlags};
 
 #[derive(Clone)]
 pub struct Path {
@@ -35,7 +36,7 @@ impl Path {
         }
     }
 
-    pub fn walk(&self) -> SysResult<Arc<dyn Dentry>> {
+    pub fn walk(&self, flags: OpenFlags, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         let path = self.path.as_str();
         let mut dentry = if is_absolute_path(path) {
             self.root.clone()
@@ -43,16 +44,32 @@ impl Path {
             self.start.clone()
         };
         log::debug!("[Path::walk] {:?}", split_path(path));
+        let name = split_path(path).last().unwrap().to_string();
         for p in split_path(path) {
             match p {
                 ".." => {
                     dentry = dentry.parent().ok_or(SysError::ENOENT)?;
                 }
-                name => {
-                    dentry = dentry.lookup(name)?;
-                }
+                name => match dentry.lookup(name) {
+                    Ok(sub_dentry) => {
+                        log::debug!("[Path::walk] sub dentry {}", sub_dentry.name());
+                        dentry = sub_dentry
+                    }
+                    Err(e) => {
+                        if !flags.contains(OpenFlags::O_CREAT) {
+                            return Err(e);
+                        }
+                        log::debug!("[Path::walk] create {name}");
+                        dentry = dentry.create(name, mode)?
+                    }
+                },
             }
         }
+        log::debug!("[Path::walk] create {name}");
+        if flags.contains(OpenFlags::O_CREAT) {
+            dentry = dentry.create(&name, mode)?
+        }
+
         Ok(dentry)
     }
 }

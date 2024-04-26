@@ -7,7 +7,7 @@ use alloc::{
 use spin::Once;
 use systype::{SysError, SysResult};
 
-use crate::{inode::Inode, super_block, File, InodeType, Mutex, SuperBlock};
+use crate::{inode::Inode, super_block, File, InodeMode, InodeType, Mutex, SuperBlock};
 
 pub struct DentryMeta {
     /// Name of this file or directory.
@@ -72,6 +72,10 @@ pub trait Dentry: Send + Sync {
     /// Look up in a directory inode and find file with `name`.
     fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>>;
 
+    /// Called by the open(2) and creat(2) system calls. Create a inode for a
+    /// dentry in the directory inode.
+    fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>>;
+
     fn super_block(&self) -> Arc<dyn SuperBlock> {
         self.meta().super_block.upgrade().unwrap()
     }
@@ -82,6 +86,10 @@ pub trait Dentry: Send + Sync {
 
     fn parent(&self) -> Option<Arc<dyn Dentry>> {
         self.meta().parent.as_ref().map(|p| p.upgrade().unwrap())
+    }
+
+    fn find_child(&self, name: &str) -> Option<Arc<dyn Dentry>> {
+        self.meta().children.lock().get(name).cloned()
     }
 
     /// Insert a child dentry to this dentry.
@@ -152,5 +160,9 @@ impl dyn Dentry {
 
     pub fn lookup(self: &Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
         self.clone().arc_lookup(name)
+    }
+
+    pub fn create(self: &Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+        self.clone().arc_create(name, mode)
     }
 }

@@ -2,7 +2,7 @@ use alloc::{string::ToString, sync::Arc, vec::Vec};
 
 use systype::{SysError, SysResult, SyscallResult};
 use vfs::sys_root_dentry;
-use vfs_core::{is_relative_path, Dentry, OpenFlags, Path, AT_FDCWD};
+use vfs_core::{is_relative_path, Dentry, InodeMode, OpenFlags, Path, AT_FDCWD};
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
@@ -80,17 +80,46 @@ pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallRe
     Ok(ret)
 }
 
+/// The open() system call opens the file specified by pathname. If the
+/// specified file does not exist, it may optionally (if O_CREAT is specified in
+/// flags) be created by open().
+///
+/// The return value of open() is a file descriptor, a small, nonnegative
+/// integer that is an index to an entry in the process's table of open file
+/// descriptors. The file descriptor is used in subsequent system calls
+/// (read(2), write(2), lseek(2), fcntl(2), etc.) to refer to the open file. The
+/// file descriptor returned by a successful call will be the lowest-numbered
+/// file descriptor not currently open for the process.
+///
+/// The mode argument specifies the file mode bits to be applied when a new file
+/// is created. If neither O_CREAT nor O_TMPFILE is specified in flags, then
+/// mode is ignored (and can thus be specified as 0, or simply omitted). The
+/// mode argument must be supplied if O_CREAT or O_TMPFILE is specified in
+/// flags; if it is not supplied, some arbitrary bytes from the stack will be
+/// applied as the file mode.
 // TODO:
 pub fn sys_openat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32, mode: u32) -> SyscallResult {
     let task = current_task();
     let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+    let mode = InodeMode::from_bits_truncate(mode);
     let pathname = pathname.read_cstr(task)?;
     // FIXME: with flags O_CREAT
-    let dentry = at_helper(dirfd, &pathname)?;
+    log::debug!("{flags:?}");
+    let dentry = at_helper(dirfd, &pathname, flags, mode)?;
     let file = dentry.open()?;
     task.with_mut_fd_table(|table| table.alloc(file))
 }
 
+/// close() closes a file descriptor, so that it no longer refers to any file
+/// and may be reused. Any record locks (see fcntl(2)) held on the file it was
+/// associated with, and owned by the process, are removed regardless of the
+/// file descriptor that was used to obtain the lock. This has some unfortunate
+/// consequences and one should be extra careful when using advisory record
+/// locking. See fcntl(2) for discussion of the risks and consequences as well
+/// as for the (probably preferred) open file description locks.
+///
+/// close() returns zero on success.  On error, -1 is returned, and errno is set
+/// to indicate the error.
 pub fn sys_close(fd: usize) -> SyscallResult {
     let task = current_task();
     task.with_mut_fd_table(|table| table.remove(fd))?;
@@ -108,7 +137,12 @@ pub fn sys_close(fd: usize) -> SyscallResult {
 ///   than relative to the current working directory of the calling process, as
 ///   is done by open() for a relative pathname).  In this case, dirfd must be a
 ///   directory that was opened for reading (O_RDONLY) or using the O_PATH flag.
-fn at_helper(fd: isize, path: &str) -> SysResult<Arc<dyn Dentry>> {
+fn at_helper(
+    fd: isize,
+    path: &str,
+    flags: OpenFlags,
+    mode: InodeMode,
+) -> SysResult<Arc<dyn Dentry>> {
     log::info!("[at_helper] fd: {},path:{}", fd, path);
     let task = current_task();
     let path = if is_relative_path(path) {
@@ -122,5 +156,5 @@ fn at_helper(fd: isize, path: &str) -> SysResult<Arc<dyn Dentry>> {
     } else {
         Path::new(sys_root_dentry(), sys_root_dentry(), "")
     };
-    path.walk()
+    path.walk(flags, mode)
 }
