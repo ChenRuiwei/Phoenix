@@ -29,7 +29,7 @@ use super::{
     tid::{Pid, Tid, TidHandle},
 };
 use crate::{
-    mm::MemorySpace,
+    mm::{memory_space, MemorySpace},
     syscall,
     task::{manager::TASK_MANAGER, schedule, tid::alloc_tid},
     trap::TrapContext,
@@ -49,7 +49,8 @@ pub struct Task {
     // Immutable
     /// Tid of the task.
     tid: TidHandle,
-    leader: Once<Weak<Task>>,
+    /// `None` if self is leader.
+    leader: Option<Weak<Task>>,
     /// Whether the task is the leader.
     is_leader: bool,
 
@@ -115,9 +116,13 @@ macro_rules! with_ {
     ($name:ident, $ty:ty) => {
         paste::paste! {
             pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
+                // log::debug!("with_{:?}", T);
+                log::debug!("with_something");
                 f(& self.$name.lock())
             }
             pub fn [<with_mut_ $name>]<T>(&self, f: impl FnOnce(&mut $ty) -> T) -> T {
+                // log::debug!("with_mut_{:?}", T);
+                log::debug!("with_mut_something");
                 f(&mut self.$name.lock())
             }
         }
@@ -132,7 +137,7 @@ impl Task {
         let trap_context = TrapContext::new(entry_point, user_sp_top);
         let task = Arc::new(Self {
             tid: alloc_tid(),
-            leader: Once::new(),
+            leader: None,
             is_leader: true,
             state: SpinNoIrqLock::new(TaskState::Running),
             parent: new_shared(None),
@@ -156,7 +161,6 @@ impl Task {
                 ITimer::new_prof(),
             ]),
         });
-        task.leader.call_once(|| Arc::downgrade(&task));
         task.thread_group.lock().push(task.clone());
 
         TASK_MANAGER.add(&task);
@@ -192,9 +196,17 @@ impl Task {
         self.is_leader
     }
 
+    pub fn leader(self: &Arc<Self>) -> Arc<Self> {
+        if self.is_leader() {
+            self.clone()
+        } else {
+            self.leader.as_ref().cloned().unwrap().upgrade().unwrap()
+        }
+    }
+
     /// Pid means tgid.
-    pub fn pid(&self) -> Pid {
-        self.leader.get().unwrap().upgrade().unwrap().tid()
+    pub fn pid(self: &Arc<Self>) -> Pid {
+        self.leader().tid()
     }
 
     pub fn tid(&self) -> Tid {
@@ -298,9 +310,9 @@ impl Task {
 
         let trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
-        let _exit_code = AtomicI32::new(self.exit_code());
         let cwd = self.cwd.clone();
 
+        let leader;
         let is_leader;
         let parent;
         let children;
@@ -308,6 +320,7 @@ impl Task {
         let itimers;
         if flags.contains(CloneFlags::THREAD) {
             is_leader = false;
+            leader = Some(Arc::downgrade(self));
             parent = self.parent.clone();
             children = self.children.clone();
             // will add the new task into the group later
@@ -315,6 +328,7 @@ impl Task {
             itimers = self.itimers.clone();
         } else {
             is_leader = true;
+            leader = None;
             parent = new_shared(Some(Arc::downgrade(self)));
             children = new_shared(BTreeMap::new());
             thread_group = new_shared(ThreadGroup::new());
@@ -322,7 +336,7 @@ impl Task {
                 ITimer::new_real(),
                 ITimer::new_virtual(),
                 ITimer::new_prof(),
-            ])
+            ]);
         }
 
         let memory_space;
@@ -338,7 +352,7 @@ impl Task {
 
         let new = Arc::new(Self {
             tid,
-            leader: Once::new(),
+            leader,
             is_leader,
             cwd,
             state,
@@ -359,10 +373,7 @@ impl Task {
             itimers,
         });
 
-        if flags.contains(CloneFlags::THREAD) {
-            new.leader.call_once(|| self.leader.get().unwrap().clone());
-        } else {
-            new.leader.call_once(|| Arc::downgrade(&new));
+        if !flags.contains(CloneFlags::THREAD) {
             self.add_child(new.clone());
         }
         new.with_mut_thread_group(|tg| tg.push(new.clone()));
@@ -474,8 +485,8 @@ impl ThreadGroup {
         self.members.insert(task.tid(), Arc::downgrade(&task));
     }
 
-    pub fn remove(&mut self, thread: &Task) {
-        self.members.remove(&thread.tid());
+    pub fn remove(&mut self, task: &Task) {
+        self.members.remove(&task.tid());
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Arc<Task>> + '_ {
