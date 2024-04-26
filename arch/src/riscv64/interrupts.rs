@@ -25,6 +25,10 @@ pub unsafe fn enable_external_interrupt() {
     sie::set_sext();
 }
 
+pub fn get_trap_handler() -> usize {
+    stvec::read().bits()
+}
+
 pub unsafe fn set_trap_handler(handler_addr: usize) {
     stvec::write(handler_addr, TrapMode::Direct);
 }
@@ -52,5 +56,25 @@ impl Drop for InterruptGuard {
         if self.interrupt_before {
             unsafe { enable_interrupt() };
         }
+    }
+}
+
+pub struct TrapHandlerGuard {
+    trap_handler_before: usize,
+}
+
+impl TrapHandlerGuard {
+    pub fn new(new_trap_handler: usize) -> Self {
+        let trap_handler_before = get_trap_handler();
+        unsafe { set_trap_handler(new_trap_handler) }
+        Self {
+            trap_handler_before,
+        }
+    }
+}
+
+impl Drop for TrapHandlerGuard {
+    fn drop(&mut self) {
+        unsafe { set_trap_handler(self.trap_handler_before) }
     }
 }

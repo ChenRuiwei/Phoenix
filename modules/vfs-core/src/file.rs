@@ -11,7 +11,7 @@ use core::{
 use config::mm::PAGE_SIZE;
 use systype::{SysError, SysResult};
 
-use crate::{Dentry, DirEnt, Inode, SeekFrom};
+use crate::{Dentry, DirEnt, Inode, InodeType, SeekFrom};
 
 pub struct FileMeta {
     /// Dentry which pointes to this file.
@@ -58,6 +58,10 @@ pub trait File: Send + Sync {
 
     fn inode(&self) -> Arc<dyn Inode> {
         self.meta().inode.clone()
+    }
+
+    fn itype(&self) -> InodeType {
+        self.meta().inode.itype()
     }
 
     /// Called when the VFS needs to move the file position index.

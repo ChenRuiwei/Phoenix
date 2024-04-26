@@ -59,25 +59,24 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
     } else {
         // get file and write
     }
-    let file = task.with_fd_table(|table| table.get(fd).ok_or(SysError::EBADF))?;
+    let file = task.with_fd_table(|table| table.get(fd))?;
     let ret = file.write(file.pos(), &buf)?;
     Ok(ret)
 }
 
+/// read() attempts to read up to count bytes from file descriptor fd into the
+/// buffer starting at buf.
+///
+/// On success, the number of bytes read is returned (zero indicates end of
+/// file), and the file position is advanced by this number.
 pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallResult {
     let task = current_task();
-    let file = task.with_fd_table(|table| table.get(fd).ok_or(SysError::EBADF))?;
-    if file.inode().node_type().is_dir() {
+    let file = task.with_fd_table(|table| table.get(fd))?;
+    if file.itype().is_dir() {
         return Err(SysError::EISDIR);
     }
-    // let buf = buf.into_mut_slice(task, len)?;
-    // let ret = file.read(file.pos(), buf)?;
-    // HACK:
-    let mut buffer = Vec::with_capacity(len);
-    unsafe { buffer.set_len(len) };
-    let ret = file.read(file.pos(), &mut buffer)?;
-    log::debug!("{:?}", buffer);
-    buf.write_array(task, &buffer)?;
+    let mut buf = buf.into_mut_slice(task, len)?;
+    let ret = file.read(file.pos(), &mut buf)?;
     Ok(ret)
 }
 
@@ -117,7 +116,7 @@ fn at_helper(fd: isize, path: &str) -> SysResult<Arc<dyn Dentry>> {
             Path::new(sys_root_dentry(), task.cwd(), path)
         } else {
             let fd = fd as usize;
-            let file = task.with_fd_table(|table| table.get(fd).ok_or(SysError::EBADF))?;
+            let file = task.with_fd_table(|table| table.get(fd))?;
             Path::new(sys_root_dentry(), file.dentry(), path)
         }
     } else {

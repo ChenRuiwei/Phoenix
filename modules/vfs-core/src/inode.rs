@@ -66,7 +66,7 @@ pub trait Inode: Send + Sync + DowncastSync {
 }
 
 impl dyn Inode {
-    pub fn node_type(&self) -> InodeType {
+    pub fn itype(&self) -> InodeType {
         self.meta().mode.into()
     }
 
