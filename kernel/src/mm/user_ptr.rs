@@ -69,6 +69,34 @@ pub type UserWritePtr<T> = UserPtr<T, Out>;
 unsafe impl<T: Clone + Copy + 'static, P: Policy> Send for UserPtr<T, P> {}
 unsafe impl<T: Clone + Copy + 'static, P: Policy> Sync for UserPtr<T, P> {}
 
+pub struct UserSlice<'a, T> {
+    slice: &'a mut [T],
+    _guard: SumGuard,
+}
+
+impl<'a, T> UserSlice<'a, T> {
+    pub fn new(slice: &'a mut [T]) -> Self {
+        Self {
+            slice,
+            _guard: SumGuard::new(),
+        }
+    }
+}
+
+impl<'a, T> core::ops::Deref for UserSlice<'a, T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        self.slice
+    }
+}
+
+impl<'a, T> core::ops::DerefMut for UserSlice<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.slice
+    }
+}
+
 impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
     fn new(ptr: *mut T) -> Self {
         Self {
@@ -238,15 +266,16 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
     }
 
     // FIXME: this function will not handle page fault because writing is outside
-    pub fn into_mut_slice(self, task: &Arc<Task>, n: usize) -> SysResult<&mut [T]> {
+    pub fn into_mut_slice(self, task: &Arc<Task>, n: usize) -> SysResult<UserSlice<T>> {
         debug_assert!(n == 0 || self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
             PageFaultAccessType::RW,
         )?;
-        let res = unsafe { core::slice::from_raw_parts_mut(self.ptr, n) };
-        Ok(res)
+        let slice = unsafe { core::slice::from_raw_parts_mut(self.ptr, n) };
+        let mut user_slice = UserSlice::new(slice);
+        Ok(user_slice)
     }
 
     pub fn write(self, task: &Arc<Task>, val: T) -> SysResult<()> {

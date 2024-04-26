@@ -70,14 +70,9 @@ pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallRe
     if file.inode().node_type().is_dir() {
         return Err(SysError::EISDIR);
     }
-    // let buf = buf.into_mut_slice(task, len)?;
-    // let ret = file.read(file.pos(), buf)?;
-    // HACK:
-    let mut buffer = Vec::with_capacity(len);
-    unsafe { buffer.set_len(len) };
-    let ret = file.read(file.pos(), &mut buffer)?;
-    log::debug!("{:?}", buffer);
-    buf.write_array(task, &buffer)?;
+    let mut buf = buf.into_mut_slice(task, len)?;
+    let ret = file.read(file.pos(), &mut buf)?;
+    // log::debug!("{:?}", buf);
     Ok(ret)
 }
 
