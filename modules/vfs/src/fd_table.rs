@@ -35,7 +35,8 @@ impl FdTable {
         (3..self.table.len()).find(|fd| self.table[*fd].is_none())
     }
 
-    // finds a fd and insert the file descriptor into the table
+    /// Find a fd, will alloc a fd if necessary, and insert the `file` into the
+    /// table.
     pub fn alloc(&mut self, file: Arc<dyn File>) -> SysResult<usize> {
         if let Some(fd) = self.find_free_slot() {
             self.table[fd] = Some(file);
@@ -46,17 +47,12 @@ impl FdTable {
         }
     }
 
-    pub fn put(&mut self, fd: Fd, file: Arc<dyn File>) {
-        assert!(fd < self.table.len());
-        assert!(self.table[fd].is_none());
-        self.table[fd] = Some(file);
-    }
-
-    pub fn get(&self, fd: Fd) -> Option<Arc<dyn File>> {
+    pub fn get(&self, fd: Fd) -> SysResult<Arc<dyn File>> {
         if fd >= self.table.len() {
-            None
+            Err(SysError::EBADF)
         } else {
-            self.table[fd].clone()
+            let file = self.table[fd].clone().ok_or(SysError::EBADF)?;
+            Ok(file)
         }
     }
 

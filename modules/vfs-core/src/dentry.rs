@@ -139,7 +139,7 @@ impl dyn Dentry {
     /// Lookup a dentry with `name` in the directory.
     pub fn find(&self, name: &str) -> Option<Arc<dyn Dentry>> {
         let meta = self.meta();
-        let mode = self.inode().unwrap().node_type();
+        let mode = self.inode().unwrap().itype();
         match mode {
             InodeType::Dir => meta.children.lock().get(name).map(|item| item.clone()),
             _ => None,

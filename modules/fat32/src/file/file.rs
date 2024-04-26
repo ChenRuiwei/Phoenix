@@ -34,7 +34,7 @@ impl File for FatFileFile {
     }
 
     fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
-        match self.inode().node_type() {
+        match self.itype() {
             InodeType::File => {
                 let mut file = self.file.lock();
                 let fat_offset = file.offset() as usize;
@@ -62,7 +62,7 @@ impl File for FatFileFile {
         if buf.is_empty() {
             return Ok(0);
         }
-        match self.inode().node_type() {
+        match self.itype() {
             InodeType::File => {
                 let mut file = self.file.lock();
                 let size = self.inode().size();
@@ -93,7 +93,7 @@ impl File for FatFileFile {
     }
 
     fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEnt>> {
-        match self.inode().node_type() {
+        match self.itype() {
             InodeType::Dir => {
                 let inode = self
                     .inode()

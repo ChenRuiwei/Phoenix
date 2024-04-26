@@ -42,7 +42,7 @@ impl Dentry for FatDentry {
     }
 
     fn arc_open(self: Arc<Self>) -> systype::SysResult<Arc<dyn vfs_core::File>> {
-        match self.inode()?.node_type() {
+        match self.inode()?.itype() {
             InodeType::File => {
                 let inode = self
                     .inode()?
