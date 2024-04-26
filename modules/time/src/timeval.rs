@@ -36,23 +36,31 @@ impl TimeVal {
     pub fn into_usec(&self) -> usize {
         self.tv_sec * 1_000_000 + self.tv_usec
     }
+
+    pub fn is_valid(&self) -> bool {
+        self.tv_usec < 1_000_000
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.tv_sec == 0 && self.tv_usec == 0
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 #[repr(C)]
 pub struct ITimerVal {
     /// Interval for periodic timer
-    it_interval: TimeVal,
+    pub it_interval: TimeVal,
     /// Time until next expiration
-    it_value: TimeVal,
+    pub it_value: TimeVal,
 }
 
 impl ITimerVal {
-    pub fn interval_duration(&self) -> Duration {
-        self.it_interval.into()
+    pub fn is_valid(&self) -> bool {
+        self.it_interval.is_valid() && self.it_value.is_valid()
     }
 
-    pub fn value_duration(&self) -> Duration {
-        self.it_value.into()
+    pub fn is_activated(&self) -> bool {
+        !(self.it_interval.is_zero() && self.it_value.is_zero())
     }
 }

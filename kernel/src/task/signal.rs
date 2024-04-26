@@ -14,6 +14,7 @@ use signal::{
     sigset::{Sig, SigSet},
 };
 use systype::SysResult;
+use time::timeval::ITimerVal;
 
 use super::Task;
 use crate::{mm::UserWritePtr, processor::hart::current_task};
@@ -244,46 +245,97 @@ impl Future for WaitHandlableSignal {
 pub struct ITimer {
     interval: Duration,
     next_expire: Duration,
-    now: fn(&Task) -> Duration,
+    now: fn() -> Duration,
     activated: bool,
     sig: Sig,
 }
 
 impl ITimer {
+    // pub const ITIMER_REAL: i32 = 0;
+    // pub const ITIMER_VIRTUAL: i32 = 1;
+    // pub const ITIMER_PROF: i32 = 2;
+
+    /// This timer counts down in real (i.e., wall clock) time.  At each
+    /// expiration, a SIGALRM signal is generated.
     pub fn new_real() -> Self {
         Self {
             interval: Duration::ZERO,
             next_expire: Duration::ZERO,
-            now: |_| get_time_duration(),
+            now: || get_time_duration(),
             activated: false,
             sig: Sig::SIGALRM,
         }
     }
 
+    /// This timer counts down against the user-mode CPU time consumed by the
+    /// process.  (The measurement includes CPU time  consumed by all threads in
+    /// the process.)  At each expiration, a SIGVTALRM signal is generated.
     pub fn new_virtual() -> Self {
         Self {
             interval: Duration::ZERO,
             next_expire: Duration::ZERO,
-            // now: |task| {
-            //     let leader = task.
-            // },
-            now: |_| get_time_duration(),
+            now: || current_task().get_process_utime(),
             activated: false,
             sig: Sig::SIGVTALRM,
         }
     }
 
+    /// This  timer  counts down against the total (i.e., both user and system)
+    /// CPU time consumed by the process.  (The measurement includes CPU time
+    /// consumed by all threads in the process.)  At each expiration, a SIGPROF
+    /// signal is generated.
+    /// In conjunction with ITIMER_VIRTUAL, this timer
+    /// can be used to profile user and system CPU time consumed by the process.
     pub fn new_prof() -> Self {
         Self {
             interval: Duration::ZERO,
             next_expire: Duration::ZERO,
-            now: |_| get_time_duration(),
+            now: || current_task().get_process_cputime(),
             activated: false,
             sig: Sig::SIGPROF,
+        }
+    }
+
+    pub fn update(&mut self) {
+        if !self.activated {
+            return;
+        }
+        let now = (self.now)();
+        if self.next_expire <= now {
+            if self.interval.is_zero() {
+                self.activated = false;
+            }
+            self.next_expire = now + self.interval;
+            current_task().receive_signal(self.sig, false);
+        }
+    }
+
+    pub fn set(&mut self, new: ITimerVal) -> ITimerVal {
+        debug_assert!(new.is_valid());
+        let now = (self.now)();
+        let old = ITimerVal {
+            it_interval: self.interval.into(),
+            it_value: (self.next_expire - now).into(),
+        };
+        self.interval = new.it_interval.into();
+        self.next_expire = now + new.it_value.into();
+        self.activated = new.is_activated();
+        old
+    }
+
+    pub fn get(&self) -> ITimerVal {
+        ITimerVal {
+            it_interval: self.interval.into(),
+            it_value: (self.next_expire - (self.now)()).into(),
         }
     }
 }
 
 impl Task {
-    pub fn update_itimers(&self) {}
+    /// this function must be calld by the task which wants to modify itself
+    /// because of the `current_task()`.(i.e. it can't be called when a process
+    /// wants to modify other process's itimers)
+    pub fn update_itimers(&self) {
+        self.with_mut_itimers(|itimers| itimers.iter_mut().for_each(|itimer| itimer.update()))
+    }
 }

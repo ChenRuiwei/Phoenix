@@ -1,5 +1,6 @@
 pub mod aux;
 mod manager;
+pub mod resource;
 mod schedule;
 pub mod signal;
 pub mod task;

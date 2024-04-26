@@ -117,6 +117,8 @@ pub async fn task_loop(task: Arc<Task>) {
         if task.is_zombie() {
             break;
         }
+
+        task.update_itimers();
     }
 
     log::debug!("thread {} terminated", task.tid());
