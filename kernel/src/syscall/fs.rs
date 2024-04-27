@@ -1,4 +1,4 @@
-use alloc::{string::ToString, sync::Arc, vec::Vec};
+use alloc::{ffi::CString, string::ToString, sync::Arc, vec::Vec};
 
 use systype::{SysError, SysResult, SyscallResult};
 use vfs::sys_root_dentry;
@@ -141,8 +141,48 @@ pub async fn sys_mkdirat(dirfd: isize, pathname: UserReadPtr<u8>, mode: u32) -> 
     dentry
         .parent()
         .unwrap()
-        .create(dentry.name(), mode.union(InodeMode::DIR));
+        .create(dentry.name(), mode.union(InodeMode::DIR))?;
     Ok(0)
+}
+
+/// These functions return a null-terminated string containing an absolute
+/// pathname that is the current working directory of the calling process. The
+/// pathname is returned as the function result and via the argument buf, if
+/// present.
+///
+/// The getcwd() function copies an absolute pathname of the current working
+/// directory to the array pointed to by buf, which is of length size.
+///
+/// If the length of the absolute pathname of the current working directory,
+/// including the terminating null byte, exceeds size bytes, NULL is returned,
+/// and errno is set to ERANGE; an application should check for this error, and
+/// allocate a larger buffer if necessary.
+///
+/// On success, these functions return a pointer to a string containing the
+/// pathname of the current working directory. In the case of getcwd() and
+/// getwd() this is the same value as buf.
+///
+/// On failure, these functions return NULL, and errno is set to indicate the
+/// error. The contents of the array pointed to by buf are undefined on error.
+pub fn sys_getcwd(buf: UserWritePtr<u8>, size: usize) -> SyscallResult {
+    if size == 0 && buf.not_null() {
+        return Err(SysError::EINVAL);
+    }
+    if buf.is_null() {
+        return Err(SysError::EINVAL);
+    }
+    let task = current_task();
+    let abs_path = task.cwd().path();
+    let c_path_len = abs_path.len() + 1;
+    if c_path_len + 1 > size {
+        return Err(SysError::ERANGE);
+    }
+    let length = core::cmp::min(c_path_len, size);
+    let abs_path = CString::new(abs_path).expect("can not have null byte in c string");
+    let ret = buf.as_usize();
+    buf.into_mut_slice(task, length)?
+        .copy_from_slice(&abs_path.into_bytes_with_nul());
+    Ok(ret)
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as

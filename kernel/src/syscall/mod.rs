@@ -118,9 +118,8 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         SYSCALL_GETPID => sys_handler!(sys_getpid, ()),
         SYSCALL_GETPPID => sys_handler!(sys_getppid, ()),
         // Memory
-        SYSCALL_BRK => {
-            sys_handler!(sys_brk, (VirtAddr::from(args[0])))
-        }
+        SYSCALL_BRK => sys_handler!(sys_brk, (VirtAddr::from(args[0]))),
+
         // File system
         SYSCALL_READ => {
             sys_handler!(sys_read, (args[0], UserWritePtr::<u8>::from(args[1]), args[2]), await)
@@ -139,9 +138,7 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 )
             )
         }
-        SYSCALL_CLOSE => {
-            sys_handler!(sys_close, (args[0]))
-        }
+        SYSCALL_CLOSE => sys_handler!(sys_close, (args[0])),
         SYSCALL_MKDIR => sys_handler!(
             sys_mkdirat,
             (
@@ -150,6 +147,7 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 args[2] as u32
             ), await
         ),
+        SYSCALL_GETCWD => sys_handler!(sys_getcwd, (UserWritePtr::<u8>::from(args[0]), args[1])),
         // Signal
         SYSCALL_RT_SIGPROCMASK => sys_handler!(
             sys_sigprocmask,
