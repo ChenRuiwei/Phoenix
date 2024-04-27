@@ -37,17 +37,18 @@ fn register_all_fs() {
 }
 
 /// Init the filesystem
-pub fn init_filesystem() -> SysResult<()> {
+pub fn init_filesystem() {
     register_all_fs();
     let diskfs = FS_MANAGER.lock().get(DISK_FS_NAME).unwrap().clone();
-    let diskfs_root = diskfs.mount(
-        "/",
-        MountFlags::empty(),
-        Some(BLOCK_DEVICE.get().unwrap().clone()),
-    )?;
+    let diskfs_root = diskfs
+        .mount(
+            "/",
+            MountFlags::empty(),
+            Some(BLOCK_DEVICE.get().unwrap().clone()),
+        )
+        .unwrap();
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);
-    test()?;
-    Ok(())
+    test().unwrap();
 }
 
 pub fn sys_root_dentry() -> Arc<dyn Dentry> {

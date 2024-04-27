@@ -124,7 +124,7 @@ pub async fn sys_wait4(
         // log::debug!("[sys_wait4]: finding zombie children for {target:?}");
         let children = task.children();
         if children.is_empty() {
-            log::error!("[sys_wait4] fail: no child");
+            // log::error!("[sys_wait4] fail: no child");
             return Err(SysError::ECHILD);
         }
         let res_task = match target {
@@ -277,8 +277,9 @@ pub fn sys_clone(
     _chilren_tid_ptr: usize,
 ) -> SyscallResult {
     let exit_signal = flags & 0xff;
-    let flags = CloneFlags::from_bits(flags as u64 & !0xff).unwrap();
+    let flags = CloneFlags::from_bits(flags as u64 & !0xff).ok_or(SysError::EINVAL)?;
 
+    log::info!("[sys_clone] flags {flags:?}");
     let stack_begin = if stack_ptr != 0 {
         Some(stack_ptr.into())
     } else {

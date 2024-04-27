@@ -27,16 +27,11 @@ mod trap;
 mod utils;
 use core::{
     arch::global_asm,
-    hint,
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use config::mm::HART_START_ADDR;
-use driver::sbi;
-
 use crate::processor::hart;
 
-#[macro_use]
 extern crate alloc;
 
 #[macro_use]
@@ -73,8 +68,6 @@ fn rust_main(hart_id: usize) {
         trap::init();
         driver::init();
         loader::init();
-        // fs::init();
-        // fs::test();
         vfs::init_filesystem();
         task::spawn_kernel_task(async move {
             task::add_init_proc();
@@ -91,7 +84,7 @@ fn rust_main(hart_id: usize) {
 
         // barrier
         while !INIT_FINISHED.load(Ordering::SeqCst) {
-            hint::spin_loop()
+            core::hint::spin_loop()
         }
 
         println!("[kernel] ---------- hart {hart_id} is starting... ----------");

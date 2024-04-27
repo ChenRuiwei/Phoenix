@@ -1,8 +1,8 @@
-use alloc::{ffi::CString, string::ToString, sync::Arc, vec::Vec};
+use alloc::{ffi::CString, sync::Arc};
 
 use systype::{SysError, SysResult, SyscallResult};
 use vfs::sys_root_dentry;
-use vfs_core::{get_last_name, is_relative_path, Dentry, InodeMode, OpenFlags, Path, AT_FDCWD};
+use vfs_core::{is_absolute_path, Dentry, InodeMode, OpenFlags, Path, AT_FDCWD};
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
@@ -174,7 +174,7 @@ pub fn sys_getcwd(buf: UserWritePtr<u8>, size: usize) -> SyscallResult {
     let task = current_task();
     let abs_path = task.cwd().path();
     let c_path_len = abs_path.len() + 1;
-    if c_path_len + 1 > size {
+    if c_path_len > size {
         return Err(SysError::ERANGE);
     }
     let length = core::cmp::min(c_path_len, size);
@@ -207,6 +207,62 @@ pub fn sys_chdir(path: UserReadPtr<u8>) -> SyscallResult {
     Ok(0)
 }
 
+/// The dup() system call allocates a new file descriptor that refers to the
+/// same open file description as the descriptor oldfd. (For an explanation of
+/// open file descriptions, see open(2).) The new file descriptor number is
+/// guaranteed to be the lowest-numbered file descriptor that was unused in the
+/// calling process.
+///
+/// After a successful return, the old and new file descriptors may be used
+/// interchangeably. Since the two file descriptors refer to the same open file
+/// description, they share file offset and file status flags; for example, if
+/// the file offset is modified by using lseek(2) on one of the file
+/// descriptors, the offset is also changed for the other file descriptor.
+///
+/// The two file descriptors do not share file descriptor flags (the
+/// close-on-exec flag). The close-on-exec flag (FD_CLOEXEC; see fcntl(2)) for
+/// the duplicate descriptor is off.
+///
+/// On success, these system calls return the new file descriptor.  On error, -1
+/// is returned, and errno is set to indicate the error.
+pub fn sys_dup(oldfd: usize) -> SyscallResult {
+    let task = current_task();
+    // task.with_mut_fd_table(|table| table);
+    todo!()
+}
+
+/// # dup2()
+///
+/// The dup2() system call performs the same task as dup(), but instead of using
+/// the lowest-numbered unused file descriptor, it uses the file descriptor
+/// number specified in newfd. In other words, the file descriptor newfd is
+/// adjusted so that it now refers to the same open file description as oldfd.
+///
+/// If the file descriptor newfd was previously open, it is closed before being
+/// reused; the close is performed silently (i.e., any errors during the close
+/// are not reported by dup2()).
+///
+/// Note the following points:
+/// + If oldfd is not a valid file descriptor, then the call fails, and newfd is
+///   not closed.
+/// + If oldfd is a valid file descriptor, and newfd has the same value as
+///   oldfd, then dup2() does nothing, and returns newfd.
+///
+/// # dup3()
+///
+/// dup3() is the same as dup2(), except that:
+/// + The caller can force the close-on-exec flag to be set for the new file
+///   descriptor by specifying O_CLOEXEC in flags. See the description of the
+///   same flag in open(2) for reasons why this may be useful.
+/// + If oldfd equals newfd, then dup3() fails with the error EINVAL.
+pub fn sys_dup3(oldfd: usize, newfd: usize, flags: i32) -> SyscallResult {
+    if oldfd == newfd {
+        return Err(SysError::EINVAL);
+    }
+    let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+    todo!()
+}
+
 /// The dirfd argument is used in conjunction with the pathname argument as
 /// follows:
 /// + If the pathname given in pathname is absolute, then dirfd is ignored.
@@ -226,16 +282,14 @@ fn at_helper(
 ) -> SysResult<Arc<dyn Dentry>> {
     log::info!("[at_helper] fd: {fd}, path: {path}");
     let task = current_task();
-    let path = if is_relative_path(path) {
-        if fd as i32 == AT_FDCWD {
-            Path::new(sys_root_dentry(), task.cwd(), path)
-        } else {
-            let fd = fd as usize;
-            let file = task.with_fd_table(|table| table.get(fd))?;
-            Path::new(sys_root_dentry(), file.dentry(), path)
-        }
-    } else {
+    let path = if is_absolute_path(path) {
         Path::new(sys_root_dentry(), sys_root_dentry(), path)
+    } else if fd as i32 == AT_FDCWD {
+        Path::new(sys_root_dentry(), task.cwd(), path)
+    } else {
+        let fd = fd as usize;
+        let file = task.with_fd_table(|table| table.get(fd))?;
+        Path::new(sys_root_dentry(), file.dentry(), path)
     };
     path.walk(flags, mode)
 }

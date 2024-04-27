@@ -136,6 +136,7 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
     }
 }
 
+// TODO: consider return EFAULT when self is null.
 // TODO: ref or slice should hold `SumGuard`
 impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     pub fn into_ref(self, task: &Arc<Task>) -> SysResult<&T> {

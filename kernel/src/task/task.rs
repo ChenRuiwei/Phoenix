@@ -49,7 +49,7 @@ pub struct Task {
     // Immutable
     /// Tid of the task.
     tid: TidHandle,
-    /// `None` if self is leader.
+    /// A weak reference to the leader. `None` if self is leader.
     leader: Option<Weak<Task>>,
     /// Whether the task is the leader.
     is_leader: bool,
@@ -117,11 +117,11 @@ macro_rules! with_ {
         paste::paste! {
             pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
                 // TODO: let logging more specific
-                log::debug!("with_something");
+                log::trace!("with_something");
                 f(& self.$name.lock())
             }
             pub fn [<with_mut_ $name>]<T>(&self, f: impl FnOnce(&mut $ty) -> T) -> T {
-                log::debug!("with_mut_something");
+                log::trace!("with_mut_something");
                 f(&mut self.$name.lock())
             }
         }
@@ -307,7 +307,7 @@ impl Task {
         use syscall::CloneFlags;
         let tid = alloc_tid();
 
-        let trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
+        let mut trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
         let cwd = self.cwd.clone();
 
@@ -342,11 +342,14 @@ impl Task {
         if flags.contains(CloneFlags::VM) {
             memory_space = self.memory_space.clone();
         } else {
-            debug_assert!(user_stack_begin.is_none());
             memory_space =
                 new_shared(self.with_mut_memory_space(|m| MemorySpace::from_user_lazily(m)));
             // TODO: avoid flushing global entries like kernel mappings
             unsafe { sfence_vma_all() };
+        }
+
+        if let Some(sp) = user_stack_begin {
+            trap_context.get_mut().set_user_sp(sp.bits());
         }
 
         let new = Arc::new(Self {
