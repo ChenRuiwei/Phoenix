@@ -236,6 +236,7 @@ pub enum Time {
 }
 
 bitflags! {
+    #[derive(Debug)]
     pub struct MountFlags:u32 {
         /// This filesystem is mounted read-only.
         const MS_RDONLY = 1;

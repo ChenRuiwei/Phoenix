@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="EMPTY_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/arch/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/config/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/irq_count/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/recycle_allocator/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/driver/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/kernel/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/async_utils/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/executor/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/logging/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/memory/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/signal/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/sync/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/systype/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/time/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/timer/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/tmpfs/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/vfs/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/user/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/tmpfs-fuse/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/fat32/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/modules/vfs-core/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>
