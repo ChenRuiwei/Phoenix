@@ -3,6 +3,8 @@ use alloc::sync::Arc;
 use driver::print;
 use vfs_core::{File, FileMeta, Inode, InodeMeta, InodeMode};
 
+// TODO: This file has a lot to do
+
 pub struct StdOutInode {
     meta: InodeMeta,
 }

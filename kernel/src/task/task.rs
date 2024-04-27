@@ -309,13 +309,13 @@ impl Task {
 
         let mut trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
-        let cwd = self.cwd.clone();
 
         let leader;
         let is_leader;
         let parent;
         let children;
         let thread_group;
+        let cwd;
         let itimers;
         if flags.contains(CloneFlags::THREAD) {
             is_leader = false;
@@ -324,6 +324,7 @@ impl Task {
             children = self.children.clone();
             thread_group = self.thread_group.clone();
             itimers = self.itimers.clone();
+            cwd = self.cwd.clone();
         } else {
             is_leader = true;
             leader = None;
@@ -335,6 +336,7 @@ impl Task {
                 ITimer::new_virtual(),
                 ITimer::new_prof(),
             ]);
+            cwd = new_shared(self.cwd());
         }
 
         let memory_space;
