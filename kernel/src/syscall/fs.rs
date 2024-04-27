@@ -129,7 +129,7 @@ pub fn sys_close(fd: usize) -> SyscallResult {
 ///
 /// mkdir() and mkdirat() return zero on success.  On error, -1 is returned and
 /// errno is set to indicate the error.
-pub async fn sys_mkdirat(dirfd: isize, pathname: UserReadPtr<u8>, mode: u32) -> SyscallResult {
+pub fn sys_mkdirat(dirfd: isize, pathname: UserReadPtr<u8>, mode: u32) -> SyscallResult {
     let task = current_task();
     let mode = InodeMode::from_bits_truncate(mode);
     let pathname = pathname.read_cstr(task)?;
@@ -185,6 +185,28 @@ pub fn sys_getcwd(buf: UserWritePtr<u8>, size: usize) -> SyscallResult {
     Ok(ret)
 }
 
+/// chdir() changes the current working directory of the calling process to the
+/// directory specified in path.
+///
+/// On success, zero is returned.  On error, -1 is returned, and errno is set to
+/// indicate the error.
+pub fn sys_chdir(path: UserReadPtr<u8>) -> SyscallResult {
+    let task = current_task();
+    let path = path.read_cstr(task)?;
+    log::debug!("[sys_chdir] path {path}");
+    let dentry = at_helper(
+        AT_FDCWD as isize,
+        &path,
+        OpenFlags::empty(),
+        InodeMode::empty(),
+    )?;
+    if !dentry.inode()?.itype().is_dir() {
+        return Err(SysError::ENOTDIR);
+    }
+    task.set_cwd(dentry);
+    Ok(0)
+}
+
 /// The dirfd argument is used in conjunction with the pathname argument as
 /// follows:
 /// + If the pathname given in pathname is absolute, then dirfd is ignored.
@@ -213,7 +235,7 @@ fn at_helper(
             Path::new(sys_root_dentry(), file.dentry(), path)
         }
     } else {
-        Path::new(sys_root_dentry(), sys_root_dentry(), "")
+        Path::new(sys_root_dentry(), sys_root_dentry(), path)
     };
     path.walk(flags, mode)
 }

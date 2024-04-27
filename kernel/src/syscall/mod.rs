@@ -90,6 +90,19 @@ macro_rules! sys_handler {
     };
 }
 
+macro_rules! asys_handler {
+    ($handler: ident, $args: tt) => {
+        {
+            strace!(
+                "{}, args: {:?}",
+                stringify!($handler),
+                $args,
+            );
+            $handler$args.await
+        }
+    };
+}
+
 /// Handle syscall exception with `syscall_id` and other arguments.
 pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
     match syscall_id {
@@ -104,16 +117,16 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 UserReadPtr::<usize>::from(args[2]),
             )
         ),
-        SYSCALL_SCHED_YIELD => sys_handler!(sys_sched_yield, (), await),
+        SYSCALL_SCHED_YIELD => asys_handler!(sys_sched_yield, ()),
         SYSCALL_CLONE => sys_handler!(sys_clone, (args[0], args[1], args[2], args[3], args[4])),
-        SYSCALL_WAIT4 => sys_handler!(
+        SYSCALL_WAIT4 => asys_handler!(
             sys_wait4,
             (
                 args[0] as i32,
                 UserWritePtr::<i32>::from(args[1]),
                 args[2] as i32,
                 args[3]
-            ), await
+            )
         ),
         SYSCALL_GETPID => sys_handler!(sys_getpid, ()),
         SYSCALL_GETPPID => sys_handler!(sys_getppid, ()),
@@ -122,10 +135,16 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
 
         // File system
         SYSCALL_READ => {
-            sys_handler!(sys_read, (args[0], UserWritePtr::<u8>::from(args[1]), args[2]), await)
+            asys_handler!(
+                sys_read,
+                (args[0], UserWritePtr::<u8>::from(args[1]), args[2])
+            )
         }
         SYSCALL_WRITE => {
-            sys_handler!(sys_write, (args[0], UserReadPtr::<u8>::from(args[1]), args[2]), await)
+            asys_handler!(
+                sys_write,
+                (args[0], UserReadPtr::<u8>::from(args[1]), args[2])
+            )
         }
         SYSCALL_OPENAT => {
             sys_handler!(
@@ -145,9 +164,10 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 args[0] as isize,
                 UserReadPtr::<u8>::from(args[1]),
                 args[2] as u32
-            ), await
+            )
         ),
         SYSCALL_GETCWD => sys_handler!(sys_getcwd, (UserWritePtr::<u8>::from(args[0]), args[1])),
+        SYSCALL_CHDIR => sys_handler!(sys_chdir, (UserReadPtr::<u8>::from(args[0]))),
         // Signal
         SYSCALL_RT_SIGPROCMASK => sys_handler!(
             sys_sigprocmask,
@@ -174,7 +194,7 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         ),
         SYSCALL_RT_SIGRETURN => sys_handler!(sys_sigreturn, ()),
         SYSCALL_RT_SIGSUSPEND => {
-            sys_handler!(sys_sigsuspend, (UserReadPtr::<SigSet>::from(args[0])), await)
+            asys_handler!(sys_sigsuspend, (UserReadPtr::<SigSet>::from(args[0])))
         }
         // times
         SYSCALL_GETTIMEOFDAY => sys_handler!(
@@ -182,13 +202,12 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
             (UserWritePtr::<TimeVal>::from(args[0]), args[1])
         ),
         SYSCALL_TIMES => sys_handler!(sys_times, (UserWritePtr::<TMS>::from(args[0]))),
-        SYSCALL_NANOSLEEP => sys_handler!(
+        SYSCALL_NANOSLEEP => asys_handler!(
             sys_nanosleep,
             (
                 UserReadPtr::<TimeSpec>::from(args[0]),
                 UserWritePtr::<TimeSpec>::from(args[1])
-            ),
-            await
+            )
         ),
         SYSCALL_CLOCK_GETTIME => sys_handler!(
             sys_clock_gettime,
