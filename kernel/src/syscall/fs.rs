@@ -104,7 +104,7 @@ pub fn sys_openat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32, mode: u32
     let mode = InodeMode::from_bits_truncate(mode);
     let pathname = pathname.read_cstr(task)?;
     // FIXME: with flags O_CREAT
-    log::debug!("{flags:?}");
+    log::debug!("{flags:?}, {mode:?}");
     let dentry = at_helper(dirfd, &pathname, flags, mode)?;
     let file = dentry.open()?;
     task.with_mut_fd_table(|table| table.alloc(file))

@@ -43,7 +43,7 @@ use crate::{
 #[cfg(feature = "strace")]
 pub const STRACE_COLOR_CODE: u8 = 35; // Purple
 
-/// Syscall trace
+/// Syscall trace.
 #[cfg(feature = "strace")]
 #[macro_export]
 macro_rules! strace {
@@ -52,7 +52,7 @@ macro_rules! strace {
             processor::hart::{local_hart, current_task}
         };
         $crate::impls::print_in_color(
-            format_args!(concat!("[SYSCALL][H{},T{}]",  $fmt," \n"),
+            format_args!(concat!("[SYSCALL][H{},T{}] ",  $fmt," \n"),
             local_hart().hart_id(),
             current_task().pid(),
             $($args)*),

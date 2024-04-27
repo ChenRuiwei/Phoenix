@@ -56,20 +56,20 @@ impl Path {
                         dentry = sub_dentry
                     }
                     Err(e) => {
-                        if !flags.contains(OpenFlags::O_CREAT) {
-                            return Err(e);
-                        }
-                        log::debug!("[Path::walk] create {name}");
-                        dentry = dentry.create(name, mode)?
+                        log::error!("[Path::walk] error {e:?}");
+                        return Err(e);
                     }
                 },
             }
         }
-        log::debug!("[Path::walk] create {name}");
         if flags.contains(OpenFlags::O_CREAT) {
-            dentry = dentry.create(&name, mode)?
+            // If pathname does not exist, create it as a regular file.
+            log::debug!("[Path::walk] create {name}");
+            dentry = dentry
+                .parent()
+                .expect("can not be root dentry")
+                .create(&name, InodeMode::FILE)?
         }
-
         Ok(dentry)
     }
 }

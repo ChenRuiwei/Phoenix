@@ -138,7 +138,10 @@ impl Dentry for FatDentry {
                 // );
                 Ok((sub_dentry))
             }
-            _ => Err(SysError::EIO),
+            _ => {
+                log::warn!("[FatDentry::arc_create] not supported mode {mode:?}");
+                Err(SysError::EIO)
+            }
         }
     }
 }

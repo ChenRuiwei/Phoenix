@@ -29,6 +29,7 @@ impl DentryMeta {
         super_block: Arc<dyn SuperBlock>,
         parent: Option<Arc<dyn Dentry>>,
     ) -> Self {
+        log::debug!("[Dentry::new] new dentry with name {name}");
         Self {
             name: name.to_string(),
             super_block: Arc::downgrade(&super_block),
@@ -44,6 +45,7 @@ impl DentryMeta {
         inode: Arc<dyn Inode>,
         parent: Option<Weak<dyn Dentry>>,
     ) -> Self {
+        log::debug!("[Dentry::new_with_inode] new dentry with name {name}");
         Self {
             name: name.to_string(),
             super_block: Arc::downgrade(&super_block),
@@ -70,10 +72,17 @@ pub trait Dentry: Send + Sync {
     fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>>;
 
     /// Look up in a directory inode and find file with `name`.
+    ///
+    /// If the named inode does not exist a negative dentry will be created and
+    /// returned. Returning an error code from this routine must only be done on
+    /// a real error.
     fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>>;
 
     /// Called by the open(2) and creat(2) system calls. Create a inode for a
     /// dentry in the directory inode.
+    ///
+    /// If the dentry it self has a negative child with `name`, it will create a
+    /// inode for the negative child and return the child.
     fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>>;
 
     fn super_block(&self) -> Arc<dyn SuperBlock> {
@@ -126,7 +135,9 @@ pub trait Dentry: Send + Sync {
 
 impl dyn Dentry {
     pub fn set_inode(&self, inode: Arc<dyn Inode>) {
-        debug_assert!(self.meta().inode.lock().is_none());
+        if self.meta().inode.lock().is_some() {
+            log::warn!("[Dentry::set_inode] replace inode in {:?}", self.name());
+        }
         *self.meta().inode.lock() = Some(inode);
     }
 

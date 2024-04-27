@@ -116,12 +116,11 @@ macro_rules! with_ {
     ($name:ident, $ty:ty) => {
         paste::paste! {
             pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
-                // log::debug!("with_{:?}", T);
+                // TODO: let logging more specific
                 log::debug!("with_something");
                 f(& self.$name.lock())
             }
             pub fn [<with_mut_ $name>]<T>(&self, f: impl FnOnce(&mut $ty) -> T) -> T {
-                // log::debug!("with_mut_{:?}", T);
                 log::debug!("with_mut_something");
                 f(&mut self.$name.lock())
             }
