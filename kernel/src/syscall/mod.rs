@@ -47,16 +47,17 @@ pub const STRACE_COLOR_CODE: u8 = 35; // Purple
 #[cfg(feature = "strace")]
 #[macro_export]
 macro_rules! strace {
-    ($fmt: literal $(, $($arg: tt)+)?) => {
+    ($fmt:expr, $($args:tt)*) => {
         use $crate::{
             processor::hart::{local_hart, current_task}
         };
         $crate::impls::print_in_color(
-            format_args!(concat!("[SYSCALL][H{},T{}] ", $fmt, "\n"),
+            format_args!(concat!("[SYSCALL][H{},T{}]",  $fmt," \n"),
             local_hart().hart_id(),
-            current_task().pid()
-            $(, $($arg)+)?),
-            $crate::syscall::STRACE_COLOR_CODE);
+            current_task().pid(),
+            $($args)*),
+            $crate::syscall::STRACE_COLOR_CODE
+        );
     }
 }
 #[cfg(not(feature = "strace"))]
@@ -69,10 +70,9 @@ macro_rules! sys_handler {
     ($handler: ident, $args: tt) => {
         {
             strace!(
-                "{}, args: {:?}, sepc: {:#x}",
+                "{}, args: {:?}",
                 stringify!($handler),
                 $args,
-                crate::processor::hart::current_task().trap_context_mut().sepc
             );
             $handler$args
         }
@@ -80,10 +80,9 @@ macro_rules! sys_handler {
     ($handler: ident, $args: tt, $await: tt) => {
         {
             strace!(
-                "{}, args: {:?}, sepc: {:#x}",
+                "{}, args: {:?}",
                 stringify!($handler),
                 $args,
-                crate::processor::hart::current_task().trap_context_mut().sepc
             );
             $handler$args.$await
         }
