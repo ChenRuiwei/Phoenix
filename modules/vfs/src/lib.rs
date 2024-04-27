@@ -1,7 +1,9 @@
 #![no_std]
 #![no_main]
 #![feature(format_args_nl)]
+#![feature(new_uninit)]
 
+mod dev;
 pub mod fd_table;
 
 extern crate alloc;

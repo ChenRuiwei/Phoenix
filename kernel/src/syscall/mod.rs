@@ -168,6 +168,8 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         ),
         SYSCALL_GETCWD => sys_handler!(sys_getcwd, (UserWritePtr::<u8>::from(args[0]), args[1])),
         SYSCALL_CHDIR => sys_handler!(sys_chdir, (UserReadPtr::<u8>::from(args[0]))),
+        SYSCALL_DUP => sys_handler!(sys_dup, (args[0])),
+        SYSCALL_DUP3 => sys_handler!(sys_dup3, (args[0], args[1], args[2] as i32)),
         // Signal
         SYSCALL_RT_SIGPROCMASK => sys_handler!(
             sys_sigprocmask,

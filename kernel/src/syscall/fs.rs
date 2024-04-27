@@ -51,17 +51,17 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
     let task = current_task();
     let buf = buf.read_array(task, len)?;
     // TODO: now do not support char device
-    if fd == 1 {
-        for &b in buf.iter() {
-            print!("{}", b as char);
-        }
-        Ok(buf.len())
-    } else {
-        // get file and write
-        let file = task.with_fd_table(|table| table.get(fd))?;
-        let ret = file.write(file.pos(), &buf)?;
-        Ok(ret)
-    }
+    // if fd == 1 {
+    //     for &b in buf.iter() {
+    //         print!("{}", b as char);
+    //     }
+    //     Ok(buf.len())
+    // }
+
+    // get file and write
+    let file = task.with_fd_table(|table| table.get(fd))?;
+    let ret = file.write(file.pos(), &buf)?;
+    Ok(ret)
 }
 
 /// read() attempts to read up to count bytes from file descriptor fd into the
@@ -222,8 +222,7 @@ pub fn sys_chdir(path: UserReadPtr<u8>) -> SyscallResult {
 /// is returned, and errno is set to indicate the error.
 pub fn sys_dup(oldfd: usize) -> SyscallResult {
     let task = current_task();
-    // task.with_mut_fd_table(|table| table);
-    todo!()
+    task.with_mut_fd_table(|table| table.dup(oldfd))
 }
 
 /// # dup2()
@@ -254,8 +253,10 @@ pub fn sys_dup3(oldfd: usize, newfd: usize, flags: i32) -> SyscallResult {
     if oldfd == newfd {
         return Err(SysError::EINVAL);
     }
+    // TODO: flags support
     let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
-    todo!()
+    let task = current_task();
+    task.with_mut_fd_table(|table| table.dup3(oldfd, newfd))
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as
@@ -289,6 +290,7 @@ pub fn at_helper(
     path.walk(flags, mode)
 }
 
+/// Given a path, absolute or relative, will find.
 pub fn resolve_path(path: &str) -> SysResult<Arc<dyn Dentry>> {
     at_helper(
         AT_FDCWD as isize,

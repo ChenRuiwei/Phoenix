@@ -3,6 +3,7 @@ use alloc::{
     string::{String, ToString},
     sync::{Arc, Weak},
 };
+use core::mem::MaybeUninit;
 
 use spin::Once;
 use systype::{SysError, SysResult};
@@ -177,5 +178,22 @@ impl dyn Dentry {
 
     pub fn create(self: &Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         self.clone().arc_create(name, mode)
+    }
+}
+impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
+    fn meta(&self) -> &DentryMeta {
+        todo!()
+    }
+
+    fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
+        todo!()
+    }
+
+    fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+        todo!()
+    }
+
+    fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+        todo!()
     }
 }

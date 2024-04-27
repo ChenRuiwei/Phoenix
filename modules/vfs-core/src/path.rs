@@ -36,6 +36,7 @@ impl Path {
         }
     }
 
+    /// Walk until path has been resolved.
     pub fn walk(&self, flags: OpenFlags, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         let path = self.path.as_str();
         let mut dentry = if is_absolute_path(path) {
@@ -44,13 +45,13 @@ impl Path {
             self.start.clone()
         };
         log::debug!("[Path::walk] {:?}", split_path(path));
-        // TODO: get name helper function
-        let name = get_last_name(path);
+        let name = get_name(path);
         for p in split_path(path) {
             match p {
                 ".." => {
                     dentry = dentry.parent().ok_or(SysError::ENOENT)?;
                 }
+                // TODO: will create too much negative dentry, may cause trouble
                 name => match dentry.lookup(name) {
                     Ok(sub_dentry) => {
                         log::debug!("[Path::walk] sub dentry {}", sub_dentry.name());
@@ -89,6 +90,11 @@ pub fn split_path(path: &str) -> Vec<&str> {
         .collect()
 }
 
-pub fn get_last_name(path: &str) -> &str {
+/// # Example
+///
+/// "/" -> "/"
+/// "/dir/" -> "dir"
+/// "/dir/file" -> "file"
+pub fn get_name(path: &str) -> &str {
     path.split('/').last().unwrap_or("/")
 }

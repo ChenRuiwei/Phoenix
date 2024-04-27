@@ -3,7 +3,7 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
-use core::sync::atomic::AtomicUsize;
+use core::{mem::MaybeUninit, sync::atomic::AtomicUsize};
 
 use bitflags::Flags;
 use downcast_rs::{impl_downcast, DowncastSync};
@@ -262,5 +262,15 @@ impl InodeType {
             Self::Socket => 's',
             _ => '?',
         }
+    }
+}
+
+impl<T: Send + Sync + 'static> Inode for MaybeUninit<T> {
+    fn meta(&self) -> &InodeMeta {
+        todo!()
+    }
+
+    fn get_attr(&self) -> SysResult<Stat> {
+        todo!()
     }
 }
