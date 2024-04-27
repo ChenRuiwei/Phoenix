@@ -44,6 +44,7 @@ impl Path {
             self.start.clone()
         };
         log::debug!("[Path::walk] {:?}", split_path(path));
+        // TODO: get name helper function
         let name = split_path(path).last().unwrap().to_string();
         for p in split_path(path) {
             match p {

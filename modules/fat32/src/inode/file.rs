@@ -1,9 +1,8 @@
 use alloc::sync::Arc;
 
-use systype::{SysError, SysResult};
-use vfs_core::{Dentry, Inode, InodeMeta, InodeMode, InodeType, SuperBlock};
+use vfs_core::{Inode, InodeMeta, InodeMode, InodeType, SuperBlock};
 
-use crate::{file::FatFileFile, FatFile, Mutex, Shared};
+use crate::{FatFile, Mutex, Shared};
 
 pub struct FatFileInode {
     meta: InodeMeta,
@@ -14,7 +13,11 @@ impl FatFileInode {
     pub fn new(super_block: Arc<dyn SuperBlock>, file: FatFile) -> Arc<Self> {
         let size = file.size().unwrap().try_into().unwrap();
         let inode = Arc::new(Self {
-            meta: InodeMeta::new(InodeType::File, super_block.clone(), size),
+            meta: InodeMeta::new(
+                InodeMode::from_type(InodeType::File),
+                super_block.clone(),
+                size,
+            ),
             file: Arc::new(Mutex::new(file)),
         });
         super_block.push_inode(inode.clone());
@@ -25,10 +28,6 @@ impl FatFileInode {
 impl Inode for FatFileInode {
     fn meta(&self) -> &InodeMeta {
         &self.meta
-    }
-
-    fn create(&self, dentry: Arc<dyn vfs_core::Dentry>, mode: InodeMode) -> systype::SysResult<()> {
-        Err(SysError::EIO)
     }
 
     fn get_attr(&self) -> systype::SysResult<vfs_core::Stat> {

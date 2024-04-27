@@ -67,8 +67,12 @@ impl Dentry for FatDentry {
 
     fn arc_lookup(self: Arc<Self>, name: &str) -> systype::SysResult<Arc<dyn Dentry>> {
         let sb = self.super_block();
-        // TODO: if children already exists
-        let new_dentry: Arc<dyn Dentry> = FatDentry::new(&name, sb.clone(), Some(self.clone()));
+        let self_clone = self.clone();
+        let sub_dentry: Arc<dyn Dentry> = self.find_child(name).unwrap_or_else(|| {
+            let new_dentry = FatDentry::new(name, sb.clone(), Some(self.clone()));
+            self_clone.insert(name, new_dentry.clone());
+            new_dentry
+        });
         let inode = self
             .inode()?
             .downcast_arc::<FatDirInode>()
@@ -82,21 +86,20 @@ impl Dentry for FatDentry {
         if let Some(find) = find {
             let entry = find.map_err(as_sys_err)?;
             if entry.is_dir() {
-                let new_dir = dir.open_dir(&name).map_err(as_sys_err)?;
+                let new_dir = dir.open_dir(name).map_err(as_sys_err)?;
                 drop(dir);
                 let new_inode = FatDirInode::new(sb, new_dir);
-                new_dentry.set_inode(new_inode);
+                sub_dentry.set_inode(new_inode);
             } else {
-                let file = dir.open_file(&name).map_err(as_sys_err)?;
+                let file = dir.open_file(name).map_err(as_sys_err)?;
                 drop(dir);
                 let new_inode = FatFileInode::new(sb, file);
-                new_dentry.set_inode(new_inode);
+                sub_dentry.set_inode(new_inode);
             }
         } else {
-            new_dentry.clear_inode();
+            sub_dentry.clear_inode();
         }
-        self.insert(name, new_dentry.clone());
-        Ok(new_dentry)
+        Ok(sub_dentry)
     }
 
     fn arc_create(
@@ -115,28 +118,16 @@ impl Dentry for FatDentry {
             .unwrap_or_else(|| Self::new(name, sb.clone(), Some(self)));
         match mode.to_type() {
             InodeType::Dir => {
-                let new_dir = inode.dir.lock().create_dir(&name).map_err(as_sys_err)?;
+                let new_dir = inode.dir.lock().create_dir(name).map_err(as_sys_err)?;
                 let new_inode = FatDirInode::new(sb.clone(), new_dir);
-                sub_dentry.set_inode(inode);
-                // let new_dentry = Self::new_with_inode(
-                //     name,
-                //     sb,
-                //     new_inode,
-                //     Some(Arc::downgrade(&self.into_dyn())),
-                // );
-                Ok((sub_dentry))
+                sub_dentry.set_inode(new_inode);
+                Ok(sub_dentry)
             }
             InodeType::File => {
-                let new_file = inode.dir.lock().create_file(&name).map_err(as_sys_err)?;
+                let new_file = inode.dir.lock().create_file(name).map_err(as_sys_err)?;
                 let new_inode = FatFileInode::new(sb.clone(), new_file);
-                sub_dentry.set_inode(inode);
-                // let new_dentry = Self::new_with_inode(
-                //     name,
-                //     sb,
-                //     new_inode,
-                //     Some(Arc::downgrade(&self.into_dyn())),
-                // );
-                Ok((sub_dentry))
+                sub_dentry.set_inode(new_inode);
+                Ok(sub_dentry)
             }
             _ => {
                 log::warn!("[FatDentry::arc_create] not supported mode {mode:?}");

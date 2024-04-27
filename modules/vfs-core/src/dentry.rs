@@ -160,7 +160,7 @@ impl dyn Dentry {
         let meta = self.meta();
         let mode = self.inode().unwrap().itype();
         match mode {
-            InodeType::Dir => meta.children.lock().get(name).map(|item| item.clone()),
+            InodeType::Dir => meta.children.lock().get(name).cloned(),
             _ => None,
         }
     }
