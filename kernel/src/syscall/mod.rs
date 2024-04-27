@@ -52,9 +52,10 @@ macro_rules! strace {
             processor::hart::{local_hart, current_task}
         };
         $crate::impls::print_in_color(
-            format_args!(concat!("[SYSCALL][H{},T{}] ",  $fmt," \n"),
+            format_args!(concat!("[SYSCALL][H{},P{},T{}] ",  $fmt," \n"),
             local_hart().hart_id(),
             current_task().pid(),
+            current_task().tid(),
             $($args)*),
             $crate::syscall::STRACE_COLOR_CODE
         );
@@ -141,6 +142,14 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         SYSCALL_CLOSE => {
             sys_handler!(sys_close, (args[0]))
         }
+        SYSCALL_MKDIR => sys_handler!(
+            sys_mkdirat,
+            (
+                args[0] as isize,
+                UserReadPtr::<u8>::from(args[1]),
+                args[2] as u32
+            ), await
+        ),
         // Signal
         SYSCALL_RT_SIGPROCMASK => sys_handler!(
             sys_sigprocmask,

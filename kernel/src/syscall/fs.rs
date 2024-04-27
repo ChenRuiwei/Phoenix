@@ -2,7 +2,7 @@ use alloc::{string::ToString, sync::Arc, vec::Vec};
 
 use systype::{SysError, SysResult, SyscallResult};
 use vfs::sys_root_dentry;
-use vfs_core::{is_relative_path, Dentry, InodeMode, OpenFlags, Path, AT_FDCWD};
+use vfs_core::{get_last_name, is_relative_path, Dentry, InodeMode, OpenFlags, Path, AT_FDCWD};
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
@@ -55,13 +55,13 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
         for &b in buf.iter() {
             print!("{}", b as char);
         }
-        return Ok(buf.len());
+        Ok(buf.len())
     } else {
         // get file and write
+        let file = task.with_fd_table(|table| table.get(fd))?;
+        let ret = file.write(file.pos(), &buf)?;
+        Ok(ret)
     }
-    let file = task.with_fd_table(|table| table.get(fd))?;
-    let ret = file.write(file.pos(), &buf)?;
-    Ok(ret)
 }
 
 /// read() attempts to read up to count bytes from file descriptor fd into the
@@ -103,8 +103,7 @@ pub fn sys_openat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32, mode: u32
     let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     let mode = InodeMode::from_bits_truncate(mode);
     let pathname = pathname.read_cstr(task)?;
-    // FIXME: with flags O_CREAT
-    log::debug!("{flags:?}, {mode:?}");
+    log::debug!("[sys_openat] {flags:?}, {mode:?}");
     let dentry = at_helper(dirfd, &pathname, flags, mode)?;
     let file = dentry.open()?;
     task.with_mut_fd_table(|table| table.alloc(file))
@@ -126,6 +125,26 @@ pub fn sys_close(fd: usize) -> SyscallResult {
     Ok(0)
 }
 
+/// mkdirat() attempts to create a directory named pathname.
+///
+/// mkdir() and mkdirat() return zero on success.  On error, -1 is returned and
+/// errno is set to indicate the error.
+pub async fn sys_mkdirat(dirfd: isize, pathname: UserReadPtr<u8>, mode: u32) -> SyscallResult {
+    let task = current_task();
+    let mode = InodeMode::from_bits_truncate(mode);
+    let pathname = pathname.read_cstr(task)?;
+    log::debug!("[sys_mkdirat] {mode:?}");
+    let dentry = at_helper(dirfd, &pathname, OpenFlags::empty(), mode)?;
+    if !dentry.is_negetive() {
+        return Err(SysError::EEXIST);
+    }
+    dentry
+        .parent()
+        .unwrap()
+        .create(dentry.name(), mode.union(InodeMode::DIR));
+    Ok(0)
+}
+
 /// The dirfd argument is used in conjunction with the pathname argument as
 /// follows:
 /// + If the pathname given in pathname is absolute, then dirfd is ignored.
@@ -143,7 +162,7 @@ fn at_helper(
     flags: OpenFlags,
     mode: InodeMode,
 ) -> SysResult<Arc<dyn Dentry>> {
-    log::info!("[at_helper] fd: {},path:{}", fd, path);
+    log::info!("[at_helper] fd: {fd}, path: {path}");
     let task = current_task();
     let path = if is_relative_path(path) {
         if fd as i32 == AT_FDCWD {

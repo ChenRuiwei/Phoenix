@@ -45,7 +45,7 @@ impl Path {
         };
         log::debug!("[Path::walk] {:?}", split_path(path));
         // TODO: get name helper function
-        let name = split_path(path).last().unwrap().to_string();
+        let name = get_last_name(path);
         for p in split_path(path) {
             match p {
                 ".." => {
@@ -69,7 +69,7 @@ impl Path {
             dentry = dentry
                 .parent()
                 .expect("can not be root dentry")
-                .create(&name, InodeMode::FILE)?
+                .create(name, InodeMode::FILE)?
         }
         Ok(dentry)
     }
@@ -83,9 +83,12 @@ pub fn is_relative_path(path: &str) -> bool {
     !path.starts_with('/')
 }
 
-pub fn split_path(path_name: &str) -> Vec<&str> {
-    path_name
-        .split('/')
+pub fn split_path(path: &str) -> Vec<&str> {
+    path.split('/')
         .filter(|name| !name.is_empty() && *name != ".")
         .collect()
+}
+
+pub fn get_last_name(path: &str) -> &str {
+    path.split('/').last().unwrap_or("/")
 }

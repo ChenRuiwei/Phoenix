@@ -89,8 +89,12 @@ pub trait Dentry: Send + Sync {
         self.meta().super_block.upgrade().unwrap()
     }
 
-    fn name(&self) -> String {
+    fn name_string(&self) -> String {
         self.meta().name.clone()
+    }
+
+    fn name(&self) -> &str {
+        &self.meta().name
     }
 
     fn parent(&self) -> Option<Arc<dyn Dentry>> {
@@ -112,7 +116,7 @@ pub trait Dentry: Send + Sync {
             let path = if self.name() == "/" {
                 String::from("")
             } else {
-                String::from("/") + self.name().as_str()
+                String::from("/") + self.name()
             };
             let parent_name = p.name();
             return if parent_name == "/" {
@@ -134,6 +138,10 @@ pub trait Dentry: Send + Sync {
 }
 
 impl dyn Dentry {
+    pub fn is_negetive(&self) -> bool {
+        self.meta().inode.lock().is_none()
+    }
+
     pub fn set_inode(&self, inode: Arc<dyn Inode>) {
         if self.meta().inode.lock().is_some() {
             log::warn!("[Dentry::set_inode] replace inode in {:?}", self.name());

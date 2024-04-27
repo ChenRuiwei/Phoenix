@@ -84,6 +84,7 @@ impl Dentry for FatDentry {
             name == e_name
         });
         if let Some(find) = find {
+            log::debug!("[FatDentry::arc_lookup] find name {name}");
             let entry = find.map_err(as_sys_err)?;
             if entry.is_dir() {
                 let new_dir = dir.open_dir(name).map_err(as_sys_err)?;
@@ -107,7 +108,7 @@ impl Dentry for FatDentry {
         name: &str,
         mode: vfs_core::InodeMode,
     ) -> systype::SysResult<Arc<dyn Dentry>> {
-        log::trace!("[FatDentry::arc_create]");
+        log::trace!("[FatDentry::arc_create] create name {name}, mode {mode:?}");
         let sb = self.super_block();
         let inode = self
             .inode()?
