@@ -3,12 +3,14 @@
 use alloc::{string::String, vec::Vec};
 
 use systype::{SysError, SysResult, SyscallResult};
-use vfs::{DISK_FS_NAME, FS_MANAGER};
+use vfs::{sys_root_dentry, DISK_FS_NAME, FS_MANAGER};
+use vfs_core::{InodeMode, OpenFlags, AT_FDCWD};
 
 use crate::{
     loader::get_app_data_by_name,
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
+    syscall::{at_helper, resolve_path},
     task::{spawn_user_task, yield_now, PGid, Pid, TASK_MANAGER},
 };
 
@@ -179,16 +181,7 @@ pub fn sys_execve(
     envp: UserReadPtr<usize>,
 ) -> SyscallResult {
     let task = current_task();
-    let path_str = path.read_cstr(task)?;
-
-    // TODO: path transefer to filename
-    // let path = Path::from_string(path_str)?;
-    // let path = if path.is_absolute() {
-    //     path
-    // } else {
-    //     self.lproc.with_fsinfo(|f| f.cwd.append(&path))
-    // };
-    // let filename = path.last().clone();
+    let path = path.read_cstr(task)?;
 
     let read_2d_cstr = |ptr2d: UserReadPtr<usize>| -> SysResult<Vec<String>> {
         let ptr_vec: Vec<UserReadPtr<u8>> = ptr2d
@@ -207,7 +200,7 @@ pub fn sys_execve(
     let argv = read_2d_cstr(argv)?;
     let envp = read_2d_cstr(envp)?;
 
-    log::info!("[sys_execve]: path: {path_str:?}, argv: {argv:?}, envp: {envp:?}",);
+    log::info!("[sys_execve]: path: {path:?}, argv: {argv:?}, envp: {envp:?}",);
     log::debug!("[sys_execve]: pid: {:?}", task.tid());
 
     // TODO: should we add envp
@@ -230,48 +223,17 @@ pub fn sys_execve(
     // envp.push(String::from("HOME=/"));
     // envp.push(String::from("PATH=/"));
 
-    // TODO: read file data
-    // let file = if filename.ends_with(".sh") {
-    //     argv.insert(0, String::from("busybox"));
-    //     argv.insert(1, String::from("sh"));
-    //     fs::get_root_dir().lookup("busybox").await?
-    // } else {
-    //     fs::get_root_dir().resolve(&path).await?
-    // };
-    //
-
-    let mut buf = [0; 512];
-    let sb = FS_MANAGER
-        .lock()
-        .get(DISK_FS_NAME)
-        .unwrap()
-        .get_sb("/")
-        .unwrap();
-
-    let root_dentry = sb.root_dentry();
     let mut elf_data = Vec::new();
-    let test_dentry = root_dentry.lookup(&path_str).unwrap();
-    let test_file = test_dentry.open().unwrap();
-    test_file.read_all_from_start(&mut elf_data);
-
-    // TODO: now we just load app data into kernel and read it
-    // task.do_execve(get_app_data_by_name(path_str.as_str()).unwrap(), argv, envp);
+    let file = resolve_path(&path)?.open()?;
+    file.read_all_from_start(&mut elf_data)?;
     task.do_execve(&elf_data, argv, envp);
     Ok(0)
 }
 
-/// 功能：创建一个子进程；
-/// 输入：
-/// flags: 创建的标志，如SIGCHLD；
-/// stack: 指定新进程的栈，可为0；
-/// ptid: 父线程ID；
-/// tls: TLS线程本地存储描述符；
-/// ctid: 子线程ID；
-/// 返回值：成功则返回子进程的线程ID，失败返回-1；
 // TODO:
 pub fn sys_clone(
     flags: usize,
-    stack_ptr: usize,
+    stack: usize,
     _parent_tid_ptr: usize,
     _tls_ptr: usize,
     _chilren_tid_ptr: usize,
@@ -280,17 +242,13 @@ pub fn sys_clone(
     let flags = CloneFlags::from_bits(flags as u64 & !0xff).ok_or(SysError::EINVAL)?;
 
     log::info!("[sys_clone] flags {flags:?}");
-    let stack_begin = if stack_ptr != 0 {
-        Some(stack_ptr.into())
-    } else {
-        None
-    };
-    let new_task = current_task().do_clone(flags, stack_begin);
+    let stack = if stack != 0 { Some(stack.into()) } else { None };
+    let new_task = current_task().do_clone(flags, stack);
     new_task.trap_context_mut().set_user_a0(0);
-    let new_task_tid = new_task.tid();
-    log::info!("[sys_clone] clone a new thread, tid {new_task_tid}, clone flags {flags:?}",);
+    let new_tid = new_task.tid();
+    log::info!("[sys_clone] clone a new thread, tid {new_tid}, clone flags {flags:?}",);
     spawn_user_task(new_task);
-    Ok(new_task_tid.into())
+    Ok(new_tid)
 }
 
 pub async fn sys_sched_yield() -> SyscallResult {

@@ -194,12 +194,7 @@ pub fn sys_chdir(path: UserReadPtr<u8>) -> SyscallResult {
     let task = current_task();
     let path = path.read_cstr(task)?;
     log::debug!("[sys_chdir] path {path}");
-    let dentry = at_helper(
-        AT_FDCWD as isize,
-        &path,
-        OpenFlags::empty(),
-        InodeMode::empty(),
-    )?;
+    let dentry = resolve_path(&path)?;
     if !dentry.inode()?.itype().is_dir() {
         return Err(SysError::ENOTDIR);
     }
@@ -274,7 +269,7 @@ pub fn sys_dup3(oldfd: usize, newfd: usize, flags: i32) -> SyscallResult {
 ///   than relative to the current working directory of the calling process, as
 ///   is done by open() for a relative pathname).  In this case, dirfd must be a
 ///   directory that was opened for reading (O_RDONLY) or using the O_PATH flag.
-fn at_helper(
+pub fn at_helper(
     fd: isize,
     path: &str,
     flags: OpenFlags,
@@ -292,4 +287,13 @@ fn at_helper(
         Path::new(sys_root_dentry(), file.dentry(), path)
     };
     path.walk(flags, mode)
+}
+
+pub fn resolve_path(path: &str) -> SysResult<Arc<dyn Dentry>> {
+    at_helper(
+        AT_FDCWD as isize,
+        path,
+        OpenFlags::empty(),
+        InodeMode::empty(),
+    )
 }

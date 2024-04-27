@@ -59,23 +59,14 @@ impl DentryMeta {
 pub trait Dentry: Send + Sync {
     fn meta(&self) -> &DentryMeta;
 
-    fn inode(&self) -> SysResult<Arc<dyn Inode>> {
-        self.meta()
-            .inode
-            .lock()
-            .as_ref()
-            .ok_or(SysError::ENOENT)
-            .cloned()
-    }
-
     /// Open a file associated with the inode that this dentry points to.
     fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>>;
 
     /// Look up in a directory inode and find file with `name`.
     ///
-    /// If the named inode does not exist a negative dentry will be created and
-    /// returned. Returning an error code from this routine must only be done on
-    /// a real error.
+    /// If the named inode does not exist, a negative dentry will be created as
+    /// a child and returned. Returning an error code from this routine must
+    /// only be done on a real error.
     fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>>;
 
     /// Called by the open(2) and creat(2) system calls. Create a inode for a
@@ -84,6 +75,15 @@ pub trait Dentry: Send + Sync {
     /// If the dentry it self has a negative child with `name`, it will create a
     /// inode for the negative child and return the child.
     fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>>;
+
+    fn inode(&self) -> SysResult<Arc<dyn Inode>> {
+        self.meta()
+            .inode
+            .lock()
+            .as_ref()
+            .ok_or(SysError::ENOENT)
+            .cloned()
+    }
 
     fn super_block(&self) -> Arc<dyn SuperBlock> {
         self.meta().super_block.upgrade().unwrap()
@@ -101,16 +101,20 @@ pub trait Dentry: Send + Sync {
         self.meta().parent.as_ref().map(|p| p.upgrade().unwrap())
     }
 
-    fn find_child(&self, name: &str) -> Option<Arc<dyn Dentry>> {
+    fn get_child(&self, name: &str) -> Option<Arc<dyn Dentry>> {
         self.meta().children.lock().get(name).cloned()
     }
 
     /// Insert a child dentry to this dentry.
-    fn insert(self: Arc<Self>, name: &str, child: Arc<dyn Dentry>) {
-        self.meta().children.lock().insert(name.to_string(), child);
+    fn insert(self: Arc<Self>, child: Arc<dyn Dentry>) -> Option<Arc<dyn Dentry>> {
+        self.meta()
+            .children
+            .lock()
+            .insert(child.name_string(), child)
     }
 
     /// Get the path of this dentry.
+    // HACK: code looks ugly
     fn path(&self) -> String {
         if let Some(p) = self.parent() {
             let path = if self.name() == "/" {
@@ -161,16 +165,6 @@ impl dyn Dentry {
     /// Remove a child from this dentry and return the child.
     pub fn remove(&self, name: &str) -> Option<Arc<dyn Dentry>> {
         self.meta().children.lock().remove(name)
-    }
-
-    /// Lookup a dentry with `name` in the directory.
-    pub fn find(&self, name: &str) -> Option<Arc<dyn Dentry>> {
-        let meta = self.meta();
-        let mode = self.inode().unwrap().itype();
-        match mode {
-            InodeType::Dir => meta.children.lock().get(name).cloned(),
-            _ => None,
-        }
     }
 
     pub fn open(self: &Arc<Self>) -> SysResult<Arc<dyn File>> {

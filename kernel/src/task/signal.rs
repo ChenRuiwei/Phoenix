@@ -261,7 +261,7 @@ impl ITimer {
         Self {
             interval: Duration::ZERO,
             next_expire: Duration::ZERO,
-            now: || get_time_duration(),
+            now: get_time_duration,
             activated: false,
             sig: Sig::SIGALRM,
         }

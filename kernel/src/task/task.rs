@@ -302,7 +302,7 @@ impl Task {
     pub fn do_clone(
         self: &Arc<Self>,
         flags: syscall::CloneFlags,
-        user_stack_begin: Option<VirtAddr>,
+        stack: Option<VirtAddr>,
     ) -> Arc<Self> {
         use syscall::CloneFlags;
         let tid = alloc_tid();
@@ -322,7 +322,6 @@ impl Task {
             leader = Some(Arc::downgrade(self));
             parent = self.parent.clone();
             children = self.children.clone();
-            // will add the new task into the group later
             thread_group = self.thread_group.clone();
             itimers = self.itimers.clone();
         } else {
@@ -348,7 +347,7 @@ impl Task {
             unsafe { sfence_vma_all() };
         }
 
-        if let Some(sp) = user_stack_begin {
+        if let Some(sp) = stack {
             trap_context.get_mut().set_user_sp(sp.bits());
         }
 
@@ -391,7 +390,7 @@ impl Task {
         let (entry, _auxv) = memory_space.parse_and_map_elf(elf_data);
 
         // NOTE: should do termination before switching page table, so that other
-        // threads will trap in by page fault but be terminated before handling
+        // threads will trap in by page fault and be handled by `do_exit`
         log::debug!("[Task::do_execve] terminating all threads except the leader");
         self.with_thread_group(|tg| {
             for t in tg.iter() {
@@ -453,8 +452,6 @@ impl Task {
             });
             init_proc.children.lock().extend(children.clone());
         });
-
-        // release all fd
 
         // NOTE: leader will be removed by parent calling `sys_wait4`
         if !self.is_leader() {

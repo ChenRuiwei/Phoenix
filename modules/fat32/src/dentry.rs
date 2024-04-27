@@ -68,9 +68,9 @@ impl Dentry for FatDentry {
     fn arc_lookup(self: Arc<Self>, name: &str) -> systype::SysResult<Arc<dyn Dentry>> {
         let sb = self.super_block();
         let self_clone = self.clone();
-        let sub_dentry: Arc<dyn Dentry> = self.find_child(name).unwrap_or_else(|| {
+        let sub_dentry: Arc<dyn Dentry> = self.get_child(name).unwrap_or_else(|| {
             let new_dentry = FatDentry::new(name, sb.clone(), Some(self.clone()));
-            self_clone.insert(name, new_dentry.clone());
+            self_clone.insert(new_dentry.clone());
             new_dentry
         });
         let inode = self
@@ -115,7 +115,7 @@ impl Dentry for FatDentry {
             .downcast_arc::<FatDirInode>()
             .map_err(|_| SysError::ENOTDIR)?;
         let sub_dentry = self
-            .find_child(name)
+            .get_child(name)
             .unwrap_or_else(|| Self::new(name, sb.clone(), Some(self)));
         match mode.to_type() {
             InodeType::Dir => {
