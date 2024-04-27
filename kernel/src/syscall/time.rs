@@ -15,7 +15,7 @@ use timer::timelimited_task::ksleep_ms;
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
-    task::signal::WaitHandlableSignal,
+    task::signal::{ITimer, WaitHandlableSignal},
 };
 
 /// Retrieves the current time of day.
@@ -95,12 +95,7 @@ pub fn sys_clock_gettime(clockid: usize, tp: UserWritePtr<TimeSpec>) -> SyscallR
         }
         CLOCK_PROCESS_CPUTIME_ID => {
             let task = current_task();
-            let mut cpu_time = task.time_stat().cpu_time();
-            task.with_thread_group(|tg| {
-                for thread in tg.iter() {
-                    cpu_time += thread.time_stat().cpu_time();
-                }
-            });
+            let cpu_time = task.get_process_cputime();
             tp.write(task, cpu_time.into())?;
         }
         CLOCK_THREAD_CPUTIME_ID => {
@@ -167,15 +162,29 @@ pub fn sys_setitier(
     new_value: UserReadPtr<ITimerVal>,
     old_value: UserWritePtr<ITimerVal>,
 ) -> SyscallResult {
-    // if which != ITIMER_REAL && which != ITIMER_VIRTUAL && which != ITIMER_PROF{
-    //     return Err(SysError::EINVAL);
-    // }
-    // if old_value.not_null(){
-
-    // }
+    if which < 0 || which > 2 {
+        return Err(SysError::EINVAL);
+    }
+    let task = current_task();
+    let new = new_value.read(task)?;
+    if !new.is_valid() {
+        return Err(SysError::EINVAL);
+    }
+    let old = task.with_mut_itimers(|itimers| itimers[which as usize].set(new));
+    if old_value.not_null() {
+        old_value.write(task, old)?;
+    }
     Ok(0)
 }
 
 pub fn sys_getitier(which: i32, curr_value: UserWritePtr<ITimerVal>) -> SyscallResult {
+    if which < 0 || which > 2 {
+        return Err(SysError::EINVAL);
+    }
+    if curr_value.not_null() {
+        let task = current_task();
+        let itimerval = task.with_itimers(|itimers| itimers[which as usize].get());
+        curr_value.write(task, itimerval)?;
+    }
     Ok(0)
 }

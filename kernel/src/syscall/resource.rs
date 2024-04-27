@@ -44,17 +44,9 @@ pub fn sys_getrusage(who: i32, usage: UserWritePtr<Rusage>) -> SyscallResult {
     let mut ret = Rusage::default();
     match who {
         RUSAGE_SELF => {
-            let (mut total_utime, mut totol_stime) = (Duration::ZERO, Duration::ZERO);
-            task.with_thread_group(|tg| {
-                for thread in tg.iter() {
-                    let (utime, stime) = thread.time_stat().user_system_time();
-                    total_utime += utime;
-                    totol_stime += stime;
-                }
-            });
-
+            let (total_utime, total_stime) = task.get_process_ustime();
             ret.utime = total_utime.into();
-            ret.stime = totol_stime.into();
+            ret.stime = total_stime.into();
             usage.write(task, ret)?;
         }
         RUSAGE_CHILDREN => {
