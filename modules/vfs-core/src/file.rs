@@ -1,40 +1,13 @@
-use alloc::{
-    string::String,
-    sync::{Arc, Weak},
-    vec::Vec,
-};
+use alloc::{sync::Arc, vec::Vec};
 use core::{
-    ops::{Deref, DerefMut},
     sync::atomic::{AtomicUsize, Ordering},
     usize,
 };
 
 use config::mm::PAGE_SIZE;
-use systype::{SysError, SysResult};
+use systype::SysResult;
 
 use crate::{Dentry, DirEnt, Inode, InodeType, SeekFrom};
-
-#[derive(Clone)]
-pub struct FileRef(Arc<dyn File>);
-
-impl Deref for FileRef {
-    type Target = dyn File;
-    fn deref(&self) -> &Self::Target {
-        &*self.0
-    }
-}
-
-impl DerefMut for FileRef {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        Arc::get_mut(&mut self.0).expect("VfsFileRef is not unique")
-    }
-}
-
-impl FileRef {
-    pub fn new<T: File + 'static>(file: T) -> Self {
-        Self(Arc::new(file))
-    }
-}
 
 pub struct FileMeta {
     /// Dentry which pointes to this file.

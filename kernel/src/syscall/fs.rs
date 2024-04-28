@@ -9,8 +9,8 @@ use log::info;
 use systype::{SysError, SysError::EINVAL, SysResult, SyscallResult};
 use vfs::{sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    get_name, is_absolute_path, is_relative_path, Dentry, File, FileMeta, FileRef, Inode,
-    InodeMeta, InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD,
+    get_name, is_absolute_path, is_relative_path, Dentry, File, FileMeta, Inode, InodeMeta,
+    InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD,
 };
 
 use crate::{
@@ -334,6 +334,45 @@ pub fn sys_dup3(oldfd: usize, newfd: usize, flags: i32) -> SyscallResult {
     task.with_mut_fd_table(|table| table.dup3(oldfd, newfd))
 }
 
+pub fn sys_fstat(fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
+    let task = current_task();
+    let fd = task.with_fd_table(|table| table.get(fd))?;
+    stat_buf.write(task, Kstat::from_vfs_file(fd.inode())?)?;
+    Ok(0)
+}
+
+pub async fn sys_mount(
+    source: UserReadPtr<u8>,
+    target: UserReadPtr<u8>,
+    fstype: UserReadPtr<u8>,
+    flags: u32,
+    data: UserReadPtr<u8>,
+) -> SyscallResult {
+    let task = current_task();
+    let source = source.read_cstr(task)?;
+    let target = target.read_cstr(task)?; // must absolute? not mentioned in man
+    let fstype = fstype.read_cstr(task)?;
+    if data.is_null() {
+        return Err(EINVAL);
+    }
+    let data = data.read_cstr(task)?;
+    let flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+    log::debug!(
+        "[sys_mount] source:{source:?}, target:{target:?}, fstype:{fstype:?}, flags:{flags:?}, data:{data:?}",
+    );
+
+    let fs_type_name = FS_MANAGER.lock().get(&fstype).unwrap().clone().fs_name();
+    let path = Path::new(sys_root_dentry(), sys_root_dentry(), "");
+    // let fs_root = match fs_type_name {
+    //     name @(String::from("fat32")) => {
+    //         let fs_type = FS_MANAGER.lock().get(&name).unwrap().clone();
+    //         let dev = if name.eq("fat32")
+    //     }
+    // }
+    // 调用VFS挂载实现
+    Ok(0)
+}
+
 /// The dirfd argument is used in conjunction with the pathname argument as
 /// follows:
 /// + If the pathname given in pathname is absolute, then dirfd is ignored.
@@ -373,54 +412,4 @@ pub fn resolve_path(path: &str) -> SysResult<Arc<dyn Dentry>> {
         OpenFlags::empty(),
         InodeMode::empty(),
     )
-}
-
-// TODO: Needs fd table to be provided
-pub fn sys_fstat(fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
-    info!("Syscall: fstat, fd: {}, kstat: {}", fd, stat_buf);
-    // find file according to fd and fd_table
-    let task = current_task();
-    if let Ok(fd) = task.with_fd_table(|f| f.get(fd)) {
-        // write kstat to buf
-        stat_buf.write(&task, Kstat::from_vfs_file(fd.inode())?)?;
-        return Ok(0);
-    }
-    Err(SysError::EBADF)
-}
-
-// TODO: FTL采取
-pub async fn sys_mount(
-    special: UserReadPtr<u8>,
-    dir: UserReadPtr<u8>,
-    fstype: UserReadPtr<u8>,
-    flags: u32,
-    data: UserReadPtr<u8>,
-) -> SyscallResult {
-    info!("Syscall: mount");
-    let task = current_task();
-    // 整理传入的参数
-    let special = special.read_cstr(task)?;
-    let dir = dir.read_cstr(task)?; // must absolute? not mentioned in man
-    let fstype = fstype.read_cstr(task)?;
-    if data.is_null() {
-        return Err(EINVAL);
-    }
-    let data = data.read_cstr(task)?;
-    let flags = MountFlags::from_bits(flags).unwrap();
-    info!(
-        "mount special:{:?}, dir:{:?}, fstype:{:?}, flags:{:?}, data:{:?}",
-        special, dir, fstype, flags, data
-    );
-
-    // 提取要挂载的文件系统类型和路径
-    let fs_type_name = FS_MANAGER.lock().get(&fstype).unwrap().clone().fs_name();
-    let path = Path::new(sys_root_dentry(), sys_root_dentry(), "");
-    // let fs_root = match fs_type_name {
-    //     name @(String::from("fat32")) => {
-    //         let fs_type = FS_MANAGER.lock().get(&name).unwrap().clone();
-    //         let dev = if name.eq("fat32")
-    //     }
-    // }
-    // 调用VFS挂载实现
-    Ok(0)
 }
