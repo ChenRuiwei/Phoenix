@@ -11,7 +11,7 @@ use systype::{SysError, SysError::EINVAL, SysResult, SyscallResult};
 use vfs::{sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     get_name, is_absolute_path, is_relative_path, Dentry, DirEnt, File, FileMeta, Inode, InodeMeta,
-    InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD,
+    InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use crate::{
@@ -19,46 +19,8 @@ use crate::{
     processor::hart::current_task,
 };
 
-// "brk",
-// "chdir",
-// "clone",
-// "close",
-// "dup",
-// "dup2",
-// "execve",
-// "exit",
-// "fork",
-// "fstat",
-// "getcwd",
-// "getdents",
-// "getpid",
-// "getppid",
-// "gettimeofday",
-// "mkdir_",
-// "mmap",
-// "mnt",
-// "mount",
-// "munmap",
-// "open",
-// "openat",
-// "pipe",
-// "read",
-// "run-all.sh",
-// "sleep",
-// "test_echo",
-// "text.txt",
-// "times",
-// "umount",
-// "uname",
-// "unlink",
-// "wait",
-// "waitpid",
-// "write",
-// "yield",
-
-/// 文件信息类
-#[repr(C)]
 #[derive(Debug, Clone, Copy)]
+#[repr(C)]
 pub struct Kstat {
     /// 设备
     pub st_dev: u64,
@@ -180,7 +142,12 @@ pub fn sys_openat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32, mode: u32
     let mode = InodeMode::from_bits_truncate(mode);
     let pathname = pathname.read_cstr(task)?;
     log::debug!("[sys_openat] {flags:?}, {mode:?}");
-    let dentry = at_helper(dirfd, &pathname, flags, mode)?;
+    let dentry = at_helper(dirfd, &pathname, mode)?;
+    if flags.contains(OpenFlags::O_CREAT) {
+        // If pathname does not exist, create it as a regular file.
+        let parent = dentry.parent().expect("can not be root dentry");
+        parent.create(dentry.name(), InodeMode::FILE)?;
+    }
     let file = dentry.open()?;
     task.with_mut_fd_table(|table| table.alloc(file))
 }
@@ -210,7 +177,7 @@ pub fn sys_mkdirat(dirfd: isize, pathname: UserReadPtr<u8>, mode: u32) -> Syscal
     let mode = InodeMode::from_bits_truncate(mode);
     let pathname = pathname.read_cstr(task)?;
     log::debug!("[sys_mkdirat] {mode:?}");
-    let dentry = at_helper(dirfd, &pathname, OpenFlags::empty(), mode)?;
+    let dentry = at_helper(dirfd, &pathname, mode)?;
     if !dentry.is_negetive() {
         return Err(SysError::EEXIST);
     }
@@ -413,6 +380,55 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
     }
 }
 
+/// pipe() creates a pipe, a unidirectional data channel that can be used for
+/// interprocess communication. The array pipefd is used to return two file
+/// descriptors referring to the ends of the pipe. pipefd[0] refers to the read
+/// end of the pipe. pipefd[1] refers to the write end of the pipe. Data written
+/// to the write end of the pipe is buffered by the kernel until it is read from
+/// the read end of the pipe. For further details, see pipe(7).
+///
+/// On success, zero is returned. On error, -1 is returned, errno is set to
+/// indicate the error, and pipefd is left unchanged.
+///
+/// On Linux (and other systems), pipe() does not modify pipefd on failure. A
+/// requirement standardizing this behavior was added in POSIX.1-2008 TC2. The
+/// Linux-specific pipe2() system call likewise does not modify pipefd on
+/// failure.
+pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
+    todo!()
+}
+
+/// unlink() deletes a name from the filesystem. If that name was the last link
+/// to a file and no processes have the file open, the file is deleted and the
+/// space it was using is made available for reuse.
+///
+/// If the name was the last link to a file but any processes still have the
+/// file open, the file will remain in existence until the last file descriptor
+/// referring to it is closed.
+///
+/// The unlinkat() system call operates in exactly the same way as either
+/// unlink() or rmdir(2) (depending on whether or not flags includes the
+/// AT_REMOVEDIR flag) except for the differences described here.
+///
+/// flags is a bit mask that can either be specified as 0, or by ORing together
+/// flag values that control the operation of unlinkat(). Currently, only one
+/// such flag is defined:
+/// + AT_REMOVEDIR: By default, unlinkat() performs the equivalent of unlink()
+///   on pathname. If the AT_REMOVEDIR flag is specified, it performs the
+///   equivalent of rmdir(2) on pathname.
+// FIXME: removal is not delayed
+pub fn sys_unlinkat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32) -> SyscallResult {
+    let task = current_task();
+    let path = pathname.read_cstr(task)?;
+    let dentry = at_helper(dirfd, &path, InodeMode::empty())?;
+    let parent = dentry.parent().expect("can not remove root directory");
+    if flags == AT_REMOVEDIR {
+        parent.rmdir(dentry.name())
+    } else {
+        parent.unlink(dentry.name())
+    }
+}
+
 /// The dirfd argument is used in conjunction with the pathname argument as
 /// follows:
 /// + If the pathname given in pathname is absolute, then dirfd is ignored.
@@ -424,12 +440,7 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
 ///   than relative to the current working directory of the calling process, as
 ///   is done by open() for a relative pathname).  In this case, dirfd must be a
 ///   directory that was opened for reading (O_RDONLY) or using the O_PATH flag.
-pub fn at_helper(
-    fd: isize,
-    path: &str,
-    flags: OpenFlags,
-    mode: InodeMode,
-) -> SysResult<Arc<dyn Dentry>> {
+pub fn at_helper(fd: isize, path: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
     log::info!("[at_helper] fd: {fd}, path: {path}");
     let task = current_task();
     let path = if is_absolute_path(path) {
@@ -441,15 +452,10 @@ pub fn at_helper(
         let file = task.with_fd_table(|table| table.get(fd))?;
         Path::new(sys_root_dentry(), file.dentry(), path)
     };
-    path.walk(flags, mode)
+    path.walk(mode)
 }
 
 /// Given a path, absolute or relative, will find.
 pub fn resolve_path(path: &str) -> SysResult<Arc<dyn Dentry>> {
-    at_helper(
-        AT_FDCWD as isize,
-        path,
-        OpenFlags::empty(),
-        InodeMode::empty(),
-    )
+    at_helper(AT_FDCWD as isize, path, InodeMode::empty())
 }

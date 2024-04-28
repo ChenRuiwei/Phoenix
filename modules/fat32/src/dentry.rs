@@ -6,7 +6,7 @@ use vfs_core::{Dentry, DentryMeta, Inode, InodeType, SuperBlock};
 use crate::{
     as_sys_err,
     file::{FatDirFile, FatFileFile},
-    inode::{dir::FatDirInode, file::FatFileInode},
+    inode::{self, dir::FatDirInode, file::FatFileInode},
 };
 
 pub struct FatDentry {
@@ -135,5 +135,33 @@ impl Dentry for FatDentry {
                 Err(SysError::EIO)
             }
         }
+    }
+
+    fn arc_unlink(self: Arc<Self>, name: &str) -> systype::SyscallResult {
+        let inode = self
+            .inode()?
+            .downcast_arc::<FatDirInode>()
+            .map_err(|_| SysError::ENOTDIR)?;
+        let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
+        if sub_dentry.inode()?.itype().is_dir() {
+            return Err(SysError::EISDIR);
+        }
+        sub_dentry.clear_inode();
+        inode.dir.lock().remove(name).map_err(as_sys_err)?;
+        Ok(0)
+    }
+
+    fn arc_rmdir(self: Arc<Self>, name: &str) -> systype::SyscallResult {
+        let inode = self
+            .inode()?
+            .downcast_arc::<FatDirInode>()
+            .map_err(|_| SysError::ENOTDIR)?;
+        let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
+        if !sub_dentry.inode()?.itype().is_dir() {
+            return Err(SysError::ENOTDIR);
+        }
+        sub_dentry.clear_inode();
+        inode.dir.lock().remove(name).map_err(as_sys_err)?;
+        Ok(0)
     }
 }

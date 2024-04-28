@@ -37,7 +37,7 @@ impl Path {
     }
 
     /// Walk until path has been resolved.
-    pub fn walk(&self, flags: OpenFlags, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    pub fn walk(&self, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         let path = self.path.as_str();
         let mut dentry = if is_absolute_path(path) {
             self.root.clone()
@@ -45,7 +45,6 @@ impl Path {
             self.start.clone()
         };
         log::debug!("[Path::walk] {:?}", split_path(path));
-        let name = get_name(path);
         for p in split_path(path) {
             match p {
                 ".." => {
@@ -63,14 +62,6 @@ impl Path {
                     }
                 },
             }
-        }
-        if flags.contains(OpenFlags::O_CREAT) {
-            // If pathname does not exist, create it as a regular file.
-            log::debug!("[Path::walk] create {name}");
-            dentry = dentry
-                .parent()
-                .expect("can not be root dentry")
-                .create(name, InodeMode::FILE)?
         }
         Ok(dentry)
     }

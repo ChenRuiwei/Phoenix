@@ -6,7 +6,7 @@ use alloc::{
 use core::mem::MaybeUninit;
 
 use spin::Once;
-use systype::{SysError, SysResult};
+use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{inode::Inode, super_block, File, InodeMode, InodeType, Mutex, SuperBlock};
 
@@ -76,6 +76,14 @@ pub trait Dentry: Send + Sync {
     /// If the dentry it self has a negative child with `name`, it will create a
     /// inode for the negative child and return the child.
     fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>>;
+
+    /// Called by the unlink(2) system call. Delete an file inode in a directory
+    /// inode.
+    fn arc_unlink(self: Arc<Self>, name: &str) -> SyscallResult;
+
+    /// Called by the rmdir(2) system call. Delete an dir inode in a directory
+    /// inode.
+    fn arc_rmdir(self: Arc<Self>, name: &str) -> SyscallResult;
 
     fn inode(&self) -> SysResult<Arc<dyn Inode>> {
         self.meta()
@@ -179,6 +187,14 @@ impl dyn Dentry {
     pub fn create(self: &Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         self.clone().arc_create(name, mode)
     }
+
+    pub fn unlink(self: &Arc<Self>, name: &str) -> SyscallResult {
+        self.clone().arc_unlink(name)
+    }
+
+    pub fn rmdir(self: &Arc<Self>, name: &str) -> SyscallResult {
+        self.clone().arc_rmdir(name)
+    }
 }
 impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
     fn meta(&self) -> &DentryMeta {
@@ -194,6 +210,14 @@ impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
     }
 
     fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+        todo!()
+    }
+
+    fn arc_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
+        todo!()
+    }
+
+    fn arc_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
         todo!()
     }
 }

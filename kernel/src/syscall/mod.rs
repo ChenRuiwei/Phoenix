@@ -179,6 +179,14 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         SYSCALL_DUP3 => sys_handler!(sys_dup3, (args[0], args[1], args[2] as i32)),
         SYSCALL_FSTAT => sys_handler!(sys_fstat, (args[0], UserWritePtr::<Kstat>::from(args[1]))),
         SYSCALL_GETDENTS64 => sys_handler!(sys_getdents64, (args[0], args[1], args[2])),
+        SYSCALL_UNLINKAT => sys_handler!(
+            sys_unlinkat,
+            (
+                args[0] as isize,
+                UserReadPtr::<u8>::from(args[1]),
+                args[2] as i32
+            )
+        ),
         // Signal
         SYSCALL_RT_SIGPROCMASK => sys_handler!(
             sys_sigprocmask,
