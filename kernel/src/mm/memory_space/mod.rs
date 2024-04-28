@@ -1,23 +1,25 @@
-use alloc::vec::Vec;
+use alloc::{sync::Arc, vec::Vec};
 use core::ops::Range;
 
 use config::{
     board::MEMORY_END,
     mm::{
-        PAGE_SIZE, USER_STACK_SIZE, U_SEG_HEAP_BEG, U_SEG_HEAP_END, U_SEG_STACK_BEG,
-        U_SEG_STACK_END, VIRT_RAM_OFFSET,
+        PAGE_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END,
+        U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
     },
 };
 use log::info;
 use memory::{pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
 use spin::Lazy;
 use systype::SysResult;
+use vfs_core::File;
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};
 use crate::{
     mm::{
         memory_space::vm_area::{MapPerm, VmAreaType},
+        user_ptr::UserSlice,
         MMIO,
     },
     processor::env::SumGuard,
@@ -114,7 +116,7 @@ impl MemorySpace {
         log::info!(
             "[kernel] physical mem [{:#x}, {:#x})",
             _ekernel as usize,
-            MEMORY_END as usize
+            MEMORY_END
         );
 
         let mut memory_space = Self::new();
@@ -458,6 +460,29 @@ impl MemorySpace {
         vma.map(&mut self.page_table);
         vma.copy_data_with_offset(&self.page_table, offset, data);
         self.areas.try_insert(vma.range_va(), vma).unwrap();
+    }
+
+    pub fn alloc_mmap_area(
+        &mut self,
+        perm: MapPerm,
+        length: usize,
+        file: Arc<dyn File>,
+        offset: usize,
+    ) -> SysResult<VirtAddr> {
+        const MMAP_RANGE: Range<VirtAddr> =
+            VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
+        let range = self
+            .areas
+            .find_free_range(MMAP_RANGE, length)
+            .expect("mmap range is full");
+        let start = range.start;
+        let mut vma = VmArea::new_mmap(range, perm, file.clone());
+        vma.map(&mut self.page_table);
+        let mut buf = unsafe { UserSlice::new_unchecked(vma.start_va(), length) };
+        file.read(offset, &mut buf)?;
+        vma.copy_data_with_offset(&self.page_table, 0, &buf);
+        self.areas.try_insert(vma.range_va(), vma).unwrap();
+        Ok(start)
     }
 
     pub fn handle_page_fault(&mut self, va: VirtAddr) -> SysResult<()> {

@@ -336,8 +336,8 @@ pub fn sys_dup3(oldfd: usize, newfd: usize, flags: i32) -> SyscallResult {
 
 pub fn sys_fstat(fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
     let task = current_task();
-    let fd = task.with_fd_table(|table| table.get(fd))?;
-    stat_buf.write(task, Kstat::from_vfs_file(fd.inode())?)?;
+    let file = task.with_fd_table(|table| table.get(fd))?;
+    stat_buf.write(task, Kstat::from_vfs_file(file.inode())?)?;
     Ok(0)
 }
 
@@ -369,7 +369,6 @@ pub async fn sys_mount(
     //         let dev = if name.eq("fat32")
     //     }
     // }
-    // 调用VFS挂载实现
     Ok(0)
 }
 

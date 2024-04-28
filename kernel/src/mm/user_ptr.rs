@@ -83,6 +83,11 @@ impl<'a, T> UserSlice<'a, T> {
             _guard: SumGuard::new(),
         }
     }
+
+    pub unsafe fn new_unchecked(va: VirtAddr, len: usize) -> Self {
+        let slice = core::slice::from_raw_parts_mut(va.bits() as *mut T, len);
+        Self::new(slice)
+    }
 }
 
 impl<'a, T> core::ops::Deref for UserSlice<'a, T> {

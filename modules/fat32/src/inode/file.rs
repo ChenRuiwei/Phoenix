@@ -33,7 +33,7 @@ impl Inode for FatFileInode {
 
     fn get_attr(&self) -> systype::SysResult<Stat> {
         let meta_inner = self.meta.inner.lock();
-        let mode = InodeMode::from(self.meta.mode).bits();
+        let mode = self.meta.mode.bits();
         let len = meta_inner.size;
         Ok(Stat {
             st_dev: 0,

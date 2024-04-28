@@ -68,6 +68,10 @@ impl VirtAddr {
         Self::from_usize(range.start)..Self::from_usize(range.end)
     }
 
+    pub fn is_null(&self) -> bool {
+        self.0 == 0
+    }
+
     /// `VirtAddr`->`VirtPageNum`
     pub fn floor(&self) -> VirtPageNum {
         VirtPageNum(self.0 / PAGE_SIZE)

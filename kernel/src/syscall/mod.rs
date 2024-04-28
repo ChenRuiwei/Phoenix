@@ -132,6 +132,18 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         SYSCALL_GETPPID => sys_handler!(sys_getppid, ()),
         // Memory
         SYSCALL_BRK => sys_handler!(sys_brk, (VirtAddr::from(args[0]))),
+        SYSCALL_MMAP => sys_handler!(
+            sys_mmap,
+            (
+                VirtAddr::from(args[0]),
+                args[1],
+                args[2] as i32,
+                args[3] as i32,
+                args[4],
+                args[5]
+            )
+        ),
+        SYSCALL_MUNMAP => sys_handler!(sys_munmap, (VirtAddr::from(args[0]), args[1],)),
         // File system
         SYSCALL_READ => asys_handler!(
             sys_read,
