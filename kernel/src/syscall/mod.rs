@@ -132,20 +132,16 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         SYSCALL_GETPPID => sys_handler!(sys_getppid, ()),
         // Memory
         SYSCALL_BRK => sys_handler!(sys_brk, (VirtAddr::from(args[0]))),
-
         // File system
-        SYSCALL_READ => {
-            asys_handler!(
-                sys_read,
-                (args[0], UserWritePtr::<u8>::from(args[1]), args[2])
-            )
-        }
-        SYSCALL_WRITE => {
-            asys_handler!(
-                sys_write,
-                (args[0], UserReadPtr::<u8>::from(args[1]), args[2])
-            )
-        }
+        SYSCALL_READ => asys_handler!(
+            sys_read,
+            (args[0], UserWritePtr::<u8>::from(args[1]), args[2])
+        ),
+        SYSCALL_WRITE => asys_handler!(
+            sys_write,
+            (args[0], UserReadPtr::<u8>::from(args[1]), args[2])
+        ),
+
         SYSCALL_OPENAT => {
             sys_handler!(
                 sys_openat,
@@ -179,7 +175,6 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 UserWritePtr::<SigSet>::from(args[2]),
             )
         ),
-
         SYSCALL_RT_SIGACTION => sys_handler!(
             sys_sigaction,
             (

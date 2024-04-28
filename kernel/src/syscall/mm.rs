@@ -4,6 +4,7 @@ use systype::{SysError, SyscallResult};
 use crate::processor::hart::current_task;
 
 bitflags! {
+    // See in "bits/mman-linux.h"
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct MMAPFlags: i32 {
         // Sharing types (must choose one and only one of these).

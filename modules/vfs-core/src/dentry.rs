@@ -115,7 +115,7 @@ pub trait Dentry: Send + Sync {
     }
 
     /// Get the path of this dentry.
-    // HACK: code looks ugly
+    // HACK: code looks ugly and may be has problem
     fn path(&self) -> String {
         if let Some(p) = self.parent() {
             let path = if self.name() == "/" {

@@ -126,7 +126,7 @@ pub async fn sys_wait4(
         // log::debug!("[sys_wait4]: finding zombie children for {target:?}");
         let children = task.children();
         if children.is_empty() {
-            // log::error!("[sys_wait4] fail: no child");
+            log::warn!("[sys_wait4] fail: no child");
             return Err(SysError::ECHILD);
         }
         let res_task = match target {
@@ -141,7 +141,7 @@ pub async fn sys_wait4(
                         None
                     }
                 } else {
-                    log::error!("[sys_wait4] fail: no child with pid {pid}");
+                    log::warn!("[sys_wait4] fail: no child with pid {pid}");
                     return Err(SysError::ECHILD);
                 }
             }
@@ -156,7 +156,6 @@ pub async fn sys_wait4(
                 log::trace!("[sys_wait4] wstatus: {:#x}", status);
                 wstatus.write(task, status)?;
             }
-            // TODO: do some cleanings
             task.remove_child(res_task.tid());
             TASK_MANAGER.remove(res_task);
             return Ok(res_task.pid());
