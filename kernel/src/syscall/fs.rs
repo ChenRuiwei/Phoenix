@@ -1,8 +1,17 @@
-use alloc::{ffi::CString, sync::Arc};
+use alloc::{
+    ffi::CString,
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
+};
 
-use systype::{SysError, SysResult, SyscallResult};
-use vfs::sys_root_dentry;
-use vfs_core::{is_absolute_path, Dentry, InodeMode, OpenFlags, Path, AT_FDCWD};
+use log::info;
+use systype::{SysError, SysError::EINVAL, SysResult, SyscallResult};
+use vfs::{sys_root_dentry, FS_MANAGER};
+use vfs_core::{
+    get_name, is_absolute_path, is_relative_path, Dentry, File, FileMeta, FileRef, Inode,
+    InodeMeta, InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD,
+};
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
@@ -45,6 +54,72 @@ use crate::{
 // "waitpid",
 // "write",
 // "yield",
+
+/// 文件信息类
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct Kstat {
+    /// 设备
+    pub st_dev: u64,
+    /// inode 编号
+    pub st_ino: u64,
+    /// 文件类型
+    pub st_mode: u32,
+    /// 硬链接数
+    pub st_nlink: u32,
+    /// 用户 id
+    pub st_uid: u32,
+    /// 用户组 id
+    pub st_gid: u32,
+    /// 设备号
+    pub st_rdev: u64,
+    _pad0: u64,
+    /// 文件大小
+    pub st_size: i64,
+    /// 块大小
+    pub st_blksize: i32,
+    _pad1: i32,
+    /// 块个数
+    pub st_blocks: i64,
+    /// 最后一次访问时间 (秒)
+    pub st_atime_sec: isize,
+    /// 最后一次访问时间 (纳秒)
+    pub st_atime_nsec: isize,
+    /// 最后一次修改时间 (秒)
+    pub st_mtime_sec: isize,
+    /// 最后一次修改时间 (纳秒)
+    pub st_mtime_nsec: isize,
+    /// 最后一次改变状态时间 (秒)
+    pub st_ctime_sec: isize,
+    /// 最后一次改变状态时间 (纳秒)
+    pub st_ctime_nsec: isize,
+}
+
+impl Kstat {
+    pub fn from_vfs_file(file: Arc<dyn Inode>) -> SysResult<Self> {
+        let stat = file.get_attr()?;
+        Ok(Kstat {
+            st_dev: stat.st_dev,
+            st_ino: stat.st_ino,
+            st_mode: stat.st_mode, // 0777 permission, we don't care about permission
+            st_nlink: stat.st_nlink,
+            st_uid: stat.st_uid,
+            st_gid: stat.st_gid,
+            st_rdev: stat.st_rdev,
+            _pad0: stat.__pad,
+            st_size: stat.st_size as i64,
+            st_blksize: stat.st_blksize as i32,
+            _pad1: stat.__pad2 as i32,
+            st_blocks: stat.st_blocks as i64,
+            st_atime_sec: stat.st_atime.sec as isize,
+            st_atime_nsec: stat.st_atime.nsec as isize,
+            st_mtime_sec: stat.st_mtime.sec as isize,
+            st_mtime_nsec: stat.st_mtime.nsec as isize,
+            st_ctime_sec: stat.st_ctime.sec as isize,
+            st_ctime_nsec: stat.st_ctime.nsec as isize,
+        })
+    }
+}
 
 // TODO:
 pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallResult {
@@ -298,4 +373,54 @@ pub fn resolve_path(path: &str) -> SysResult<Arc<dyn Dentry>> {
         OpenFlags::empty(),
         InodeMode::empty(),
     )
+}
+
+// TODO: Needs fd table to be provided
+pub fn sys_fstat(fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
+    info!("Syscall: fstat, fd: {}, kstat: {}", fd, stat_buf);
+    // find file according to fd and fd_table
+    let task = current_task();
+    if let Ok(fd) = task.with_fd_table(|f| f.get(fd)) {
+        // write kstat to buf
+        stat_buf.write(&task, Kstat::from_vfs_file(fd.inode())?)?;
+        return Ok(0);
+    }
+    Err(SysError::EBADF)
+}
+
+// TODO: FTL采取
+pub async fn sys_mount(
+    special: UserReadPtr<u8>,
+    dir: UserReadPtr<u8>,
+    fstype: UserReadPtr<u8>,
+    flags: u32,
+    data: UserReadPtr<u8>,
+) -> SyscallResult {
+    info!("Syscall: mount");
+    let task = current_task();
+    // 整理传入的参数
+    let special = special.read_cstr(task)?;
+    let dir = dir.read_cstr(task)?; // must absolute? not mentioned in man
+    let fstype = fstype.read_cstr(task)?;
+    if data.is_null() {
+        return Err(EINVAL);
+    }
+    let data = data.read_cstr(task)?;
+    let flags = MountFlags::from_bits(flags).unwrap();
+    info!(
+        "mount special:{:?}, dir:{:?}, fstype:{:?}, flags:{:?}, data:{:?}",
+        special, dir, fstype, flags, data
+    );
+
+    // 提取要挂载的文件系统类型和路径
+    let fs_type_name = FS_MANAGER.lock().get(&fstype).unwrap().clone().fs_name();
+    let path = Path::new(sys_root_dentry(), sys_root_dentry(), "");
+    // let fs_root = match fs_type_name {
+    //     name @(String::from("fat32")) => {
+    //         let fs_type = FS_MANAGER.lock().get(&name).unwrap().clone();
+    //         let dev = if name.eq("fat32")
+    //     }
+    // }
+    // 调用VFS挂载实现
+    Ok(0)
 }
