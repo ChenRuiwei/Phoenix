@@ -148,6 +148,7 @@ pub fn sys_mmap(
 ///
 /// On success, munmap() returns 0. On failure, it returns -1, and errno is
 /// set to indicate the error (probably to EINVAL).
+// TODO:
 pub fn sys_munmap(addr: VirtAddr, length: usize) -> SyscallResult {
     Ok(0)
 }

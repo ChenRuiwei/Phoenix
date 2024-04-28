@@ -4,12 +4,13 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
+use core::mem::size_of;
 
 use log::info;
 use systype::{SysError, SysError::EINVAL, SysResult, SyscallResult};
 use vfs::{sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    get_name, is_absolute_path, is_relative_path, Dentry, File, FileMeta, Inode, InodeMeta,
+    get_name, is_absolute_path, is_relative_path, Dentry, DirEnt, File, FileMeta, Inode, InodeMeta,
     InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD,
 };
 
@@ -370,6 +371,46 @@ pub async fn sys_mount(
     //     }
     // }
     Ok(0)
+}
+
+/// On success, the number of bytes read is returned. On end of directory, 0 is
+/// returned. On error, -1 is returned, and errno is set to indicate the error.
+pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
+    #[derive(Debug, Clone, Copy)]
+    #[repr(C)]
+    struct LinuxDirent64 {
+        d_ino: u64,
+        d_off: u64,
+        d_reclen: u16,
+        d_type: u8,
+        // dynmaic-len cstr d_name followsing here
+    }
+    // NOTE: should consider C struct align. Therefore, we can not use `size_of`
+    // directly, because `size_of::<LinuxDirent64>` equals 24.
+    const LEN_BEFORE_NAME: usize = 19;
+    let task = current_task();
+    let file = task.with_fd_table(|table| table.get(fd))?;
+    if let Some(dirent) = file.read_dir()? {
+        log::debug!("[sys_getdents64] dirent {dirent:?}");
+        let buf = UserWritePtr::<LinuxDirent64>::from(buf);
+        let ret_len = LEN_BEFORE_NAME + dirent.name.len() + 1;
+        let linux_dirent = LinuxDirent64 {
+            d_ino: dirent.ino,
+            d_off: dirent.off,
+            d_reclen: ret_len as u16,
+            d_type: dirent.itype as u8,
+        };
+        log::debug!("[sys_getdents64] linux_dirent {linux_dirent:?}");
+        if ret_len > len {
+            return Err(SysError::EINVAL);
+        }
+        let name_buf = UserWritePtr::<u8>::from(buf.as_usize() + LEN_BEFORE_NAME);
+        buf.write(task, linux_dirent)?;
+        name_buf.write_cstr(task, &dirent.name)?;
+        Ok(ret_len)
+    } else {
+        Ok(0)
+    }
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as

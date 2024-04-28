@@ -1,4 +1,5 @@
 use alloc::{
+    ffi::CString,
     string::{String, ToString},
     sync::Arc,
 };
@@ -55,15 +56,16 @@ impl File for FatDirFile {
         if let Some(entry) = entry {
             match entry {
                 Ok(entry) => {
-                    self.seek(vfs_core::SeekFrom::Current(1));
-                    let ty = if entry.is_dir() {
-                        InodeMode::DIR
+                    self.seek(vfs_core::SeekFrom::Current(1))?;
+                    let itype = if entry.is_dir() {
+                        InodeType::Dir
                     } else {
-                        InodeMode::FILE
+                        InodeType::File
                     };
                     let entry = DirEnt {
-                        ino: 1,
-                        ty,
+                        ino: 1,                 // Fat32 does not support ino on disk
+                        off: self.pos() as u64, // off should not be used
+                        itype,
                         name: entry.file_name(),
                     };
                     Ok(Some(entry))

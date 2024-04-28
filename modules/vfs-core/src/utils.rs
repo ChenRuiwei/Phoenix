@@ -1,4 +1,5 @@
 use alloc::{
+    ffi::CString,
     string::String,
     sync::{Arc, Weak},
 };
@@ -166,9 +167,11 @@ impl NodePermission {
 
 /// Directory entry.
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub struct DirEnt {
     pub ino: u64,
-    pub ty: InodeMode,
+    pub off: u64,
+    pub itype: InodeType,
     pub name: String,
 }
 

@@ -93,37 +93,6 @@ impl File for FatFileFile {
     }
 
     fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEnt>> {
-        match self.itype() {
-            InodeType::Dir => {
-                let inode = self
-                    .inode()
-                    .downcast_arc::<FatDirInode>()
-                    .map_err(|_| SysError::EIO)?;
-                let pos = self.pos();
-                let entry = inode.dir.lock().iter().nth(pos);
-                if let Some(entry) = entry {
-                    match entry {
-                        Ok(entry) => {
-                            self.seek(vfs_core::SeekFrom::Current(1));
-                            let ty = if entry.is_dir() {
-                                InodeMode::DIR
-                            } else {
-                                InodeMode::FILE
-                            };
-                            let entry = DirEnt {
-                                ino: 1,
-                                ty,
-                                name: entry.file_name(),
-                            };
-                            Ok(Some(entry))
-                        }
-                        Err(_) => Err(SysError::EIO),
-                    }
-                } else {
-                    Ok(None)
-                }
-            }
-            _ => Err(SysError::ENOTDIR),
-        }
+        todo!()
     }
 }
