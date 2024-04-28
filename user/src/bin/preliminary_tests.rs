@@ -10,7 +10,7 @@ use core::ffi::CStr;
 
 use user_lib::{execve, fork, println, wait, waitpid};
 
-const TESTCASES: [&str; 31] = [
+const TESTCASES: [&str; 32] = [
     "brk",
     "chdir",
     "clone",
@@ -34,6 +34,7 @@ const TESTCASES: [&str; 31] = [
     "openat",
     "pipe",
     "read",
+    "sleep",
     "times",
     "umount",
     "uname",

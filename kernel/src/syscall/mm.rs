@@ -31,10 +31,9 @@ bitflags! {
 
 bitflags! {
     // See in "bits/mman-linux.h"
+    // NOTE: Zero bit flag is discouraged. See https://docs.rs/bitflags/latest/bitflags/#zero-bit-flags
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct MmapProt: i32 {
-        /// Page can not be accessed.
-        const PROT_NONE = 0x0;
         /// Page can be read.
         const PROT_READ = 0x1;
         /// Page can be written.
@@ -47,10 +46,6 @@ bitflags! {
 impl From<MmapProt> for MapPerm {
     fn from(prot: MmapProt) -> Self {
         let mut ret = Self::U;
-        // if prot.contains(MmapProt::PROT_NONE) {
-        //     log::error!("shit");
-        //     return Self::U;
-        // }
         if prot.contains(MmapProt::PROT_READ) {
             ret |= Self::R;
         }

@@ -376,6 +376,7 @@ impl MemorySpace {
             .iter_mut()
             .find(|(_, vma)| vma.vma_type == VmAreaType::Heap)
             .unwrap();
+        log::debug!("[MemorySpace::reset_heap_break] heap range: {range:?}, new_brk: {new_brk:?}");
         let result = if new_brk > range.end {
             self.areas.extend_back(range.start..new_brk)
         } else if new_brk < range.end {
