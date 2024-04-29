@@ -70,14 +70,14 @@ pub trait Dentry: Send + Sync {
     /// only be done on a real error.
     fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>>;
 
-    /// Called by the open(2) and creat(2) system calls. Create a inode for a
+    /// Called by the open(2) and creat(2) system calls. Create an inode for a
     /// dentry in the directory inode.
     ///
-    /// If the dentry it self has a negative child with `name`, it will create a
+    /// If the dentry itself has a negative child with `name`, it will create an
     /// inode for the negative child and return the child.
     fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>>;
 
-    /// Called by the unlink(2) system call. Delete an file inode in a directory
+    /// Called by the unlink(2) system call. Delete a file inode in a directory
     /// inode.
     fn arc_unlink(self: Arc<Self>, name: &str) -> SyscallResult;
 

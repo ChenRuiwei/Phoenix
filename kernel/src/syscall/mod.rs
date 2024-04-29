@@ -187,6 +187,23 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 args[2] as i32
             )
         ),
+        SYSCALL_MOUNT => asys_handler!(
+            sys_mount,
+            (
+                UserReadPtr::<u8>::from(args[0]),
+                UserReadPtr::<u8>::from(args[1]),
+                UserReadPtr::<u8>::from(args[2]),
+                args[3] as u32,
+                UserReadPtr::<u8>::from(args[4]),
+            )
+        ),
+        SYSCALL_UMOUNT => asys_handler!(
+            sys_unmount2,
+            (
+                UserReadPtr::<u8>::from(args[0]),
+                args[1] as u32,
+            )
+        ),
         // Signal
         SYSCALL_RT_SIGPROCMASK => sys_handler!(
             sys_sigprocmask,

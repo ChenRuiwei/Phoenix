@@ -5,7 +5,7 @@ use alloc::{
 };
 use core::fmt::Error;
 
-use systype::{SysError, SysResult};
+use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{dentry, Dentry, InodeMode, OpenFlags};
 

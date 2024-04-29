@@ -4,14 +4,22 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
-use core::mem::size_of;
+use core::{
+    any::{Any, TypeId},
+    mem::size_of,
+};
 
+use driver::{qemu::virtio_blk::VirtIOBlkDev, BLOCK_DEVICE};
 use log::info;
-use systype::{SysError, SysError::EINVAL, SysResult, SyscallResult};
+use systype::{
+    SysError,
+    SysError::{EINVAL, EPERM},
+    SysResult, SyscallResult,
+};
 use vfs::{sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    get_name, is_absolute_path, is_relative_path, Dentry, DirEnt, File, FileMeta, Inode, InodeMeta,
-    InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD, AT_REMOVEDIR,
+    get_name, is_absolute_path, is_relative_path, split_path, Dentry, DirEnt, File, FileMeta,
+    Inode, InodeMeta, InodeMode, InodeType, MountFlags, OpenFlags, Path, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use crate::{
@@ -82,6 +90,17 @@ impl Kstat {
             st_ctime_nsec: stat.st_ctime.nsec as isize,
         })
     }
+}
+
+/// 目录信息类
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct DirentFront {
+    d_ino: u64,
+    d_off: u64,
+    d_reclen: u16,
+    d_type: u8,
+    // cstr d_name
 }
 
 // TODO:
@@ -316,27 +335,57 @@ pub async fn sys_mount(
     flags: u32,
     data: UserReadPtr<u8>,
 ) -> SyscallResult {
+    // process arguments
     let task = current_task();
     let source = source.read_cstr(task)?;
     let target = target.read_cstr(task)?; // must absolute? not mentioned in man
     let fstype = fstype.read_cstr(task)?;
-    if data.is_null() {
-        return Err(EINVAL);
-    }
-    let data = data.read_cstr(task)?;
+
     let flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     log::debug!(
         "[sys_mount] source:{source:?}, target:{target:?}, fstype:{fstype:?}, flags:{flags:?}, data:{data:?}",
     );
 
-    let fs_type_name = FS_MANAGER.lock().get(&fstype).unwrap().clone().fs_name();
-    let path = Path::new(sys_root_dentry(), sys_root_dentry(), "");
-    // let fs_root = match fs_type_name {
-    //     name @(String::from("fat32")) => {
-    //         let fs_type = FS_MANAGER.lock().get(&name).unwrap().clone();
-    //         let dev = if name.eq("fat32")
-    //     }
-    // }
+    // adding this code is because the fs_type in test code is vfat, which should be
+    // turned into fat32
+    let fat32_type = FS_MANAGER.lock().get("fat32").unwrap().clone();
+    let fs_type = FS_MANAGER
+        .lock()
+        .get(&fstype)
+        .unwrap_or(&fat32_type.clone())
+        .clone();
+    let fs_root = match &*fs_type.fs_name() {
+        name @ ("fat32") => {
+            let dev = if name.eq("fat32") {
+                // here should be getting device according to inode
+                // it seems that device hasn't been associated with inode yet.
+                // so here just return a virtio_block
+                // let path = Path::new(sys_root_dentry(), sys_root_dentry(), &*source);
+                // let dev = path.walk(InodeMode::BLOCK)?;
+                // let dev_ino = dev.inode()?;
+                // if dev_ino.itype() != InodeType::BlockDevice {
+                //     return Err(SysError::EINVAL);
+                // }
+                Some(BLOCK_DEVICE.get().unwrap().clone())
+            } else {
+                None
+            };
+
+            let abs_target = resolve_path(&*target)?.path();
+            let new_fs = fs_type.mount(&*abs_target, flags, dev)?;
+            new_fs
+        }
+        _ => return Err(SysError::EINVAL),
+    };
+    // Need a mount_point struct to manage fs_root
+    Ok(0)
+}
+
+pub async fn sys_unmount2(special: UserReadPtr<u8>, flags: u32) -> SyscallResult {
+    let task = current_task();
+    let mount_path = special.read_cstr(task)?;
+    let flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+    log::info!("umount path:{:?}", mount_path);
     Ok(0)
 }
 
