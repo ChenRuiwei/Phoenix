@@ -58,6 +58,11 @@ pub trait File: Send + Sync + 'static {
         self.meta().inode.clone()
     }
 
+    // NOTE: super block has arc of inode
+    fn i_cnt(&self) -> usize {
+        Arc::strong_count(&self.meta().inode)
+    }
+
     fn itype(&self) -> InodeType {
         self.meta().inode.itype()
     }

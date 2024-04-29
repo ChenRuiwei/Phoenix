@@ -1,6 +1,7 @@
 use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
+use async_utils::yield_now;
 use config::fs::PIPE_BUF_CAPACITY;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sync::mutex::SpinLock;
@@ -81,19 +82,11 @@ impl File for PipeWriteFile {
         let mut pipe_buf = pipe.buf.lock();
         let space_left = pipe_buf.capacity() - pipe_buf.len();
 
-        // debug_assert_ne!(space_left, 0);
-        // if buf.len() == 0 {
-        //     // ensure we at least write one byte
-        //     return Ok(0);
-        // }
-
         let len = Ord::min(space_left, buf.len());
         for i in 0..len {
             pipe_buf.push(buf[i]);
         }
-
         log::trace!("[Pipe::write] buf {buf:?}");
-
         Ok(len)
     }
 
@@ -117,17 +110,16 @@ impl File for PipeReadFile {
             .inode()
             .downcast_arc::<PipeInode>()
             .map_err(|_| SysError::EIO)?;
-        let mut pipe_buf = pipe.buf.lock();
-
-        while pipe_buf.len() == 0 {
-            core::hint::spin_loop();
+        let mut pipe_len = pipe.buf.lock().len();
+        while pipe_len == 0 {
+            yield_now().await;
+            pipe_len = pipe.buf.lock().len();
+            if self.i_cnt() <= 2 {
+                break;
+            }
         }
 
-        // debug_assert_ne!(pipe_buf.len(), 0);
-        // if buf.len() == 0 {
-        //     // ensure we at least read one byte
-        //     return Ok(0);
-        // }
+        let mut pipe_buf = pipe.buf.lock();
 
         let len = Ord::min(pipe_buf.len(), buf.len());
         for i in 0..len {

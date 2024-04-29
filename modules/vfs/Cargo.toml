@@ -12,6 +12,7 @@ sync = { path = "../sync/" }
 driver = { path = "../../driver/" }
 config = { path = "../../config/" }
 systype = { path = "../systype/" }
+async_utils = { path = "../async_utils/" }
 
 spin = "0.9"
 log = "0.4"

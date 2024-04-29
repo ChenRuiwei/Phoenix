@@ -17,8 +17,8 @@ use vfs::{DISK_FS_NAME, FS_MANAGER};
 use crate::loader::get_app_data_by_name;
 
 pub fn add_init_proc() {
-    let elf_data = get_app_data_by_name("exec_test").unwrap();
-    // let elf_data = get_app_data_by_name("preliminary_tests").unwrap();
+    // let elf_data = get_app_data_by_name("exec_test").unwrap();
+    let elf_data = get_app_data_by_name("preliminary_tests").unwrap();
 
     // let mut buf = [0; 512];
     // let sb = FS_MANAGER
