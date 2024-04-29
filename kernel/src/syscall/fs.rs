@@ -1,7 +1,7 @@
 use alloc::{ffi::CString, sync::Arc};
 
 use driver::BLOCK_DEVICE;
-use systype::{SysError, SysError::EINVAL, SysResult, SyscallResult};
+use systype::{SysError, SysResult, SyscallResult};
 use vfs::{pipe::new_pipe, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, Dentry, Inode, InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD, AT_REMOVEDIR,
@@ -75,17 +75,6 @@ impl Kstat {
             st_ctime_nsec: stat.st_ctime.nsec as isize,
         })
     }
-}
-
-/// 目录信息类
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct DirentFront {
-    d_ino: u64,
-    d_off: u64,
-    d_reclen: u16,
-    d_type: u8,
-    // cstr d_name
 }
 
 // TODO:
@@ -285,11 +274,11 @@ pub fn sys_dup(oldfd: usize) -> SyscallResult {
 ///   descriptor by specifying O_CLOEXEC in flags. See the description of the
 ///   same flag in open(2) for reasons why this may be useful.
 /// + If oldfd equals newfd, then dup3() fails with the error EINVAL.
+// TODO: flags support
 pub fn sys_dup3(oldfd: usize, newfd: usize, flags: i32) -> SyscallResult {
     if oldfd == newfd {
         return Err(SysError::EINVAL);
     }
-    // TODO: flags support
     let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     let task = current_task();
     task.with_mut_fd_table(|table| table.dup3(oldfd, newfd))
@@ -309,7 +298,6 @@ pub async fn sys_mount(
     flags: u32,
     data: UserReadPtr<u8>,
 ) -> SyscallResult {
-    // process arguments
     let task = current_task();
     let source = source.read_cstr(task)?;
     let target = target.read_cstr(task)?; // must absolute? not mentioned in man
@@ -355,11 +343,11 @@ pub async fn sys_mount(
     Ok(0)
 }
 
-pub async fn sys_unmount2(special: UserReadPtr<u8>, flags: u32) -> SyscallResult {
+pub async fn sys_umount2(target: UserReadPtr<u8>, flags: u32) -> SyscallResult {
     let task = current_task();
-    let mount_path = special.read_cstr(task)?;
+    let mount_path = target.read_cstr(task)?;
     let flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
-    log::info!("umount path:{:?}", mount_path);
+    log::info!("[sys_umount2] umount path:{mount_path:?}");
     Ok(0)
 }
 
@@ -419,15 +407,13 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
 pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
     let task = current_task();
     let (pipe_read, pipe_write) = new_pipe();
-
-    let r = task.with_mut_fd_table(|table| {
+    let pipe = task.with_mut_fd_table(|table| {
         let read_fd = table.alloc(pipe_read)?;
         let write_fd = table.alloc(pipe_write)?;
-        log::info!("read_fd: {}, write_fd: {}", read_fd, write_fd);
+        log::debug!("[sys_pipe2] read_fd: {read_fd}, write_fd: {write_fd}");
         Ok([read_fd as u32, write_fd as u32])
     })?;
-
-    pipefd.write(task, r)?;
+    pipefd.write(task, pipe)?;
     Ok(0)
 }
 
