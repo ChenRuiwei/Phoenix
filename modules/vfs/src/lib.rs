@@ -34,7 +34,7 @@ pub const DISK_FS_NAME: &str = "fat32";
 
 fn register_all_fs() {
     let diskfs = DiskFsType::new();
-    FS_MANAGER.lock().insert(diskfs.fs_name(), diskfs);
+    FS_MANAGER.lock().insert(diskfs.name_string(), diskfs);
 
     log::info!("[vfs] register fs success");
 }

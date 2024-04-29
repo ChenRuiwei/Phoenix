@@ -7,7 +7,7 @@ use alloc::{
 use driver::BlockDevice;
 use systype::{SysError, SysResult};
 
-use crate::{Dentry, File, MountFlags, Mutex, SuperBlock};
+use crate::{Dentry, MountFlags, Mutex, SuperBlock};
 
 pub struct FileSystemTypeMeta {
     /// Name of this file system type.
@@ -29,7 +29,7 @@ pub trait FileSystemType: Send + Sync {
     fn meta(&self) -> &FileSystemTypeMeta;
 
     /// Call when a new instance of this filesystem should be mounted.
-    // NOTE: cannot be `&Arc<Self>` for object safety
+    // NOTE: `self` cannot be `&Arc<Self>` for object safety
     // https://doc.rust-lang.org/reference/items/traits.html#object-safety
     fn arc_mount(
         self: Arc<Self>,
@@ -48,8 +48,12 @@ pub trait FileSystemType: Send + Sync {
             .insert(abs_mount_path.to_string(), super_block);
     }
 
-    fn fs_name(&self) -> String {
-        self.meta().name.clone()
+    fn name(&self) -> &str {
+        &self.meta().name
+    }
+
+    fn name_string(&self) -> String {
+        self.meta().name.to_string()
     }
 }
 
@@ -68,7 +72,7 @@ impl dyn FileSystemType {
             .supers
             .lock()
             .get(abs_mount_path)
-            .map(Arc::clone)
+            .cloned()
             .ok_or(SysError::ENOENT)
     }
 }

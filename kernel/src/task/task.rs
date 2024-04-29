@@ -430,6 +430,8 @@ impl Task {
 
     // NOTE: After all of the threads in a thread group is terminated, the parent
     // process of the thread group is sent a SIGCHLD (or other termination) signal.
+    // WARN: do not call this function directly if a task should be terminated,
+    // instead, call `set_zombie`
     // TODO:
     pub fn do_exit(self: &Arc<Self>) {
         log::info!("thread {} do exit", self.tid());
@@ -455,10 +457,10 @@ impl Task {
                 return;
             }
             let init_proc = TASK_MANAGER.init_proc();
-            children.values().for_each(|c| {
+            for c in children.values() {
                 c.set_zombie();
                 *c.parent.lock() = Some(Arc::downgrade(&init_proc));
-            });
+            }
             init_proc.children.lock().extend(children.clone());
         });
 

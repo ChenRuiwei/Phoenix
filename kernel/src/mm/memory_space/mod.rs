@@ -12,7 +12,7 @@ use config::{
 use log::info;
 use memory::{pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
 use spin::Lazy;
-use systype::SysResult;
+use systype::{SysError, SysResult};
 use vfs_core::File;
 use xmas_elf::ElfFile;
 
@@ -489,7 +489,10 @@ impl MemorySpace {
 
     pub fn handle_page_fault(&mut self, va: VirtAddr) -> SysResult<()> {
         log::trace!("[MemorySpace::handle_page_fault] {va:?}");
-        let vm_area = self.areas.get_mut(va).expect("no area contains this va");
+        let vm_area = self.areas.get_mut(va).ok_or_else(|| {
+            log::error!("[handle_page_fault] no area containing {va:?}");
+            SysError::EFAULT
+        })?;
         vm_area.handle_page_fault(&mut self.page_table, va.floor());
         Ok(())
     }

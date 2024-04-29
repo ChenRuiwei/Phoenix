@@ -81,7 +81,7 @@ pub trait Dentry: Send + Sync {
     /// inode.
     fn arc_unlink(self: Arc<Self>, name: &str) -> SyscallResult;
 
-    /// Called by the rmdir(2) system call. Delete an dir inode in a directory
+    /// Called by the rmdir(2) system call. Delete a dir inode in a directory
     /// inode.
     fn arc_rmdir(self: Arc<Self>, name: &str) -> SyscallResult;
 
@@ -196,6 +196,7 @@ impl dyn Dentry {
         self.clone().arc_rmdir(name)
     }
 }
+
 impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
     fn meta(&self) -> &DentryMeta {
         todo!()

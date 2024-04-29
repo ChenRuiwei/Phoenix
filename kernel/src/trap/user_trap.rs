@@ -72,15 +72,15 @@ pub async fn trap_handler(task: &Arc<Task>) {
 
             let result = task.with_mut_memory_space(|m| m.handle_page_fault(VirtAddr::from(stval)));
             if let Err(_e) = result {
-                task.with_memory_space(|m| m.print_all());
-                task.do_exit()
+                // task.with_memory_space(|m| m.print_all());
+                task.set_zombie();
             }
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             log::warn!(
                 "[trap_handler] detected illegal instruction, stval {stval:#x}, sepc {sepc:#x}",
             );
-            task.do_exit();
+            task.set_zombie();
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");

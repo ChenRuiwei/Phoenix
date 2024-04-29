@@ -302,7 +302,6 @@ pub async fn sys_mount(
     let source = source.read_cstr(task)?;
     let target = target.read_cstr(task)?; // must absolute? not mentioned in man
     let fstype = fstype.read_cstr(task)?;
-
     let flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     log::debug!(
         "[sys_mount] source:{source:?}, target:{target:?}, fstype:{fstype:?}, flags:{flags:?}, data:{data:?}",
@@ -316,7 +315,7 @@ pub async fn sys_mount(
         .get(&fstype)
         .unwrap_or(&fat32_type.clone())
         .clone();
-    let fs_root = match &*fs_type.fs_name() {
+    let fs_root = match fs_type.name() {
         name @ ("fat32") => {
             let dev = if name.eq("fat32") {
                 // here should be getting device according to inode
@@ -333,9 +332,8 @@ pub async fn sys_mount(
                 None
             };
 
-            let abs_target = resolve_path(&*target)?.path();
-            let new_fs = fs_type.mount(&*abs_target, flags, dev)?;
-            new_fs
+            let abs_target = resolve_path(&target)?.path();
+            fs_type.mount(&abs_target, flags, dev)?
         }
         _ => return Err(SysError::EINVAL),
     };
@@ -435,7 +433,7 @@ pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
 /// + AT_REMOVEDIR: By default, unlinkat() performs the equivalent of unlink()
 ///   on pathname. If the AT_REMOVEDIR flag is specified, it performs the
 ///   equivalent of rmdir(2) on pathname.
-// FIXME: removal is not delayed, can be done in vfs layer
+// FIXME: removal is not delayed, could be done in vfs layer
 pub fn sys_unlinkat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32) -> SyscallResult {
     let task = current_task();
     let path = pathname.read_cstr(task)?;

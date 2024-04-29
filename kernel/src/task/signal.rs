@@ -171,9 +171,10 @@ fn ignore(sig: Sig) {
 fn terminate(sig: Sig) {
     log::info!("Recevie signal {}. Action: terminate", sig);
     // exit all the memers of a thread group
-    current_task().with_thread_group(|tg| {
-        for task in tg.iter() {
-            task.do_exit();
+    let task = current_task();
+    task.with_thread_group(|tg| {
+        for t in tg.iter() {
+            t.set_zombie();
         }
     })
 }
