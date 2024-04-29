@@ -94,7 +94,7 @@ pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallRe
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
     let mut buf = buf.into_mut_slice(task, len)?;
-    let ret = file.read(file.pos(), &mut buf)?;
+    let ret = file.read(file.pos(), &mut buf).await?;
     Ok(ret)
 }
 

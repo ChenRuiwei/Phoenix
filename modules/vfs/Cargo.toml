@@ -16,3 +16,4 @@ systype = { path = "../systype/" }
 spin = "0.9"
 log = "0.4"
 ringbuffer = "0.15"
+async-trait = "0.1"

@@ -1,11 +1,13 @@
 use alloc::{
+    boxed::Box,
     ffi::CString,
     string::{String, ToString},
     sync::Arc,
 };
 
+use async_trait::async_trait;
 use fatfs::{Read, Seek, Write};
-use systype::SysError;
+use systype::{SysError, SyscallResult};
 use vfs_core::{Dentry, DirEntry, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
 
 use crate::{
@@ -29,12 +31,13 @@ impl FatDirFile {
     }
 }
 
+#[async_trait]
 impl File for FatDirFile {
     fn meta(&self) -> &FileMeta {
         &self.meta
     }
 
-    fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         Err(SysError::EISDIR)
     }
 

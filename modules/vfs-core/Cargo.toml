@@ -13,5 +13,6 @@ config = { path = "../../config/" }
 
 bitflags = "2.5"
 log = "0.4"
+async-trait = "0.1"
 spin = "0.9"
 downcast-rs = { version = "1.2", default-features = false }

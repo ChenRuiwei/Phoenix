@@ -1,5 +1,6 @@
-use alloc::sync::Arc;
+use alloc::{boxed::Box, sync::Arc};
 
+use async_trait::async_trait;
 use config::fs::PIPE_BUF_CAPACITY;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sync::mutex::SpinLock;
@@ -62,12 +63,13 @@ impl PipeReadFile {
     }
 }
 
+#[async_trait]
 impl File for PipeWriteFile {
     fn meta(&self) -> &FileMeta {
         &self.meta
     }
 
-    fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
         todo!()
     }
 
@@ -104,12 +106,13 @@ impl File for PipeWriteFile {
     }
 }
 
+#[async_trait]
 impl File for PipeReadFile {
     fn meta(&self) -> &FileMeta {
         &self.meta
     }
 
-    fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
         let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()

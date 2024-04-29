@@ -1,10 +1,12 @@
 use alloc::{
+    boxed::Box,
     string::{String, ToString},
     sync::Arc,
 };
 
+use async_trait::async_trait;
 use fatfs::{Read, Seek, Write};
-use systype::SysError;
+use systype::{ASyscallResult, SysError, SyscallResult};
 use vfs_core::{Dentry, DirEntry, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
 
 use crate::{
@@ -28,12 +30,13 @@ impl FatFileFile {
     }
 }
 
+#[async_trait]
 impl File for FatFileFile {
     fn meta(&self) -> &FileMeta {
         &self.meta
     }
 
-    fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         match self.itype() {
             InodeType::File => {
                 let mut file = self.file.lock();
@@ -58,7 +61,7 @@ impl File for FatFileFile {
         }
     }
 
-    fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         if buf.is_empty() {
             return Ok(0);
         }

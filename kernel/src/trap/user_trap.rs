@@ -6,6 +6,7 @@ use arch::{
     interrupts::{disable_interrupt, enable_interrupt},
     time::{get_time_duration, set_next_timer_irq},
 };
+use async_utils::yield_now;
 use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
@@ -16,7 +17,7 @@ use timer::timer::TIMER_MANAGER;
 use super::{set_kernel_trap, TrapContext};
 use crate::{
     syscall::syscall,
-    task::{signal::do_signal, yield_now, Task},
+    task::{signal::do_signal, Task},
     trap::set_user_trap,
 };
 

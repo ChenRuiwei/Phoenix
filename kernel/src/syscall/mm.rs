@@ -1,3 +1,4 @@
+use async_utils::dyn_future;
 use memory::VirtAddr;
 use systype::{SysError, SyscallResult};
 

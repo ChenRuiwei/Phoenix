@@ -1,6 +1,8 @@
-use alloc::sync::Arc;
+use alloc::{boxed::Box, sync::Arc};
 
+use async_trait::async_trait;
 use driver::print;
+use systype::SyscallResult;
 use vfs_core::{File, FileMeta, Inode, InodeMeta, InodeMode};
 
 // TODO: This file has a lot to do
@@ -34,12 +36,13 @@ impl Inode for StdOutInode {
     }
 }
 
+#[async_trait]
 impl File for StdOutFile {
     fn meta(&self) -> &vfs_core::FileMeta {
         &self.meta
     }
 
-    fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         todo!()
     }
 
@@ -92,12 +95,13 @@ impl Inode for StdInInode {
     }
 }
 
+#[async_trait]
 impl File for StdInFile {
     fn meta(&self) -> &FileMeta {
         &self.meta
     }
 
-    fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
         todo!()
     }
 
