@@ -7,7 +7,7 @@ use core::{
 use config::mm::PAGE_SIZE;
 use systype::SysResult;
 
-use crate::{Dentry, DirEnt, Inode, InodeType, SeekFrom};
+use crate::{Dentry, DirEntry, Inode, InodeType, SeekFrom};
 
 pub struct FileMeta {
     /// Dentry which pointes to this file.
@@ -48,7 +48,7 @@ pub trait File: Send + Sync {
     ///
     /// For every call, this function will return an valid entry, or an error.
     /// If it read to the end of directory, it will return an empty entry.
-    fn read_dir(&self) -> SysResult<Option<DirEnt>>;
+    fn read_dir(&self) -> SysResult<Option<DirEntry>>;
 
     fn flush(&self) -> SysResult<usize>;
 

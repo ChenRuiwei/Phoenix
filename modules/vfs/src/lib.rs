@@ -5,6 +5,7 @@
 
 mod dev;
 pub mod fd_table;
+pub mod pipe;
 
 extern crate alloc;
 
@@ -18,7 +19,7 @@ use driver::{println, BLOCK_DEVICE};
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
-use vfs_core::{Dentry, DentryMeta, DirEnt, File, FileMeta, FileSystemType, MountFlags};
+use vfs_core::{Dentry, DentryMeta, DirEntry, File, FileMeta, FileSystemType, MountFlags};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 

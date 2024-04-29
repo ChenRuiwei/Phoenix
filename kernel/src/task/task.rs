@@ -21,7 +21,10 @@ use signal::{
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 use time::{stat::TaskTimeStat, timeval::ITimerVal};
-use vfs::{fd_table::FdTable, sys_root_dentry};
+use vfs::{
+    fd_table::{self, FdTable},
+    sys_root_dentry,
+};
 use vfs_core::Dentry;
 
 use super::{
@@ -317,6 +320,7 @@ impl Task {
         let thread_group;
         let cwd;
         let itimers;
+        let fd_table;
         if flags.contains(CloneFlags::THREAD) {
             is_leader = false;
             leader = Some(Arc::downgrade(self));
@@ -325,6 +329,7 @@ impl Task {
             thread_group = self.thread_group.clone();
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
+            fd_table = self.fd_table.clone();
         } else {
             is_leader = true;
             leader = None;
@@ -337,6 +342,7 @@ impl Task {
                 ITimer::new_prof(),
             ]);
             cwd = new_shared(self.cwd());
+            fd_table = new_shared(self.fd_table.lock().clone());
         }
 
         let memory_space;
@@ -366,7 +372,7 @@ impl Task {
             memory_space,
             waker: SyncUnsafeCell::new(None),
             thread_group,
-            fd_table: new_shared(FdTable::new()),
+            fd_table,
             sig_pending: SpinNoIrqLock::new(SigPending::new()),
             sig_mask: SyncUnsafeCell::new(SigSet::empty()),
             sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
@@ -385,7 +391,8 @@ impl Task {
         new
     }
 
-    // TODO:
+    // TODO: figure out what should be reserved across this syscall
+    // TODO: support CLOSE_ON_EXEC flag may be
     pub fn do_execve(&self, elf_data: &[u8], _argv: Vec<String>, _envp: Vec<String>) {
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();

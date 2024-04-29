@@ -1,17 +1,9 @@
-use alloc::{
-    ffi::CString,
-    string::{String, ToString},
-    sync::Arc,
-    vec::Vec,
-};
-use core::mem::size_of;
+use alloc::{ffi::CString, sync::Arc};
 
-use log::info;
 use systype::{SysError, SysError::EINVAL, SysResult, SyscallResult};
-use vfs::{sys_root_dentry, FS_MANAGER};
+use vfs::{pipe::new_pipe, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    get_name, is_absolute_path, is_relative_path, Dentry, DirEnt, File, FileMeta, Inode, InodeMeta,
-    InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD, AT_REMOVEDIR,
+    is_absolute_path, Dentry, Inode, InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use crate::{
@@ -88,15 +80,6 @@ impl Kstat {
 pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallResult {
     let task = current_task();
     let buf = buf.read_array(task, len)?;
-    // TODO: now do not support char device
-    // if fd == 1 {
-    //     for &b in buf.iter() {
-    //         print!("{}", b as char);
-    //     }
-    //     Ok(buf.len())
-    // }
-
-    // get file and write
     let file = task.with_fd_table(|table| table.get(fd))?;
     let ret = file.write(file.pos(), &buf)?;
     Ok(ret)
@@ -110,9 +93,6 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
 pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
-    if file.itype().is_dir() {
-        return Err(SysError::EISDIR);
-    }
     let mut buf = buf.into_mut_slice(task, len)?;
     let ret = file.read(file.pos(), &mut buf)?;
     Ok(ret)
@@ -145,6 +125,9 @@ pub fn sys_openat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32, mode: u32
     let dentry = at_helper(dirfd, &pathname, mode)?;
     if flags.contains(OpenFlags::O_CREAT) {
         // If pathname does not exist, create it as a regular file.
+        if !dentry.is_negetive() {
+            return Err(SysError::EEXIST);
+        }
         let parent = dentry.parent().expect("can not be root dentry");
         parent.create(dentry.name(), InodeMode::FILE)?;
     }
@@ -181,10 +164,8 @@ pub fn sys_mkdirat(dirfd: isize, pathname: UserReadPtr<u8>, mode: u32) -> Syscal
     if !dentry.is_negetive() {
         return Err(SysError::EEXIST);
     }
-    dentry
-        .parent()
-        .unwrap()
-        .create(dentry.name(), mode.union(InodeMode::DIR))?;
+    let parent = dentry.parent().unwrap();
+    parent.create(dentry.name(), mode.union(InodeMode::DIR))?;
     Ok(0)
 }
 
@@ -350,10 +331,10 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
         d_off: u64,
         d_reclen: u16,
         d_type: u8,
-        // dynmaic-len cstr d_name followsing here
+        // d_name follows here, which will be written later
     }
-    // NOTE: should consider C struct align. Therefore, we can not use `size_of`
-    // directly, because `size_of::<LinuxDirent64>` equals 24.
+    // NOTE: cnsidering C struct align, we can not use `size_of` directly, because
+    // `size_of::<LinuxDirent64>` equals 24, which is not what we want.
     const LEN_BEFORE_NAME: usize = 19;
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
@@ -367,7 +348,6 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
             d_reclen: ret_len as u16,
             d_type: dirent.itype as u8,
         };
-        log::debug!("[sys_getdents64] linux_dirent {linux_dirent:?}");
         if ret_len > len {
             return Err(SysError::EINVAL);
         }
@@ -395,7 +375,18 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
 /// Linux-specific pipe2() system call likewise does not modify pipefd on
 /// failure.
 pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
-    todo!()
+    let task = current_task();
+    let (pipe_read, pipe_write) = new_pipe();
+
+    let r = task.with_mut_fd_table(|table| {
+        let read_fd = table.alloc(pipe_read)?;
+        let write_fd = table.alloc(pipe_write)?;
+        log::info!("read_fd: {}, write_fd: {}", read_fd, write_fd);
+        Ok([read_fd as u32, write_fd as u32])
+    })?;
+
+    pipefd.write(task, r)?;
+    Ok(0)
 }
 
 /// unlink() deletes a name from the filesystem. If that name was the last link
@@ -416,7 +407,7 @@ pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
 /// + AT_REMOVEDIR: By default, unlinkat() performs the equivalent of unlink()
 ///   on pathname. If the AT_REMOVEDIR flag is specified, it performs the
 ///   equivalent of rmdir(2) on pathname.
-// FIXME: removal is not delayed
+// FIXME: removal is not delayed, can be done in vfs layer
 pub fn sys_unlinkat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32) -> SyscallResult {
     let task = current_task();
     let path = pathname.read_cstr(task)?;

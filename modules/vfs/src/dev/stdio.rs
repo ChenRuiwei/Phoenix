@@ -54,7 +54,7 @@ impl File for StdOutFile {
         Ok(buf.len())
     }
 
-    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEnt>> {
+    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
         todo!()
     }
 
@@ -105,7 +105,7 @@ impl File for StdInFile {
         todo!()
     }
 
-    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEnt>> {
+    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
         todo!()
     }
 

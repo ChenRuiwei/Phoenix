@@ -6,7 +6,7 @@ use alloc::{
 
 use fatfs::{Read, Seek, Write};
 use systype::SysError;
-use vfs_core::{Dentry, DirEnt, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
+use vfs_core::{Dentry, DirEntry, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
 
 use crate::{
     as_sys_err,
@@ -46,7 +46,7 @@ impl File for FatDirFile {
         todo!()
     }
 
-    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEnt>> {
+    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
         let inode = self
             .inode()
             .downcast_arc::<FatDirInode>()
@@ -62,7 +62,7 @@ impl File for FatDirFile {
                     } else {
                         InodeType::File
                     };
-                    let entry = DirEnt {
+                    let entry = DirEntry {
                         ino: 1,                 // Fat32 does not support ino on disk
                         off: self.pos() as u64, // off should not be used
                         itype,

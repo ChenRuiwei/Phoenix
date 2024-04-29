@@ -168,7 +168,7 @@ impl NodePermission {
 /// Directory entry.
 #[derive(Debug, Clone)]
 #[repr(C)]
-pub struct DirEnt {
+pub struct DirEntry {
     pub ino: u64,
     pub off: u64,
     pub itype: InodeType,

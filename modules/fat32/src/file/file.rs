@@ -5,7 +5,7 @@ use alloc::{
 
 use fatfs::{Read, Seek, Write};
 use systype::SysError;
-use vfs_core::{Dentry, DirEnt, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
+use vfs_core::{Dentry, DirEntry, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
 
 use crate::{
     as_sys_err,
@@ -92,7 +92,7 @@ impl File for FatFileFile {
         todo!()
     }
 
-    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEnt>> {
+    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
         todo!()
     }
 }

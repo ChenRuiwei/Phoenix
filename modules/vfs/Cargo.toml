@@ -10,7 +10,9 @@ vfs-core = { path = "../vfs-core/" }
 fat32 = { path = "../fat32/" }
 sync = { path = "../sync/" }
 driver = { path = "../../driver/" }
+config = { path = "../../config/" }
 systype = { path = "../systype/" }
 
 spin = "0.9"
 log = "0.4"
+ringbuffer = "0.15"
