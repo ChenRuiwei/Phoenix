@@ -123,11 +123,12 @@ pub fn sys_mmap(
         MmapFlags::MAP_SHARED => {
             if flags.contains(MmapFlags::MAP_ANONYMOUS) {
                 todo!()
+            } else {
+                let file = task.with_fd_table(|table| table.get(fd))?;
+                let start_va =
+                    task.with_mut_memory_space(|m| m.alloc_mmap_area(perm, length, file, offset))?;
+                Ok(start_va.bits())
             }
-            let file = task.with_fd_table(|table| table.get(fd))?;
-            let start_va =
-                task.with_mut_memory_space(|m| m.alloc_mmap_area(perm, length, file, offset))?;
-            Ok(start_va.bits())
         }
         MmapFlags::MAP_PRIVATE => {
             todo!()

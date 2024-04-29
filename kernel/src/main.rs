@@ -15,7 +15,6 @@
 #![allow(clippy::mut_from_ref)]
 
 mod boot;
-mod fs;
 mod impls;
 mod loader;
 mod mm;

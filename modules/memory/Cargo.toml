@@ -10,6 +10,7 @@ config = { path = "../../config/" }
 sync = { path = "../sync/" }
 
 buddy_system_allocator = "0.9"
+linked_list_allocator = "0.10"
 riscv = "0.11"
 spin = "0.9"
 bitflags = "2.5"

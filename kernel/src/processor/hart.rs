@@ -30,6 +30,22 @@ impl Hart {
         }
     }
 
+    pub fn switch_before(&mut self) -> Self {
+        let mut new = Self::new();
+        new.hart_id = self.hart_id;
+        new.task = None;
+        new.env = EnvContext::new();
+        core::mem::swap(&mut new, self);
+        self.change_env(&self.env);
+        new
+    }
+
+    pub fn switch_after(&mut self, hart: &mut Hart) -> &mut Self {
+        core::mem::swap(self, hart);
+        self.change_env(&self.env);
+        self
+    }
+
     pub fn hart_id(&self) -> usize {
         self.hart_id
     }
@@ -81,9 +97,11 @@ impl Hart {
         // PERF: support ASID for page table
         unsafe { task.switch_page_table() };
         unsafe { enable_interrupt() };
+        log::trace!("[enter_user_task_switch] enter user task");
     }
 
     pub fn leave_user_task_switch(&mut self, env: &mut EnvContext) {
+        log::trace!("[leave_user_task_switch] leave user task");
         unsafe { disable_interrupt() };
         self.change_env(env);
         // PERF: no need to switch to kernel page table

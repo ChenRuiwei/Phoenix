@@ -406,10 +406,10 @@ pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
     let task = current_task();
     let (pipe_read, pipe_write) = new_pipe();
     let pipe = task.with_mut_fd_table(|table| {
-        let read_fd = table.alloc(pipe_read)?;
-        let write_fd = table.alloc(pipe_write)?;
-        log::debug!("[sys_pipe2] read_fd: {read_fd}, write_fd: {write_fd}");
-        Ok([read_fd as u32, write_fd as u32])
+        let fd_read = table.alloc(pipe_read)?;
+        let fd_write = table.alloc(pipe_write)?;
+        log::debug!("[sys_pipe2] read_fd: {fd_read}, write_fd: {fd_write}");
+        Ok([fd_read as u32, fd_write as u32])
     })?;
     pipefd.write(task, pipe)?;
     Ok(0)

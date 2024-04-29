@@ -42,7 +42,6 @@ fn panic(info: &PanicInfo) -> ! {
     }
 
     backtrace();
-
     shutdown()
 }
 

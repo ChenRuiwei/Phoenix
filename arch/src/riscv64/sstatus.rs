@@ -50,3 +50,10 @@ pub fn read() -> Sstatus {
     }
     Sstatus { bits }
 }
+
+pub fn write(sstatus: Sstatus) {
+    let bits = sstatus.bits;
+    unsafe {
+        asm!("csrw sstatus, {}", in(reg) bits);
+    }
+}

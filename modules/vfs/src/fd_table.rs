@@ -23,7 +23,6 @@ impl FdTable {
     }
 
     fn find_free_slot(&self) -> Option<usize> {
-        // FIXME: search from 0, howerver, it need fd table to have stdio file now
         (0..self.table.len()).find(|fd| self.table[*fd].is_none())
     }
 

@@ -4,11 +4,11 @@ use async_trait::async_trait;
 use async_utils::yield_now;
 use config::fs::PIPE_BUF_CAPACITY;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
-use sync::mutex::SpinLock;
+use sync::mutex::SpinNoIrqLock;
 use systype::SysError;
 use vfs_core::{arc_zero, File, FileMeta, Inode, InodeMeta, InodeMode};
 
-type Mutex<T> = SpinLock<T>;
+type Mutex<T> = SpinNoIrqLock<T>;
 
 pub struct PipeInode {
     meta: InodeMeta,
@@ -53,6 +53,17 @@ impl PipeWriteFile {
     }
 }
 
+impl Drop for PipeWriteFile {
+    fn drop(&mut self) {
+        let pipe = self
+            .inode()
+            .downcast_arc::<PipeInode>()
+            .map_err(|_| SysError::EIO)
+            .unwrap();
+        *pipe.is_closed.lock() = true;
+    }
+}
+
 pub struct PipeReadFile {
     meta: FileMeta,
 }
@@ -75,18 +86,18 @@ impl File for PipeWriteFile {
     }
 
     fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
-        let mut pipe = self
+        let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()
             .map_err(|_| SysError::EIO)?;
         let mut pipe_buf = pipe.buf.lock();
         let space_left = pipe_buf.capacity() - pipe_buf.len();
 
-        let len = Ord::min(space_left, buf.len());
+        let len = core::cmp::min(space_left, buf.len());
         for i in 0..len {
             pipe_buf.push(buf[i]);
         }
-        log::trace!("[Pipe::write] buf {buf:?}");
+        log::trace!("[Pipe::write] already write buf {buf:?} with data len {len:?}");
         Ok(len)
     }
 
@@ -112,17 +123,15 @@ impl File for PipeReadFile {
             .map_err(|_| SysError::EIO)?;
         let mut pipe_len = pipe.buf.lock().len();
         while pipe_len == 0 {
-            yield_now().await;
+            // yield_now().await;
             pipe_len = pipe.buf.lock().len();
-            if self.i_cnt() <= 2 {
+            if *pipe.is_closed.lock() {
                 break;
             }
         }
-
         let mut pipe_buf = pipe.buf.lock();
-
-        let len = Ord::min(pipe_buf.len(), buf.len());
-        for i in 0..len {
+        let len = core::cmp::min(pipe_buf.len(), buf.len());
+        for i in (0..len) {
             buf[i] = pipe_buf
                 .dequeue()
                 .expect("Just checked for len, should not fail");
