@@ -17,7 +17,6 @@ memory = { path = "../modules/memory/" }
 async_utils = { path = "../modules/async_utils/" }
 vfs = { path = "../modules/vfs/" }
 vfs-core = { path = "../modules/vfs-core/" }
-irq_count = { path = "../crates/irq_count/" }
 recycle_allocator = { path = "../crates/recycle_allocator/" }
 time = { path = "../modules/time/" }
 timer = { path = "../modules/timer/" }
@@ -42,3 +41,4 @@ config = { path = "../config" }
 [features]
 strace = []
 smp = []
+preempt = []

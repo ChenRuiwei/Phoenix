@@ -152,7 +152,6 @@ version = "0.1.0"
 dependencies = [
  "arch",
  "config",
- "irq_count",
  "log",
  "memory",
  "spin",
@@ -210,13 +209,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "irq_count"
-version = "0.1.0"
-dependencies = [
- "sync",
-]
-
-[[package]]
 name = "kernel"
 version = "0.1.0"
 dependencies = [
@@ -231,7 +223,6 @@ dependencies = [
  "driver",
  "executor",
  "hashbrown",
- "irq_count",
  "log",
  "logging",
  "memory",

@@ -78,16 +78,6 @@ macro_rules! sys_handler {
             $handler$args
         }
     };
-    ($handler: ident, $args: tt, $await: tt) => {
-        {
-            strace!(
-                "{}, args: {:?}",
-                stringify!($handler),
-                $args,
-            );
-            $handler$args.$await
-        }
-    };
 }
 
 macro_rules! asys_handler {

@@ -123,7 +123,7 @@ impl File for PipeReadFile {
             .map_err(|_| SysError::EIO)?;
         let mut pipe_len = pipe.buf.lock().len();
         while pipe_len == 0 {
-            // yield_now().await;
+            yield_now().await;
             pipe_len = pipe.buf.lock().len();
             if *pipe.is_closed.lock() {
                 break;

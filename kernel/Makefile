@@ -6,6 +6,9 @@ endif
 ifneq ($(SMP), )
 	FEATURES += smp
 endif
+ifneq ($(PREEMPT), )
+	FEATURES += preempt
+endif
 
 CARGO_BUILD_ARGS :=
 ifeq ($(MODE), release)

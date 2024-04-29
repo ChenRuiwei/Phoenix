@@ -11,7 +11,6 @@ config = { path = "../config/" }
 sync = { path = "../modules/sync/" }
 memory = { path = "../modules/memory/" }
 systype = { path = "../modules/systype/" }
-irq_count = { path = "../crates/irq_count/" }
 
 log = "0.4"
 spin = { version = "0.9", features = ["lazy"] }

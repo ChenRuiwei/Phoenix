@@ -30,22 +30,6 @@ impl Hart {
         }
     }
 
-    pub fn switch_before(&mut self) -> Self {
-        let mut new = Self::new();
-        new.hart_id = self.hart_id;
-        new.task = None;
-        new.env = EnvContext::new();
-        core::mem::swap(&mut new, self);
-        self.change_env(&self.env);
-        new
-    }
-
-    pub fn switch_after(&mut self, hart: &mut Hart) -> &mut Self {
-        core::mem::swap(self, hart);
-        self.change_env(&self.env);
-        self
-    }
-
     pub fn hart_id(&self) -> usize {
         self.hart_id
     }
@@ -89,7 +73,7 @@ impl Hart {
         // self can only be an executor running
         debug_assert!(self.task.is_none());
         unsafe { disable_interrupt() };
-        self.change_env(env);
+        unsafe { env.auto_sum() };
         self.set_task(Arc::clone(task));
         task.time_stat().record_switch_in();
         core::mem::swap(self.env_mut(), env);
@@ -103,7 +87,7 @@ impl Hart {
     pub fn leave_user_task_switch(&mut self, env: &mut EnvContext) {
         log::trace!("[leave_user_task_switch] leave user task");
         unsafe { disable_interrupt() };
-        self.change_env(env);
+        unsafe { env.auto_sum() };
         // PERF: no need to switch to kernel page table
         unsafe { mm::switch_kernel_page_table() };
         core::mem::swap(self.env_mut(), env);
@@ -117,6 +101,23 @@ impl Hart {
         self.change_env(env);
         core::mem::swap(self.env_mut(), env);
         unsafe { enable_interrupt() };
+    }
+
+    pub fn enter_preempt_switch(&mut self) -> Self {
+        self.env.preempt_record();
+        let mut new = Self::new();
+        new.hart_id = self.hart_id;
+        new.task = None;
+        new.env = EnvContext::new();
+        unsafe { new.env.auto_sum() };
+        core::mem::swap(&mut new, self);
+        new
+    }
+
+    pub fn leave_preempt_switch(&mut self, old_hart: &mut Hart) {
+        core::mem::swap(self, old_hart);
+        unsafe { self.env.preempt_resume() };
+        unsafe { self.env.auto_sum() }
     }
 }
 

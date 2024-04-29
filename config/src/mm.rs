@@ -8,13 +8,13 @@ pub const KERNEL_OFFSET: usize = 0x20_0000;
 pub const KERNEL_START_PHYS: usize = RAM_START + KERNEL_OFFSET;
 pub const KERNEL_START: usize = VIRT_START + KERNEL_OFFSET;
 
-pub const KERNEL_STACK_SIZE: usize = 4096 * 16; // 64M
+pub const KERNEL_STACK_SIZE: usize = 64 * 1024; // 64K
 pub const KERNEL_HEAP_SIZE: usize = 32 * 1024 * 1024; // 32M
 
 /// boot
 pub const HART_START_ADDR: usize = 0x80200000;
 
-pub const USER_STACK_SIZE: usize = 1024 * 1024 * 8; // 8M
+pub const USER_STACK_SIZE: usize = 8 * 1024 * 1024; // 8M
 
 pub const PAGE_SIZE: usize = 1 << PAGE_SIZE_BITS;
 pub const PAGE_MASK: usize = PAGE_SIZE - 1;
