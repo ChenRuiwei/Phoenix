@@ -1,12 +1,14 @@
 use alloc::{
+    boxed::Box,
     ffi::CString,
     string::{String, ToString},
     sync::Arc,
 };
 
+use async_trait::async_trait;
 use fatfs::{Read, Seek, Write};
-use systype::SysError;
-use vfs_core::{Dentry, DirEnt, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
+use systype::{SysError, SyscallResult};
+use vfs_core::{Dentry, DirEntry, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
 
 use crate::{
     as_sys_err,
@@ -29,12 +31,13 @@ impl FatDirFile {
     }
 }
 
+#[async_trait]
 impl File for FatDirFile {
     fn meta(&self) -> &FileMeta {
         &self.meta
     }
 
-    fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         Err(SysError::EISDIR)
     }
 
@@ -46,7 +49,7 @@ impl File for FatDirFile {
         todo!()
     }
 
-    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEnt>> {
+    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
         let inode = self
             .inode()
             .downcast_arc::<FatDirInode>()
@@ -62,7 +65,7 @@ impl File for FatDirFile {
                     } else {
                         InodeType::File
                     };
-                    let entry = DirEnt {
+                    let entry = DirEntry {
                         ino: 1,                 // Fat32 does not support ino on disk
                         off: self.pos() as u64, // off should not be used
                         itype,

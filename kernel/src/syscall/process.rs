@@ -2,6 +2,7 @@
 
 use alloc::{string::String, vec::Vec};
 
+use async_utils::yield_now;
 use systype::{SysError, SysResult, SyscallResult};
 use vfs::{sys_root_dentry, DISK_FS_NAME, FS_MANAGER};
 use vfs_core::{InodeMode, OpenFlags, AT_FDCWD};
@@ -11,7 +12,7 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     syscall::{at_helper, resolve_path},
-    task::{spawn_user_task, yield_now, PGid, Pid, TASK_MANAGER},
+    task::{spawn_user_task, PGid, Pid, TASK_MANAGER},
 };
 
 bitflags! {
@@ -174,7 +175,7 @@ pub async fn sys_wait4(
 /// If any of the threads in a thread group performs an execve(2), then all
 /// threads other than the thread group leader are terminated, and the new
 /// program is executed in the thread group leader.
-pub fn sys_execve(
+pub async fn sys_execve(
     path: UserReadPtr<u8>,
     argv: UserReadPtr<usize>,
     envp: UserReadPtr<usize>,
@@ -224,7 +225,7 @@ pub fn sys_execve(
 
     let mut elf_data = Vec::new();
     let file = resolve_path(&path)?.open()?;
-    file.read_all_from_start(&mut elf_data)?;
+    file.read_all_from_start(&mut elf_data).await?;
     task.do_execve(&elf_data, argv, envp);
     Ok(0)
 }

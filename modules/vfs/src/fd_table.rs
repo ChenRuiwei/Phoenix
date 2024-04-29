@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
+use alloc::{sync::Arc, vec::Vec};
 
 use systype::{SysError, SysResult};
 use vfs_core::File;
@@ -8,16 +8,6 @@ use crate::dev::stdio::{StdInFile, StdOutFile};
 pub type Fd = usize;
 
 #[derive(Clone)]
-pub struct FileRef {
-    pub file: Arc<dyn File>,
-}
-
-impl FileRef {
-    pub fn new(file: Arc<dyn File>) -> Self {
-        Self { file }
-    }
-}
-
 pub struct FdTable {
     table: Vec<Option<Arc<dyn File>>>,
 }

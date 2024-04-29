@@ -11,36 +11,6 @@ use crate::{
     trap,
 };
 
-struct YieldFuture {
-    pub has_yielded: bool,
-}
-
-impl YieldFuture {
-    const fn new() -> Self {
-        Self { has_yielded: false }
-    }
-}
-
-impl Future for YieldFuture {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        match self.has_yielded {
-            true => Poll::Ready(()),
-            false => {
-                self.has_yielded = true;
-                cx.waker().wake_by_ref();
-                Poll::Pending
-            }
-        }
-    }
-}
-
-/// Yield the current thread (the scheduler will switch to the next thread)
-pub async fn yield_now() {
-    YieldFuture::new().await;
-}
-
 /// The outermost future for user task, i.e. the future that wraps one thread's
 /// task future (doing some env context changes e.g. pagetable switching)
 pub struct UserTaskFuture<F: Future + Send + 'static> {

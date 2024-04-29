@@ -109,7 +109,7 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
         // Process
         SYSCALL_EXIT => sys_handler!(sys_exit, (args[0] as i32)),
         SYSCALL_EXIT_GROUP => sys_handler!(sys_exit_group, (args[0] as i32)),
-        SYSCALL_EXECVE => sys_handler!(
+        SYSCALL_EXECVE => asys_handler!(
             sys_execve,
             (
                 UserReadPtr::<u8>::from(args[0]),
@@ -203,6 +203,10 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 UserReadPtr::<u8>::from(args[0]),
                 args[1] as u32,
             )
+        ),
+        SYSCALL_PIPE2 => sys_handler!(
+            sys_pipe2,
+            (UserWritePtr::<[u32; 2]>::from(args[0]), args[1] as i32)
         ),
         // Signal
         SYSCALL_RT_SIGPROCMASK => sys_handler!(

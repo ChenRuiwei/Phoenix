@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(new_uninit)]
 
 mod dentry;
 mod file;
@@ -34,4 +35,8 @@ static INODE_NUMBER: AtomicUsize = AtomicUsize::new(0);
 
 fn alloc_ino() -> usize {
     INODE_NUMBER.fetch_add(1, Ordering::Relaxed)
+}
+
+pub fn arc_zero() -> Arc<core::mem::MaybeUninit<usize>> {
+    Arc::<usize>::new_zeroed()
 }

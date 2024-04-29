@@ -1,5 +1,6 @@
 use core::mem;
 
+use async_utils::yield_now;
 use config::process::INIT_PROC_PID;
 use signal::{
     action::{Action, ActionType},
@@ -13,7 +14,7 @@ use crate::{
     processor::hart::current_task,
     task::{
         signal::{do_signal, SigAction, SIG_DFL, SIG_IGN},
-        yield_now, TASK_MANAGER,
+        TASK_MANAGER,
     },
 };
 

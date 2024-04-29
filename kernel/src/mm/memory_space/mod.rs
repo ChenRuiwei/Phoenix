@@ -1,6 +1,7 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::ops::Range;
 
+use async_utils::block_on;
 use config::{
     board::MEMORY_END,
     mm::{
@@ -480,7 +481,7 @@ impl MemorySpace {
         let mut vma = VmArea::new_mmap(range, perm, file.clone());
         vma.map(&mut self.page_table);
         let mut buf = unsafe { UserSlice::new_unchecked(vma.start_va(), length) };
-        file.read(offset, &mut buf)?;
+        block_on(async { file.read(offset, &mut buf).await })?;
         vma.copy_data_with_offset(&self.page_table, 0, &buf);
         self.areas.try_insert(vma.range_va(), vma).unwrap();
         Ok(start)

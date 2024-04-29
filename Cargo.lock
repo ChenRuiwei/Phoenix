@@ -40,6 +40,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbb36e985947064623dbd357f727af08ffd077f93d696782f3c56365fa2e2799"
 
 [[package]]
+name = "async-trait"
+version = "0.1.80"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6fa2087f2753a7da8cc1c0dbfcf89579dd57458e36769de5ac750b4671737ca"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "async_utils"
 version = "0.1.0"
 dependencies = [
@@ -168,6 +179,7 @@ dependencies = [
 name = "fat32"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "downcast-rs",
  "driver",
  "fatfs",
@@ -311,6 +323,12 @@ name = "recycle_allocator"
 version = "0.1.0"
 
 [[package]]
+name = "ringbuffer"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3df6368f71f205ff9c33c076d170dd56ebf68e8161c733c0caa07a7a5509ed53"
+
+[[package]]
 name = "riscv"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -429,9 +447,13 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 name = "vfs"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "async_utils",
+ "config",
  "driver",
  "fat32",
  "log",
+ "ringbuffer",
  "spin",
  "sync",
  "systype",
@@ -442,6 +464,7 @@ dependencies = [
 name = "vfs-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bitflags",
  "config",
  "downcast-rs",
