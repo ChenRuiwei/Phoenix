@@ -103,6 +103,7 @@ impl SigHandlers {
         }
     }
 
+    // TODO: debug asssert sig is valid
     pub fn get(&self, sig: Sig) -> Option<&Action> {
         if sig.is_valid() {
             Some(&self.actions[sig.index()])

@@ -2,6 +2,7 @@
 
 mod consts;
 mod fs;
+pub mod futex;
 mod misc;
 mod mm;
 mod process;
@@ -27,8 +28,9 @@ use signal::*;
 use systype::SyscallResult;
 
 use crate::{
-    mm::{UserReadPtr, UserWritePtr},
+    mm::{FutexWord, UserReadPtr, UserWritePtr},
     syscall::{
+        futex::sys_futex,
         misc::UtsName,
         resource::{sys_getrusage, Rusage},
         signal::{sys_sigaction, sys_sigreturn},
@@ -207,6 +209,18 @@ pub async fn syscall(syscall_id: usize, args: [usize; 6]) -> SyscallResult {
                 UserReadPtr::<ITimerVal>::from(args[1]),
                 UserWritePtr::<ITimerVal>::from(args[2])
             )
+        ),
+        // Futex
+        SYSCALL_FUTEX => sys_handler!(
+            sys_futex,
+            (
+                FutexWord::from(args[0]),
+                args[1] as i32,
+                args[2] as u32,
+                args[3] as u32,
+                args[4] as u32,
+                args[5] as u32
+            ), await
         ),
         // Miscellaneous
         SYSCALL_UNAME => sys_handler!(sys_uname, (UserWritePtr::<UtsName>::from(args[0]))),

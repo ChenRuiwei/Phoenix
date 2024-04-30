@@ -6,7 +6,6 @@ use systype::{SysError, SysResult, SyscallResult};
 use vfs::{DISK_FS_NAME, FS_MANAGER};
 
 use crate::{
-    loader::get_app_data_by_name,
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     task::{spawn_user_task, yield_now, PGid, Pid, TASK_MANAGER},

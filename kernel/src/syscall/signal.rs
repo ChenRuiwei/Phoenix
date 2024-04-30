@@ -1,5 +1,3 @@
-use core::mem;
-
 use config::process::INIT_PROC_PID;
 use signal::{
     action::{Action, ActionType},
@@ -12,7 +10,7 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     task::{
-        signal::{do_signal, SigAction, SIG_DFL, SIG_IGN},
+        signal::{SigAction, WaitHandlableSignal, SIG_DFL, SIG_IGN},
         yield_now, TASK_MANAGER,
     },
 };
@@ -217,6 +215,8 @@ pub async fn sys_sigsuspend(mask: UserReadPtr<SigSet>) -> SyscallResult {
     let task = current_task();
     let mut mask = mask.read(task)?;
     let oldmask = task.sig_mask_replace(&mut mask);
+    // TODO:这里可以改成WaitHandlableSignal这样或许更快？
+    // WaitHandlableSignal(task).await
     loop {
         yield_now().await;
         if task.with_mut_sig_pending(|pending| -> bool {

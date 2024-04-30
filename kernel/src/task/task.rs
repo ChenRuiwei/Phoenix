@@ -12,6 +12,7 @@ use core::{
 
 use arch::memory::sfence_vma_all;
 use config::{mm::USER_STACK_SIZE, process::INIT_PROC_PID};
+use futex::queue::Futexes;
 use memory::VirtAddr;
 use signal::{
     action::{SigHandlers, SigPending},
@@ -20,7 +21,7 @@ use signal::{
 };
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
-use time::{stat::TaskTimeStat, timeval::ITimerVal};
+use time::stat::TaskTimeStat;
 use vfs::{fd_table::FdTable, sys_root_dentry};
 use vfs_core::Dentry;
 
@@ -91,6 +92,7 @@ pub struct Task {
     sig_ucontext_ptr: AtomicUsize,
     time_stat: SyncUnsafeCell<TaskTimeStat>,
     itimers: Shared<[ITimer; 3]>,
+    futexes: Shared<Futexes>,
 }
 
 impl core::fmt::Debug for Task {
@@ -155,6 +157,7 @@ impl Task {
                 ITimer::new_virtual(),
                 ITimer::new_prof(),
             ]),
+            futexes: new_shared(Futexes::new()),
         });
         task.leader.call_once(|| Arc::downgrade(&task));
         task.thread_group.lock().push(task.clone());
@@ -306,6 +309,7 @@ impl Task {
         let children;
         let thread_group;
         let itimers;
+        let futexes;
         if flags.contains(CloneFlags::THREAD) {
             is_leader = false;
             parent = self.parent.clone();
@@ -313,6 +317,7 @@ impl Task {
             // will add the new task into the group later
             thread_group = self.thread_group.clone();
             itimers = self.itimers.clone();
+            futexes = self.futexes.clone();
         } else {
             is_leader = true;
             parent = new_shared(Some(Arc::downgrade(self)));
@@ -322,7 +327,8 @@ impl Task {
                 ITimer::new_real(),
                 ITimer::new_virtual(),
                 ITimer::new_prof(),
-            ])
+            ]);
+            futexes = new_shared(Futexes::new());
         }
 
         let memory_space;
@@ -357,6 +363,7 @@ impl Task {
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
             itimers,
+            futexes,
         });
 
         if flags.contains(CloneFlags::THREAD) {
@@ -456,6 +463,7 @@ impl Task {
     with_!(thread_group, ThreadGroup);
     with_!(sig_pending, SigPending);
     with_!(itimers, [ITimer; 3]);
+    with_!(futexes, Futexes);
 }
 
 /// Hold a group of threads which belongs to the same process.

@@ -7,7 +7,7 @@ use core::{
 
 use super::Task;
 use crate::{
-    processor::{self, env::EnvContext, hart},
+    processor::{env::EnvContext, hart},
     trap,
 };
 

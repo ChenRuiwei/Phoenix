@@ -1,0 +1,769 @@
+FUTEX(2)                                                  Linux Programmer's Manual                                                  FUTEX(2)
+
+NNAAMMEE
+       futex - fast user-space locking
+
+SSYYNNOOPPSSIISS
+       ##iinncclluuddee <<lliinnuuxx//ffuutteexx..hh>>
+       ##iinncclluuddee <<ssttddiinntt..hh>>
+       ##iinncclluuddee <<ssyyss//ttiimmee..hh>>
+
+       lloonngg ffuutteexx((uuiinntt3322__tt **_u_a_d_d_r,, iinntt _f_u_t_e_x___o_p,, uuiinntt3322__tt _v_a_l,,
+                 ccoonnsstt ssttrruucctt ttiimmeessppeecc **_t_i_m_e_o_u_t,,   /* or: uuiinntt3322__tt _v_a_l_2 **//
+                 uuiinntt3322__tt **_u_a_d_d_r_2,, uuiinntt3322__tt _v_a_l_3));;
+
+       _N_o_t_e: There is no glibc wrapper for this system call; see NOTES.
+
+DDEESSCCRRIIPPTTIIOONN
+       The ffuutteexx() system call provides a method for waiting until a certain condition becomes true.  It is typically used as a blocking con‐
+       struct in the context of shared-memory synchronization.  When using futexes, the majority of the synchronization operations  are  per‐
+       formed in user space.  A user-space program employs the ffuutteexx() system call only when it is likely that the program has to block for a
+       longer time until the condition becomes true.  Other ffuutteexx() operations can be used to wake any processes or  threads  waiting  for  a
+       particular condition.
+
+       A  futex  is  a  32-bit value—referred to below as a _f_u_t_e_x _w_o_r_d—whose address is supplied to the ffuutteexx() system call.  (Futexes are 32
+       bits in size on all platforms, including 64-bit systems.)  All futex operations are governed by this value.  In order to share a futex
+       between  processes, the futex is placed in a region of shared memory, created using (for example) mmmmaapp(2) or sshhmmaatt(2).  (Thus, the fu‐
+       tex word may have different virtual addresses in different processes, but these addresses all refer to the same location  in  physical
+       memory.)  In a multithreaded program, it is sufficient to place the futex word in a global variable shared by all threads.
+
+       When  executing a futex operation that requests to block a thread, the kernel will block only if the futex word has the value that the
+       calling thread supplied (as one of the arguments of the ffuutteexx() call) as the expected value of the futex word.  The loading of the fu‐
+       tex word's value, the comparison of that value with the expected value, and the actual blocking will happen atomically and will be to‐
+       tally ordered with respect to concurrent operations performed by other threads on the same futex word.  Thus, the futex word  is  used
+       to connect the synchronization in user space with the implementation of blocking by the kernel.  Analogously to an atomic compare-and-
+       exchange operation that potentially changes shared memory, blocking via a futex is an atomic compare-and-block operation.
+
+       One use of futexes is for implementing locks.  The state of the lock (i.e., acquired or not acquired) can be represented as an  atomi‐
+       cally accessed flag in shared memory.  In the uncontended case, a thread can access or modify the lock state with atomic instructions,
+       for example atomically changing it from not acquired to acquired using an atomic compare-and-exchange instruction.  (Such instructions
+       are  performed  entirely in user mode, and the kernel maintains no information about the lock state.)  On the other hand, a thread may
+       be unable to acquire a lock because it is already acquired by another thread.  It then may pass the lock's flag as a  futex  word  and
+       the value representing the acquired state as the expected value to a ffuutteexx() wait operation.  This ffuutteexx() operation will block if and
+       only if the lock is still acquired (i.e., the value in the futex word still matches the "acquired state").  When releasing the lock, a
+       thread  has  to  first  reset the lock state to not acquired and then execute a futex operation that wakes threads blocked on the lock
+       flag used as a futex word (this can be further optimized to avoid unnecessary wake-ups).  See ffuutteexx(7) for more detail on how  to  use
+       futexes.
+
+       Besides the basic wait and wake-up futex functionality, there are further futex operations aimed at supporting more complex use cases.
+
+       Note that no explicit initialization or destruction is necessary to use futexes; the kernel maintains a futex (i.e., the kernel-inter‐
+       nal implementation artifact) only while operations such as FFUUTTEEXX__WWAAIITT, described below, are being  performed  on  a  particular  futex
+       word.
+
+   AArrgguummeennttss
+       The  _u_a_d_d_r  argument  points  to the futex word.  On all platforms, futexes are four-byte integers that must be aligned on a four-byte
+       boundary.  The operation to perform on the futex is specified in the _f_u_t_e_x___o_p argument; _v_a_l is a value whose meaning and  purpose  de‐
+       pends on _f_u_t_e_x___o_p.
+
+       The  remaining arguments (_t_i_m_e_o_u_t, _u_a_d_d_r_2, and _v_a_l_3) are required only for certain of the futex operations described below.  Where one
+       of these arguments is not required, it is ignored.
+
+       For several blocking operations, the _t_i_m_e_o_u_t argument is a pointer to a _t_i_m_e_s_p_e_c structure that specifies a timeout for the operation.
+       However,   notwithstanding  the  prototype shown above, for some operations, the least significant four bytes of this argument are in‐
+       stead used as an integer whose meaning is determined by the operation.  For these operations, the kernel casts the _t_i_m_e_o_u_t value first
+       to  _u_n_s_i_g_n_e_d  _l_o_n_g, then to _u_i_n_t_3_2___t, and in the remainder of this page, this argument is referred to as _v_a_l_2 when interpreted in this
+       fashion.
+
+       Where it is required, the _u_a_d_d_r_2 argument is a pointer to a second futex word that is employed by the operation.
+
+       The interpretation of the final integer argument, _v_a_l_3, depends on the operation.
+
+   FFuutteexx ooppeerraattiioonnss
+       The _f_u_t_e_x___o_p argument consists of two parts: a command that specifies the operation to be performed, bitwise ORed with  zero  or  more
+       options that modify the behaviour of the operation.  The options that may be included in _f_u_t_e_x___o_p are as follows:
+
+       FFUUTTEEXX__PPRRIIVVAATTEE__FFLLAAGG (since Linux 2.6.22)
+              This  option  bit  can  be  employed  with all futex operations.  It tells the kernel that the futex is process-private and not
+              shared with another process (i.e., it is being used for synchronization only between threads of the same process).  This allows
+              the kernel to make some additional performance optimizations.
+
+              As a convenience, _<_l_i_n_u_x_/_f_u_t_e_x_._h_> defines a set of constants with the suffix __PPRRIIVVAATTEE that are equivalents of all of the opera‐
+              tions listed below, but with the FFUUTTEEXX__PPRRIIVVAATTEE__FFLLAAGG ORed into the constant value.   Thus,  there  are  FFUUTTEEXX__WWAAIITT__PPRRIIVVAATTEE,  FFUU‐‐
+              TTEEXX__WWAAKKEE__PPRRIIVVAATTEE, and so on.
+
+       FFUUTTEEXX__CCLLOOCCKK__RREEAALLTTIIMMEE (since Linux 2.6.28)
+              This option bit can be employed only with the FFUUTTEEXX__WWAAIITT__BBIITTSSEETT, FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII, and (since Linux 4.5) FFUUTTEEXX__WWAAIITT opera‐
+              tions.
+
+              If this option is set, the kernel measures the _t_i_m_e_o_u_t against the CCLLOOCCKK__RREEAALLTTIIMMEE clock.
+
+              If this option is not set, the kernel measures the _t_i_m_e_o_u_t against the CCLLOOCCKK__MMOONNOOTTOONNIICC clock.
+
+       The operation specified in _f_u_t_e_x___o_p is one of the following:
+
+       FFUUTTEEXX__WWAAIITT (since Linux 2.6.0)
+              This operation tests that the value at the futex word pointed to by the address _u_a_d_d_r still contains the  expected  value  _v_a_l,
+              and  if  so,  then  sleeps waiting for a FFUUTTEEXX__WWAAKKEE operation on the futex word.  The load of the value of the futex word is an
+              atomic memory access (i.e., using atomic machine instructions of the respective architecture).  This load, the comparison  with
+              the  expected  value, and starting to sleep are performed atomically and totally ordered with respect to other futex operations
+              on the same futex word.  If the thread starts to sleep, it is considered a waiter on this futex word.  If the futex value  does
+              not match _v_a_l, then the call fails immediately with the error EEAAGGAAIINN.
+
+              The  purpose of the comparison with the expected value is to prevent lost wake-ups.  If another thread changed the value of the
+              futex word after the calling thread decided to block based on the prior value, and if the other thread  executed  a  FFUUTTEEXX__WWAAKKEE
+              operation  (or  similar  wake-up) after the value change and before this FFUUTTEEXX__WWAAIITT operation, then the calling thread will ob‐
+              serve the value change and will not start to sleep.
+
+              If the _t_i_m_e_o_u_t is not NULL, the structure it points to specifies a timeout for the wait.  (This interval will be rounded up  to
+              the  system  clock  granularity,  and  is guaranteed not to expire early.)  The timeout is by default measured according to the
+              CCLLOOCCKK__MMOONNOOTTOONNIICC clock, but, since Linux 4.5, the CCLLOOCCKK__RREEAALLTTIIMMEE clock can be selected by specifying FFUUTTEEXX__CCLLOOCCKK__RREEAALLTTIIMMEE in _f_u_‐
+              _t_e_x___o_p.  If _t_i_m_e_o_u_t is NULL, the call blocks indefinitely.
+
+              _N_o_t_e:  for  FFUUTTEEXX__WWAAIITT, _t_i_m_e_o_u_t is interpreted as a _r_e_l_a_t_i_v_e value.  This differs from other futex operations, where _t_i_m_e_o_u_t is
+              interpreted as an absolute value.  To obtain the equivalent of FFUUTTEEXX__WWAAIITT with an absolute  timeout,  employ  FFUUTTEEXX__WWAAIITT__BBIITTSSEETT
+              with _v_a_l_3 specified as FFUUTTEEXX__BBIITTSSEETT__MMAATTCCHH__AANNYY.
+
+              The arguments _u_a_d_d_r_2 and _v_a_l_3 are ignored.
+
+       FFUUTTEEXX__WWAAKKEE (since Linux 2.6.0)
+              This  operation  wakes  at  most _v_a_l of the waiters that are waiting (e.g., inside FFUUTTEEXX__WWAAIITT) on the futex word at the address
+              _u_a_d_d_r.  Most commonly, _v_a_l is specified as either 1 (wake up a single waiter) or IINNTT__MMAAXX (wake up all waiters).   No  guarantee
+              is  provided about which waiters are awoken (e.g., a waiter with a higher scheduling priority is not guaranteed to be awoken in
+              preference to a waiter with a lower priority).
+
+              The arguments _t_i_m_e_o_u_t, _u_a_d_d_r_2, and _v_a_l_3 are ignored.
+
+       FFUUTTEEXX__FFDD (from Linux 2.6.0 up to and including Linux 2.6.25)
+              This operation creates a file descriptor that is associated with the futex at _u_a_d_d_r.  The caller must close the  returned  file
+              descriptor after use.  When another process or thread performs a FFUUTTEEXX__WWAAKKEE on the futex word, the file descriptor indicates as
+              being readable with sseelleecctt(2), ppoollll(2), and eeppoollll(7)
+
+              The file descriptor can be used to obtain asynchronous notifications: if _v_a_l is nonzero, then, when another process  or  thread
+              executes a FFUUTTEEXX__WWAAKKEE, the caller will receive the signal number that was passed in _v_a_l.
+
+              The arguments _t_i_m_e_o_u_t, _u_a_d_d_r_2, and _v_a_l_3 are ignored.
+
+              Because it was inherently racy, FFUUTTEEXX__FFDD has been removed from Linux 2.6.26 onward.
+
+       FFUUTTEEXX__RREEQQUUEEUUEE (since Linux 2.6.0)
+              This  operation  performs the same task as FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE (see below), except that no check is made using the value in _v_a_l_3.
+              (The argument _v_a_l_3 is ignored.)
+
+       FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE (since Linux 2.6.7)
+              This operation first checks whether the location _u_a_d_d_r still contains the value _v_a_l_3.  If not, the operation fails with the er‐
+              ror  EEAAGGAAIINN.   Otherwise, the operation wakes up a maximum of _v_a_l waiters that are waiting on the futex at _u_a_d_d_r.  If there are
+              more than _v_a_l waiters, then the remaining waiters are removed from the wait queue of the source futex at _u_a_d_d_r and added to the
+              wait  queue  of  the  target futex at _u_a_d_d_r_2.  The _v_a_l_2 argument specifies an upper limit on the number of waiters that are re‐
+              queued to the futex at _u_a_d_d_r_2.
+
+              The load from _u_a_d_d_r is an atomic memory access (i.e., using atomic machine instructions of the respective architecture).   This
+              load,  the comparison with _v_a_l_3, and the requeueing of any waiters are performed atomically and totally ordered with respect to
+              other operations on the same futex word.
+
+              Typical values to specify for _v_a_l are 0 or 1.  (Specifying IINNTT__MMAAXX is not useful, because it would make  the  FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE
+              operation equivalent to FFUUTTEEXX__WWAAKKEE.)  The limit value specified via _v_a_l_2 is typically either 1 or IINNTT__MMAAXX.  (Specifying the ar‐
+              gument as 0 is not useful, because it would make the FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE operation equivalent to FFUUTTEEXX__WWAAIITT.)
+
+              The FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE operation was added as a replacement for the earlier FFUUTTEEXX__RREEQQUUEEUUEE.  The difference is that the check  of
+              the value at _u_a_d_d_r can be used to ensure that requeueing happens only under certain conditions, which allows race conditions to
+              be avoided in certain use cases.
+
+              Both FFUUTTEEXX__RREEQQUUEEUUEE and FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE can be used to avoid "thundering herd" wake-ups that could occur when using FFUUTTEEXX__WWAAKKEE
+              in  cases where all of the waiters that are woken need to acquire another futex.  Consider the following scenario, where multi‐
+              ple waiter threads are waiting on B, a wait queue implemented using a futex:
+
+                  lock(A)
+                  while (!check_value(V)) {
+                      unlock(A);
+                      block_on(B);
+                      lock(A);
+                  };
+                  unlock(A);
+
+              If a waker thread used FFUUTTEEXX__WWAAKKEE, then all waiters waiting on B would be woken up, and they would all try to acquire  lock  A.
+              However,  waking  all  of the threads in this manner would be pointless because all except one of the threads would immediately
+              block on lock A again.  By contrast, a requeue operation wakes just one waiter and moves the other waiters to lock A, and  when
+              the woken waiter unlocks A then the next waiter can proceed.
+
+       FFUUTTEEXX__WWAAKKEE__OOPP (since Linux 2.6.14)
+              This  operation was added to support some user-space use cases where more than one futex must be handled at the same time.  The
+              most notable example is the implementation of pptthhrreeaadd__ccoonndd__ssiiggnnaall(3), which requires operations on two futexes, the one used to
+              implement  the  mutex  and  the  one  used in the implementation of the wait queue associated with the condition variable.  FFUU‐‐
+              TTEEXX__WWAAKKEE__OOPP allows such cases to be implemented without leading to high rates of contention and context switching.
+
+              The FFUUTTEEXX__WWAAKKEE__OOPP operation is equivalent to executing the following code atomically and totally ordered with respect to  other
+              futex operations on any of the two supplied futex words:
+
+                  uint32_t oldval = *(uint32_t *) uaddr2;
+                  *(uint32_t *) uaddr2 = oldval _o_p _o_p_a_r_g;
+                  futex(uaddr, FUTEX_WAKE, val, 0, 0, 0);
+                  if (oldval _c_m_p _c_m_p_a_r_g)
+                      futex(uaddr2, FUTEX_WAKE, val2, 0, 0, 0);
+
+              In other words, FFUUTTEEXX__WWAAKKEE__OOPP does the following:
+
+              *  saves  the  original value of the futex word at _u_a_d_d_r_2 and performs an operation to modify the value of the futex at _u_a_d_d_r_2;
+                 this is an atomic read-modify-write memory access (i.e., using atomic machine instructions of the respective architecture)
+
+              *  wakes up a maximum of _v_a_l waiters on the futex for the futex word at _u_a_d_d_r; and
+
+              *  dependent on the results of a test of the original value of the futex word at _u_a_d_d_r_2, wakes up a maximum of _v_a_l_2 waiters  on
+                 the futex for the futex word at _u_a_d_d_r_2.
+
+              The  operation and comparison that are to be performed are encoded in the bits of the argument _v_a_l_3.  Pictorially, the encoding
+              is:
+
+                  +---+---+-----------+-----------+
+                  |op |cmp|   oparg   |  cmparg   |
+                  +---+---+-----------+-----------+
+                    4   4       12          12    <== # of bits
+
+              Expressed in code, the encoding is:
+
+                  #define FUTEX_OP(op, oparg, cmp, cmparg) \
+                                  (((op & 0xf) << 28) | \
+                                  ((cmp & 0xf) << 24) | \
+                                  ((oparg & 0xfff) << 12) | \
+                                  (cmparg & 0xfff))
+
+              In the above, _o_p and _c_m_p are each one of the codes listed below.  The _o_p_a_r_g and _c_m_p_a_r_g components are literal  numeric  values,
+              except as noted below.
+
+              The _o_p component has one of the following values:
+
+                  FUTEX_OP_SET        0  /* uaddr2 = oparg; */
+                  FUTEX_OP_ADD        1  /* uaddr2 += oparg; */
+                  FUTEX_OP_OR         2  /* uaddr2 |= oparg; */
+                  FUTEX_OP_ANDN       3  /* uaddr2 &= ~oparg; */
+                  FUTEX_OP_XOR        4  /* uaddr2 ^= oparg; */
+
+              In addition, bitwise ORing the following value into _o_p causes _(_1 _<_< _o_p_a_r_g_) to be used as the operand:
+
+                  FUTEX_OP_ARG_SHIFT  8  /* Use (1 << oparg) as operand */
+
+              The _c_m_p field is one of the following:
+
+                  FUTEX_OP_CMP_EQ     0  /* if (oldval == cmparg) wake */
+                  FUTEX_OP_CMP_NE     1  /* if (oldval != cmparg) wake */
+                  FUTEX_OP_CMP_LT     2  /* if (oldval < cmparg) wake */
+                  FUTEX_OP_CMP_LE     3  /* if (oldval <= cmparg) wake */
+                  FUTEX_OP_CMP_GT     4  /* if (oldval > cmparg) wake */
+                  FUTEX_OP_CMP_GE     5  /* if (oldval >= cmparg) wake */
+
+              The return value of FFUUTTEEXX__WWAAKKEE__OOPP is the sum of the number of waiters woken on the futex _u_a_d_d_r plus the number of waiters woken
+              on the futex _u_a_d_d_r_2.
+
+       FFUUTTEEXX__WWAAIITT__BBIITTSSEETT (since Linux 2.6.25)
+              This operation is like FFUUTTEEXX__WWAAIITT except that _v_a_l_3 is used to provide a 32-bit bit mask to the kernel.  This bit mask, in which
+              at  least  one bit must be set, is stored in the kernel-internal state of the waiter.  See the description of FFUUTTEEXX__WWAAKKEE__BBIITTSSEETT
+              for further details.
+
+              If _t_i_m_e_o_u_t is not NULL, the structure it points to specifies an absolute timeout for the wait operation.  If _t_i_m_e_o_u_t  is  NULL,
+              the operation can block indefinitely.
+
+              The _u_a_d_d_r_2 argument is ignored.
+
+       FFUUTTEEXX__WWAAKKEE__BBIITTSSEETT (since Linux 2.6.25)
+              This  operation  is  the  same  as FFUUTTEEXX__WWAAKKEE except that the _v_a_l_3 argument is used to provide a 32-bit bit mask to the kernel.
+              This bit mask, in which at least one bit must be set, is used to select which waiters should be woken  up.   The  selection  is
+              done  by a bitwise AND of the "wake" bit mask (i.e., the value in _v_a_l_3) and the bit mask which is stored in the kernel-internal
+              state of the waiter (the "wait" bit mask that is set using FFUUTTEEXX__WWAAIITT__BBIITTSSEETT).  All of the waiters for which the result of  the
+              AND is nonzero are woken up; the remaining waiters are left sleeping.
+
+              The effect of FFUUTTEEXX__WWAAIITT__BBIITTSSEETT and FFUUTTEEXX__WWAAKKEE__BBIITTSSEETT is to allow selective wake-ups among multiple waiters that are blocked on
+              the same futex.  However, note that, depending on the use case, employing this bit-mask multiplexing feature on a futex can  be
+              less  efficient  than  simply  using multiple futexes, because employing bit-mask multiplexing requires the kernel to check all
+              waiters on a futex, including those that are not interested in being woken up (i.e., they do not have the relevant bit  set  in
+              their "wait" bit mask).
+
+              The constant FFUUTTEEXX__BBIITTSSEETT__MMAATTCCHH__AANNYY, which corresponds to all 32 bits set in the bit mask, can be used as the _v_a_l_3 argument for
+              FFUUTTEEXX__WWAAIITT__BBIITTSSEETT and FFUUTTEEXX__WWAAKKEE__BBIITTSSEETT.  Other than differences in the handling of the _t_i_m_e_o_u_t argument, the FFUUTTEEXX__WWAAIITT opera‐
+              tion  is  equivalent to FFUUTTEEXX__WWAAIITT__BBIITTSSEETT with _v_a_l_3 specified as FFUUTTEEXX__BBIITTSSEETT__MMAATTCCHH__AANNYY; that is, allow a wake-up by any waker.
+              The FFUUTTEEXX__WWAAKKEE operation is equivalent to FFUUTTEEXX__WWAAKKEE__BBIITTSSEETT with _v_a_l_3 specified as FFUUTTEEXX__BBIITTSSEETT__MMAATTCCHH__AANNYY; that is, wake up any
+              waiter(s).
+
+              The _u_a_d_d_r_2 and _t_i_m_e_o_u_t arguments are ignored.
+
+   PPrriioorriittyy--iinnhheerriittaannccee ffuutteexxeess
+       Linux  supports  priority-inheritance  (PI) futexes in order to handle priority-inversion problems that can be encountered with normal
+       futex locks.  Priority inversion is the problem that occurs when a high-priority task is blocked waiting to acquire a lock held  by  a
+       low-priority task, while tasks at an intermediate priority continuously preempt the low-priority task from the CPU.  Consequently, the
+       low-priority task makes no progress toward releasing the lock, and the high-priority task remains blocked.
+
+       Priority inheritance is a mechanism for dealing with the priority-inversion problem.  With this mechanism, when a  high-priority  task
+       becomes  blocked  by  a  lock  held by a low-priority task, the priority of the low-priority task is temporarily raised to that of the
+       high-priority task, so that it is not preempted by any intermediate level tasks, and can thus make progress toward releasing the lock.
+       To be effective, priority inheritance must be transitive, meaning that if a high-priority task blocks on a lock held by a lower-prior‐
+       ity task that is itself blocked by a lock held by another intermediate-priority task (and so on, for chains of arbitrary length), then
+       both of those tasks (or more generally, all of the tasks in a lock chain) have their priorities raised to be the same as the high-pri‐
+       ority task.
+
+       From a user-space perspective, what makes a futex PI-aware is a policy agreement (described below) between user space and  the  kernel
+       about  the  value  of the futex word, coupled with the use of the PI-futex operations described below.  (Unlike the other futex opera‐
+       tions described above, the PI-futex operations are designed for the implementation of very specific IPC mechanisms.)
+
+       The PI-futex operations described below differ from the other futex operations in that they impose policy on the use of the  value  of
+       the futex word:
+
+       *  If the lock is not acquired, the futex word's value shall be 0.
+
+       *  If the lock is acquired, the futex word's value shall be the thread ID (TID; see ggeettttiidd(2)) of the owning thread.
+
+       *  If  the  lock  is  owned and there are threads contending for the lock, then the FFUUTTEEXX__WWAAIITTEERRSS bit shall be set in the futex word's
+          value; in other words, this value is:
+
+              FUTEX_WAITERS | TID
+
+          (Note that is invalid for a PI futex word to have no owner and FFUUTTEEXX__WWAAIITTEERRSS set.)
+
+       With this policy in place, a user-space application can acquire an unacquired lock or release a lock using  atomic  instructions  exe‐
+       cuted  in user mode (e.g., a compare-and-swap operation such as _c_m_p_x_c_h_g on the x86 architecture).  Acquiring a lock simply consists of
+       using compare-and-swap to atomically set the futex word's value to the caller's TID if its previous value was 0.  Releasing a lock re‐
+       quires using compare-and-swap to set the futex word's value to 0 if the previous value was the expected TID.
+
+       If  a  futex is already acquired (i.e., has a nonzero value), waiters must employ the FFUUTTEEXX__LLOOCCKK__PPII operation to acquire the lock.  If
+       other threads are waiting for the lock, then the FFUUTTEEXX__WWAAIITTEERRSS bit is set in the futex value; in this case, the lock owner must employ
+       the FFUUTTEEXX__UUNNLLOOCCKK__PPII operation to release the lock.
+
+       In  the  cases where callers are forced into the kernel (i.e., required to perform a ffuutteexx() call), they then deal directly with a so-
+       called RT-mutex, a kernel locking mechanism which implements the required priority-inheritance semantics.  After the RT-mutex  is  ac‐
+       quired, the futex value is updated accordingly, before the calling thread returns to user space.
+
+       It  is important to note that the kernel will update the futex word's value prior to returning to user space.  (This prevents the pos‐
+       sibility of the futex word's value ending up in an invalid state, such as having an owner but the value being 0, or having waiters but
+       not having the FFUUTTEEXX__WWAAIITTEERRSS bit set.)
+
+       If  a  futex has an associated RT-mutex in the kernel (i.e., there are blocked waiters) and the owner of the futex/RT-mutex dies unex‐
+       pectedly, then the kernel cleans up the RT-mutex and hands it over to the next waiter.  This in  turn  requires  that  the  user-space
+       value  is  updated  accordingly.   To indicate that this is required, the kernel sets the FFUUTTEEXX__OOWWNNEERR__DDIIEEDD bit in the futex word along
+       with the thread ID of the new owner.  User space can detect this situation via the presence of the FFUUTTEEXX__OOWWNNEERR__DDIIEEDD bit  and  is  then
+       responsible for cleaning up the stale state left over by the dead owner.
+
+       PI  futexes  are operated on by specifying one of the values listed below in _f_u_t_e_x___o_p.  Note that the PI futex operations must be used
+       as paired operations and are subject to some additional requirements:
+
+       *  FFUUTTEEXX__LLOOCCKK__PPII and FFUUTTEEXX__TTRRYYLLOOCCKK__PPII pair with FFUUTTEEXX__UUNNLLOOCCKK__PPII.  FFUUTTEEXX__UUNNLLOOCCKK__PPII must be called only on a futex owned by the  calling
+          thread, as defined by the value policy, otherwise the error EEPPEERRMM results.
+
+       *  FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII  pairs  with FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII.  This must be performed from a non-PI futex to a distinct PI futex (or the
+          error EEIINNVVAALL results).  Additionally, _v_a_l (the number of waiters to be woken) must be 1 (or the error EEIINNVVAALL results).
+
+       The PI futex operations are as follows:
+
+       FFUUTTEEXX__LLOOCCKK__PPII (since Linux 2.6.18)
+              This operation is used after an attempt to acquire the lock via an atomic user-mode instruction failed because the  futex  word
+              has a nonzero value—specifically, because it contained the (PID-namespace-specific) TID of the lock owner.
+
+              The  operation checks the value of the futex word at the address _u_a_d_d_r.  If the value is 0, then the kernel tries to atomically
+              set the futex value to the caller's TID.  If the futex word's value is nonzero, the kernel atomically  sets  the  FFUUTTEEXX__WWAAIITTEERRSS
+              bit,  which  signals  the futex owner that it cannot unlock the futex in user space atomically by setting the futex value to 0.
+              After that, the kernel:
+
+              1. Tries to find the thread which is associated with the owner TID.
+
+              2. Creates or reuses kernel state on behalf of the owner.  (If this is the first waiter, there is no kernel state for this  fu‐
+                 tex, so kernel state is created by locking the RT-mutex and the futex owner is made the owner of the RT-mutex.  If there are
+                 existing waiters, then the existing state is reused.)
+
+              3. Attaches the waiter to the futex (i.e., the waiter is enqueued on the RT-mutex waiter list).
+
+              If more than one waiter exists, the enqueueing of the waiter is in descending priority order.  (For information on priority or‐
+              dering,  see the discussion of the SSCCHHEEDD__DDEEAADDLLIINNEE, SSCCHHEEDD__FFIIFFOO, and SSCCHHEEDD__RRRR scheduling policies in sscchheedd(7).)  The owner inher‐
+              its either the waiter's CPU bandwidth (if the waiter is scheduled under the SSCCHHEEDD__DDEEAADDLLIINNEE policy) or the waiter's priority (if
+              the  waiter  is  scheduled  under  the  SSCCHHEEDD__RRRR or SSCCHHEEDD__FFIIFFOO policy).  This inheritance follows the lock chain in the case of
+              nested locking and performs deadlock detection.
+
+              The _t_i_m_e_o_u_t argument provides a timeout for the lock attempt.  If _t_i_m_e_o_u_t is not NULL, the structure it points to specifies  an
+              absolute timeout, measured against the CCLLOOCCKK__RREEAALLTTIIMMEE clock.  If _t_i_m_e_o_u_t is NULL, the operation will block indefinitely.
+
+              The _u_a_d_d_r_2, _v_a_l, and _v_a_l_3 arguments are ignored.
+
+       FFUUTTEEXX__TTRRYYLLOOCCKK__PPII (since Linux 2.6.18)
+              This  operation tries to acquire the lock at _u_a_d_d_r.  It is invoked when a user-space atomic acquire did not succeed because the
+              futex word was not 0.
+
+              Because the kernel has access to more state information than user space, acquisition of the lock might succeed if performed  by
+              the  kernel  in  cases  where  the  futex  word (i.e., the state information accessible to use-space) contains stale state (FFUU‐‐
+              TTEEXX__WWAAIITTEERRSS and/or FFUUTTEEXX__OOWWNNEERR__DDIIEEDD).  This can happen when the owner of the futex died.  User space cannot handle this  condi‐
+              tion in a race-free manner, but the kernel can fix this up and acquire the futex.
+
+              The _u_a_d_d_r_2, _v_a_l, _t_i_m_e_o_u_t, and _v_a_l_3 arguments are ignored.
+
+       FFUUTTEEXX__UUNNLLOOCCKK__PPII (since Linux 2.6.18)
+              This  operation wakes the top priority waiter that is waiting in FFUUTTEEXX__LLOOCCKK__PPII on the futex address provided by the _u_a_d_d_r argu‐
+              ment.
+
+              This is called when the user-space value at _u_a_d_d_r cannot be changed atomically from a TID (of the owner) to 0.
+
+              The _u_a_d_d_r_2, _v_a_l, _t_i_m_e_o_u_t, and _v_a_l_3 arguments are ignored.
+
+       FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII (since Linux 2.6.31)
+              This operation is a PI-aware variant of FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE.  It requeues waiters that are blocked via  FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII  on
+              _u_a_d_d_r from a non-PI source futex (_u_a_d_d_r) to a PI target futex (_u_a_d_d_r_2).
+
+              As  with  FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE, this operation wakes up a maximum of _v_a_l waiters that are waiting on the futex at _u_a_d_d_r.  However,
+              for FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII, _v_a_l is required to be 1 (since the main point is to avoid a thundering herd).  The remaining  waiters
+              are removed from the wait queue of the source futex at _u_a_d_d_r and added to the wait queue of the target futex at _u_a_d_d_r_2.
+
+              The _v_a_l_2 and _v_a_l_3 arguments serve the same purposes as for FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE.
+
+       FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII (since Linux 2.6.31)
+              Wait  on  a  non-PI futex at _u_a_d_d_r and potentially be requeued (via a FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII operation in another task) onto a PI
+              futex at _u_a_d_d_r_2.  The wait operation on _u_a_d_d_r is the same as for FFUUTTEEXX__WWAAIITT.
+
+              The waiter can be removed from the wait on _u_a_d_d_r without requeueing on _u_a_d_d_r_2 via a FFUUTTEEXX__WWAAKKEE operation in another  task.   In
+              this case, the FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII operation fails with the error EEAAGGAAIINN.
+
+              If  _t_i_m_e_o_u_t  is not NULL, the structure it points to specifies an absolute timeout for the wait operation.  If _t_i_m_e_o_u_t is NULL,
+              the operation can block indefinitely.
+
+              The _v_a_l_3 argument is ignored.
+
+              The FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII and FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII were added to support a fairly specific use case: support  for  priority-in‐
+              heritance-aware  POSIX threads condition variables.  The idea is that these operations should always be paired, in order to en‐
+              sure that user space and the kernel remain in sync.  Thus, in the FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII operation, the  user-space  application
+              pre-specifies the target of the requeue that takes place in the FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII operation.
+
+RREETTUURRNN VVAALLUUEE
+       In  the  event  of an error (and assuming that ffuutteexx() was invoked via ssyyssccaallll(2)), all operations return -1 and set _e_r_r_n_o to indicate
+       the cause of the error.
+
+       The return value on success depends on the operation, as described in the following list:
+
+       FFUUTTEEXX__WWAAIITT
+              Returns 0 if the caller was woken up.  Note that a wake-up can also be caused by common futex usage patterns in unrelated  code
+              that  happened  to have previously used the futex word's memory location (e.g., typical futex-based implementations of Pthreads
+              mutexes can cause this under some conditions).  Therefore, callers should always conservatively assume that a return value of 0
+              can  mean a spurious wake-up, and use the futex word's value (i.e., the user-space synchronization scheme) to decide whether to
+              continue to block or not.
+
+       FFUUTTEEXX__WWAAKKEE
+              Returns the number of waiters that were woken up.
+
+       FFUUTTEEXX__FFDD
+              Returns the new file descriptor associated with the futex.
+
+       FFUUTTEEXX__RREEQQUUEEUUEE
+              Returns the number of waiters that were woken up.
+
+       FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE
+              Returns the total number of waiters that were woken up or requeued to the futex for the futex word at _u_a_d_d_r_2.  If this value is
+              greater than _v_a_l, then the difference is the number of waiters requeued to the futex for the futex word at _u_a_d_d_r_2.
+
+       FFUUTTEEXX__WWAAKKEE__OOPP
+              Returns  the total number of waiters that were woken up.  This is the sum of the woken waiters on the two futexes for the futex
+              words at _u_a_d_d_r and _u_a_d_d_r_2.
+
+       FFUUTTEEXX__WWAAIITT__BBIITTSSEETT
+              Returns 0 if the caller was woken up.  See FFUUTTEEXX__WWAAIITT for how to interpret this correctly in practice.
+
+       FFUUTTEEXX__WWAAKKEE__BBIITTSSEETT
+              Returns the number of waiters that were woken up.
+
+       FFUUTTEEXX__LLOOCCKK__PPII
+              Returns 0 if the futex was successfully locked.
+
+       FFUUTTEEXX__TTRRYYLLOOCCKK__PPII
+              Returns 0 if the futex was successfully locked.
+
+       FFUUTTEEXX__UUNNLLOOCCKK__PPII
+              Returns 0 if the futex was successfully unlocked.
+
+       FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII
+              Returns the total number of waiters that were woken up or requeued to the futex for the futex word at _u_a_d_d_r_2.  If this value is
+              greater than _v_a_l, then difference is the number of waiters requeued to the futex for the futex word at _u_a_d_d_r_2.
+
+       FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII
+              Returns 0 if the caller was successfully requeued to the futex for the futex word at _u_a_d_d_r_2.
+
+EERRRROORRSS
+       EEAACCCCEESS No read access to the memory of a futex word.
+
+       EEAAGGAAIINN (FFUUTTEEXX__WWAAIITT, FFUUTTEEXX__WWAAIITT__BBIITTSSEETT, FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII) The value pointed to by _u_a_d_d_r was not equal to the expected value _v_a_l at
+              the time of the call.
+
+              NNoottee: on Linux, the symbolic names EEAAGGAAIINN and EEWWOOUULLDDBBLLOOCCKK (both of which appear in different parts of the  kernel  futex  code)
+              have the same value.
+
+       EEAAGGAAIINN (FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE, FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) The value pointed to by _u_a_d_d_r is not equal to the expected value _v_a_l_3.
+
+       EEAAGGAAIINN (FFUUTTEEXX__LLOOCCKK__PPII,  FFUUTTEEXX__TTRRYYLLOOCCKK__PPII,  FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) The futex owner thread ID of _u_a_d_d_r (for FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII: _u_a_d_d_r_2)
+              is about to exit, but has not yet handled the internal state cleanup.  Try again.
+
+       EEDDEEAADDLLKK
+              (FFUUTTEEXX__LLOOCCKK__PPII, FFUUTTEEXX__TTRRYYLLOOCCKK__PPII, FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) The futex word at _u_a_d_d_r is already locked by the caller.
+
+       EEDDEEAADDLLKK
+              (FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) While requeueing a waiter to the PI futex for the futex word at _u_a_d_d_r_2, the kernel detected a deadlock.
+
+       EEFFAAUULLTT A required pointer argument (i.e., _u_a_d_d_r, _u_a_d_d_r_2, or _t_i_m_e_o_u_t) did not point to a valid user-space address.
+
+       EEIINNTTRR  A FFUUTTEEXX__WWAAIITT or FFUUTTEEXX__WWAAIITT__BBIITTSSEETT operation was interrupted by a signal (see ssiiggnnaall(7)).  In kernels before Linux 2.6.22,  this
+              error could also be returned for a spurious wakeup; since Linux 2.6.22, this no longer happens.
+
+       EEIINNVVAALL The  operation  in  _f_u_t_e_x___o_p  is one of those that employs a timeout, but the supplied _t_i_m_e_o_u_t argument was invalid (_t_v___s_e_c was
+              less than zero, or _t_v___n_s_e_c was not less than 1,000,000,000).
+
+       EEIINNVVAALL The operation specified in _f_u_t_e_x___o_p employs one or both of the pointers _u_a_d_d_r and _u_a_d_d_r_2, but one of these does not point to  a
+              valid object—that is, the address is not four-byte-aligned.
+
+       EEIINNVVAALL (FFUUTTEEXX__WWAAIITT__BBIITTSSEETT, FFUUTTEEXX__WWAAKKEE__BBIITTSSEETT) The bit mask supplied in _v_a_l_3 is zero.
+
+       EEIINNVVAALL (FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) _u_a_d_d_r equals _u_a_d_d_r_2 (i.e., an attempt was made to requeue to the same futex).
+
+       EEIINNVVAALL (FFUUTTEEXX__FFDD) The signal number supplied in _v_a_l is invalid.
+
+       EEIINNVVAALL (FFUUTTEEXX__WWAAKKEE,  FFUUTTEEXX__WWAAKKEE__OOPP,  FFUUTTEEXX__WWAAKKEE__BBIITTSSEETT, FFUUTTEEXX__RREEQQUUEEUUEE, FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE) The kernel detected an inconsistency between
+              the user-space state at _u_a_d_d_r and the kernel state—that is, it detected a waiter which waits in FFUUTTEEXX__LLOOCCKK__PPII on _u_a_d_d_r.
+
+       EEIINNVVAALL (FFUUTTEEXX__LLOOCCKK__PPII, FFUUTTEEXX__TTRRYYLLOOCCKK__PPII, FFUUTTEEXX__UUNNLLOOCCKK__PPII) The kernel detected an inconsistency between the user-space state  at  _u_a_d_d_r
+              and  the  kernel state.  This indicates either state corruption or that the kernel found a waiter on _u_a_d_d_r which is waiting via
+              FFUUTTEEXX__WWAAIITT or FFUUTTEEXX__WWAAIITT__BBIITTSSEETT.
+
+       EEIINNVVAALL (FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) The kernel detected an inconsistency between the user-space state at _u_a_d_d_r_2 and the kernel  state;  that
+              is, the kernel detected a waiter which waits via FFUUTTEEXX__WWAAIITT or FFUUTTEEXX__WWAAIITT__BBIITTSSEETT on _u_a_d_d_r_2.
+
+       EEIINNVVAALL (FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII)  The  kernel  detected an inconsistency between the user-space state at _u_a_d_d_r and the kernel state; that
+              is, the kernel detected a waiter which waits via FFUUTTEEXX__WWAAIITT or FFUUTTEEXX__WWAAIITT__BBIITTEESSEETT on _u_a_d_d_r.
+
+       EEIINNVVAALL (FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) The kernel detected an inconsistency between the user-space state at _u_a_d_d_r and the  kernel  state;  that
+              is, the kernel detected a waiter which waits on _u_a_d_d_r via FFUUTTEEXX__LLOOCCKK__PPII (instead of FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII).
+
+       EEIINNVVAALL (FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII)  An  attempt  was  made  to  requeue  a  waiter to a futex other than that specified by the matching FFUU‐‐
+              TTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII call for that waiter.
+
+       EEIINNVVAALL (FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) The _v_a_l argument is not 1.
+
+       EEIINNVVAALL Invalid argument.
+
+       EENNFFIILLEE (FFUUTTEEXX__FFDD) The system-wide limit on the total number of open files has been reached.
+
+       EENNOOMMEEMM (FFUUTTEEXX__LLOOCCKK__PPII, FFUUTTEEXX__TTRRYYLLOOCCKK__PPII, FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) The kernel could not allocate memory to hold state information.
+
+       EENNOOSSYYSS Invalid operation specified in _f_u_t_e_x___o_p.
+
+       EENNOOSSYYSS The FFUUTTEEXX__CCLLOOCCKK__RREEAALLTTIIMMEE option was specified  in  _f_u_t_e_x___o_p,  but  the  accompanying  operation  was  neither  FFUUTTEEXX__WWAAIITT,  FFUU‐‐
+              TTEEXX__WWAAIITT__BBIITTSSEETT, nor FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII.
+
+       EENNOOSSYYSS (FFUUTTEEXX__LLOOCCKK__PPII,  FFUUTTEEXX__TTRRYYLLOOCCKK__PPII,  FFUUTTEEXX__UUNNLLOOCCKK__PPII,  FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII,  FFUUTTEEXX__WWAAIITT__RREEQQUUEEUUEE__PPII) A run-time check determined
+              that the operation is not available.  The PI-futex operations are not implemented on all architectures and are not supported on
+              some CPU variants.
+
+       EEPPEERRMM  (FFUUTTEEXX__LLOOCCKK__PPII,  FFUUTTEEXX__TTRRYYLLOOCCKK__PPII,  FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) The caller is not allowed to attach itself to the futex at _u_a_d_d_r (for
+              FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII: the futex at _u_a_d_d_r_2).  (This may be caused by a state corruption in user space.)
+
+       EEPPEERRMM  (FFUUTTEEXX__UUNNLLOOCCKK__PPII) The caller does not own the lock represented by the futex word.
+
+       EESSRRCCHH  (FFUUTTEEXX__LLOOCCKK__PPII, FFUUTTEEXX__TTRRYYLLOOCCKK__PPII, FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) The thread ID in the futex word at _u_a_d_d_r does not exist.
+
+       EESSRRCCHH  (FFUUTTEEXX__CCMMPP__RREEQQUUEEUUEE__PPII) The thread ID in the futex word at _u_a_d_d_r_2 does not exist.
+
+       EETTIIMMEEDDOOUUTT
+              The operation in _f_u_t_e_x___o_p employed the timeout specified in _t_i_m_e_o_u_t, and the timeout expired before the operation completed.
+
+VVEERRSSIIOONNSS
+       Futexes were first made available in a stable kernel release with Linux 2.6.0.
+
+       Initial futex support was merged in Linux 2.5.7 but with different semantics from what was described above.   A  four-argument  system
+       call  with  the  semantics  described  in this page was introduced in Linux 2.5.40.  A fifth argument was added in Linux 2.5.70, and a
+       sixth argument was added in Linux 2.6.7.
+
+CCOONNFFOORRMMIINNGG TTOO
+       This system call is Linux-specific.
+
+NNOOTTEESS
+       Glibc does not provide a wrapper for this system call; call it using ssyyssccaallll(2).
+
+       Several higher-level programming abstractions are implemented via futexes, including POSIX semaphores and various POSIX  threads  syn‐
+       chronization mechanisms (mutexes, condition variables, read-write locks, and barriers).
+
+EEXXAAMMPPLLEESS
+       The  program  below  demonstrates use of futexes in a program where a parent process and a child process use a pair of futexes located
+       inside a shared anonymous mapping to synchronize access to a shared resource: the terminal.  The two processes each  write  _n_l_o_o_p_s  (a
+       command-line  argument that defaults to 5 if omitted) messages to the terminal and employ a synchronization protocol that ensures that
+       they alternate in writing messages.  Upon running this program we see output such as the following:
+
+           $ ..//ffuutteexx__ddeemmoo
+           Parent (18534) 0
+           Child  (18535) 0
+           Parent (18534) 1
+           Child  (18535) 1
+           Parent (18534) 2
+           Child  (18535) 2
+           Parent (18534) 3
+           Child  (18535) 3
+           Parent (18534) 4
+           Child  (18535) 4
+
+   PPrrooggrraamm ssoouurrccee
+
+       /* futex_demo.c
+
+          Usage: futex_demo [nloops]
+                           (Default: 5)
+
+          Demonstrate the use of futexes in a program where parent and child
+          use a pair of futexes located inside a shared anonymous mapping to
+          synchronize access to a shared resource: the terminal. The two
+          processes each write 'num-loops' messages to the terminal and employ
+          a synchronization protocol that ensures that they alternate in
+          writing messages.
+       */
+       #define _GNU_SOURCE
+       #include <stdio.h>
+       #include <errno.h>
+       #include <stdatomic.h>
+       #include <stdint.h>
+       #include <stdlib.h>
+       #include <unistd.h>
+       #include <sys/wait.h>
+       #include <sys/mman.h>
+       #include <sys/syscall.h>
+       #include <linux/futex.h>
+       #include <sys/time.h>
+
+       #define errExit(msg)    do { perror(msg); exit(EXIT_FAILURE); \
+                               } while (0)
+
+       static uint32_t *futex1, *futex2, *iaddr;
+
+       static int
+       futex(uint32_t *uaddr, int futex_op, uint32_t val,
+             const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3)
+       {
+           return syscall(SYS_futex, uaddr, futex_op, val,
+                          timeout, uaddr2, val3);
+       }
+
+       /* Acquire the futex pointed to by 'futexp': wait for its value to
+          become 1, and then set the value to 0. */
+
+       static void
+       fwait(uint32_t *futexp)
+       {
+           long s;
+
+           /* atomic_compare_exchange_strong(ptr, oldval, newval)
+              atomically performs the equivalent of:
+
+                  if (*ptr == *oldval)
+                      *ptr = newval;
+
+              It returns true if the test yielded true and *ptr was updated. */
+
+           while (1) {
+
+               /* Is the futex available? */
+               const uint32_t one = 1;
+               if (atomic_compare_exchange_strong(futexp, &one, 0))
+                   break;      /* Yes */
+
+               /* Futex is not available; wait */
+
+               s = futex(futexp, FUTEX_WAIT, 0, NULL, NULL, 0);
+               if (s == -1 && errno != EAGAIN)
+                   errExit("futex-FUTEX_WAIT");
+           }
+       }
+
+       /* Release the futex pointed to by 'futexp': if the futex currently
+          has the value 0, set its value to 1 and the wake any futex waiters,
+          so that if the peer is blocked in fwait(), it can proceed. */
+
+       static void
+       fpost(uint32_t *futexp)
+       {
+           long s;
+
+           /* atomic_compare_exchange_strong() was described
+              in comments above */
+
+           const uint32_t zero = 0;
+           if (atomic_compare_exchange_strong(futexp, &zero, 1)) {
+               s = futex(futexp, FUTEX_WAKE, 1, NULL, NULL, 0);
+               if (s  == -1)
+                   errExit("futex-FUTEX_WAKE");
+           }
+       }
+
+       int
+       main(int argc, char *argv[])
+       {
+           pid_t childPid;
+           int nloops;
+
+           setbuf(stdout, NULL);
+
+           nloops = (argc > 1) ? atoi(argv[1]) : 5;
+
+           /* Create a shared anonymous mapping that will hold the futexes.
+              Since the futexes are being shared between processes, we
+              subsequently use the "shared" futex operations (i.e., not the
+              ones suffixed "_PRIVATE") */
+
+           iaddr = mmap(NULL, sizeof(*iaddr) * 2, PROT_READ | PROT_WRITE,
+                       MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+           if (iaddr == MAP_FAILED)
+               errExit("mmap");
+
+           futex1 = &iaddr[0];
+           futex2 = &iaddr[1];
+
+           *futex1 = 0;        /* State: unavailable */
+           *futex2 = 1;        /* State: available */
+
+           /* Create a child process that inherits the shared anonymous
+              mapping */
+
+           childPid = fork();
+           if (childPid == -1)
+               errExit("fork");
+
+           if (childPid == 0) {        /* Child */
+               for (int j = 0; j < nloops; j++) {
+                   fwait(futex1);
+                   printf("Child  (%jd) %d\n", (intmax_t) getpid(), j);
+                   fpost(futex2);
+               }
+
+               exit(EXIT_SUCCESS);
+           }
+
+           /* Parent falls through to here */
+
+           for (int j = 0; j < nloops; j++) {
+               fwait(futex2);
+               printf("Parent (%jd) %d\n", (intmax_t) getpid(), j);
+               fpost(futex1);
+           }
+
+           wait(NULL);
+
+           exit(EXIT_SUCCESS);
+       }
+
+SSEEEE AALLSSOO
+       ggeett__rroobbuusstt__lliisstt(2), rreessttaarrtt__ssyyssccaallll(2), pptthhrreeaadd__mmuutteexxaattttrr__ggeettpprroottooccooll(3), ffuutteexx(7), sscchheedd(7)
+
+       The following kernel source files:
+
+       * _D_o_c_u_m_e_n_t_a_t_i_o_n_/_p_i_-_f_u_t_e_x_._t_x_t
+
+       * _D_o_c_u_m_e_n_t_a_t_i_o_n_/_f_u_t_e_x_-_r_e_q_u_e_u_e_-_p_i_._t_x_t
+
+       * _D_o_c_u_m_e_n_t_a_t_i_o_n_/_l_o_c_k_i_n_g_/_r_t_-_m_u_t_e_x_._t_x_t
+
+       * _D_o_c_u_m_e_n_t_a_t_i_o_n_/_l_o_c_k_i_n_g_/_r_t_-_m_u_t_e_x_-_d_e_s_i_g_n_._t_x_t
+
+       * _D_o_c_u_m_e_n_t_a_t_i_o_n_/_r_o_b_u_s_t_-_f_u_t_e_x_-_A_B_I_._t_x_t
+
+       Franke, H., Russell, R., and Kirwood, M., 2002.  _F_u_s_s_, _F_u_t_e_x_e_s _a_n_d _F_u_r_w_o_c_k_s_: _F_a_s_t _U_s_e_r_l_e_v_e_l _L_o_c_k_i_n_g _i_n _L_i_n_u_x (from proceedings of the
+       Ottawa Linux Symposium 2002),
+       ⟨http://kernel.org/doc/ols/2002/ols2002-pages-479-495.pdf⟩
+
+       Hart, D., 2009. _A _f_u_t_e_x _o_v_e_r_v_i_e_w _a_n_d _u_p_d_a_t_e, ⟨http://lwn.net/Articles/360699/⟩
+
+       Hart, D. and Guniguntala, D., 2009.  _R_e_q_u_e_u_e_-_P_I_: _M_a_k_i_n_g _G_l_i_b_c _C_o_n_d_v_a_r_s _P_I_-_A_w_a_r_e (from proceedings of the 2009 Real-Time Linux Work‐
+       shop), ⟨http://lwn.net/images/conf/rtlws11/papers/proc/p10.pdf⟩
+
+       Drepper, U., 2011. _F_u_t_e_x_e_s _A_r_e _T_r_i_c_k_y, ⟨http://www.akkadia.org/drepper/futex.pdf⟩
+
+       Futex example library, futex-*.tar.bz2 at
+       ⟨ftp://ftp.kernel.org/pub/linux/kernel/people/rusty/⟩
+
+CCOOLLOOPPHHOONN
+       This page is part of release 5.10 of the Linux _m_a_n_-_p_a_g_e_s project.  A description of the project, information about reporting bugs, and
+       the latest version of this page, can be found at https://www.kernel.org/doc/man-pages/.
+
+Linux                                                             2020-11-01                                                         FUTEX(2)
