@@ -17,7 +17,7 @@ use timer::timer::TIMER_MANAGER;
 use super::{set_kernel_trap, TrapContext};
 use crate::{
     strace,
-    syscall::syscall,
+    syscall::{syscall, SyscallNo},
     task::{signal::do_signal, Task},
     trap::set_user_trap,
 };
@@ -41,10 +41,8 @@ pub async fn trap_handler(task: &Arc<Task>) {
             let syscall_no = cx.syscall_no();
             log::info!("[trap_handler] handle syscall no {syscall_no}");
             cx.set_user_pc_to_next();
-            strace!("syscall_no: {}, args: {:?}", syscall_no, cx.syscall_args());
             // get system call return value
             let result = syscall(syscall_no, cx.syscall_args()).await;
-
             // cx is changed during sys_exec, so we have to call it again
             cx = task.trap_context_mut();
             let ret = match result {
