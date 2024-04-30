@@ -40,6 +40,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbb36e985947064623dbd357f727af08ffd077f93d696782f3c56365fa2e2799"
 
 [[package]]
+name = "async-trait"
+version = "0.1.80"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6fa2087f2753a7da8cc1c0dbfcf89579dd57458e36769de5ac750b4671737ca"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "async_utils"
 version = "0.1.0"
 dependencies = [
@@ -141,7 +152,6 @@ version = "0.1.0"
 dependencies = [
  "arch",
  "config",
- "irq_count",
  "log",
  "memory",
  "spin",
@@ -168,6 +178,7 @@ dependencies = [
 name = "fat32"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "downcast-rs",
  "driver",
  "fatfs",
@@ -206,11 +217,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "irq_count"
-version = "0.1.0"
-dependencies = [
- "sync",
-]
+name = "heck"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "kernel"
@@ -228,7 +238,6 @@ dependencies = [
  "executor",
  "futex",
  "hashbrown",
- "irq_count",
  "log",
  "logging",
  "memory",
@@ -237,6 +246,7 @@ dependencies = [
  "riscv",
  "signal",
  "spin",
+ "strum",
  "sync",
  "systype",
  "time",
@@ -245,6 +255,15 @@ dependencies = [
  "vfs-core",
  "virtio-drivers",
  "xmas-elf",
+]
+
+[[package]]
+name = "linked_list_allocator"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9afa463f5405ee81cdb9cc2baf37e08ec7e4c8209442b5d72c04cfb2cd6e6286"
+dependencies = [
+ "spinning_top",
 ]
 
 [[package]]
@@ -279,6 +298,7 @@ dependencies = [
  "bitmap-allocator",
  "buddy_system_allocator",
  "config",
+ "linked_list_allocator",
  "log",
  "riscv",
  "spin",
@@ -320,6 +340,12 @@ name = "recycle_allocator"
 version = "0.1.0"
 
 [[package]]
+name = "ringbuffer"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3df6368f71f205ff9c33c076d170dd56ebf68e8161c733c0caa07a7a5509ed53"
+
+[[package]]
 name = "riscv"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -328,6 +354,12 @@ dependencies = [
  "critical-section",
  "embedded-hal",
 ]
+
+[[package]]
+name = "rustversion"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80af6f9131f277a45a3fba6ce8e2258037bb0477a67e610d3c1fe046ab31de47"
 
 [[package]]
 name = "sbi-rt"
@@ -367,6 +399,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 dependencies = [
  "lock_api",
+]
+
+[[package]]
+name = "spinning_top"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b9eb1a2f4c41445a3a0ff9abc5221c5fcd28e1f13cd7c0397706f9ac938ddb0"
+dependencies = [
+ "lock_api",
+]
+
+[[package]]
+name = "strum"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d8cec3501a5194c432b2b7976db6b7d10ec95c253208b45f83f7136aa985e29"
+dependencies = [
+ "strum_macros",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6cf59daf282c0a494ba14fd21610a0325f9f90ec9d1231dea26bcb1d696c946"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn",
 ]
 
 [[package]]
@@ -438,9 +501,13 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 name = "vfs"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "async_utils",
+ "config",
  "driver",
  "fat32",
  "log",
+ "ringbuffer",
  "spin",
  "sync",
  "systype",
@@ -451,6 +518,7 @@ dependencies = [
 name = "vfs-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bitflags",
  "config",
  "downcast-rs",

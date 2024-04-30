@@ -19,11 +19,12 @@ impl LogIf for LogIfImpl {
         if local_hart().has_task() {
             print_in_color(
                 format_args!(
-                    "[{:>5}][{}:{}][H{},T{},-] {}\n",
+                    "[{:>5}][{}:{}][H{},P{},T{}] {}\n",
                     record.level(),
                     record.file().unwrap(),
                     record.line().unwrap(),
                     local_hart().hart_id(),
+                    current_task().pid(),
                     current_task().tid(),
                     record.args()
                 ),

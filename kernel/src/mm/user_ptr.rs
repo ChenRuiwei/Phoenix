@@ -83,6 +83,11 @@ impl<'a, T> UserSlice<'a, T> {
             _guard: SumGuard::new(),
         }
     }
+
+    pub unsafe fn new_unchecked(va: VirtAddr, len: usize) -> Self {
+        let slice = core::slice::from_raw_parts_mut(va.bits() as *mut T, len);
+        Self::new(slice)
+    }
 }
 
 impl<'a, T> core::ops::Deref for UserSlice<'a, T> {
@@ -136,6 +141,7 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
     }
 }
 
+// TODO: consider return EFAULT when self is null.
 // TODO: ref or slice should hold `SumGuard`
 impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     pub fn into_ref(self, task: &Arc<Task>) -> SysResult<&T> {

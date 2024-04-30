@@ -1,3 +1,6 @@
+use core::mem;
+
+use async_utils::yield_now;
 use config::process::INIT_PROC_PID;
 use signal::{
     action::{Action, ActionType},
@@ -10,8 +13,8 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     task::{
-        signal::{SigAction, WaitHandlableSignal, SIG_DFL, SIG_IGN},
-        yield_now, TASK_MANAGER,
+        signal::{do_signal, SigAction, SIG_DFL, SIG_IGN},
+        TASK_MANAGER,
     },
 };
 
@@ -31,7 +34,7 @@ pub fn sys_sigaction(
     if !signum.is_valid() {
         return Err(SysError::EINVAL);
     }
-    let action = action.read(task)?;
+    let action = action.read(&task)?;
     let new = Action {
         atype: match action.sa_handler {
             SIG_DFL => ActionType::default(signum),
@@ -44,7 +47,7 @@ pub fn sys_sigaction(
     let old = task.sig_handlers().replace(signum, new);
     // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
-        old_action.write(task, old.into())?;
+        old_action.write(&task, old.into())?;
     }
     Ok(0)
 }
@@ -61,10 +64,10 @@ pub fn sys_sigprocmask(
     const SIGSETMASK: usize = 2;
     let task = current_task();
     if !old_set.is_null() {
-        old_set.write(task, *task.sig_mask())?;
+        old_set.write(&task, *task.sig_mask())?;
     }
     if !set.is_null() {
-        let set = set.read(task)?;
+        let set = set.read(&task)?;
         match how {
             SIGBLOCK => {
                 task.sig_mask().add_signals(set);
@@ -88,7 +91,7 @@ pub fn sys_sigreturn() -> SyscallResult {
     let cx = task.trap_context_mut();
     let ucontext_ptr = UserReadPtr::<UContext>::from_usize(task.sig_ucontext_ptr());
     log::trace!("[sys_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
-    let ucontext = ucontext_ptr.read(task)?;
+    let ucontext = ucontext_ptr.read(&task)?;
     *task.sig_mask() = ucontext.uc_sigmask;
     task.set_signal_stack((ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack));
     cx.sepc = ucontext.uc_mcontext.sepc;
@@ -213,7 +216,7 @@ pub fn sys_tkill(tid: isize, signum: i32) -> SyscallResult {
 /// mask, has no effect on the thread's signal mask.
 pub async fn sys_sigsuspend(mask: UserReadPtr<SigSet>) -> SyscallResult {
     let task = current_task();
-    let mut mask = mask.read(task)?;
+    let mut mask = mask.read(&task)?;
     let oldmask = task.sig_mask_replace(&mut mask);
     // TODO:这里可以改成WaitHandlableSignal这样或许更快？
     // WaitHandlableSignal(task).await

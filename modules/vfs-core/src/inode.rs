@@ -3,7 +3,7 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
-use core::sync::atomic::AtomicUsize;
+use core::{mem::MaybeUninit, sync::atomic::AtomicUsize};
 
 use bitflags::Flags;
 use downcast_rs::{impl_downcast, DowncastSync};
@@ -22,7 +22,7 @@ pub struct InodeMeta {
     /// Inode number.
     pub ino: usize,
     /// mode of inode.
-    pub mode: InodeType,
+    pub mode: InodeMode,
     pub super_block: Weak<dyn SuperBlock>,
 
     pub inner: Mutex<InodeMetaInner>,
@@ -40,7 +40,7 @@ pub struct InodeMetaInner {
 }
 
 impl InodeMeta {
-    pub fn new(mode: InodeType, super_block: Arc<dyn SuperBlock>, size: usize) -> Self {
+    pub fn new(mode: InodeMode, super_block: Arc<dyn SuperBlock>, size: usize) -> Self {
         Self {
             ino: alloc_ino(),
             mode,
@@ -58,16 +58,16 @@ impl InodeMeta {
 pub trait Inode: Send + Sync + DowncastSync {
     fn meta(&self) -> &InodeMeta;
 
-    /// Called by the open(2) and creat(2) system calls. Create a inode for a
-    /// dentry in the directory inode.
-    fn create(&self, dentry: Arc<dyn Dentry>, mode: InodeMode) -> SysResult<()>;
-
     fn get_attr(&self) -> SysResult<Stat>;
 }
 
 impl dyn Inode {
+    pub fn ino(&self) -> usize {
+        self.meta().ino
+    }
+
     pub fn itype(&self) -> InodeType {
-        self.meta().mode.into()
+        self.meta().mode.to_type()
     }
 
     pub fn size(&self) -> usize {
@@ -139,6 +139,21 @@ bitflags! {
 impl InodeMode {
     pub fn to_type(&self) -> InodeType {
         (*self).into()
+    }
+
+    pub fn from_type(itype: InodeType) -> Self {
+        let perm_mode = InodeMode::OWNER_READ | InodeMode::OWNER_WRITE | InodeMode::OTHER_EXEC;
+        let file_mode = match itype {
+            InodeType::Dir => InodeMode::DIR,
+            InodeType::File => InodeMode::FILE,
+            InodeType::SymLink => InodeMode::LINK,
+            InodeType::CharDevice => InodeMode::CHAR,
+            InodeType::BlockDevice => InodeMode::BLOCK,
+            InodeType::Fifo => InodeMode::FIFO,
+            InodeType::Socket => InodeMode::SOCKET,
+            InodeType::Unknown => InodeMode::TYPE_MASK,
+        };
+        file_mode | perm_mode
     }
 }
 
@@ -251,5 +266,15 @@ impl InodeType {
             Self::Socket => 's',
             _ => '?',
         }
+    }
+}
+
+impl<T: Send + Sync + 'static> Inode for MaybeUninit<T> {
+    fn meta(&self) -> &InodeMeta {
+        todo!()
+    }
+
+    fn get_attr(&self) -> SysResult<Stat> {
+        todo!()
     }
 }

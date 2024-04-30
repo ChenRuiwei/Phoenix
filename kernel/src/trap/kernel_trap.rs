@@ -1,17 +1,25 @@
 //! Trap from kernel.
 
 use arch::{
-    interrupts::set_trap_handler_vector,
-    time::{get_time_duration, set_next_timer_irq},
+    interrupts::{disable_interrupt, enable_interrupt, set_trap_handler_vector},
+    memory::sfence_vma_all,
+    register::sp,
+    sstatus,
+    time::{get_time_duration, set_next_timer_irq, set_timer_irq},
 };
-use irq_count::IRQ_COUNTER;
+use memory::page_table;
 use riscv::register::{
+    satp,
     scause::{self, Exception, Interrupt, Scause, Trap},
     sepc, stval, stvec,
 };
 use timer::timer::TIMER_MANAGER;
 
-use crate::when_debug;
+use crate::{
+    mm,
+    processor::hart::{local_hart, Hart},
+    trap, when_debug,
+};
 
 /// Kernel trap handler
 #[no_mangle]
@@ -25,9 +33,20 @@ pub fn kernel_trap_handler() {
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             // log::trace!("[kernel_trap] receive timer interrupt");
-            IRQ_COUNTER.add1(1);
             TIMER_MANAGER.check(get_time_duration());
             unsafe { set_next_timer_irq() };
+            #[cfg(feature = "preempt")]
+            {
+                if !executor::has_task() {
+                    return;
+                }
+                unsafe { set_timer_irq(5) };
+                let mut old_hart = local_hart().enter_preempt_switch();
+                log::warn!("kernel preempt");
+                executor::run_one();
+                log::warn!("kernel preempt fininshed");
+                local_hart().leave_preempt_switch(&mut old_hart);
+            }
         }
         _ => {
             panic!(

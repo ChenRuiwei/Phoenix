@@ -3,11 +3,12 @@ use alloc::{
     string::{String, ToString},
     sync::{Arc, Weak},
 };
+use core::mem::MaybeUninit;
 
 use spin::Once;
-use systype::{SysError, SysResult};
+use systype::{SysError, SysResult, SyscallResult};
 
-use crate::{inode::Inode, super_block, File, InodeType, Mutex, SuperBlock};
+use crate::{inode::Inode, super_block, File, InodeMode, InodeType, Mutex, SuperBlock};
 
 pub struct DentryMeta {
     /// Name of this file or directory.
@@ -29,6 +30,7 @@ impl DentryMeta {
         super_block: Arc<dyn SuperBlock>,
         parent: Option<Arc<dyn Dentry>>,
     ) -> Self {
+        log::debug!("[Dentry::new] new dentry with name {name}");
         Self {
             name: name.to_string(),
             super_block: Arc::downgrade(&super_block),
@@ -44,6 +46,7 @@ impl DentryMeta {
         inode: Arc<dyn Inode>,
         parent: Option<Weak<dyn Dentry>>,
     ) -> Self {
+        log::debug!("[Dentry::new_with_inode] new dentry with name {name}");
         Self {
             name: name.to_string(),
             super_block: Arc::downgrade(&super_block),
@@ -57,6 +60,31 @@ impl DentryMeta {
 pub trait Dentry: Send + Sync {
     fn meta(&self) -> &DentryMeta;
 
+    /// Open a file associated with the inode that this dentry points to.
+    fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>>;
+
+    /// Look up in a directory inode and find file with `name`.
+    ///
+    /// If the named inode does not exist, a negative dentry will be created as
+    /// a child and returned. Returning an error code from this routine must
+    /// only be done on a real error.
+    fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>>;
+
+    /// Called by the open(2) and creat(2) system calls. Create an inode for a
+    /// dentry in the directory inode.
+    ///
+    /// If the dentry itself has a negative child with `name`, it will create an
+    /// inode for the negative child and return the child.
+    fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>>;
+
+    /// Called by the unlink(2) system call. Delete a file inode in a directory
+    /// inode.
+    fn arc_unlink(self: Arc<Self>, name: &str) -> SyscallResult;
+
+    /// Called by the rmdir(2) system call. Delete a dir inode in a directory
+    /// inode.
+    fn arc_rmdir(self: Arc<Self>, name: &str) -> SyscallResult;
+
     fn inode(&self) -> SysResult<Arc<dyn Inode>> {
         self.meta()
             .inode
@@ -66,36 +94,42 @@ pub trait Dentry: Send + Sync {
             .cloned()
     }
 
-    /// Open a file associated with the inode that this dentry points to.
-    fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>>;
-
-    /// Look up in a directory inode and find file with `name`.
-    fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>>;
-
     fn super_block(&self) -> Arc<dyn SuperBlock> {
         self.meta().super_block.upgrade().unwrap()
     }
 
-    fn name(&self) -> String {
+    fn name_string(&self) -> String {
         self.meta().name.clone()
+    }
+
+    fn name(&self) -> &str {
+        &self.meta().name
     }
 
     fn parent(&self) -> Option<Arc<dyn Dentry>> {
         self.meta().parent.as_ref().map(|p| p.upgrade().unwrap())
     }
 
+    fn get_child(&self, name: &str) -> Option<Arc<dyn Dentry>> {
+        self.meta().children.lock().get(name).cloned()
+    }
+
     /// Insert a child dentry to this dentry.
-    fn insert(self: Arc<Self>, name: &str, child: Arc<dyn Dentry>) {
-        self.meta().children.lock().insert(name.to_string(), child);
+    fn insert(self: Arc<Self>, child: Arc<dyn Dentry>) -> Option<Arc<dyn Dentry>> {
+        self.meta()
+            .children
+            .lock()
+            .insert(child.name_string(), child)
     }
 
     /// Get the path of this dentry.
+    // HACK: code looks ugly and may be has problem
     fn path(&self) -> String {
         if let Some(p) = self.parent() {
             let path = if self.name() == "/" {
                 String::from("")
             } else {
-                String::from("/") + self.name().as_str()
+                String::from("/") + self.name()
             };
             let parent_name = p.name();
             return if parent_name == "/" {
@@ -117,8 +151,14 @@ pub trait Dentry: Send + Sync {
 }
 
 impl dyn Dentry {
+    pub fn is_negetive(&self) -> bool {
+        self.meta().inode.lock().is_none()
+    }
+
     pub fn set_inode(&self, inode: Arc<dyn Inode>) {
-        debug_assert!(self.meta().inode.lock().is_none());
+        if self.meta().inode.lock().is_some() {
+            log::warn!("[Dentry::set_inode] replace inode in {:?}", self.name());
+        }
         *self.meta().inode.lock() = Some(inode);
     }
 
@@ -136,21 +176,49 @@ impl dyn Dentry {
         self.meta().children.lock().remove(name)
     }
 
-    /// Lookup a dentry with `name` in the directory.
-    pub fn find(&self, name: &str) -> Option<Arc<dyn Dentry>> {
-        let meta = self.meta();
-        let mode = self.inode().unwrap().itype();
-        match mode {
-            InodeType::Dir => meta.children.lock().get(name).map(|item| item.clone()),
-            _ => None,
-        }
-    }
-
     pub fn open(self: &Arc<Self>) -> SysResult<Arc<dyn File>> {
         self.clone().arc_open()
     }
 
     pub fn lookup(self: &Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
         self.clone().arc_lookup(name)
+    }
+
+    pub fn create(self: &Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+        self.clone().arc_create(name, mode)
+    }
+
+    pub fn unlink(self: &Arc<Self>, name: &str) -> SyscallResult {
+        self.clone().arc_unlink(name)
+    }
+
+    pub fn rmdir(self: &Arc<Self>, name: &str) -> SyscallResult {
+        self.clone().arc_rmdir(name)
+    }
+}
+
+impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
+    fn meta(&self) -> &DentryMeta {
+        todo!()
+    }
+
+    fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
+        todo!()
+    }
+
+    fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+        todo!()
+    }
+
+    fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+        todo!()
+    }
+
+    fn arc_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
+        todo!()
+    }
+
+    fn arc_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
+        todo!()
     }
 }

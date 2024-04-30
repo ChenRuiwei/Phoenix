@@ -12,7 +12,7 @@ use core::{
 
 use arch::memory::sfence_vma_all;
 use config::{mm::USER_STACK_SIZE, process::INIT_PROC_PID};
-use futex::queue::Futexes;
+use futex::Futexes;
 use memory::VirtAddr;
 use signal::{
     action::{SigHandlers, SigPending},
@@ -21,8 +21,11 @@ use signal::{
 };
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
-use time::stat::TaskTimeStat;
-use vfs::{fd_table::FdTable, sys_root_dentry};
+use time::{stat::TaskTimeStat, timeval::ITimerVal};
+use vfs::{
+    fd_table::{self, FdTable},
+    sys_root_dentry,
+};
 use vfs_core::Dentry;
 
 use super::{
@@ -30,7 +33,7 @@ use super::{
     tid::{Pid, Tid, TidHandle},
 };
 use crate::{
-    mm::MemorySpace,
+    mm::{memory_space, MemorySpace},
     syscall,
     task::{manager::TASK_MANAGER, schedule, tid::alloc_tid},
     trap::TrapContext,
@@ -50,7 +53,8 @@ pub struct Task {
     // Immutable
     /// Tid of the task.
     tid: TidHandle,
-    leader: Once<Weak<Task>>,
+    /// A weak reference to the leader. `None` if self is leader.
+    leader: Option<Weak<Task>>,
     /// Whether the task is the leader.
     is_leader: bool,
 
@@ -117,9 +121,12 @@ macro_rules! with_ {
     ($name:ident, $ty:ty) => {
         paste::paste! {
             pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
+                // TODO: let logging more specific
+                log::trace!("with_something");
                 f(& self.$name.lock())
             }
             pub fn [<with_mut_ $name>]<T>(&self, f: impl FnOnce(&mut $ty) -> T) -> T {
+                log::trace!("with_mut_something");
                 f(&mut self.$name.lock())
             }
         }
@@ -134,7 +141,7 @@ impl Task {
         let trap_context = TrapContext::new(entry_point, user_sp_top);
         let task = Arc::new(Self {
             tid: alloc_tid(),
-            leader: Once::new(),
+            leader: None,
             is_leader: true,
             state: SpinNoIrqLock::new(TaskState::Running),
             parent: new_shared(None),
@@ -159,7 +166,6 @@ impl Task {
             ]),
             futexes: new_shared(Futexes::new()),
         });
-        task.leader.call_once(|| Arc::downgrade(&task));
         task.thread_group.lock().push(task.clone());
 
         TASK_MANAGER.add(&task);
@@ -180,6 +186,7 @@ impl Task {
     }
 
     pub fn add_child(&self, child: Arc<Task>) {
+        log::debug!("[Task::add_child] add a new child tid {}", child.tid());
         self.children
             .lock()
             .try_insert(child.tid(), child)
@@ -195,9 +202,17 @@ impl Task {
         self.is_leader
     }
 
+    pub fn leader(self: &Arc<Self>) -> Arc<Self> {
+        if self.is_leader() {
+            self.clone()
+        } else {
+            self.leader.as_ref().cloned().unwrap().upgrade().unwrap()
+        }
+    }
+
     /// Pid means tgid.
-    pub fn pid(&self) -> Pid {
-        self.leader.get().unwrap().upgrade().unwrap().tid()
+    pub fn pid(self: &Arc<Self>) -> Pid {
+        self.leader().tid()
     }
 
     pub fn tid(&self) -> Tid {
@@ -294,32 +309,36 @@ impl Task {
     pub fn do_clone(
         self: &Arc<Self>,
         flags: syscall::CloneFlags,
-        user_stack_begin: Option<VirtAddr>,
+        stack: Option<VirtAddr>,
     ) -> Arc<Self> {
         use syscall::CloneFlags;
         let tid = alloc_tid();
 
-        let trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
+        let mut trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
-        let _exit_code = AtomicI32::new(self.exit_code());
-        let cwd = self.cwd.clone();
 
+        let leader;
         let is_leader;
         let parent;
         let children;
         let thread_group;
+        let cwd;
         let itimers;
+        let fd_table;
         let futexes;
         if flags.contains(CloneFlags::THREAD) {
             is_leader = false;
+            leader = Some(Arc::downgrade(self));
             parent = self.parent.clone();
             children = self.children.clone();
-            // will add the new task into the group later
             thread_group = self.thread_group.clone();
             itimers = self.itimers.clone();
+            cwd = self.cwd.clone();
+            fd_table = self.fd_table.clone();
             futexes = self.futexes.clone();
         } else {
             is_leader = true;
+            leader = None;
             parent = new_shared(Some(Arc::downgrade(self)));
             children = new_shared(BTreeMap::new());
             thread_group = new_shared(ThreadGroup::new());
@@ -328,6 +347,8 @@ impl Task {
                 ITimer::new_virtual(),
                 ITimer::new_prof(),
             ]);
+            cwd = new_shared(self.cwd());
+            fd_table = new_shared(self.fd_table.lock().clone());
             futexes = new_shared(Futexes::new());
         }
 
@@ -335,16 +356,19 @@ impl Task {
         if flags.contains(CloneFlags::VM) {
             memory_space = self.memory_space.clone();
         } else {
-            debug_assert!(user_stack_begin.is_none());
             memory_space =
                 new_shared(self.with_mut_memory_space(|m| MemorySpace::from_user_lazily(m)));
             // TODO: avoid flushing global entries like kernel mappings
             unsafe { sfence_vma_all() };
         }
 
+        if let Some(sp) = stack {
+            trap_context.get_mut().set_user_sp(sp.bits());
+        }
+
         let new = Arc::new(Self {
             tid,
-            leader: Once::new(),
+            leader,
             is_leader,
             cwd,
             state,
@@ -355,7 +379,7 @@ impl Task {
             memory_space,
             waker: SyncUnsafeCell::new(None),
             thread_group,
-            fd_table: new_shared(FdTable::new()),
+            fd_table,
             sig_pending: SpinNoIrqLock::new(SigPending::new()),
             sig_mask: SyncUnsafeCell::new(SigSet::empty()),
             sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
@@ -366,10 +390,7 @@ impl Task {
             futexes,
         });
 
-        if flags.contains(CloneFlags::THREAD) {
-            new.leader.call_once(|| self.leader.get().unwrap().clone());
-        } else {
-            new.leader.call_once(|| Arc::downgrade(&new));
+        if !flags.contains(CloneFlags::THREAD) {
             self.add_child(new.clone());
         }
         new.with_mut_thread_group(|tg| tg.push(new.clone()));
@@ -378,14 +399,15 @@ impl Task {
         new
     }
 
-    // TODO:
+    // TODO: figure out what should be reserved across this syscall
+    // TODO: support CLOSE_ON_EXEC flag may be
     pub fn do_execve(&self, elf_data: &[u8], _argv: Vec<String>, _envp: Vec<String>) {
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();
         let (entry, _auxv) = memory_space.parse_and_map_elf(elf_data);
 
         // NOTE: should do termination before switching page table, so that other
-        // threads will trap in by page fault but be terminated before handling
+        // threads will trap in by page fault and be handled by `do_exit`
         log::debug!("[Task::do_execve] terminating all threads except the leader");
         self.with_thread_group(|tg| {
             for t in tg.iter() {
@@ -416,6 +438,8 @@ impl Task {
 
     // NOTE: After all of the threads in a thread group is terminated, the parent
     // process of the thread group is sent a SIGCHLD (or other termination) signal.
+    // WARN: do not call this function directly if a task should be terminated,
+    // instead, call `set_zombie`
     // TODO:
     pub fn do_exit(self: &Arc<Self>) {
         log::info!("thread {} do exit", self.tid());
@@ -441,14 +465,12 @@ impl Task {
                 return;
             }
             let init_proc = TASK_MANAGER.init_proc();
-            children.values().for_each(|c| {
+            for c in children.values() {
                 c.set_zombie();
                 *c.parent.lock() = Some(Arc::downgrade(&init_proc));
-            });
+            }
             init_proc.children.lock().extend(children.clone());
         });
-
-        // release all fd
 
         // NOTE: leader will be removed by parent calling `sys_wait4`
         if !self.is_leader() {
@@ -482,8 +504,8 @@ impl ThreadGroup {
         self.members.insert(task.tid(), Arc::downgrade(&task));
     }
 
-    pub fn remove(&mut self, thread: &Task) {
-        self.members.remove(&thread.tid());
+    pub fn remove(&mut self, task: &Task) {
+        self.members.remove(&task.tid());
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Arc<Task>> + '_ {

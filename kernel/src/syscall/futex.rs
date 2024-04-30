@@ -1,18 +1,17 @@
 use core::{
-    fmt::Error,
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
 
-use systype::{SysError, SysResult, SyscallResult};
+use async_utils::yield_now;
+use systype::{SysError, SyscallResult};
 use time::timespec::TimeSpec;
 use timer::timelimited_task::TimeLimitedTaskFuture;
 
 use crate::{
     mm::{FutexWord, UserReadPtr},
     processor::hart::current_task,
-    task::yield_now,
 };
 
 /// futex - fast user-space locking
@@ -71,7 +70,7 @@ pub async fn sys_futex(
     // const FUTEX_WAKE_BITSET: i32 = 10;
     let futex_op = futex_op & !FUTEX_PRIVATE_FLAG;
     let task = current_task();
-    uaddr.check(task)?;
+    uaddr.check(&task)?;
     match futex_op {
         FUTEX_WAIT => {
             if uaddr.read() != val {
@@ -86,7 +85,7 @@ pub async fn sys_futex(
             if timeout.is_null() {
                 future.await;
             } else {
-                let timeout = timeout.read(task)?;
+                let timeout = timeout.read(&task)?;
                 TimeLimitedTaskFuture::new(timeout.into(), future).await;
             }
         }

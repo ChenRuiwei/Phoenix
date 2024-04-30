@@ -21,14 +21,21 @@ impl TaskQueue {
             queue: SpinNoIrqLock::new(VecDeque::new()),
         }
     }
+
     pub fn push(&self, runnable: Runnable) {
         self.queue.lock().push_back(runnable);
     }
+
     pub fn push_preempt(&self, runnable: Runnable) {
         self.queue.lock().push_front(runnable);
     }
+
     pub fn fetch(&self) -> Option<Runnable> {
         self.queue.lock().pop_front()
+    }
+
+    pub fn len(&self) -> usize {
+        self.queue.lock().len()
     }
 }
 
@@ -58,4 +65,15 @@ pub fn run_until_idle() -> usize {
         n += 1;
     }
     n
+}
+
+pub fn has_task() -> bool {
+    TASK_QUEUE.len() >= 1
+}
+
+/// Return the number of the tasks executed
+pub fn run_one() {
+    if let Some(task) = TASK_QUEUE.fetch() {
+        task.run();
+    }
 }

@@ -129,3 +129,49 @@ where
         Poll::Pending
     }
 }
+
+struct YieldFuture {
+    pub has_yielded: bool,
+}
+
+impl YieldFuture {
+    const fn new() -> Self {
+        Self { has_yielded: false }
+    }
+}
+
+impl Future for YieldFuture {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        match self.has_yielded {
+            true => Poll::Ready(()),
+            false => {
+                self.has_yielded = true;
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+        }
+    }
+}
+
+/// Yield the current thread (the scheduler will switch to the next thread)
+pub async fn yield_now() {
+    YieldFuture::new().await;
+}
+
+pub type Async<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// create an `Async<T::Output>` from a future, usually an async block.
+/// A typical usage is like this:
+/// ```
+/// fn stat(&self) -> ASysResult<NodeStat> {
+///     dyn_future(async {
+///         let f = self.lock.lock().await.stat();
+///         f.await
+///     })
+/// }
+/// ```
+pub fn dyn_future<'a, T: Future + Send + 'a>(async_blk: T) -> Async<'a, T::Output> {
+    Box::pin(async_blk)
+}

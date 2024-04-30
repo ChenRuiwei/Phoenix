@@ -2,6 +2,7 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
+use core::mem::MaybeUninit;
 
 use driver::BlockDevice;
 use spin::Once;
@@ -69,5 +70,19 @@ impl dyn SuperBlock {
 
     pub fn push_inode(&self, inode: Arc<dyn Inode>) {
         self.meta().inodes.lock().push(inode)
+    }
+}
+
+impl<T: Send + Sync + 'static> SuperBlock for MaybeUninit<T> {
+    fn meta(&self) -> &SuperBlockMeta {
+        todo!()
+    }
+
+    fn stat_fs(&self) -> SysResult<StatFs> {
+        todo!()
+    }
+
+    fn sync_fs(&self, wait: isize) -> SysResult<()> {
+        todo!()
     }
 }

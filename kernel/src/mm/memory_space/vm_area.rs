@@ -4,6 +4,7 @@ use core::ops::Range;
 use arch::memory::sfence_vma_vaddr;
 use config::mm::PAGE_SIZE;
 use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
+use vfs_core::File;
 
 use crate::{
     mm::{Page, PageTable},
@@ -87,6 +88,8 @@ pub struct VmArea {
     pub pages: BTreeMap<VirtPageNum, Arc<Page>>,
     pub map_perm: MapPerm,
     pub vma_type: VmAreaType,
+    // For mmap
+    pub backup_file: Option<Arc<dyn File>>,
 }
 
 impl core::fmt::Debug for VmArea {
@@ -115,8 +118,23 @@ impl VmArea {
             pages: BTreeMap::new(),
             vma_type,
             map_perm,
+            backup_file: None,
         };
         log::trace!("[VmArea::new] {new:?}");
+        new
+    }
+
+    pub fn new_mmap(range_va: Range<VirtAddr>, map_perm: MapPerm, file: Arc<dyn File>) -> Self {
+        let start_vpn: VirtPageNum = range_va.start.floor();
+        let end_vpn: VirtPageNum = range_va.end.ceil();
+        let new = Self {
+            range_vpn: start_vpn..end_vpn,
+            pages: BTreeMap::new(),
+            vma_type: VmAreaType::Mmap,
+            map_perm,
+            backup_file: Some(file),
+        };
+        log::trace!("[VmArea::new_mmap] {new:?}");
         new
     }
 
@@ -127,6 +145,7 @@ impl VmArea {
             pages: BTreeMap::new(),
             vma_type: another.vma_type,
             map_perm: another.map_perm,
+            backup_file: another.backup_file.clone(),
         }
     }
 
@@ -192,7 +211,7 @@ impl VmArea {
     /// Assume that all frames were cleared before.
     // HACK: ugly
     pub fn copy_data_with_offset(&self, page_table: &PageTable, offset: usize, data: &[u8]) {
-        debug_assert_eq!(self.vma_type, VmAreaType::Elf);
+        // debug_assert_eq!(self.vma_type, VmAreaType::Elf);
         let _sum_guard = SumGuard::new();
 
         let mut offset = offset;

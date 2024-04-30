@@ -1,4 +1,4 @@
-use config::mm::HART_START_ADDR;
+use config::mm::{HART_START_ADDR, KERNEL_START};
 use driver::{println, sbi};
 
 const BOOT_BANNER: &str = r#"

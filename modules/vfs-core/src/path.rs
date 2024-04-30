@@ -3,10 +3,11 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
+use core::fmt::Error;
 
-use systype::{SysError, SysResult};
+use systype::{SysError, SysResult, SyscallResult};
 
-use crate::Dentry;
+use crate::{dentry, Dentry, InodeMode, OpenFlags};
 
 #[derive(Clone)]
 pub struct Path {
@@ -35,7 +36,8 @@ impl Path {
         }
     }
 
-    pub fn walk(&self) -> SysResult<Arc<dyn Dentry>> {
+    /// Walk until path has been resolved.
+    pub fn walk(&self, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         let path = self.path.as_str();
         let mut dentry = if is_absolute_path(path) {
             self.root.clone()
@@ -48,9 +50,17 @@ impl Path {
                 ".." => {
                     dentry = dentry.parent().ok_or(SysError::ENOENT)?;
                 }
-                name => {
-                    dentry = dentry.lookup(name)?;
-                }
+                // TODO: will create too much negative dentry, may cause trouble
+                name => match dentry.lookup(name) {
+                    Ok(sub_dentry) => {
+                        log::debug!("[Path::walk] sub dentry {}", sub_dentry.name());
+                        dentry = sub_dentry
+                    }
+                    Err(e) => {
+                        log::error!("[Path::walk] error {e:?}");
+                        return Err(e);
+                    }
+                },
             }
         }
         Ok(dentry)
@@ -65,9 +75,17 @@ pub fn is_relative_path(path: &str) -> bool {
     !path.starts_with('/')
 }
 
-pub fn split_path(path_name: &str) -> Vec<&str> {
-    path_name
-        .split('/')
+pub fn split_path(path: &str) -> Vec<&str> {
+    path.split('/')
         .filter(|name| !name.is_empty() && *name != ".")
         .collect()
+}
+
+/// # Example
+///
+/// "/" -> "/"
+/// "/dir/" -> "dir"
+/// "/dir/file" -> "file"
+pub fn get_name(path: &str) -> &str {
+    path.split('/').last().unwrap_or("/")
 }

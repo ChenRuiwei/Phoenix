@@ -1,8 +1,11 @@
 #![no_std]
 #![no_main]
 #![feature(format_args_nl)]
+#![feature(new_uninit)]
 
+mod dev;
 pub mod fd_table;
+pub mod pipe;
 
 extern crate alloc;
 
@@ -16,7 +19,7 @@ use driver::{println, BLOCK_DEVICE};
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
-use vfs_core::{Dentry, DentryMeta, DirEnt, File, FileMeta, FileSystemType, MountFlags};
+use vfs_core::{Dentry, DentryMeta, DirEntry, File, FileMeta, FileSystemType, MountFlags};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
@@ -31,23 +34,24 @@ pub const DISK_FS_NAME: &str = "fat32";
 
 fn register_all_fs() {
     let diskfs = DiskFsType::new();
-    FS_MANAGER.lock().insert(diskfs.fs_name(), diskfs);
+    FS_MANAGER.lock().insert(diskfs.name_string(), diskfs);
 
     log::info!("[vfs] register fs success");
 }
 
 /// Init the filesystem
-pub fn init_filesystem() -> SysResult<()> {
+pub fn init_filesystem() {
     register_all_fs();
     let diskfs = FS_MANAGER.lock().get(DISK_FS_NAME).unwrap().clone();
-    let diskfs_root = diskfs.mount(
-        "/",
-        MountFlags::empty(),
-        Some(BLOCK_DEVICE.get().unwrap().clone()),
-    )?;
+    let diskfs_root = diskfs
+        .mount(
+            "/",
+            MountFlags::empty(),
+            Some(BLOCK_DEVICE.get().unwrap().clone()),
+        )
+        .unwrap();
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);
-    test()?;
-    Ok(())
+    test().unwrap();
 }
 
 pub fn sys_root_dentry() -> Arc<dyn Dentry> {

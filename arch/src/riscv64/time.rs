@@ -29,3 +29,10 @@ pub unsafe fn set_next_timer_irq() {
         .unwrap();
     sbi_rt::set_timer(next_trigger);
 }
+
+pub unsafe fn set_timer_irq(times: usize) {
+    let next_trigger: u64 = (time::read() + times * CLOCK_FREQ / INTERRUPTS_PER_SEC)
+        .try_into()
+        .unwrap();
+    sbi_rt::set_timer(next_trigger);
+}

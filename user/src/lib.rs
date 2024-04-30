@@ -27,7 +27,7 @@ const USER_HEAP_SIZE: usize = 0x32000;
 
 // Note that heap space is allocated in .data segment
 // TODO: can we change to dynamically allocate by invoking sys_sbrk?
-// static mut HEAP_SPACE: [u8; USER_HEAP_SIZE] = [0; USER_HEAP_SIZE];
+static mut HEAP_SPACE: [u8; USER_HEAP_SIZE] = [0; USER_HEAP_SIZE];
 
 #[global_allocator]
 static HEAP: LockedHeap<32> = LockedHeap::empty();
@@ -41,12 +41,13 @@ pub fn handle_alloc_error(layout: core::alloc::Layout) -> ! {
 #[link_section = ".text.entry"]
 pub extern "C" fn _start(argc: usize, argv: usize) -> ! {
     unsafe {
-        // HEAP.lock()
-        //     .init(HEAP_SPACE.as_ptr() as usize, USER_HEAP_SIZE);
+        HEAP.lock()
+            .init(HEAP_SPACE.as_ptr() as usize, USER_HEAP_SIZE);
 
-        const HEAP_START: usize = 0x0000_0002_0000_0000;
-        sys_brk(HEAP_START + USER_HEAP_SIZE);
-        HEAP.lock().init(HEAP_START, USER_HEAP_SIZE);
+        // FIXME: heap alloc will meet trouble when triple fork
+        // const HEAP_START: usize = 0x0000_0002_0000_0000;
+        // sys_brk(HEAP_START + USER_HEAP_SIZE);
+        // HEAP.lock().init(HEAP_START, USER_HEAP_SIZE);
     }
     let mut v: Vec<&'static str> = Vec::new();
     for i in 0..argc {

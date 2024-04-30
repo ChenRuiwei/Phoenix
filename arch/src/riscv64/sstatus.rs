@@ -10,7 +10,10 @@ pub struct Sstatus {
 }
 
 impl Sstatus {
-    #[inline]
+    pub fn bits(&self) -> usize {
+        self.bits
+    }
+
     pub fn fs(&self) -> FS {
         match self.bits.get_bits(13..15) {
             0 => FS::Off,
@@ -20,24 +23,24 @@ impl Sstatus {
             _ => unreachable!(),
         }
     }
-    #[inline]
+
     pub fn set_spie(&mut self, val: bool) {
         self.bits.set_bit(5, val);
     }
-    #[inline]
+
     pub fn set_sie(&mut self, val: bool) {
         self.bits.set_bit(1, val);
     }
-    #[inline]
+
     pub fn set_spp(&mut self, spp: SPP) {
         self.bits.set_bit(8, spp == SPP::Supervisor);
     }
-    #[inline]
+
     pub fn set_fs(&mut self, fs: FS) {
         let v: u8 = unsafe { core::mem::transmute(fs) };
         self.bits.set_bits(13..15, v as usize);
     }
-    #[inline]
+
     pub fn empty() -> Self {
         Self { bits: 0 }
     }
@@ -49,4 +52,11 @@ pub fn read() -> Sstatus {
         asm!("csrr {}, sstatus", out(reg) bits);
     }
     Sstatus { bits }
+}
+
+pub fn write(sstatus: usize) {
+    let bits = sstatus;
+    unsafe {
+        asm!("csrw sstatus, {}", in(reg) bits);
+    }
 }

@@ -17,7 +17,6 @@ memory = { path = "../modules/memory/" }
 async_utils = { path = "../modules/async_utils/" }
 vfs = { path = "../modules/vfs/" }
 vfs-core = { path = "../modules/vfs-core/" }
-irq_count = { path = "../crates/irq_count/" }
 recycle_allocator = { path = "../crates/recycle_allocator/" }
 time = { path = "../modules/time/" }
 timer = { path = "../modules/timer/" }
@@ -35,6 +34,7 @@ spin = { version = "0.9", features = ["lazy"] }
 riscv = "0.11"
 virtio-drivers = { version = "0.7" }
 paste = "1.0"
+strum = { version = "0.26", default_features = false, features = ["derive"] }
 
 
 [build-dependencies]
@@ -43,3 +43,4 @@ config = { path = "../config" }
 [features]
 strace = []
 smp = []
+preempt = []

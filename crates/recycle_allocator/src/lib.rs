@@ -7,6 +7,7 @@ use alloc::collections::BinaryHeap;
 use core::cmp::Reverse;
 
 /// Used for allocating pid & tid
+// TODO: add maximium resource limit
 pub struct RecycleAllocator {
     /// Current max id allocated
     current: usize,

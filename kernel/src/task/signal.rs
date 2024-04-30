@@ -171,9 +171,10 @@ fn ignore(sig: Sig) {
 fn terminate(sig: Sig) {
     log::info!("Recevie signal {}. Action: terminate", sig);
     // exit all the memers of a thread group
-    current_task().with_thread_group(|tg| {
-        for task in tg.iter() {
-            task.do_exit();
+    let task = current_task();
+    task.with_thread_group(|tg| {
+        for t in tg.iter() {
+            t.set_zombie();
         }
     })
 }
@@ -222,11 +223,11 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> SysResult<usize> {
     };
     let ptr = ucontext_ptr.as_usize();
     log::trace!("[save_context_into_sigstack] ucontext_ptr: {ucontext_ptr:?}");
-    ucontext_ptr.write(task, ucontext)?;
+    ucontext_ptr.write(&task, ucontext)?;
     Ok(ptr)
 }
 
-pub struct WaitHandlableSignal(pub &'static Arc<Task>);
+pub struct WaitHandlableSignal(pub Arc<Task>);
 
 impl Future for WaitHandlableSignal {
     type Output = usize;
@@ -261,7 +262,7 @@ impl ITimer {
         Self {
             interval: Duration::ZERO,
             next_expire: Duration::ZERO,
-            now: || get_time_duration(),
+            now: get_time_duration,
             activated: false,
             sig: Sig::SIGALRM,
         }

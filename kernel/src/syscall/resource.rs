@@ -45,7 +45,7 @@ pub fn sys_getrusage(who: i32, usage: UserWritePtr<Rusage>) -> SyscallResult {
             let (total_utime, total_stime) = task.get_process_ustime();
             ret.utime = total_utime.into();
             ret.stime = total_stime.into();
-            usage.write(task, ret)?;
+            usage.write(&task, ret)?;
         }
         RUSAGE_CHILDREN => {
             unimplemented!()

@@ -6,6 +6,7 @@ use arch::{
     interrupts::{disable_interrupt, enable_interrupt},
     time::{get_time_duration, set_next_timer_irq},
 };
+use async_utils::yield_now;
 use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
@@ -15,8 +16,9 @@ use timer::timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
 use crate::{
-    syscall::syscall,
-    task::{signal::do_signal, yield_now, Task},
+    strace,
+    syscall::{syscall, SyscallNo},
+    task::{signal::do_signal, Task},
     trap::set_user_trap,
 };
 
@@ -41,7 +43,6 @@ pub async fn trap_handler(task: &Arc<Task>) {
             cx.set_user_pc_to_next();
             // get system call return value
             let result = syscall(syscall_no, cx.syscall_args()).await;
-
             // cx is changed during sys_exec, so we have to call it again
             cx = task.trap_context_mut();
             let ret = match result {
@@ -71,15 +72,15 @@ pub async fn trap_handler(task: &Arc<Task>) {
 
             let result = task.with_mut_memory_space(|m| m.handle_page_fault(VirtAddr::from(stval)));
             if let Err(_e) = result {
-                task.with_memory_space(|m| m.print_all());
-                task.do_exit()
+                // task.with_memory_space(|m| m.print_all());
+                task.set_zombie();
             }
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             log::warn!(
                 "[trap_handler] detected illegal instruction, stval {stval:#x}, sepc {sepc:#x}",
             );
-            task.do_exit();
+            task.set_zombie();
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");

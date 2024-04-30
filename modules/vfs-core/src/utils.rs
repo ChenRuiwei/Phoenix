@@ -1,4 +1,5 @@
 use alloc::{
+    ffi::CString,
     string::String,
     sync::{Arc, Weak},
 };
@@ -166,9 +167,11 @@ impl NodePermission {
 
 /// Directory entry.
 #[derive(Debug, Clone)]
-pub struct DirEnt {
+#[repr(C)]
+pub struct DirEntry {
     pub ino: u64,
-    pub ty: InodeMode,
+    pub off: u64,
+    pub itype: InodeType,
     pub name: String,
 }
 
@@ -236,6 +239,7 @@ pub enum Time {
 }
 
 bitflags! {
+    #[derive(Debug)]
     pub struct MountFlags:u32 {
         /// This filesystem is mounted read-only.
         const MS_RDONLY = 1;

@@ -10,8 +10,14 @@ config = { path = "../../config/" }
 sync = { path = "../sync/" }
 
 buddy_system_allocator = "0.9"
+linked_list_allocator = "0.10"
 riscv = "0.11"
 spin = "0.9"
 bitflags = "2.5"
 log = "0.4"
 bitmap-allocator = { git = "https://github.com/rcore-os/bitmap-allocator", version = "0.1.0" }
+
+[features]
+default = ["buddy"]
+buddy = []
+linked = []
