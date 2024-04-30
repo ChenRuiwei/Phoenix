@@ -223,11 +223,11 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> SysResult<usize> {
     };
     let ptr = ucontext_ptr.as_usize();
     log::trace!("[save_context_into_sigstack] ucontext_ptr: {ucontext_ptr:?}");
-    ucontext_ptr.write(task, ucontext)?;
+    ucontext_ptr.write(&task, ucontext)?;
     Ok(ptr)
 }
 
-pub struct WaitHandlableSignal(pub &'static Arc<Task>);
+pub struct WaitHandlableSignal(pub Arc<Task>);
 
 impl Future for WaitHandlableSignal {
     type Output = usize;

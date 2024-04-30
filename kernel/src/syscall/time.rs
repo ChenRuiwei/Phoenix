@@ -33,8 +33,9 @@ use crate::{
 ///   - An obsolete parameter historically used for timezone information.
 ///     Typically set to zero or ignored in modern implementations.
 pub fn sys_gettimeofday(tv: UserWritePtr<TimeVal>, _tz: usize) -> SyscallResult {
+    let task = current_task();
     if tv.not_null() {
-        tv.write(current_task(), TimeVal::from_usec(get_time_us()))?;
+        tv.write(&task, TimeVal::from_usec(get_time_us()))?;
     }
     Ok(0)
 }
@@ -42,7 +43,7 @@ pub fn sys_gettimeofday(tv: UserWritePtr<TimeVal>, _tz: usize) -> SyscallResult 
 pub fn sys_times(tms: UserWritePtr<TMS>) -> SyscallResult {
     let task = current_task();
     if tms.not_null() {
-        tms.write(task, TMS::from_task_time_stat(task.time_stat()))?;
+        tms.write(&task, TMS::from_task_time_stat(task.time_stat()))?;
     }
     Ok(0)
 }
@@ -64,15 +65,15 @@ pub async fn sys_nanosleep(
         log::info!("[sys_nanosleep] sleep request is null");
         return Ok(0);
     }
-    let req = req.read(task)?;
+    let req = req.read(&task)?;
     let sleep_ms = req.into_ms();
     let current_ms = get_time_ms();
-    match Select2Futures::new(WaitHandlableSignal(task), ksleep_ms(sleep_ms)).await {
+    match Select2Futures::new(WaitHandlableSignal(task.clone()), ksleep_ms(sleep_ms)).await {
         SelectOutput::Output1(break_ms) => {
             log::info!("[sys_nanosleep] interrupt by signal");
             if !rem.is_null() {
                 let remain_ms = sleep_ms - (break_ms - current_ms);
-                rem.write(task, TimeSpec::from_ms(remain_ms))?;
+                rem.write(&task, TimeSpec::from_ms(remain_ms))?;
             }
             Err(SysError::EINTR)
         }
@@ -85,22 +86,21 @@ pub fn sys_clock_gettime(clockid: usize, tp: UserWritePtr<TimeSpec>) -> SyscallR
     if tp.is_null() {
         return Ok(0);
     }
+    let task = current_task();
     match clockid {
         CLOCK_REALTIME | CLOCK_MONOTONIC => {
             let current = get_time_duration();
             tp.write(
-                current_task(),
+                &task,
                 (unsafe { CLOCK_DEVIATION }[clockid] + current).into(),
             )?;
         }
         CLOCK_PROCESS_CPUTIME_ID => {
-            let task = current_task();
             let cpu_time = task.get_process_cputime();
-            tp.write(task, cpu_time.into())?;
+            tp.write(&task, cpu_time.into())?;
         }
         CLOCK_THREAD_CPUTIME_ID => {
-            let task = current_task();
-            tp.write(task, task.time_stat().cpu_time().into())?;
+            tp.write(&task, task.time_stat().cpu_time().into())?;
         }
         _ => {
             log::error!("[sys_clock_gettime] unsupported clockid{}", clockid);
@@ -119,7 +119,7 @@ pub fn sys_clock_settime(clockid: usize, tp: UserReadPtr<TimeSpec>) -> SyscallRe
         return Err(SysError::EINTR);
     }
     let task = current_task();
-    let tp = tp.read(task)?;
+    let tp = tp.read(&task)?;
     if !tp.is_valid() {
         return Err(SysError::EINTR);
     }
@@ -146,7 +146,8 @@ pub fn sys_clock_getres(_clockid: usize, res: UserWritePtr<TimeSpec>) -> Syscall
     if res.is_null() {
         return Ok(0);
     }
-    res.write(current_task(), Duration::from_nanos(1).into())?;
+    let task = current_task();
+    res.write(&task, Duration::from_nanos(1).into())?;
     Ok(0)
 }
 
@@ -166,13 +167,13 @@ pub fn sys_setitier(
         return Err(SysError::EINVAL);
     }
     let task = current_task();
-    let new = new_value.read(task)?;
+    let new = new_value.read(&task)?;
     if !new.is_valid() {
         return Err(SysError::EINVAL);
     }
     let old = task.with_mut_itimers(|itimers| itimers[which as usize].set(new));
     if old_value.not_null() {
-        old_value.write(task, old)?;
+        old_value.write(&task, old)?;
     }
     Ok(0)
 }
@@ -184,7 +185,7 @@ pub fn sys_getitier(which: i32, curr_value: UserWritePtr<ITimerVal>) -> SyscallR
     if curr_value.not_null() {
         let task = current_task();
         let itimerval = task.with_itimers(|itimers| itimers[which as usize].get());
-        curr_value.write(task, itimerval)?;
+        curr_value.write(&task, itimerval)?;
     }
     Ok(0)
 }

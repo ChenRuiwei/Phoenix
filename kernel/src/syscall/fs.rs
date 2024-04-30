@@ -80,7 +80,7 @@ impl Kstat {
 // TODO:
 pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallResult {
     let task = current_task();
-    let buf = buf.read_array(task, len)?;
+    let buf = buf.read_array(&task, len)?;
     let file = task.with_fd_table(|table| table.get(fd))?;
     let ret = file.write(file.pos(), &buf)?;
     Ok(ret)
@@ -94,7 +94,7 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
 pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
-    let mut buf = buf.into_mut_slice(task, len)?;
+    let mut buf = buf.into_mut_slice(&task, len)?;
     let ret = file.read(file.pos(), &mut buf).await?;
     Ok(ret)
 }
@@ -121,7 +121,7 @@ pub fn sys_openat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32, mode: u32
     let task = current_task();
     let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     let mode = InodeMode::from_bits_truncate(mode);
-    let pathname = pathname.read_cstr(task)?;
+    let pathname = pathname.read_cstr(&task)?;
     log::debug!("[sys_openat] {flags:?}, {mode:?}");
     let dentry = at_helper(dirfd, &pathname, mode)?;
     if flags.contains(OpenFlags::O_CREAT) {
@@ -159,7 +159,7 @@ pub fn sys_close(fd: usize) -> SyscallResult {
 pub fn sys_mkdirat(dirfd: isize, pathname: UserReadPtr<u8>, mode: u32) -> SyscallResult {
     let task = current_task();
     let mode = InodeMode::from_bits_truncate(mode);
-    let pathname = pathname.read_cstr(task)?;
+    let pathname = pathname.read_cstr(&task)?;
     log::debug!("[sys_mkdirat] {mode:?}");
     let dentry = at_helper(dirfd, &pathname, mode)?;
     if !dentry.is_negetive() {
@@ -205,7 +205,7 @@ pub fn sys_getcwd(buf: UserWritePtr<u8>, size: usize) -> SyscallResult {
     let length = core::cmp::min(c_path_len, size);
     let abs_path = CString::new(abs_path).expect("can not have null byte in c string");
     let ret = buf.as_usize();
-    buf.into_mut_slice(task, length)?
+    buf.into_mut_slice(&task, length)?
         .copy_from_slice(&abs_path.into_bytes_with_nul());
     Ok(ret)
 }
@@ -217,7 +217,7 @@ pub fn sys_getcwd(buf: UserWritePtr<u8>, size: usize) -> SyscallResult {
 /// indicate the error.
 pub fn sys_chdir(path: UserReadPtr<u8>) -> SyscallResult {
     let task = current_task();
-    let path = path.read_cstr(task)?;
+    let path = path.read_cstr(&task)?;
     log::debug!("[sys_chdir] path {path}");
     let dentry = resolve_path(&path)?;
     if !dentry.inode()?.itype().is_dir() {
@@ -287,7 +287,7 @@ pub fn sys_dup3(oldfd: usize, newfd: usize, flags: i32) -> SyscallResult {
 pub fn sys_fstat(fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
-    stat_buf.write(task, Kstat::from_vfs_file(file.inode())?)?;
+    stat_buf.write(&task, Kstat::from_vfs_file(file.inode())?)?;
     Ok(0)
 }
 
@@ -299,9 +299,9 @@ pub async fn sys_mount(
     data: UserReadPtr<u8>,
 ) -> SyscallResult {
     let task = current_task();
-    let source = source.read_cstr(task)?;
-    let target = target.read_cstr(task)?; // must absolute? not mentioned in man
-    let fstype = fstype.read_cstr(task)?;
+    let source = source.read_cstr(&task)?;
+    let target = target.read_cstr(&task)?; // must absolute? not mentioned in man
+    let fstype = fstype.read_cstr(&task)?;
     let flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     log::debug!(
         "[sys_mount] source:{source:?}, target:{target:?}, fstype:{fstype:?}, flags:{flags:?}, data:{data:?}",
@@ -343,7 +343,7 @@ pub async fn sys_mount(
 
 pub async fn sys_umount2(target: UserReadPtr<u8>, flags: u32) -> SyscallResult {
     let task = current_task();
-    let mount_path = target.read_cstr(task)?;
+    let mount_path = target.read_cstr(&task)?;
     let flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     log::info!("[sys_umount2] umount path:{mount_path:?}");
     Ok(0)
@@ -380,8 +380,8 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
             return Err(SysError::EINVAL);
         }
         let name_buf = UserWritePtr::<u8>::from(buf.as_usize() + LEN_BEFORE_NAME);
-        buf.write(task, linux_dirent)?;
-        name_buf.write_cstr(task, &dirent.name)?;
+        buf.write(&task, linux_dirent)?;
+        name_buf.write_cstr(&task, &dirent.name)?;
         Ok(ret_len)
     } else {
         Ok(0)
@@ -411,7 +411,7 @@ pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
         log::debug!("[sys_pipe2] read_fd: {fd_read}, write_fd: {fd_write}");
         Ok([fd_read as u32, fd_write as u32])
     })?;
-    pipefd.write(task, pipe)?;
+    pipefd.write(&task, pipe)?;
     Ok(0)
 }
 
@@ -436,7 +436,7 @@ pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
 // FIXME: removal is not delayed, could be done in vfs layer
 pub fn sys_unlinkat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32) -> SyscallResult {
     let task = current_task();
-    let path = pathname.read_cstr(task)?;
+    let path = pathname.read_cstr(&task)?;
     let dentry = at_helper(dirfd, &path, InodeMode::empty())?;
     let parent = dentry.parent().expect("can not remove root directory");
     if flags == AT_REMOVEDIR {

@@ -46,6 +46,7 @@ impl UtsName {
 
 /// uname() returns system information in the structure pointed to by buf.
 pub fn sys_uname(buf: UserWritePtr<UtsName>) -> SyscallResult {
-    buf.write(current_task(), UtsName::default())?;
+    let task = current_task();
+    buf.write(&task, UtsName::default())?;
     Ok(0)
 }

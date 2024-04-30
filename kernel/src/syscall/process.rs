@@ -155,7 +155,7 @@ pub async fn sys_wait4(
                 // wstatus macros can be found in "bits/waitstatus.h"
                 let status = (res_task.exit_code() & 0xff) << 8;
                 log::trace!("[sys_wait4] wstatus: {:#x}", status);
-                wstatus.write(task, status)?;
+                wstatus.write(&task, status)?;
             }
             task.remove_child(res_task.tid());
             TASK_MANAGER.remove(res_task);
@@ -181,17 +181,17 @@ pub async fn sys_execve(
     envp: UserReadPtr<usize>,
 ) -> SyscallResult {
     let task = current_task();
-    let path = path.read_cstr(task)?;
+    let path = path.read_cstr(&task)?;
 
     let read_2d_cstr = |ptr2d: UserReadPtr<usize>| -> SysResult<Vec<String>> {
         let ptr_vec: Vec<UserReadPtr<u8>> = ptr2d
-            .read_cvec(task)?
+            .read_cvec(&task)?
             .into_iter()
             .map(UserReadPtr::from)
             .collect();
         let mut result = Vec::new();
         for ptr in ptr_vec {
-            let str = ptr.read_cstr(task)?;
+            let str = ptr.read_cstr(&task)?;
             result.push(str);
         }
         Ok(result)

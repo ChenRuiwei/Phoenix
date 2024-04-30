@@ -183,6 +183,7 @@ impl Task {
     }
 
     pub fn add_child(&self, child: Arc<Task>) {
+        log::debug!("[Task::add_child] add a new child tid {}", child.tid());
         self.children
             .lock()
             .try_insert(child.tid(), child)

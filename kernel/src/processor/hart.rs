@@ -152,6 +152,6 @@ pub fn init(hart_id: usize) {
     println!("init hart {} finished", hart_id);
 }
 
-pub fn current_task() -> &'static Arc<Task> {
-    local_hart().task()
+pub fn current_task() -> Arc<Task> {
+    local_hart().task().clone()
 }
