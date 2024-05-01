@@ -11,6 +11,7 @@ mod time;
 
 pub use consts::SyscallNo;
 use consts::*;
+pub use fs::resolve_path;
 use fs::*;
 use misc::*;
 use mm::*;

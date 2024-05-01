@@ -201,27 +201,8 @@ pub async fn sys_execve(
     let envp = read_2d_cstr(envp)?;
 
     log::info!("[sys_execve]: path: {path:?}, argv: {argv:?}, envp: {envp:?}",);
-    log::debug!("[sys_execve]: pid: {:?}", task.tid());
 
     // TODO: should we add envp
-    // Mankor: 不知道为什么要加，从 Oops 抄过来的
-    // envp.push(String::from("LD_LIBRARY_PATH=."));
-    // envp.push(String::from("SHELL=/busybox"));
-    // envp.push(String::from("PWD=/"));
-    // envp.push(String::from("USER=root"));
-    // envp.push(String::from("MOTD_SHOWN=pam"));
-    // envp.push(String::from("LANG=C.UTF-8"));
-    // envp.push(String::from(
-    //     "INVOCATION_ID=e9500a871cf044d9886a157f53826684",
-    // ));
-    // envp.push(String::from("TERM=vt220"));
-    // envp.push(String::from("SHLVL=2"));
-    // envp.push(String::from("JOURNAL_STREAM=8:9265"));
-    // envp.push(String::from("OLDPWD=/root"));
-    // envp.push(String::from("_=busybox"));
-    // envp.push(String::from("LOGNAME=root"));
-    // envp.push(String::from("HOME=/"));
-    // envp.push(String::from("PATH=/"));
 
     let mut elf_data = Vec::new();
     let file = resolve_path(&path)?.open()?;

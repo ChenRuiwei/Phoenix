@@ -17,7 +17,10 @@ impl BlockDevice for VirtIOBlkDev {
     fn read_blocks(&self, block_id: usize, buf: &mut [u8]) {
         let res = self.0.lock().read_blocks(block_id, buf);
         if res.is_err() {
-            panic!("Error when reading VirtIOBlk, block_id {}", block_id);
+            panic!(
+                "Error when reading VirtIOBlk, block_id {} ,err {:?} ",
+                block_id, res
+            );
         }
     }
 

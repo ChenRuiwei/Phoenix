@@ -47,7 +47,7 @@ impl FileSystemType for FatFsType {
 
 pub struct FatSuperBlock {
     meta: SuperBlockMeta,
-    fs: FatFs,
+    fs: Arc<FatFs>,
 }
 
 impl FatSuperBlock {
@@ -55,15 +55,17 @@ impl FatSuperBlock {
         let blk_dev = meta.device.clone();
         Arc::new(Self {
             meta,
-            fs: FatFs::new(
-                DiskCursor {
-                    sector: 0,
-                    offset: 0,
-                    blk_dev,
-                },
-                fatfs::FsOptions::new(),
-            )
-            .unwrap(),
+            fs: Arc::new(
+                FatFs::new(
+                    DiskCursor {
+                        sector: 0,
+                        offset: 0,
+                        blk_dev,
+                    },
+                    fatfs::FsOptions::new(),
+                )
+                .unwrap(),
+            ),
         })
     }
 }

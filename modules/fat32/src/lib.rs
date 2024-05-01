@@ -1,9 +1,11 @@
 #![no_std]
 #![no_main]
+#![feature(format_args_nl)]
 
 use alloc::sync::Arc;
+use core::mem::size_of;
 
-use driver::BlockDevice;
+use driver::{println, BlockDevice};
 use fatfs::{DefaultTimeProvider, Dir, Error, File, FileSystem, LossyOemCpConverter};
 use sync::mutex::SpinNoIrqLock;
 use systype::SysError;
@@ -36,26 +38,30 @@ pub const fn as_sys_err(err: fatfs::Error<()>) -> systype::SysError {
     }
 }
 
+#[derive(Clone)]
 pub struct DiskCursor {
     sector: u64,
     offset: usize,
     blk_dev: Arc<dyn BlockDevice>,
 }
 
-unsafe impl Sync for DiskCursor {}
-unsafe impl Send for DiskCursor {}
-
 impl DiskCursor {
     fn get_position(&self) -> usize {
+        log::trace!(
+            "[DiskCursor::get_position] position {}",
+            (self.sector * 0x200) as usize + self.offset
+        );
         (self.sector * 0x200) as usize + self.offset
     }
 
     fn set_position(&mut self, position: usize) {
+        log::trace!("[DiskCursor::set_position] position {position}");
         self.sector = (position / 0x200) as u64;
         self.offset = position % 0x200;
     }
 
     fn move_cursor(&mut self, amount: usize) {
+        log::trace!("[DiskCursor::move_cursor] amount {amount}",);
         self.set_position(self.get_position() + amount)
     }
 }
@@ -136,12 +142,14 @@ impl fatfs::Seek for DiskCursor {
     fn seek(&mut self, pos: fatfs::SeekFrom) -> Result<u64, Self::Error> {
         match pos {
             fatfs::SeekFrom::Start(i) => {
+                log::debug!("Seek, start {i}",);
                 self.set_position(i as usize);
                 Ok(i)
             }
             fatfs::SeekFrom::End(_) => unreachable!(),
             fatfs::SeekFrom::Current(i) => {
                 let new_pos = (self.get_position() as i64) + i;
+                log::debug!("Seek, current {new_pos}",);
                 self.set_position(new_pos as usize);
                 Ok(new_pos as u64)
             }

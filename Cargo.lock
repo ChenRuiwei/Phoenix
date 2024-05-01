@@ -178,6 +178,7 @@ dependencies = [
 name = "fat32"
 version = "0.1.0"
 dependencies = [
+ "arch",
  "async-trait",
  "downcast-rs",
  "driver",
@@ -191,7 +192,7 @@ dependencies = [
 [[package]]
 name = "fatfs"
 version = "0.4.0"
-source = "git+https://github.com/ChenRuiwei/rust-fatfs#35a9dd0363257fd855c111cb95eb04f751f14760"
+source = "git+https://github.com/ChenRuiwei/rust-fatfs?branch=smp#1f4c8d9194d13e78252936741fd8d835f48c850b"
 dependencies = [
  "bitflags",
  "log",
