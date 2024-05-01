@@ -12,6 +12,7 @@ use core::{
 
 use arch::memory::sfence_vma_all;
 use config::{mm::USER_STACK_SIZE, process::INIT_PROC_PID};
+use futex::Futexes;
 use memory::VirtAddr;
 use signal::{
     action::{SigHandlers, SigPending},
@@ -95,6 +96,7 @@ pub struct Task {
     sig_ucontext_ptr: AtomicUsize,
     time_stat: SyncUnsafeCell<TaskTimeStat>,
     itimers: Shared<[ITimer; 3]>,
+    futexes: Shared<Futexes>,
 }
 
 impl core::fmt::Debug for Task {
@@ -162,6 +164,7 @@ impl Task {
                 ITimer::new_virtual(),
                 ITimer::new_prof(),
             ]),
+            futexes: new_shared(Futexes::new()),
         });
         task.thread_group.lock().push(task.clone());
 
@@ -322,6 +325,7 @@ impl Task {
         let cwd;
         let itimers;
         let fd_table;
+        let futexes;
         if flags.contains(CloneFlags::THREAD) {
             is_leader = false;
             leader = Some(Arc::downgrade(self));
@@ -331,6 +335,7 @@ impl Task {
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
             fd_table = self.fd_table.clone();
+            futexes = self.futexes.clone();
         } else {
             is_leader = true;
             leader = None;
@@ -344,6 +349,7 @@ impl Task {
             ]);
             cwd = new_shared(self.cwd());
             fd_table = new_shared(self.fd_table.lock().clone());
+            futexes = new_shared(Futexes::new());
         }
 
         let memory_space;
@@ -381,6 +387,7 @@ impl Task {
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
             itimers,
+            futexes,
         });
 
         if !flags.contains(CloneFlags::THREAD) {
@@ -478,6 +485,7 @@ impl Task {
     with_!(thread_group, ThreadGroup);
     with_!(sig_pending, SigPending);
     with_!(itimers, [ITimer; 3]);
+    with_!(futexes, Futexes);
 }
 
 /// Hold a group of threads which belongs to the same process.

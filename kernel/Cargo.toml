@@ -20,6 +20,7 @@ vfs-core = { path = "../modules/vfs-core/" }
 recycle_allocator = { path = "../crates/recycle_allocator/" }
 time = { path = "../modules/time/" }
 timer = { path = "../modules/timer/" }
+futex = { path = "../modules/futex/" }
 
 cfg-if = "1.0"
 crate_interface = "0.1"

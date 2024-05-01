@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use arch::time::{get_time_duration, get_time_ms, get_time_us};
 use async_utils::{Select2Futures, SelectOutput};
-use systype::{SysError, SysResult, SyscallResult};
+use systype::{SysError, SyscallResult};
 use time::{
     timespec::TimeSpec,
     timeval::{ITimerVal, TimeVal},
@@ -15,7 +15,7 @@ use timer::timelimited_task::ksleep_ms;
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
-    task::signal::{ITimer, WaitHandlableSignal},
+    task::signal::WaitHandlableSignal,
 };
 
 /// Retrieves the current time of day.

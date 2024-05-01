@@ -8,7 +8,6 @@ use vfs::{sys_root_dentry, DISK_FS_NAME, FS_MANAGER};
 use vfs_core::{InodeMode, OpenFlags, AT_FDCWD};
 
 use crate::{
-    loader::get_app_data_by_name,
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     syscall::{at_helper, resolve_path},

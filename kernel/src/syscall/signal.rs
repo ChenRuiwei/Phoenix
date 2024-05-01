@@ -218,6 +218,8 @@ pub async fn sys_sigsuspend(mask: UserReadPtr<SigSet>) -> SyscallResult {
     let task = current_task();
     let mut mask = mask.read(&task)?;
     let oldmask = task.sig_mask_replace(&mut mask);
+    // TODO:这里可以改成WaitHandlableSignal这样或许更快？
+    // WaitHandlableSignal(task).await
     loop {
         yield_now().await;
         if task.with_mut_sig_pending(|pending| -> bool {

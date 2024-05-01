@@ -1,5 +1,3 @@
-use core::time::Duration;
-
 use systype::{SysError, SyscallResult};
 use time::timeval::TimeVal;
 

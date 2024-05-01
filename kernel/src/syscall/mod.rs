@@ -2,6 +2,7 @@
 
 mod consts;
 mod fs;
+pub mod futex;
 mod misc;
 mod mm;
 mod process;
@@ -9,6 +10,7 @@ mod resource;
 mod signal;
 mod time;
 
+use ::futex::RobustListHead;
 pub use consts::SyscallNo;
 use consts::*;
 pub use fs::resolve_path;
@@ -21,6 +23,11 @@ use resource::*;
 use signal::*;
 use systype::SyscallResult;
 use time::*;
+
+use crate::{
+    mm::{FutexWord, UserReadPtr, UserWritePtr},
+    syscall::futex::{sys_futex, sys_get_robust_list, sys_set_robust_list},
+};
 
 #[cfg(feature = "strace")]
 pub const STRACE_COLOR_CODE: u8 = 35; // Purple
@@ -120,6 +127,26 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         CLOCK_GETRES => sys_clock_getres(args[0], args[1].into()),
         GETITIMER => sys_getitier(args[0] as _, args[1].into()),
         SETITIMER => sys_setitier(args[0] as _, args[1].into(), args[2].into()),
+        // Futex
+        FUTEX => {
+            sys_futex(
+                FutexWord::from(args[0]),
+                args[1] as i32,
+                args[2] as u32,
+                args[3] as u32,
+                args[4] as u32,
+                args[5] as u32,
+            )
+            .await
+        }
+        GET_ROBUST_LIST => sys_get_robust_list(
+            args[0] as i32,
+            UserWritePtr::<RobustListHead>::from(args[1]),
+            UserWritePtr::<usize>::from(args[2]),
+        ),
+        SET_ROBUST_LIST => {
+            sys_set_robust_list(UserReadPtr::<RobustListHead>::from(args[0]), args[1])
+        }
         // Miscellaneous
         UNAME => sys_uname(args[0].into()),
         GETRUSAGE => sys_getrusage(args[0] as _, args[1].into()),

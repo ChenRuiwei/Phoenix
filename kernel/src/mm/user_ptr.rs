@@ -5,7 +5,7 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
     fmt::{Debug, Display, Formatter},
-    intrinsics::size_of,
+    intrinsics::{atomic_load_acquire, size_of},
     marker::PhantomData,
     ops::ControlFlow,
 };
@@ -392,7 +392,7 @@ impl<T: Clone + Copy + 'static, P: Policy> Display for UserPtr<T, P> {
 }
 
 impl Task {
-    fn just_ensure_user_area(
+    pub fn just_ensure_user_area(
         &self,
         begin: VirtAddr,
         len: usize,
@@ -477,5 +477,25 @@ impl PageFaultAccessType {
             scause::Exception::StorePageFault => Self::RW,
             _ => panic!("unexcepted exception type for PageFaultAccessType"),
         }
+    }
+}
+
+pub struct FutexWord(u32);
+impl FutexWord {
+    pub fn from(a: usize) -> Self {
+        Self(a as u32)
+    }
+    pub fn raw(&self) -> u32 {
+        self.0
+    }
+    pub fn check(&self, task: &Arc<Task>) -> SysResult<()> {
+        task.just_ensure_user_area(
+            VirtAddr::from(self.0 as usize),
+            size_of::<u32>(),
+            PageFaultAccessType::RO,
+        )
+    }
+    pub fn read(&self) -> u32 {
+        unsafe { atomic_load_acquire(self.0 as *const u32) }
     }
 }
