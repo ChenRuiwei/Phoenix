@@ -82,13 +82,11 @@ impl VirtAddr {
         VirtPageNum((self.0 + PAGE_SIZE - 1) / PAGE_SIZE)
     }
 
-    /// Get page offset
     pub fn page_offset(&self) -> usize {
         self.0 & PAGE_MASK
     }
 
-    /// Check page aligned
-    pub fn aligned(&self) -> bool {
+    pub fn is_aligned(&self) -> bool {
         self.page_offset() == 0
     }
 

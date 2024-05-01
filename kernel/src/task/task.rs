@@ -33,7 +33,11 @@ use super::{
     tid::{Pid, Tid, TidHandle},
 };
 use crate::{
-    mm::{memory_space, MemorySpace},
+    mm::{
+        memory_space::{self, init_stack},
+        MemorySpace,
+    },
+    processor::env::SumGuard,
     syscall,
     task::{manager::TASK_MANAGER, schedule, tid::alloc_tid},
     trap::TrapContext,
@@ -401,10 +405,10 @@ impl Task {
 
     // TODO: figure out what should be reserved across this syscall
     // TODO: support CLOSE_ON_EXEC flag may be
-    pub fn do_execve(&self, elf_data: &[u8], _argv: Vec<String>, _envp: Vec<String>) {
+    pub fn do_execve(&self, elf_data: &[u8], argv: Vec<String>, envp: Vec<String>) {
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();
-        let (entry, _auxv) = memory_space.parse_and_map_elf(elf_data);
+        let (entry, auxv) = memory_space.parse_and_map_elf(elf_data);
 
         // NOTE: should do termination before switching page table, so that other
         // threads will trap in by page fault and be handled by `do_exit`
@@ -426,14 +430,17 @@ impl Task {
 
         // alloc stack, and push argv, envp and auxv
         log::debug!("[Task::do_execve] allocing stack");
-        let stack_begin = self.with_mut_memory_space(|m| m.alloc_stack(USER_STACK_SIZE));
+        let sp_init = self.with_mut_memory_space(|m| m.alloc_stack(USER_STACK_SIZE));
+
+        let guard = SumGuard::new();
+        init_stack(sp_init, argv, envp, auxv);
 
         // alloc heap
         self.with_mut_memory_space(|m| m.alloc_heap_lazily());
 
         // init trap context
         self.trap_context_mut()
-            .init_user(stack_begin.into(), entry, 0, 0, 0);
+            .init_user(sp_init.into(), entry, 0, 0, 0);
     }
 
     // NOTE: After all of the threads in a thread group is terminated, the parent
