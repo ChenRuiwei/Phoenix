@@ -7,4 +7,3 @@ edition = "2021"
 
 [dependencies]
 hashbrown = "0.14"
-memory = { path = "../memory/" }

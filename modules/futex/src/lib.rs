@@ -2,13 +2,22 @@
 #![no_main]
 
 extern crate alloc;
-use core::{cell::UnsafeCell, task::Waker};
+use core::{cell::UnsafeCell, ptr, sync::atomic::AtomicPtr, task::Waker};
 
 use hashbrown::HashMap;
 
 pub(crate) type Tid = usize;
 pub struct Futexes {
-    map: HashMap<u32, UnsafeCell<HashMap<Tid, Waker>>>,
+    pub map: HashMap<u32, UnsafeCell<HashMap<Tid, Waker>>>,
+    pub robust_list: AtomicPtr<RobustListHead>,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct RobustListHead {
+    pub list: usize,
+    pub futex_offset: usize,
+    pub list_op_pending: usize,
 }
 
 fn pop_waiter(waiters: &mut HashMap<Tid, Waker>) -> Option<(Tid, Waker)> {
@@ -28,6 +37,7 @@ impl Futexes {
     pub fn new() -> Self {
         Self {
             map: HashMap::new(),
+            robust_list: AtomicPtr::new(ptr::null_mut()),
         }
     }
 

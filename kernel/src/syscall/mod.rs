@@ -10,6 +10,7 @@ mod resource;
 mod signal;
 mod time;
 
+use ::futex::RobustListHead;
 pub use consts::SyscallNo;
 use fs::*;
 use misc::*;
@@ -21,7 +22,10 @@ use signal::*;
 use systype::SyscallResult;
 use time::*;
 
-use crate::{mm::FutexWord, syscall::futex::sys_futex};
+use crate::{
+    mm::{FutexWord, UserReadPtr, UserWritePtr},
+    syscall::futex::{sys_futex, sys_get_robust_list, sys_set_robust_list},
+};
 
 #[cfg(feature = "strace")]
 pub const STRACE_COLOR_CODE: u8 = 35; // Purple
@@ -132,6 +136,14 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
                 args[5] as u32,
             )
             .await
+        }
+        GET_ROBUST_LIST => sys_get_robust_list(
+            args[0] as i32,
+            UserWritePtr::<RobustListHead>::from(args[1]),
+            UserWritePtr::<usize>::from(args[2]),
+        ),
+        SET_ROBUST_LIST => {
+            sys_set_robust_list(UserReadPtr::<RobustListHead>::from(args[0]), args[1])
         }
         // Miscellaneous
         UNAME => sys_uname(args[0].into()),

@@ -203,7 +203,6 @@ name = "futex"
 version = "0.1.0"
 dependencies = [
  "hashbrown",
- "memory",
 ]
 
 [[package]]

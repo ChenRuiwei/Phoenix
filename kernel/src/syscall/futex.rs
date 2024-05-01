@@ -1,17 +1,21 @@
 use core::{
     future::Future,
+    mem,
     pin::Pin,
+    sync::atomic::Ordering,
     task::{Context, Poll},
 };
 
 use async_utils::yield_now;
+use futex::{Futexes, RobustListHead};
 use systype::{SysError, SyscallResult};
 use time::timespec::TimeSpec;
 use timer::timelimited_task::TimeLimitedTaskFuture;
 
 use crate::{
-    mm::{FutexWord, UserReadPtr},
+    mm::{FutexWord, UserReadPtr, UserWritePtr},
     processor::hart::current_task,
+    task::TASK_MANAGER,
 };
 
 /// futex - fast user-space locking
@@ -140,4 +144,43 @@ impl Future for FutexFuture {
             Poll::Ready(())
         })
     }
+}
+
+/// actually this syscall has no actual effect
+pub fn sys_get_robust_list(
+    pid: i32,
+    robust_list_head: UserWritePtr<RobustListHead>,
+    len_ptr: UserWritePtr<usize>,
+) -> SyscallResult {
+    let Some(task) = TASK_MANAGER.get(pid as usize) else {
+        return Err(SysError::ESRCH);
+    };
+    if !task.is_leader() {
+        return Err(SysError::ESRCH);
+    }
+    // UserReadPtr::<RobustListHead>::from(value)
+    len_ptr.write(&task, mem::size_of::<RobustListHead>())?;
+    robust_list_head.write(&task, unsafe {
+        *task.with_futexes(|futexes| futexes.robust_list.load(Ordering::SeqCst))
+    })?;
+    Ok(0)
+}
+
+/// actually this syscall has no actual effect
+pub fn sys_set_robust_list(
+    robust_list_head: UserReadPtr<RobustListHead>,
+    len: usize,
+) -> SyscallResult {
+    let task = current_task();
+    if len != mem::size_of::<RobustListHead>() {
+        return Err(SysError::EINVAL);
+    }
+    let head = robust_list_head.into_ref(&task)?;
+    task.with_mut_futexes(|futexes| {
+        futexes.robust_list.store(
+            head as *const RobustListHead as *mut RobustListHead,
+            Ordering::SeqCst,
+        )
+    });
+    Ok(0)
 }
