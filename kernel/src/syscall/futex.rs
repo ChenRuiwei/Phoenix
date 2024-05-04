@@ -43,7 +43,7 @@ pub async fn sys_futex(
     /// Tells the kernel that the futex is process-private and not shared with
     /// another process. This OS doesn't support this flag
     const FUTEX_PRIVATE_FLAG: i32 = 0x80;
-    const FUTEX_CLOCK_REALTIME: i32 = 0x100;
+    // const FUTEX_CLOCK_REALTIME: i32 = 0x100;
     /// Tests that the value at the futex word pointed to by the address uaddr
     /// still contains the expected value val, and if so, then sleeps
     /// waiting for a FUTEX_WAKE operation on the futex word.
@@ -55,7 +55,7 @@ pub async fn sys_futex(
     /// awoken
     const FUTEX_WAKE: i32 = 1;
     // TODO: need fild descriptor
-    const FUTEX_FD: i32 = 2;
+    // const FUTEX_FD: i32 = 2;
     /// Performs the same task as FUTEX_CMP_REQUEUE (see
     /// below), except that no check is made using the value in val3. (The
     /// argument val3 is ignored.)

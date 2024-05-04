@@ -1,5 +1,6 @@
 extern crate alloc;
 use alloc::collections::VecDeque;
+use core::task::Waker;
 
 use crate::sigset::{Sig, SigSet, NSIG};
 
@@ -44,12 +45,15 @@ impl Action {
 }
 
 /// 存储着进程接收到的信号队列,当进程接收到一个信号时，
-/// 就需要把接收到的信号添加到 pending 这个队列中。TODO:可否只留有一个bitmap?
+/// 就需要把接收到的信号添加到 pending
+/// 这个队列中，即使被block了，因为在被解除block时task还是会接着处理这个信号。
+/// TODO:可否只留有一个bitmap?
 pub struct SigPending {
     /// 接收到的所有信号
     pub queue: VecDeque<Sig>,
     /// 比特位的内容代表是否收到信号，主要用来防止queue收到重复信号
     pub bitmap: SigSet,
+    // pub waker: Option<Waker>,
 }
 
 impl SigPending {

@@ -77,6 +77,10 @@ impl Task {
             false => {
                 debug_assert!(self.is_leader());
                 self.with_mut_thread_group(|tg| {
+                    // The thread group will prioritize selecting a thread that has not blocked the
+                    // signal. If all threads have blocked the signal, a random thread will be
+                    // selected to receive the signal
+                    let mut signal_delivered = false;
                     for task in tg.iter() {
                         if task.sig_mask().contain_signal(sig) {
                             continue;
@@ -84,14 +88,18 @@ impl Task {
                         task.with_mut_sig_pending(|pending| {
                             pending.add(sig);
                         });
+                        signal_delivered = true;
                         break;
+                    }
+                    if !signal_delivered {
+                        let task = tg.iter().next().unwrap();
+                        task.with_mut_sig_pending(|pending| {
+                            pending.add(sig);
+                        });
                     }
                 })
             }
             true => {
-                if self.sig_mask().contain_signal(sig) {
-                    return;
-                }
                 self.with_mut_sig_pending(|pending| {
                     pending.add(sig);
                 });
