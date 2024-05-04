@@ -41,7 +41,7 @@ impl File for FatDirFile {
         Err(SysError::EISDIR)
     }
 
-    fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         Err(SysError::EISDIR)
     }
 

@@ -74,6 +74,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         WAIT4 => sys_wait4(args[0] as _, args[1].into(), args[2] as _, args[3]).await,
         GETPID => sys_getpid(),
         GETPPID => sys_getppid(),
+        SET_TID_ADDRESS => sys_set_tid_address(args[0]),
         // Memory
         BRK => sys_brk(args[0].into()),
         MMAP => sys_mmap(
@@ -110,6 +111,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         }
         UMOUNT2 => sys_umount2(args[0].into(), args[1] as _).await,
         PIPE2 => sys_pipe2(args[0].into(), args[1] as _),
+        IOCTL => sys_ioctl(args[0], args[1], args[2]),
         // Signal
         RT_SIGPROCMASK => sys_sigprocmask(args[0], args[1].into(), args[2].into()),
         RT_SIGACTION => sys_sigaction(args[0] as _, args[1].into(), args[2].into()),

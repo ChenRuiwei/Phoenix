@@ -29,7 +29,7 @@ impl FileSystemType for FatFsType {
         flags: vfs_core::MountFlags,
         dev: Option<Arc<dyn driver::BlockDevice>>,
     ) -> systype::SysResult<Arc<dyn vfs_core::Dentry>> {
-        let dev = dev.unwrap();
+        debug_assert!(dev.is_some());
         let sb = FatSuperBlock::new(SuperBlockMeta::new(dev, self.clone()));
         let root_inode = FatDirInode::new(sb.clone(), sb.fs.root_dir());
         // FIXME: abs_mnt_path should not passed into dentry.
@@ -52,7 +52,7 @@ pub struct FatSuperBlock {
 
 impl FatSuperBlock {
     pub fn new(meta: SuperBlockMeta) -> Arc<Self> {
-        let blk_dev = meta.device.clone();
+        let blk_dev = meta.device.as_ref().unwrap().clone();
         Arc::new(Self {
             meta,
             fs: Arc::new(

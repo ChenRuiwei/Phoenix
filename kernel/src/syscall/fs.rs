@@ -4,7 +4,8 @@ use driver::BLOCK_DEVICE;
 use systype::{SysError, SysResult, SyscallResult};
 use vfs::{pipe::new_pipe, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    is_absolute_path, Dentry, Inode, InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD, AT_REMOVEDIR,
+    is_absolute_path, Dentry, Inode, InodeMode, InodeType, MountFlags, OpenFlags, Path, AT_FDCWD,
+    AT_REMOVEDIR,
 };
 
 use crate::{
@@ -82,7 +83,7 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
     let task = current_task();
     let buf = buf.read_array(&task, len)?;
     let file = task.with_fd_table(|table| table.get(fd))?;
-    let ret = file.write(file.pos(), &buf)?;
+    let ret = file.write(file.pos(), &buf).await?;
     Ok(ret)
 }
 
@@ -444,6 +445,12 @@ pub fn sys_unlinkat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32) -> Sysc
     } else {
         parent.unlink(dentry.name())
     }
+}
+
+pub fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> SyscallResult {
+    let task = current_task();
+    let file = task.with_fd_table(|table| table.get(fd))?;
+    file.ioctl(cmd, arg)
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as

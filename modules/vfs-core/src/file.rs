@@ -6,7 +6,7 @@ use core::{
 
 use async_trait::async_trait;
 use config::mm::PAGE_SIZE;
-use systype::{ASyscallResult, SysResult, SyscallResult};
+use systype::{ASyscallResult, SysError, SysResult, SyscallResult};
 
 use crate::{Dentry, DirEntry, Inode, InodeType, SeekFrom};
 
@@ -44,7 +44,7 @@ pub trait File: Send + Sync + 'static {
     ///
     /// On success, the number of bytes written is returned, and the file offset
     /// is incremented by the number of bytes actually written.
-    fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult;
+    async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult;
 
     /// Read directory entries. This is called by the getdents(2) system call.
     ///
@@ -53,6 +53,10 @@ pub trait File: Send + Sync + 'static {
     fn read_dir(&self) -> SysResult<Option<DirEntry>>;
 
     fn flush(&self) -> SysResult<usize>;
+
+    fn ioctl(&self, cmd: usize, arg: usize) -> SyscallResult {
+        Err(SysError::ENOTTY)
+    }
 
     fn inode(&self) -> Arc<dyn Inode> {
         self.meta().inode.clone()

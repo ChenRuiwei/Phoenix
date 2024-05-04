@@ -131,7 +131,7 @@ where
 }
 
 struct YieldFuture {
-    pub has_yielded: bool,
+    has_yielded: bool,
 }
 
 impl YieldFuture {
@@ -158,6 +158,34 @@ impl Future for YieldFuture {
 /// Yield the current thread (the scheduler will switch to the next thread)
 pub async fn yield_now() {
     YieldFuture::new().await;
+}
+
+struct QuitFuture {
+    has_quit: bool,
+}
+
+impl QuitFuture {
+    const fn new() -> Self {
+        Self { has_quit: false }
+    }
+}
+
+impl Future for QuitFuture {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        match self.has_quit {
+            true => Poll::Ready(()),
+            false => {
+                self.has_quit = true;
+                Poll::Pending
+            }
+        }
+    }
+}
+
+pub async fn quit_now() {
+    QuitFuture::new().await
 }
 
 pub type Async<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;

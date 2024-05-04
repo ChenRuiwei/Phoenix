@@ -3,7 +3,7 @@ use alloc::{sync::Arc, vec::Vec};
 use systype::{SysError, SysResult};
 use vfs_core::File;
 
-use crate::dev::stdio::{StdInFile, StdOutFile};
+use crate::devfs::stdio::{StdInFile, StdOutFile};
 
 pub type Fd = usize;
 

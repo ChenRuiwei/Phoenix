@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
-use driver::print;
+use driver::{print, sbi::console_getchar};
 use systype::SyscallResult;
 use vfs_core::{File, FileMeta, Inode, InodeMeta, InodeMode};
 
@@ -46,7 +46,7 @@ impl File for StdOutFile {
         todo!()
     }
 
-    fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         if let Ok(data) = core::str::from_utf8(buf) {
             print!("{}", data);
         } else {
@@ -105,7 +105,7 @@ impl File for StdInFile {
         todo!()
     }
 
-    fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
         todo!()
     }
 

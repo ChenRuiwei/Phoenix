@@ -85,7 +85,7 @@ impl File for PipeWriteFile {
         todo!()
     }
 
-    fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
         let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()
@@ -131,7 +131,7 @@ impl File for PipeReadFile {
         }
         let mut pipe_buf = pipe.buf.lock();
         let len = core::cmp::min(pipe_buf.len(), buf.len());
-        for i in (0..len) {
+        for i in 0..len {
             buf[i] = pipe_buf
                 .dequeue()
                 .expect("Just checked for len, should not fail");
@@ -139,7 +139,7 @@ impl File for PipeReadFile {
         Ok(len)
     }
 
-    fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
         todo!()
     }
 

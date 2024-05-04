@@ -3,9 +3,10 @@
 #![feature(format_args_nl)]
 #![feature(new_uninit)]
 
-mod dev;
+pub mod devfs;
 pub mod fd_table;
 pub mod pipe;
+pub mod simplefs;
 
 extern crate alloc;
 
@@ -20,6 +21,8 @@ use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
 use vfs_core::{Dentry, DentryMeta, DirEntry, File, FileMeta, FileSystemType, MountFlags};
+
+use crate::devfs::DevFsType;
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
@@ -36,6 +39,8 @@ fn register_all_fs() {
     let diskfs = DiskFsType::new();
     FS_MANAGER.lock().insert(diskfs.name_string(), diskfs);
 
+    let devfs = DevFsType::new();
+    FS_MANAGER.lock().insert(devfs.name_string(), devfs);
     log::info!("[vfs] register fs success");
 }
 
@@ -50,7 +55,11 @@ pub fn init_filesystem() {
             Some(BLOCK_DEVICE.get().unwrap().clone()),
         )
         .unwrap();
+
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);
+
+    let devfs = FS_MANAGER.lock().get("devfs").unwrap().clone();
+    devfs.mount("/dev", MountFlags::empty(), None);
     test().unwrap();
 }
 

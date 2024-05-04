@@ -167,7 +167,10 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     }
 
     pub fn read(self, task: &Arc<Task>) -> SysResult<T> {
-        debug_assert!(self.not_null());
+        if self.is_null() {
+            return Err(SysError::EFAULT);
+        }
+        // debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>(),

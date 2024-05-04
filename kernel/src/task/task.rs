@@ -101,6 +101,8 @@ pub struct Task {
     time_stat: SyncUnsafeCell<TaskTimeStat>,
     itimers: Shared<[ITimer; 3]>,
     futexes: Shared<Futexes>,
+    ///
+    tid_address: SyncUnsafeCell<TidAddress>,
 }
 
 impl core::fmt::Debug for Task {
@@ -169,6 +171,7 @@ impl Task {
                 ITimer::new_prof(),
             ]),
             futexes: new_shared(Futexes::new()),
+            tid_address: SyncUnsafeCell::new(TidAddress::new()),
         });
         task.thread_group.lock().push(task.clone());
 
@@ -305,6 +308,10 @@ impl Task {
         unsafe { &mut *self.time_stat.get() }
     }
 
+    pub fn tid_address(&self) -> &mut TidAddress {
+        unsafe { &mut *self.tid_address.get() }
+    }
+
     pub unsafe fn switch_page_table(&self) {
         self.memory_space.lock().switch_page_table()
     }
@@ -392,6 +399,7 @@ impl Task {
             sig_ucontext_ptr: AtomicUsize::new(0),
             itimers,
             futexes,
+            tid_address: SyncUnsafeCell::new(TidAddress::new()),
         });
 
         if !flags.contains(CloneFlags::THREAD) {
@@ -433,14 +441,14 @@ impl Task {
         let sp_init = self.with_mut_memory_space(|m| m.alloc_stack(USER_STACK_SIZE));
 
         let guard = SumGuard::new();
-        init_stack(sp_init, argv, envp, auxv);
+        let (sp, argc, argv, envp) = init_stack(sp_init, argv, envp, auxv);
 
         // alloc heap
         self.with_mut_memory_space(|m| m.alloc_heap_lazily());
 
         // init trap context
         self.trap_context_mut()
-            .init_user(sp_init.into(), entry, 0, 0, 0);
+            .init_user(sp, entry, argc, argv, envp);
     }
 
     // NOTE: After all of the threads in a thread group is terminated, the parent
@@ -517,5 +525,24 @@ impl ThreadGroup {
 
     pub fn iter(&self) -> impl Iterator<Item = Arc<Task>> + '_ {
         self.members.values().map(|t| t.upgrade().unwrap())
+    }
+}
+
+/// Tid address which may be set by `set_tid_address` syscall.
+pub struct TidAddress {
+    /// When set, when spawning a new thread, the kernel sets the thread's tid
+    /// to this address.
+    pub set_child_tid: Option<usize>,
+    /// When set, when the thread exits, the kernel sets the thread's tid to
+    /// this address, and wake up a futex waiting on this address.
+    pub clear_child_tid: Option<usize>,
+}
+
+impl TidAddress {
+    pub fn new() -> Self {
+        Self {
+            set_child_tid: None,
+            clear_child_tid: None,
+        }
     }
 }

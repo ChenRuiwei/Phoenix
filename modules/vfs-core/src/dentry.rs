@@ -114,6 +114,13 @@ pub trait Dentry: Send + Sync {
         self.meta().children.lock().get(name).cloned()
     }
 
+    fn set_inode(&self, inode: Arc<dyn Inode>) {
+        if self.meta().inode.lock().is_some() {
+            log::warn!("[Dentry::set_inode] replace inode in {:?}", self.name());
+        }
+        *self.meta().inode.lock() = Some(inode);
+    }
+
     /// Insert a child dentry to this dentry.
     fn insert(self: Arc<Self>, child: Arc<dyn Dentry>) -> Option<Arc<dyn Dentry>> {
         self.meta()
@@ -153,13 +160,6 @@ pub trait Dentry: Send + Sync {
 impl dyn Dentry {
     pub fn is_negetive(&self) -> bool {
         self.meta().inode.lock().is_none()
-    }
-
-    pub fn set_inode(&self, inode: Arc<dyn Inode>) {
-        if self.meta().inode.lock().is_some() {
-            log::warn!("[Dentry::set_inode] replace inode in {:?}", self.name());
-        }
-        *self.meta().inode.lock() = Some(inode);
     }
 
     pub fn clear_inode(&self) {

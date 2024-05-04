@@ -3,6 +3,7 @@
 use alloc::{string::String, vec::Vec};
 
 use async_utils::yield_now;
+use memory::VirtAddr;
 use systype::{SysError, SysResult, SyscallResult};
 use vfs::{sys_root_dentry, DISK_FS_NAME, FS_MANAGER};
 use vfs_core::{InodeMode, OpenFlags, AT_FDCWD};
@@ -234,4 +235,27 @@ pub fn sys_clone(
 pub async fn sys_sched_yield() -> SyscallResult {
     yield_now().await;
     Ok(0)
+}
+
+/// The system call set_tid_address() sets the clear_child_tid value for the
+/// calling thread to tidptr.
+///
+/// When a thread whose clear_child_tid is not NULL terminates, then, if the
+/// thread is sharing memory with other threads, then 0 is written at the
+/// address specified in clear_child_tid and the kernel performs the following
+/// operation:
+///
+/// futex(clear_child_tid, FUTEX_WAKE, 1, NULL, NULL, 0);
+///
+/// The effect of this operation is to wake a single thread that is performing a
+/// futex wait on the memory location. Errors from the futex wake operation are
+/// ignored.
+///
+/// set_tid_address() always returns the caller's thread ID.
+// TODO: do the futex wake up at the address when task terminates
+pub fn sys_set_tid_address(tidptr: usize) -> SyscallResult {
+    let task = current_task();
+    let ta = task.tid_address();
+    ta.clear_child_tid = Some(tidptr);
+    Ok(task.tid())
 }

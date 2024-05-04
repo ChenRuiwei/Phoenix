@@ -47,21 +47,21 @@ pub struct DiskCursor {
 
 impl DiskCursor {
     fn get_position(&self) -> usize {
-        log::trace!(
-            "[DiskCursor::get_position] position {}",
-            (self.sector * 0x200) as usize + self.offset
-        );
+        // log::trace!(
+        //     "[DiskCursor::get_position] position {}",
+        //     (self.sector * 0x200) as usize + self.offset
+        // );
         (self.sector * 0x200) as usize + self.offset
     }
 
     fn set_position(&mut self, position: usize) {
-        log::trace!("[DiskCursor::set_position] position {position}");
+        // log::trace!("[DiskCursor::set_position] position {position}");
         self.sector = (position / 0x200) as u64;
         self.offset = position % 0x200;
     }
 
     fn move_cursor(&mut self, amount: usize) {
-        log::trace!("[DiskCursor::move_cursor] amount {amount}",);
+        // log::trace!("[DiskCursor::move_cursor] amount {amount}",);
         self.set_position(self.get_position() + amount)
     }
 }
@@ -142,14 +142,14 @@ impl fatfs::Seek for DiskCursor {
     fn seek(&mut self, pos: fatfs::SeekFrom) -> Result<u64, Self::Error> {
         match pos {
             fatfs::SeekFrom::Start(i) => {
-                log::debug!("Seek, start {i}",);
+                // log::debug!("Seek, start {i}",);
                 self.set_position(i as usize);
                 Ok(i)
             }
             fatfs::SeekFrom::End(_) => unreachable!(),
             fatfs::SeekFrom::Current(i) => {
                 let new_pos = (self.get_position() as i64) + i;
-                log::debug!("Seek, current {new_pos}",);
+                // log::debug!("Seek, current {new_pos}",);
                 self.set_position(new_pos as usize);
                 Ok(new_pos as u64)
             }
