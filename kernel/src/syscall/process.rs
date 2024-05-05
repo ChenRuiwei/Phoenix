@@ -81,6 +81,10 @@ pub fn sys_exit_group(exit_code: i32) -> SyscallResult {
     Ok(0)
 }
 
+pub fn sys_gettid() -> SyscallResult {
+    Ok(current_task().tid())
+}
+
 /// getpid() returns the process ID (PID) of the calling process.
 pub fn sys_getpid() -> SyscallResult {
     Ok(current_task().pid())

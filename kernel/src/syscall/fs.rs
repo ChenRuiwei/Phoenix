@@ -302,6 +302,19 @@ pub fn sys_fstat(fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
     Ok(0)
 }
 
+pub fn sys_fstatat(
+    dirfd: isize,
+    pathname: UserReadPtr<u8>,
+    stat_buf: UserWritePtr<Kstat>,
+    flags: i32,
+) -> SyscallResult {
+    let task = current_task();
+    let path = pathname.read_cstr(&task)?;
+    let dentry = at_helper(dirfd, &path, InodeMode::empty())?;
+    stat_buf.write(&task, Kstat::from_vfs_file(dentry.inode()?)?)?;
+    Ok(0)
+}
+
 pub async fn sys_mount(
     source: UserReadPtr<u8>,
     target: UserReadPtr<u8>,
@@ -586,8 +599,8 @@ pub async fn sys_ppoll(
         let fd = poll_fd.fd as usize;
         let events = PollEvents::from_bits(poll_fd.events).unwrap();
         let file = task.with_fd_table(|table| table.get(fd))?;
-        let future = async move { file.poll(events).await };
-        futures.push(dyn_future(future));
+        let future = dyn_future(async move { file.poll(events).await });
+        futures.push(future);
     }
 
     let poll_future = PollFuture {
@@ -597,38 +610,28 @@ pub async fn sys_ppoll(
 
     let mut poll_fds_slice = unsafe { UserSlice::<PollFd>::new_unchecked(fds_va, nfds) };
 
-    if let Some(timeout) = timeout {
+    let ret_vec = if let Some(timeout) = timeout {
         match TimeLimitedTaskFuture::new(timeout, poll_future).await {
-            TimeLimitedTaskOutput::Ok(ret_vec) => {
-                let ret = ret_vec.len();
-                for (i, result) in ret_vec {
-                    if let Ok(result) = result {
-                        poll_fds[i].revents |= result.bits() as i16;
-                    } else {
-                        poll_fds[i].revents |= PollEvents::POLLERR.bits() as i16;
-                    }
-                }
-                poll_fds_slice.copy_from_slice(&poll_fds);
-                return Ok(ret);
-            }
+            TimeLimitedTaskOutput::Ok(ret_vec) => ret_vec,
             TimeLimitedTaskOutput::TimeOut => {
                 log::debug!("[sys_ppoll]: timeout");
                 return Ok(0);
             }
         }
     } else {
-        let ret_vec = poll_future.await;
-        let ret = ret_vec.len();
-        for (i, result) in ret_vec {
-            if let Ok(result) = result {
-                poll_fds[i].revents |= result.bits() as i16;
-            } else {
-                poll_fds[i].revents |= PollEvents::POLLERR.bits() as i16;
-            }
+        poll_future.await
+    };
+
+    let ret = ret_vec.len();
+    for (i, result) in ret_vec {
+        if let Ok(result) = result {
+            poll_fds[i].revents |= result.bits() as i16;
+        } else {
+            poll_fds[i].revents |= PollEvents::POLLERR.bits() as i16;
         }
-        poll_fds_slice.copy_from_slice(&poll_fds);
-        return Ok(ret);
     }
+    poll_fds_slice.copy_from_slice(&poll_fds);
+    Ok(ret)
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as

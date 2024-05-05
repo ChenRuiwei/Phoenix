@@ -72,6 +72,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         SCHED_YIELD => sys_sched_yield().await,
         CLONE => sys_clone(args[0], args[1], args[2], args[3], args[4]),
         WAIT4 => sys_wait4(args[0] as _, args[1].into(), args[2] as _, args[3]).await,
+        GETTID => sys_gettid(),
         GETPID => sys_getpid(),
         GETPPID => sys_getppid(),
         GETPGID => sys_getpgid(args[0]),
@@ -100,6 +101,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         DUP => sys_dup(args[0]),
         DUP3 => sys_dup3(args[0], args[1], args[2] as _),
         FSTAT => sys_fstat(args[0], args[1].into()),
+        FSTATAT => sys_fstatat(args[0] as _, args[1].into(), args[2].into(), args[3] as _),
         GETDENTS64 => sys_getdents64(args[0], args[1], args[2]),
         UNLINKAT => sys_unlinkat(args[0] as _, args[1].into(), args[2] as _),
         MOUNT => {
