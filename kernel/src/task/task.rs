@@ -345,6 +345,7 @@ impl Task {
             thread_group = self.thread_group.clone();
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
+            // TODO: close on exec flag support
             fd_table = self.fd_table.clone();
             futexes = self.futexes.clone();
         } else {

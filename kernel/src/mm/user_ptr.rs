@@ -155,15 +155,15 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
         Ok(res)
     }
 
-    pub fn into_slice(self, task: &Arc<Task>, n: usize) -> SysResult<&[T]> {
+    pub fn into_slice(self, task: &Arc<Task>, n: usize) -> SysResult<UserSlice<T>> {
         debug_assert!(n == 0 || self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
             PageFaultAccessType::RO,
         )?;
-        let res = unsafe { core::slice::from_raw_parts(self.ptr, n) };
-        Ok(res)
+        let slice = unsafe { core::slice::from_raw_parts_mut(self.ptr, n) };
+        Ok(UserSlice::new(slice))
     }
 
     pub fn read(self, task: &Arc<Task>) -> SysResult<T> {

@@ -3,7 +3,10 @@ use alloc::{sync::Arc, vec::Vec};
 use systype::{SysError, SysResult};
 use vfs_core::File;
 
-use crate::devfs::stdio::{StdInFile, StdOutFile};
+use crate::devfs::{
+    stdio::{StdInFile, StdOutFile},
+    tty::{TtyFile, TTY},
+};
 
 pub type Fd = usize;
 
@@ -16,14 +19,35 @@ impl FdTable {
     pub fn new() -> Self {
         let mut vec: Vec<Option<Arc<dyn File>>> = Vec::new();
         // TODO: alloc stdio fd
-        vec.push(Some(StdInFile::new()));
-        vec.push(Some(StdOutFile::new()));
-        vec.push(Some(StdOutFile::new()));
+        // vec.push(Some(StdInFile::new()));
+        // vec.push(Some(StdOutFile::new()));
+        // vec.push(Some(StdOutFile::new()));
+        vec.push(Some(TTY.get().unwrap().clone()));
+        vec.push(Some(TTY.get().unwrap().clone()));
+        vec.push(Some(TTY.get().unwrap().clone()));
+
         Self { table: vec }
     }
 
     fn find_free_slot(&self) -> Option<usize> {
         (0..self.table.len()).find(|fd| self.table[*fd].is_none())
+    }
+
+    fn find_free_slot_and_create(&mut self, lower_bound: usize) -> usize {
+        if lower_bound > self.table.len() {
+            for _ in self.table.len()..lower_bound {
+                self.table.push(None)
+            }
+            lower_bound
+        } else {
+            let mut idx = lower_bound;
+            loop {
+                if self.table[idx].is_none() {
+                    return idx;
+                }
+                idx += 1;
+            }
+        }
     }
 
     /// Find the minimium released fd, will alloc a fd if necessary, and insert
@@ -77,6 +101,13 @@ impl FdTable {
     pub fn dup3(&mut self, old_fd: Fd, new_fd: Fd) -> SysResult<Fd> {
         let file = self.get(old_fd)?;
         self.insert(new_fd, file)?;
+        Ok(new_fd)
+    }
+
+    pub fn dup_with_bound(&mut self, old_fd: Fd, lower_bound: usize) -> SysResult<Fd> {
+        let file = self.get(old_fd)?;
+        let new_fd = self.find_free_slot_and_create(lower_bound);
+        self.insert(new_fd, file);
         Ok(new_fd)
     }
 

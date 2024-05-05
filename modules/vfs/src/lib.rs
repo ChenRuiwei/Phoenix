@@ -16,6 +16,7 @@ use alloc::{
     sync::Arc,
 };
 
+use devfs::tty;
 use driver::{println, BLOCK_DEVICE};
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
@@ -59,7 +60,8 @@ pub fn init_filesystem() {
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);
 
     let devfs = FS_MANAGER.lock().get("devfs").unwrap().clone();
-    devfs.mount("/dev", MountFlags::empty(), None);
+    devfs.mount("/dev", MountFlags::empty(), None).unwrap();
+    tty::init();
     test().unwrap();
 }
 

@@ -44,6 +44,7 @@ impl FileSystemType for DevFsType {
         let mount_inode = SimpleInode::new(InodeMode::DIR, sb.clone(), 0);
         mount_dentry.set_inode(mount_inode.clone());
         root.insert(mount_dentry.clone());
+        self.insert_sb(abs_mount_path, sb);
         Ok(mount_dentry)
     }
 

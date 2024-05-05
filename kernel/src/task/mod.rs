@@ -19,6 +19,6 @@ use crate::{loader::get_app_data_by_name, syscall::resolve_path};
 
 pub fn add_init_proc() {
     let elf_data = get_app_data_by_name("initproc").unwrap();
-    // let elf_data = get_app_data_by_name("preliminary_tests").unwrap();
+    // let elf_data = get_app_data_by_name("shell").unwrap();
     Task::spawn_from_elf(elf_data);
 }

@@ -24,6 +24,11 @@ use crate::{
 /// 返回值：如果传入参数错误（比如传入的 action 或 old_action
 /// 为空指针或者） 信号类型不存在返回 -1 ，否则返回 0 。
 /// syscall ID: 134
+///
+/// NOTE: sigaction() can be called with a NULL second argument to query the
+/// current signal handler. It can also be used to check whether a given signal
+/// is valid for the current machine by calling it with NULL second and third
+/// arguments.
 pub fn sys_sigaction(
     signum: i32,
     action: UserReadPtr<SigAction>,
@@ -33,6 +38,14 @@ pub fn sys_sigaction(
     let signum = Sig::from_i32(signum);
     if !signum.is_valid() {
         return Err(SysError::EINVAL);
+    }
+    if action.is_null() {
+        if old_action.is_null() {
+            return Ok(0);
+        }
+        let old = task.sig_handlers().get(signum).unwrap();
+        old_action.write(&task, (*old).into())?;
+        return Ok(0);
     }
     let action = action.read(&task)?;
     let new = Action {
@@ -44,10 +57,11 @@ pub fn sys_sigaction(
         flags: action.sa_flags,
         mask: action.sa_mask,
     };
-    let old = task.sig_handlers().replace(signum, new);
+    task.sig_handlers().update(signum, new);
     // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
-        old_action.write(&task, old.into())?;
+        let old = task.sig_handlers().get(signum).unwrap();
+        old_action.write(&task, (*old).into())?;
     }
     Ok(0)
 }
@@ -115,9 +129,8 @@ pub fn sys_signalstack(
 ///   specified by pid.
 /// - If pid equals 0, then sig is sent to every process in the process group of
 ///   the calling process.
-/// - If  pid  equals  -1, then sig is sent to every process for which the
-///   calling process has permission to send signals, except for process 1
-///   (init)
+/// - If pid equals -1, then sig is sent to every process for which the calling
+///   process has permission to send signals, except for process 1 (init)
 /// - If pid is less than -1, then sig is sent to every process in the process
 ///   group whose ID is -pid.
 /// - If sig is 0, then no signal is sent, but existence and permission checks
@@ -125,16 +138,28 @@ pub fn sys_signalstack(
 ///   process ID or process group ID that the caller is permitted to signal.
 ///
 /// **RETURN VALUE** :On success (at least one signal was sent), zero is
-/// returned.  On error, -1 is returned, and errno is set appropriately
+/// returned. On error, -1 is returned, and errno is set appropriately
 pub fn sys_kill(pid: isize, signum: i32) -> SyscallResult {
     let sig = Sig::from_i32(signum);
     if !sig.is_valid() {
         return Err(SysError::EINVAL);
     }
+    // log::debug!("[sys_kill] signal {sig:?}");
     match pid {
         0 => {
             // 进程组
-            unimplemented!()
+            // unimplemented!()
+            let pid = current_task().pid();
+            if let Some(task) = TASK_MANAGER.get(pid as usize) {
+                if task.is_leader() {
+                    task.receive_signal(sig, false);
+                } else {
+                    // sys_kill is sent to process not thread
+                    return Err(SysError::ESRCH);
+                }
+            } else {
+                return Err(SysError::ESRCH);
+            }
         }
         -1 => {
             TASK_MANAGER.for_each(|task| {

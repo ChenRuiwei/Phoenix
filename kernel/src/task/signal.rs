@@ -182,7 +182,7 @@ fn terminate(sig: Sig) {
 /// stop the process
 fn stop(sig: Sig) {
     log::info!("Recevie signal {}. Action: stop", sig);
-    unimplemented!()
+    // unimplemented!()
 }
 
 /// continue the process if it is currently stopped

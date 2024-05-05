@@ -122,7 +122,7 @@ pub trait Dentry: Send + Sync {
     }
 
     /// Insert a child dentry to this dentry.
-    fn insert(self: Arc<Self>, child: Arc<dyn Dentry>) -> Option<Arc<dyn Dentry>> {
+    fn insert(&self, child: Arc<dyn Dentry>) -> Option<Arc<dyn Dentry>> {
         self.meta()
             .children
             .lock()
@@ -181,6 +181,10 @@ impl dyn Dentry {
     }
 
     pub fn lookup(self: &Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+        let child = self.get_child(name);
+        if child.is_some() {
+            return Ok(child.unwrap());
+        }
         self.clone().arc_lookup(name)
     }
 

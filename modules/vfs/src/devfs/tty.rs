@@ -7,24 +7,66 @@ use core::{
 };
 
 use async_trait::async_trait;
-use async_utils::{take_waker, yield_now};
+use async_utils::{quit_now, take_waker, yield_now};
 use config::process::INIT_PROC_PID;
 use driver::{getchar, print, CHAR_DEVICE};
 use spin::Once;
 use sync::mutex::{SleepLock, SpinNoIrqLock};
 use systype::{SysResult, SyscallResult};
-use vfs_core::{Dentry, File, FileMeta, Inode, InodeMeta, InodeMode, Path};
+use vfs_core::{Dentry, DentryMeta, File, FileMeta, Inode, InodeMeta, InodeMode, Path, SuperBlock};
 
 use crate::sys_root_dentry;
+
+pub struct TtyDentry {
+    meta: DentryMeta,
+}
+
+impl TtyDentry {
+    pub fn new(
+        name: &str,
+        super_block: Arc<dyn SuperBlock>,
+        parent: Option<Arc<dyn Dentry>>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            meta: DentryMeta::new(name, super_block, parent),
+        })
+    }
+}
+
+impl Dentry for TtyDentry {
+    fn meta(&self) -> &DentryMeta {
+        &self.meta
+    }
+
+    fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
+        Ok(TtyFile::new(self.clone(), self.inode()?))
+    }
+
+    fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+        todo!()
+    }
+
+    fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+        todo!()
+    }
+
+    fn arc_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
+        todo!()
+    }
+
+    fn arc_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
+        todo!()
+    }
+}
 
 pub struct TtyInode {
     meta: InodeMeta,
 }
 
 impl TtyInode {
-    pub fn new(parent: Arc<dyn Inode>, path: &str) -> Self {
-        let meta = InodeMeta::new(InodeMode::CHAR, Arc::<usize>::new_zeroed(), 0);
-        Self { meta }
+    pub fn new(super_block: Arc<dyn SuperBlock>) -> Arc<Self> {
+        let meta = InodeMeta::new(InodeMode::CHAR, super_block, 0);
+        Arc::new(Self { meta })
     }
 }
 
@@ -93,24 +135,22 @@ const FIONBIO: usize = 0x5421;
 #[allow(unused)]
 const RTC_RD_TIME: usize = 0x80247009;
 
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
-#[derive(Clone, Copy)]
 struct WinSize {
     ws_row: u16,
     ws_col: u16,
-    xpixel: u16,
-    ypixel: u16,
+    ws_xpixel: u16, // Unused
+    ws_ypixel: u16, // Unused
 }
 
 impl WinSize {
     fn new() -> Self {
         Self {
-            // ws_row: 67,
-            // ws_col: 270,
             ws_row: 67,
             ws_col: 120,
-            xpixel: 0,
-            ypixel: 0,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
         }
     }
 }
@@ -120,10 +160,14 @@ pub fn init() -> SysResult<()> {
     let path = Path::new(sys_root_dentry(), sys_root_dentry(), path);
     let tty_dentry = path.walk(InodeMode::empty())?;
     let parent = tty_dentry.parent().unwrap();
-    parent.create("tty", InodeMode::CHAR)?;
+    let tty_dentry = TtyDentry::new("tty", parent.super_block(), Some(parent.clone()));
+    parent.insert(tty_dentry.clone());
     // let tty_file = tty_dentry.open()?;
+    let sb = parent.clone().super_block();
+    let tty_inode = TtyInode::new(sb.clone());
+    tty_dentry.set_inode(tty_inode);
     let tty_file = TtyFile::new(tty_dentry.clone(), tty_dentry.inode()?);
-    TTY.call_once(|| Arc::new(tty_file));
+    TTY.call_once(|| tty_file);
     Ok(())
 }
 
@@ -184,16 +228,16 @@ struct TtyInner {
 }
 
 impl TtyFile {
-    pub fn new(dentry: Arc<dyn Dentry>, inode: Arc<dyn Inode>) -> Self {
-        Self {
+    pub fn new(dentry: Arc<dyn Dentry>, inode: Arc<dyn Inode>) -> Arc<Self> {
+        Arc::new(Self {
             buf: SpinNoIrqLock::new(QueueBuffer::new()),
             meta: FileMeta::new(dentry, inode),
             inner: SpinNoIrqLock::new(TtyInner {
-                fg_pgid: INIT_PROC_PID as u32,
+                fg_pgid: 2 as u32,
                 win_size: WinSize::new(),
                 termios: Termios::new(),
             }),
-        }
+        })
     }
 
     pub fn handle_irq(&self, ch: u8) {
@@ -239,6 +283,7 @@ impl File for TtyFile {
                         .register_waker(take_waker().await);
                     log::debug!("[TtyFuture::poll] nothing to read");
                     yield_now().await;
+                    continue;
                 }
             }
             log::debug!(
@@ -253,6 +298,7 @@ impl File for TtyFile {
 
             if cnt < buf.len() {
                 yield_now().await;
+                continue;
             } else {
                 return Ok(buf.len());
             }
@@ -274,8 +320,9 @@ impl File for TtyFile {
         &self.meta
     }
 
+    /// See `ioctl_tty` manual page.
     fn ioctl(&self, cmd: usize, arg: usize) -> SyscallResult {
-        log::info!("[TtyFile::ioctl] command {:#x}, value {:#x}", cmd, arg);
+        log::info!("[TtyFile::ioctl] cmd {:#x}, value {:#x}", cmd, arg);
         match cmd {
             TCGETS | TCGETA => {
                 unsafe {
@@ -306,6 +353,10 @@ impl File for TtyFile {
             TIOCGWINSZ => {
                 unsafe {
                     *(arg as *mut WinSize) = self.inner.lock().win_size;
+                    log::info!(
+                        "[TtyFile::ioctl] get window size {:?}",
+                        *(arg as *const WinSize)
+                    );
                 }
                 Ok(0)
             }

@@ -259,3 +259,46 @@ pub fn sys_set_tid_address(tidptr: usize) -> SyscallResult {
     ta.clear_child_tid = Some(tidptr);
     Ok(task.tid())
 }
+
+/// getpgid() returns the PGID of the process specified by pid. If pid is zero,
+/// the process ID of the calling process is used. (Retrieving the PGID of a
+/// process other than the caller is rarely necessary, and the POSIX.1 getpgrp()
+/// is preferred for that task.)
+pub fn sys_getpgid(pid: usize) -> SyscallResult {
+    let target_task = if pid == 0 {
+        current_task()
+    } else {
+        TASK_MANAGER.get(pid).ok_or(SysError::ESRCH)?
+    };
+
+    Ok(target_task.pid().into())
+}
+
+/// setpgid() sets the PGID of the process specified by pid to pgid. If pid is
+/// zero, then the process ID of the calling process is used. If pgid is zero,
+/// then the PGID of the process specified by pid is made the same as its
+/// process ID. If setpgid() is used to move a process from one process group to
+/// another (as is done by some shells when creating pipelines), both process
+/// groups must be part of the same session (see setsid(2) and credentials(7)).
+/// In this case, the pgid specifies an existing process group to be joined and
+/// the session ID of that group must match the session ID of the joining
+/// process.
+pub fn sys_setpgid(pid: usize, pgid: usize) -> SyscallResult {
+    let target_task = if pid == 0 {
+        current_task()
+    } else {
+        TASK_MANAGER.get(pid).ok_or(SysError::ESRCH)?
+    };
+
+    Ok(target_task.pid().into())
+}
+
+// TODO:
+pub fn sys_getuid() -> SyscallResult {
+    Ok(0)
+}
+
+// TODO:
+pub fn sys_geteuid() -> SyscallResult {
+    Ok(0)
+}

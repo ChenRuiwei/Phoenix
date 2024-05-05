@@ -41,6 +41,7 @@ pub trait CharDevice: Send + Sync {
 
 pub fn init() {
     init_block_device();
+    init_char_device();
 }
 
 pub static CHAR_DEVICE: Once<Arc<dyn CharDevice>> = Once::new();

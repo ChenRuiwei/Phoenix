@@ -1,15 +1,22 @@
-use alloc::sync::{Arc, Weak};
+use alloc::{
+    collections::BTreeMap,
+    sync::{Arc, Weak},
+    vec::Vec,
+};
 
-use config::process::INIT_PROC_PID;
+use config::process::{self, INIT_PROC_PID};
 use hashbrown::HashMap;
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
 
-use super::{task::Task, Tid};
+use super::{task::Task, PGid, Pid, Tid};
 
 pub static TASK_MANAGER: Lazy<TaskManager> = Lazy::new(TaskManager::new);
 
+pub static PROCESS_GROUP_MANAGER: ProcessGroupManager = ProcessGroupManager::new();
+
+/// Tid -> Task
 pub struct TaskManager(SpinNoIrqLock<HashMap<Tid, Weak<Task>>>);
 
 impl TaskManager {
@@ -46,5 +53,37 @@ impl TaskManager {
 
     pub fn total_num(&self) -> usize {
         self.0.lock().len()
+    }
+}
+
+/// PGid -> Process group
+// TODO: process group should be created by shell forking, but how do we
+// recognize a shell? may be by sid, which will introduce session in extra.
+pub struct ProcessGroupManager(SpinNoIrqLock<BTreeMap<PGid, Vec<Weak<Task>>>>);
+
+impl ProcessGroupManager {
+    pub const fn new() -> Self {
+        Self(SpinNoIrqLock::new(BTreeMap::new()))
+    }
+
+    pub fn add_group(&self, group_leader: &Arc<Task>) {
+        let pgid = group_leader.tid();
+        let mut group = Vec::new();
+        group.push(Arc::downgrade(group_leader));
+        self.0.lock().insert(pgid, group);
+    }
+
+    pub fn add_process(&self, pgid: PGid, process: &Arc<Task>) {
+        if !process.is_leader() {
+            log::warn!("[ProcessGroupManager::add_process] try adding task that is not a process");
+            return;
+        }
+        let mut inner = self.0.lock();
+        let mut vec = inner.get_mut(&pgid).unwrap();
+        vec.push(Arc::downgrade(process));
+    }
+
+    pub fn get_group(&self, pgid: PGid) -> Vec<Weak<Task>> {
+        self.0.lock().get(&pgid).cloned().unwrap()
     }
 }

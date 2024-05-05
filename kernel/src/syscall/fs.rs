@@ -4,8 +4,8 @@ use driver::BLOCK_DEVICE;
 use systype::{SysError, SysResult, SyscallResult};
 use vfs::{pipe::new_pipe, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    is_absolute_path, Dentry, Inode, InodeMode, InodeType, MountFlags, OpenFlags, Path, AT_FDCWD,
-    AT_REMOVEDIR,
+    is_absolute_path, Dentry, Inode, InodeMode, InodeType, MountFlags, OpenFlags, Path, SeekFrom,
+    AT_FDCWD, AT_REMOVEDIR,
 };
 
 use crate::{
@@ -451,6 +451,76 @@ pub fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
     file.ioctl(cmd, arg)
+}
+
+const F_DUPFD: i32 = 0;
+const F_DUPFD_CLOEXEC: i32 = 1030;
+const F_GETFD: i32 = 1;
+const F_SETFD: i32 = 2;
+const F_GETFL: i32 = 3;
+const F_SETFL: i32 = 4;
+
+// TODO:
+pub fn sys_fcntl(fd: usize, op: i32, arg: usize) -> SyscallResult {
+    let task = current_task();
+    match op {
+        F_DUPFD_CLOEXEC => {
+            let fd_lower_bound = arg;
+            let new_fd = task.with_mut_fd_table(|table| table.dup_with_bound(fd, arg));
+            new_fd
+        }
+        F_SETFD => {
+            const FD_CLOEXEC: usize = 1;
+            let file = task.with_fd_table(|table| table.get(fd))?;
+            let flags = file.flags();
+            if arg & FD_CLOEXEC == 0 {
+                // do not close on execve
+                file.set_flags(flags & !OpenFlags::O_CLOEXEC);
+            } else {
+                // do close on execve
+                file.set_flags(flags | OpenFlags::O_CLOEXEC);
+            }
+            Ok(0)
+        }
+        _ => {
+            log::warn!("fcntl cmd: {} not implemented, returning 0 as default", op);
+            Ok(0)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct IoVec {
+    base: usize,
+    len: usize,
+}
+
+/// The writev() system call writes iovcnt buffers of data described by iov to
+/// the file associated with the file descriptor fd ("gather output").
+pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> SyscallResult {
+    let task = current_task();
+    let file = task.with_fd_table(|f| f.get(fd))?;
+
+    let mut offset = file.pos();
+    let mut total_len = 0;
+    let iovs = iov.read_array(&task, iovcnt)?;
+    for (i, iov) in iovs.iter().enumerate() {
+        if iov.len == 0 {
+            continue;
+        }
+
+        let ptr = UserReadPtr::<u8>::from(iov.base);
+        log::debug!("syscall writev: iov #{i}, ptr: {ptr}, len: {}", iov.len);
+
+        let buf = ptr.into_slice(&task, iov.len)?;
+        let write_len = file.write(offset, &buf).await?;
+
+        total_len += write_len;
+        offset += write_len;
+    }
+    file.seek(SeekFrom::Current(total_len as i64));
+    Ok(total_len)
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as

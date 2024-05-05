@@ -112,14 +112,13 @@ impl SigHandlers {
         }
     }
 
-    /// This function will not replace the default processing of SIG_KILL and
+    /// This function will not update the default processing of SIG_KILL and
     /// SIG_STOP signals
-    pub fn replace(&mut self, sig: Sig, new: Action) -> Action {
-        let old = self.actions[sig.index()];
+    pub fn update(&mut self, sig: Sig, new: Action) {
+        // let old = self.actions[sig.index()];
         if sig.is_kill_or_stop() {
-            return old;
+            return;
         }
         self.actions[sig.index()] = new;
-        old
     }
 }

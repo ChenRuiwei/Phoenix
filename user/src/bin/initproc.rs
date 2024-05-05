@@ -13,6 +13,7 @@ fn main() -> i32 {
             &[
                 "busybox\0".as_ptr(),
                 "sh\0".as_ptr(),
+                // core::ptr::null::<u8>(),
                 core::ptr::null::<u8>(),
             ],
             &[
