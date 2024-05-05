@@ -16,7 +16,7 @@ pub use memory::page_table::PageTable;
 use memory::{frame, heap, VirtAddr};
 pub use memory_space::{switch_kernel_page_table, MemorySpace};
 pub use page::Page;
-pub use user_ptr::{FutexWord, UserReadPtr, UserWritePtr};
+pub use user_ptr::{FutexWord, UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr};
 
 use self::memory_space::vm_area::MapPerm;
 use crate::mm;

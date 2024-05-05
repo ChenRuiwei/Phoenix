@@ -103,7 +103,7 @@ pub fn sys_sigprocmask(
 pub fn sys_sigreturn() -> SyscallResult {
     let task = current_task();
     let cx = task.trap_context_mut();
-    let ucontext_ptr = UserReadPtr::<UContext>::from_usize(task.sig_ucontext_ptr());
+    let ucontext_ptr = UserReadPtr::<UContext>::from(task.sig_ucontext_ptr());
     log::trace!("[sys_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
     let ucontext = ucontext_ptr.read(&task)?;
     *task.sig_mask() = ucontext.uc_sigmask;

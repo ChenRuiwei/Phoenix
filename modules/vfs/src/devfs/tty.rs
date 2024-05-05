@@ -7,7 +7,7 @@ use core::{
 };
 
 use async_trait::async_trait;
-use async_utils::{quit_now, take_waker, yield_now};
+use async_utils::{suspend_now, take_waker, yield_now};
 use config::process::INIT_PROC_PID;
 use driver::{getchar, print, CHAR_DEVICE};
 use spin::Once;

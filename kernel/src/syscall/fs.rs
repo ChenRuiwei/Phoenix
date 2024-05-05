@@ -1,15 +1,25 @@
-use alloc::{ffi::CString, sync::Arc};
+use alloc::{collections::BTreeMap, ffi::CString, sync::Arc, vec::Vec};
+use core::{
+    future::{self, Future},
+    mem::size_of,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
+use async_utils::{dyn_future, Async};
 use driver::BLOCK_DEVICE;
+use memory::VirtAddr;
 use systype::{SysError, SysResult, SyscallResult};
+use time::timespec::TimeSpec;
+use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{pipe::new_pipe, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    is_absolute_path, Dentry, Inode, InodeMode, InodeType, MountFlags, OpenFlags, Path, SeekFrom,
-    AT_FDCWD, AT_REMOVEDIR,
+    is_absolute_path, Dentry, Inode, InodeMode, InodeType, MountFlags, OpenFlags, Path, PollEvents,
+    SeekFrom, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use crate::{
-    mm::{UserReadPtr, UserWritePtr},
+    mm::{UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr},
     processor::hart::current_task,
 };
 
@@ -465,7 +475,6 @@ pub fn sys_fcntl(fd: usize, op: i32, arg: usize) -> SyscallResult {
     let task = current_task();
     match op {
         F_DUPFD_CLOEXEC => {
-            let fd_lower_bound = arg;
             let new_fd = task.with_mut_fd_table(|table| table.dup_with_bound(fd, arg));
             new_fd
         }
@@ -521,6 +530,105 @@ pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> Sy
     }
     file.seek(SeekFrom::Current(total_len as i64));
     Ok(total_len)
+}
+
+#[derive(Debug, Copy, Clone)]
+#[repr(C)]
+pub struct PollFd {
+    fd: i32,      // file descriptor
+    events: i16,  // requested events
+    revents: i16, // returned events
+}
+
+pub async fn sys_ppoll(
+    fds: UserRdWrPtr<PollFd>,
+    nfds: usize,
+    timeout_ts: UserReadPtr<TimeSpec>,
+    sigmask: usize,
+) -> SyscallResult {
+    let task = current_task();
+    let fds_va: VirtAddr = fds.as_usize().into();
+    let mut poll_fds = fds.read_array(&task, nfds)?;
+    let timeout = if timeout_ts.is_null() {
+        None
+    } else {
+        Some(timeout_ts.read(&task)?.into())
+    };
+
+    pub struct PollFuture<'a> {
+        futures: Vec<Async<'a, SysResult<PollEvents>>>,
+        ready_cnt: usize,
+    }
+
+    impl Future for PollFuture<'_> {
+        type Output = Vec<(usize, SysResult<PollEvents>)>;
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            let this = unsafe { self.get_unchecked_mut() };
+            let mut ret_vec = Vec::new();
+            for (i, future) in this.futures.iter_mut().enumerate() {
+                let result = unsafe { Pin::new_unchecked(future).poll(cx) };
+                if let Poll::Ready(result) = result {
+                    this.ready_cnt += 1;
+                    ret_vec.push((i, result))
+                }
+            }
+            if this.ready_cnt > 0 {
+                Poll::Ready(ret_vec)
+            } else {
+                Poll::Pending
+            }
+        }
+    }
+
+    let mut futures = Vec::<Async<SysResult<PollEvents>>>::with_capacity(nfds);
+    for (i, poll_fd) in poll_fds.iter().enumerate() {
+        let fd = poll_fd.fd as usize;
+        let events = PollEvents::from_bits(poll_fd.events).unwrap();
+        let file = task.with_fd_table(|table| table.get(fd))?;
+        let future = async move { file.poll(events).await };
+        futures.push(dyn_future(future));
+    }
+
+    let poll_future = PollFuture {
+        futures,
+        ready_cnt: 0,
+    };
+
+    let mut poll_fds_slice = unsafe { UserSlice::<PollFd>::new_unchecked(fds_va, nfds) };
+
+    if let Some(timeout) = timeout {
+        match TimeLimitedTaskFuture::new(timeout, poll_future).await {
+            TimeLimitedTaskOutput::Ok(ret_vec) => {
+                let ret = ret_vec.len();
+                for (i, result) in ret_vec {
+                    if let Ok(result) = result {
+                        poll_fds[i].revents |= result.bits() as i16;
+                    } else {
+                        poll_fds[i].revents |= PollEvents::POLLERR.bits() as i16;
+                    }
+                }
+                poll_fds_slice.copy_from_slice(&poll_fds);
+                return Ok(ret);
+            }
+            TimeLimitedTaskOutput::TimeOut => {
+                log::debug!("[sys_ppoll]: timeout");
+                return Ok(0);
+            }
+        }
+    } else {
+        let ret_vec = poll_future.await;
+        let ret = ret_vec.len();
+        for (i, result) in ret_vec {
+            if let Ok(result) = result {
+                poll_fds[i].revents |= result.bits() as i16;
+            } else {
+                poll_fds[i].revents |= PollEvents::POLLERR.bits() as i16;
+            }
+        }
+        poll_fds_slice.copy_from_slice(&poll_fds);
+        return Ok(ret);
+    }
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as

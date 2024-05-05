@@ -2,7 +2,7 @@
 #![no_main]
 extern crate alloc;
 
-use alloc::{boxed::Box, sync::Arc, task::Wake};
+use alloc::{boxed::Box, sync::Arc, task::Wake, vec::Vec};
 use core::{
     future::Future,
     ops::{Deref, DerefMut},
@@ -130,6 +130,52 @@ where
     }
 }
 
+pub struct AnyFuture<'a, T> {
+    futures: Vec<Async<'a, T>>,
+    has_returned: bool,
+}
+
+impl<'a, T> AnyFuture<'a, T> {
+    pub fn new() -> Self {
+        Self {
+            futures: Vec::new(),
+            has_returned: false,
+        }
+    }
+    pub fn push(&mut self, future: Async<'a, T>) {
+        self.futures.push(future);
+    }
+
+    pub fn new_with(futures: Vec<Async<'a, T>>) -> Self {
+        debug_assert!(futures.len() > 0);
+        Self {
+            futures,
+            has_returned: false,
+        }
+    }
+}
+
+impl<T> Future for AnyFuture<'_, T> {
+    type Output = (usize, T);
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        if this.has_returned {
+            return Poll::Pending;
+        }
+
+        for (i, future) in this.futures.iter_mut().enumerate() {
+            let result = unsafe { Pin::new_unchecked(future).poll(cx) };
+            if let Poll::Ready(ret) = result {
+                this.has_returned = true;
+                return Poll::Ready((i, ret));
+            }
+        }
+
+        Poll::Pending
+    }
+}
+
 struct YieldFuture {
     has_yielded: bool,
 }
@@ -160,32 +206,34 @@ pub async fn yield_now() {
     YieldFuture::new().await;
 }
 
-struct QuitFuture {
-    has_quit: bool,
+struct SuspendFuture {
+    has_suspended: bool,
 }
 
-impl QuitFuture {
+impl SuspendFuture {
     const fn new() -> Self {
-        Self { has_quit: false }
+        Self {
+            has_suspended: false,
+        }
     }
 }
 
-impl Future for QuitFuture {
+impl Future for SuspendFuture {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        match self.has_quit {
+        match self.has_suspended {
             true => Poll::Ready(()),
             false => {
-                self.has_quit = true;
+                self.has_suspended = true;
                 Poll::Pending
             }
         }
     }
 }
 
-pub async fn quit_now() {
-    QuitFuture::new().await
+pub async fn suspend_now() {
+    SuspendFuture::new().await
 }
 
 pub type Async<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;

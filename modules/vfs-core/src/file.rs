@@ -9,7 +9,7 @@ use config::mm::PAGE_SIZE;
 use spin::Mutex;
 use systype::{ASyscallResult, SysError, SysResult, SyscallResult};
 
-use crate::{Dentry, DirEntry, Inode, InodeType, OpenFlags, SeekFrom};
+use crate::{Dentry, DirEntry, Inode, InodeType, OpenFlags, PollEvents, SeekFrom};
 
 pub struct FileMeta {
     /// Dentry which pointes to this file.
@@ -72,6 +72,17 @@ pub trait File: Send + Sync {
 
     fn ioctl(&self, cmd: usize, arg: usize) -> SyscallResult {
         Err(SysError::ENOTTY)
+    }
+
+    async fn poll(&self, events: PollEvents) -> SysResult<PollEvents> {
+        let mut res = PollEvents::empty();
+        if events.contains(PollEvents::POLLIN) {
+            res |= PollEvents::POLLIN;
+        }
+        if events.contains(PollEvents::POLLOUT) {
+            res |= PollEvents::POLLOUT;
+        }
+        Ok(res)
     }
 
     fn inode(&self) -> Arc<dyn Inode> {

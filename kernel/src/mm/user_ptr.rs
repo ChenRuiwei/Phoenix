@@ -32,11 +32,16 @@ pub trait Write: Policy {}
 pub struct In;
 #[derive(Clone, Copy)]
 pub struct Out;
+#[derive(Clone, Copy)]
+pub struct InOut;
 
 impl Policy for In {}
 impl Policy for Out {}
+impl Policy for InOut {}
 impl Read for In {}
 impl Write for Out {}
+impl Read for InOut {}
+impl Write for InOut {}
 
 /// Checks user ptr automatically when reading or writing.
 ///
@@ -47,7 +52,11 @@ pub struct UserPtr<T: Clone + Copy + 'static, P: Policy> {
     _guard: SumGuard,
 }
 
-impl<T: Clone + Copy + 'static> Debug for UserPtr<T, In> {
+pub type UserReadPtr<T> = UserPtr<T, In>;
+pub type UserWritePtr<T> = UserPtr<T, Out>;
+pub type UserRdWrPtr<T> = UserPtr<T, InOut>;
+
+impl<T: Clone + Copy + 'static> Debug for UserReadPtr<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("UserReadPtr")
             .field("ptr", &self.ptr)
@@ -55,7 +64,7 @@ impl<T: Clone + Copy + 'static> Debug for UserPtr<T, In> {
     }
 }
 
-impl<T: Clone + Copy + 'static> Debug for UserPtr<T, Out> {
+impl<T: Clone + Copy + 'static> Debug for UserWritePtr<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("UserWritePtr")
             .field("ptr", &self.ptr)
@@ -63,8 +72,13 @@ impl<T: Clone + Copy + 'static> Debug for UserPtr<T, Out> {
     }
 }
 
-pub type UserReadPtr<T> = UserPtr<T, In>;
-pub type UserWritePtr<T> = UserPtr<T, Out>;
+impl<T: Clone + Copy + 'static> Debug for UserRdWrPtr<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("UserRdWrPtr")
+            .field("ptr", &self.ptr)
+            .finish()
+    }
+}
 
 unsafe impl<T: Clone + Copy + 'static, P: Policy> Send for UserPtr<T, P> {}
 unsafe impl<T: Clone + Copy + 'static, P: Policy> Sync for UserPtr<T, P> {}
@@ -124,8 +138,8 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
         Self::new(core::ptr::null_mut())
     }
 
-    pub fn from_usize(a: usize) -> Self {
-        Self::new(a as *mut T)
+    pub fn from_usize(vaddr: usize) -> Self {
+        Self::new(vaddr as *mut T)
     }
 
     pub fn is_null(&self) -> bool {

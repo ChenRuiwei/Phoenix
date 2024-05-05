@@ -58,7 +58,7 @@ macro_rules! strace {
 
 /// Handle syscall exception with `syscall_id` and other arguments.
 pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
-    pub use SyscallNo::*;
+    use SyscallNo::*;
     let Some(syscall_no) = SyscallNo::from_repr(syscall_no) else {
         log::error!("Syscall number not included: {}", syscall_no);
         return Ok(0);
@@ -118,6 +118,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         FCNTL => sys_fcntl(args[0], args[1] as _, args[2]),
         GETUID => sys_getuid(),
         WRITEV => sys_writev(args[0], args[1].into(), args[2]).await,
+        PPOLL => sys_ppoll(args[0].into(), args[1], args[2].into(), args[3]).await,
         // Signal
         RT_SIGPROCMASK => sys_sigprocmask(args[0], args[1].into(), args[2].into()),
         RT_SIGACTION => sys_sigaction(args[0] as _, args[1].into(), args[2].into()),
@@ -147,14 +148,8 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
             )
             .await
         }
-        GET_ROBUST_LIST => sys_get_robust_list(
-            args[0] as i32,
-            UserWritePtr::<RobustListHead>::from(args[1]),
-            UserWritePtr::<usize>::from(args[2]),
-        ),
-        SET_ROBUST_LIST => {
-            sys_set_robust_list(UserReadPtr::<RobustListHead>::from(args[0]), args[1])
-        }
+        GET_ROBUST_LIST => sys_get_robust_list(args[0] as _, args[1].into(), args[2].into()),
+        SET_ROBUST_LIST => sys_set_robust_list(args[0].into(), args[1]),
         // Miscellaneous
         UNAME => sys_uname(args[0].into()),
         GETRUSAGE => sys_getrusage(args[0] as _, args[1].into()),
