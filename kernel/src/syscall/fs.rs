@@ -390,9 +390,11 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
     const LEN_BEFORE_NAME: usize = 19;
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
-    if let Some(dirent) = file.read_dir()? {
+    // HACK: code looks ugly
+    let mut writen_len = 0;
+    while let Some(dirent) = file.read_dir()? {
         log::debug!("[sys_getdents64] dirent {dirent:?}");
-        let buf = UserWritePtr::<LinuxDirent64>::from(buf);
+        let buf = UserWritePtr::<LinuxDirent64>::from(buf + writen_len);
         let ret_len = LEN_BEFORE_NAME + dirent.name.len() + 1;
         let linux_dirent = LinuxDirent64 {
             d_ino: dirent.ino,
@@ -400,16 +402,16 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
             d_reclen: ret_len as u16,
             d_type: dirent.itype as u8,
         };
-        if ret_len > len {
-            return Err(SysError::EINVAL);
+        if writen_len + ret_len > len {
+            file.seek(SeekFrom::Current(-1));
+            break;
         }
         let name_buf = UserWritePtr::<u8>::from(buf.as_usize() + LEN_BEFORE_NAME);
         buf.write(&task, linux_dirent)?;
         name_buf.write_cstr(&task, &dirent.name)?;
-        Ok(ret_len)
-    } else {
-        Ok(0)
+        writen_len += ret_len;
     }
+    Ok(writen_len)
 }
 
 /// pipe() creates a pipe, a unidirectional data channel that can be used for

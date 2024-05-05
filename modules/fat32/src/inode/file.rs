@@ -32,9 +32,9 @@ impl Inode for FatFileInode {
     }
 
     fn get_attr(&self) -> systype::SysResult<Stat> {
-        let meta_inner = self.meta.inner.lock();
+        let inner = self.meta.inner.lock();
         let mode = self.meta.mode.bits();
-        let len = meta_inner.size;
+        let len = inner.size;
         Ok(Stat {
             st_dev: 0,
             st_ino: self.meta.ino as u64,
@@ -48,9 +48,9 @@ impl Inode for FatFileInode {
             st_blksize: 512,
             __pad2: 0,
             st_blocks: (len / 512) as u64,
-            st_atime: meta_inner.atime,
-            st_mtime: meta_inner.mtime,
-            st_ctime: meta_inner.ctime,
+            st_atime: inner.atime,
+            st_mtime: inner.mtime,
+            st_ctime: inner.ctime,
             unused: 0,
         })
     }

@@ -153,9 +153,9 @@ pub fn sys_mmap(
 /// set to indicate the error (probably to EINVAL).
 // TODO:
 pub fn sys_munmap(addr: VirtAddr, length: usize) -> SyscallResult {
-    if !addr.is_aligned() {
-        return Err(SysError::EINVAL);
-    }
+    // if !addr.is_aligned() {
+    //     return Err(SysError::EINVAL);
+    // }
 
     // let task = current_task();
     // let range = VirtAddr::from(addr)..VirtAddr::from(addr + length);

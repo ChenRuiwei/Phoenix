@@ -180,6 +180,8 @@ impl dyn Dentry {
         self.clone().arc_open()
     }
 
+    // PERF: lookup in fat32 in slow since there is no cache, we iter the dir every
+    // time to lookup for only a single file
     pub fn lookup(self: &Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
         let child = self.get_child(name);
         if child.is_some() {
