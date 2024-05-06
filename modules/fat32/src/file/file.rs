@@ -100,7 +100,7 @@ impl File for FatFileFile {
         todo!()
     }
 
-    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
+    fn base_read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
         todo!()
     }
 }

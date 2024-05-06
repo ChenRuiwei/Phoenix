@@ -49,7 +49,7 @@ impl File for FatDirFile {
         todo!()
     }
 
-    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
+    fn base_read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
         let inode = self
             .inode()
             .downcast_arc::<FatDirInode>()

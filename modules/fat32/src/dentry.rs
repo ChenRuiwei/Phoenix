@@ -45,7 +45,7 @@ impl Dentry for FatDentry {
         &self.meta
     }
 
-    fn arc_open(self: Arc<Self>) -> systype::SysResult<Arc<dyn vfs_core::File>> {
+    fn base_open(self: Arc<Self>) -> systype::SysResult<Arc<dyn vfs_core::File>> {
         match self.inode()?.itype() {
             InodeType::File => {
                 let inode = self
@@ -65,7 +65,7 @@ impl Dentry for FatDentry {
         }
     }
 
-    fn arc_lookup(self: Arc<Self>, name: &str) -> systype::SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, name: &str) -> systype::SysResult<Arc<dyn Dentry>> {
         let sb = self.super_block();
         let self_clone = self.clone();
         let sub_dentry: Arc<dyn Dentry> = self.get_child(name).unwrap_or_else(|| {
@@ -103,7 +103,7 @@ impl Dentry for FatDentry {
         Ok(sub_dentry)
     }
 
-    fn arc_create(
+    fn base_create(
         self: Arc<Self>,
         name: &str,
         mode: vfs_core::InodeMode,
@@ -137,7 +137,7 @@ impl Dentry for FatDentry {
         }
     }
 
-    fn arc_unlink(self: Arc<Self>, name: &str) -> systype::SyscallResult {
+    fn base_unlink(self: Arc<Self>, name: &str) -> systype::SyscallResult {
         let inode = self
             .inode()?
             .downcast_arc::<FatDirInode>()
@@ -151,7 +151,7 @@ impl Dentry for FatDentry {
         Ok(0)
     }
 
-    fn arc_rmdir(self: Arc<Self>, name: &str) -> systype::SyscallResult {
+    fn base_rmdir(self: Arc<Self>, name: &str) -> systype::SyscallResult {
         let inode = self
             .inode()?
             .downcast_arc::<FatDirInode>()

@@ -39,23 +39,23 @@ impl Dentry for TtyDentry {
         &self.meta
     }
 
-    fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
+    fn base_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
         Ok(TtyFile::new(self.clone(), self.inode()?))
     }
 
-    fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn arc_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
         todo!()
     }
 
-    fn arc_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
         todo!()
     }
 }
@@ -372,7 +372,7 @@ impl File for TtyFile {
         }
     }
 
-    fn read_dir(&self) -> SysResult<Option<vfs_core::DirEntry>> {
+    fn base_read_dir(&self) -> SysResult<Option<vfs_core::DirEntry>> {
         todo!()
     }
 
