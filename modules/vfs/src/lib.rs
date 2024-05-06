@@ -45,8 +45,8 @@ fn register_all_fs() {
     log::info!("[vfs] register fs success");
 }
 
-/// Init the filesystem
-pub fn init_filesystem() {
+/// Init the filesystem.
+pub fn init() {
     register_all_fs();
     let diskfs = FS_MANAGER.lock().get(DISK_FS_NAME).unwrap().clone();
     let diskfs_root = diskfs

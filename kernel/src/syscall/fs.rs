@@ -20,7 +20,10 @@ use vfs_core::{
 
 use crate::{
     mm::{UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr},
-    processor::hart::current_task,
+    processor::{
+        env::within_sum,
+        hart::{current_task, local_hart},
+    },
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -390,26 +393,28 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
     const LEN_BEFORE_NAME: usize = 19;
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
-    // HACK: code looks ugly
     let mut writen_len = 0;
     while let Some(dirent) = file.read_dir()? {
         log::debug!("[sys_getdents64] dirent {dirent:?}");
         let buf = UserWritePtr::<LinuxDirent64>::from(buf + writen_len);
-        let ret_len = LEN_BEFORE_NAME + dirent.name.len() + 1;
+        let c_name_len = dirent.name.len() + 1;
+        // align to 8 bytes
+        let rec_len = (LEN_BEFORE_NAME + c_name_len + 7) & !0x7;
         let linux_dirent = LinuxDirent64 {
             d_ino: dirent.ino,
             d_off: dirent.off,
-            d_reclen: ret_len as u16,
+            d_reclen: rec_len as u16,
             d_type: dirent.itype as u8,
         };
-        if writen_len + ret_len > len {
+        log::debug!("[sys_getdents64] linux dirent {linux_dirent:?}");
+        if writen_len + rec_len > len {
             file.seek(SeekFrom::Current(-1));
             break;
         }
         let name_buf = UserWritePtr::<u8>::from(buf.as_usize() + LEN_BEFORE_NAME);
         buf.write(&task, linux_dirent)?;
         name_buf.write_cstr(&task, &dirent.name)?;
-        writen_len += ret_len;
+        writen_len += rec_len;
     }
     Ok(writen_len)
 }
@@ -475,7 +480,7 @@ pub fn sys_unlinkat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32) -> Sysc
 pub fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
-    file.ioctl(cmd, arg)
+    within_sum(|| file.ioctl(cmd, arg))
 }
 
 const F_DUPFD: i32 = 0;

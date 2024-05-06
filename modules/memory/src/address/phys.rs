@@ -24,8 +24,10 @@ pub struct PhysAddr(pub usize);
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct PhysPageNum(pub usize);
 
+impl_fmt!(PhysAddr, "PA");
 impl_arithmetic_with_usize!(PhysPageNum);
 impl_step!(PhysPageNum);
+impl_fmt!(PhysPageNum, "PPN");
 
 impl From<usize> for PhysAddr {
     fn from(u: usize) -> Self {
@@ -64,18 +66,22 @@ impl PhysAddr {
     pub fn floor(&self) -> PhysPageNum {
         PhysPageNum(self.0 / PAGE_SIZE)
     }
+
     /// `PhysAddr`->`PhysPageNum`
     pub fn ceil(&self) -> PhysPageNum {
         PhysPageNum((self.0 + PAGE_SIZE - 1) / PAGE_SIZE)
     }
+
     /// Get page offset
     pub fn page_offset(&self) -> usize {
         self.0 & PAGE_MASK
     }
+
     /// Check page aligned
-    pub fn aligned(&self) -> bool {
+    pub fn is_aligned(&self) -> bool {
         self.page_offset() == 0
     }
+
     pub fn to_offset(&self) -> OffsetAddr {
         (*self).into()
     }
@@ -83,10 +89,11 @@ impl PhysAddr {
 
 impl From<PhysAddr> for PhysPageNum {
     fn from(pa: PhysAddr) -> Self {
-        assert!(pa.aligned());
+        assert!(pa.is_aligned());
         pa.floor()
     }
 }
+
 impl From<PhysPageNum> for PhysAddr {
     fn from(ppn: PhysPageNum) -> Self {
         Self(ppn.0 << PAGE_SIZE_BITS)
@@ -159,6 +166,3 @@ impl PhysPageNum {
         dst.copy_from_slice(src);
     }
 }
-
-impl_fmt!(PhysAddr, "PA");
-impl_fmt!(PhysPageNum, "PPN");

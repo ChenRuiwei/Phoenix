@@ -19,6 +19,12 @@ impl Drop for SumGuard {
     }
 }
 
+pub fn within_sum<T>(f: impl FnOnce() -> T) -> T {
+    let _guard = SumGuard::new();
+    let ret = f();
+    ret
+}
+
 /// Store some permission flags
 pub struct EnvContext {
     // For preempt and non preempt

@@ -144,12 +144,10 @@ pub fn local_hart() -> &'static mut Hart {
 }
 
 pub fn init(hart_id: usize) {
-    println!("start to init hart {}...", hart_id);
     unsafe {
         set_local_hart(hart_id);
         sstatus::set_fs(FS::Initial);
     }
-    println!("init hart {} finished", hart_id);
 }
 
 pub fn current_task() -> Arc<Task> {

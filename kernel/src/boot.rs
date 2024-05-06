@@ -1,4 +1,7 @@
-use config::mm::{HART_START_ADDR, KERNEL_START};
+use config::{
+    mm::{HART_START_ADDR, KERNEL_START},
+    processor::HART_NUM,
+};
 use driver::{println, sbi};
 
 const BOOT_BANNER: &str = r#"
@@ -25,12 +28,12 @@ pub fn clear_bss() {
     }
 }
 
-pub fn hart_start(hart_id: usize) {
-    use crate::processor::hart::HARTS;
-
+pub fn start_harts(hart_id: usize) {
     // only start two harts
+    // TODO: more harts
+    // HACK: ugly
     let mut has_another = false;
-    let hart_num = unsafe { HARTS.len() };
+    let hart_num = HART_NUM;
     for i in 0..hart_num {
         if has_another {
             break;

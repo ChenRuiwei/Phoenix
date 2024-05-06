@@ -156,14 +156,14 @@ impl dyn File {
             let len = self
                 .read(idx, &mut buffer.as_mut_slice()[idx..idx + PAGE_SIZE])
                 .await?;
-            log::trace!("[read_all_from_start] read len: {}", len);
+            // log::trace!("[read_all_from_start] read len: {}", len);
             if len < PAGE_SIZE {
                 break;
             }
             debug_assert_eq!(len, PAGE_SIZE);
             idx += len;
             buffer.resize(idx + PAGE_SIZE, 0);
-            log::trace!("[read_all_from_start] buf len: {}", buffer.len());
+            // log::trace!("[read_all_from_start] buf len: {}", buffer.len());
         }
         self.seek(SeekFrom::Start(old_pos as u64))?;
         Ok(())

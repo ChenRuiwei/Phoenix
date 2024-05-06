@@ -50,14 +50,14 @@ impl Path {
                 ".." => {
                     dentry = dentry.parent().ok_or(SysError::ENOENT)?;
                 }
-                // TODO: will create too much negative dentry, may cause trouble
+                // NOTE: lookup will only create negative dentry in non-negetive dir dentry
                 name => match dentry.lookup(name) {
                     Ok(sub_dentry) => {
                         log::debug!("[Path::walk] sub dentry {}", sub_dentry.name());
                         dentry = sub_dentry
                     }
                     Err(e) => {
-                        log::error!("[Path::walk] error {e:?}");
+                        log::error!("[Path::walk] {e:?} when walking in path {path}");
                         return Err(e);
                     }
                 },
