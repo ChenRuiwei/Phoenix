@@ -9,7 +9,7 @@ pub struct SumGuard;
 impl SumGuard {
     pub fn new() -> Self {
         local_hart().env_mut().inc_sum();
-        Self {}
+        Self
     }
 }
 

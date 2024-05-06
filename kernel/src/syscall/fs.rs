@@ -108,6 +108,7 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
 pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
+    log::info!("[sys_read] reading file {}", file.dentry().path());
     let mut buf = buf.into_mut_slice(&task, len)?;
     let ret = file.read(file.pos(), &mut buf).await?;
     Ok(ret)
@@ -540,10 +541,37 @@ pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> Sy
         }
 
         let ptr = UserReadPtr::<u8>::from(iov.base);
-        log::debug!("syscall writev: iov #{i}, ptr: {ptr}, len: {}", iov.len);
+        log::debug!("[sys_writev] iov #{i}, ptr: {ptr}, len: {}", iov.len);
 
         let buf = ptr.into_slice(&task, iov.len)?;
         let write_len = file.write(offset, &buf).await?;
+
+        total_len += write_len;
+        offset += write_len;
+    }
+    file.seek(SeekFrom::Current(total_len as i64));
+    Ok(total_len)
+}
+
+/// The readv() system call reads iovcnt buffers from the file associated with
+/// the file descriptor fd into the buffers described by iov ("scatter input").
+pub async fn sys_readv(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> SyscallResult {
+    let task = current_task();
+    let file = task.with_fd_table(|f| f.get(fd))?;
+
+    let mut offset = file.pos();
+    let mut total_len = 0;
+    let iovs = iov.read_array(&task, iovcnt)?;
+    for (i, iov) in iovs.iter().enumerate() {
+        if iov.len == 0 {
+            continue;
+        }
+
+        let ptr = UserWritePtr::<u8>::from(iov.base);
+        log::debug!("[sys_readv] iov #{i}, ptr: {ptr}, len: {}", iov.len);
+
+        let mut buf = ptr.into_mut_slice(&task, iov.len)?;
+        let write_len = file.read(offset, &mut buf).await?;
 
         total_len += write_len;
         offset += write_len;

@@ -55,6 +55,7 @@ impl File for FatFileFile {
                     count += len;
                     buf = &mut buf[len..];
                 }
+                self.seek(SeekFrom::Start((offset + count) as u64));
                 Ok(count)
             }
             _ => Err(SysError::EISDIR),
@@ -69,12 +70,15 @@ impl File for FatFileFile {
             InodeType::File => {
                 let mut file = self.file.lock();
                 let size = self.inode().size();
+                // TODO: should we write at offset which is bigger than size
                 if offset > size {
+                    // write empty data to fill area [size, offset)
                     let empty = vec![0; offset - size];
                     file.seek(fatfs::SeekFrom::Start(size as u64))
                         .map_err(as_sys_err)?;
                     file.write_all(&empty).map_err(as_sys_err)?;
                 }
+
                 let fat_offset = file.offset() as usize;
                 if offset != fat_offset {
                     file.seek(fatfs::SeekFrom::Start(offset as u64))
@@ -85,6 +89,7 @@ impl File for FatFileFile {
                     let new_size = offset + buf.len();
                     self.inode().set_size(new_size);
                 }
+                self.seek(SeekFrom::Start((offset + buf.len()) as u64));
                 Ok(buf.len())
             }
             _ => Err(SysError::EISDIR),

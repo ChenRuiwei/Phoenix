@@ -10,7 +10,6 @@ bitflags::bitflags! {
     #[derive(Debug, Clone)]
     pub struct OpenFlags: i32 {
         // reserve 3 bits for the access mode
-        const NONE          = 0;
         const O_RDONLY      = 0;
         const O_WRONLY      = 1;
         const O_RDWR        = 2;
