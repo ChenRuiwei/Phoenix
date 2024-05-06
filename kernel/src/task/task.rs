@@ -16,6 +16,7 @@ use futex::Futexes;
 use memory::VirtAddr;
 use signal::{
     action::{SigHandlers, SigPending},
+    siginfo::{SigDetails, SigInfo},
     signal_stack::SignalStack,
     sigset::{Sig, SigSet},
 };
@@ -450,14 +451,6 @@ impl Task {
             self.trap_context_mut().sepc
         );
 
-        // TODO: send SIGCHLD to parent if this is the leader
-        if self.is_leader() {
-            if let Some(parent) = self.parent() {
-                let parent = parent.upgrade().unwrap();
-                parent.receive_signal(Sig::SIGCHLD, false);
-            }
-        }
-
         log::debug!("[Task::do_exit] set children to be zombie and reparent them to init");
         debug_assert_ne!(self.tid(), INIT_PROC_PID);
         self.with_mut_children(|children| {
@@ -475,7 +468,24 @@ impl Task {
         // NOTE: leader will be removed by parent calling `sys_wait4`
         if !self.is_leader() {
             self.with_mut_thread_group(|tg| tg.remove(self));
-            TASK_MANAGER.remove(self)
+            TASK_MANAGER.remove(self.tid())
+        } else {
+            if let Some(parent) = self.parent() {
+                let parent = parent.upgrade().unwrap();
+                parent.receive_siginfo(
+                    SigInfo {
+                        sig: Sig::SIGCHLD,
+                        code: SigInfo::CLD_EXITED,
+                        details: SigDetails::CHLD {
+                            pid: self.pid(),
+                            status: self.exit_code(),
+                            utime: self.time_stat().user_time(),
+                            stime: self.time_stat().sys_time(),
+                        },
+                    },
+                    false,
+                );
+            }
         }
     }
 

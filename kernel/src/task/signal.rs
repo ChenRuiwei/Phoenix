@@ -10,6 +10,7 @@ use core::{
 use arch::time::{get_time_duration, get_time_ms};
 use signal::{
     action::{Action, ActionType},
+    siginfo::{SigDetails, SigInfo},
     signal_stack::{MContext, UContext},
     sigset::{Sig, SigSet},
 };
@@ -67,12 +68,12 @@ impl From<Action> for SigAction {
 
 impl Task {
     /// A signal may be process-directed or thread-directed
-    /// A process-directed signal is targeted at  a  thread  group and is
+    /// A process-directed signal is targeted at a thread group and is
     /// delivered to an arbitrarily selected thread from among those that are
     /// not blocking the signal
     /// A thread-directed signal is targeted at
     /// (i.e., delivered to) a specific thread.
-    pub fn receive_signal(&self, sig: Sig, thread_directed: bool) {
+    pub fn receive_siginfo(&self, si: SigInfo, thread_directed: bool) {
         match thread_directed {
             false => {
                 debug_assert!(self.is_leader());
@@ -82,11 +83,11 @@ impl Task {
                     // selected to receive the signal
                     let mut signal_delivered = false;
                     for task in tg.iter() {
-                        if task.sig_mask().contain_signal(sig) {
+                        if task.sig_mask().contain_signal(si.sig) {
                             continue;
                         }
                         task.with_mut_sig_pending(|pending| {
-                            pending.add(sig);
+                            pending.recv(si);
                         });
                         signal_delivered = true;
                         break;
@@ -94,14 +95,14 @@ impl Task {
                     if !signal_delivered {
                         let task = tg.iter().next().unwrap();
                         task.with_mut_sig_pending(|pending| {
-                            pending.add(sig);
+                            pending.recv(si);
                         });
                     }
                 })
             }
             true => {
                 self.with_mut_sig_pending(|pending| {
-                    pending.add(sig);
+                    pending.recv(si);
                 });
             }
         }
@@ -122,37 +123,39 @@ pub fn do_signal() -> SysResult<()> {
         log::info!("[do signal] there is some signals to be handled");
         let len = pending.queue.len();
         for _ in 0..len {
-            let sig = pending.pop().unwrap();
-            if !sig.is_kill_or_stop() && task.sig_mask().contain_signal(sig) {
-                pending.add(sig);
+            let si = pending.pop().unwrap();
+            if !si.sig.is_kill_or_stop() && task.sig_mask().contain_signal(si.sig) {
+                pending.add(si);
                 continue;
             }
-            let action = task.sig_handlers().get(sig).unwrap().clone();
+            let action = task.sig_handlers().get(si.sig).unwrap().clone();
             match action.atype {
-                ActionType::Ignore => ignore(sig),
-                ActionType::Kill => terminate(sig),
-                ActionType::Stop => stop(sig),
-                ActionType::Cont => cont(sig),
+                ActionType::Ignore => {
+                    log::debug!("Recevie signal {}. Action: ignore", si.sig);
+                }
+                ActionType::Kill => terminate(si.sig),
+                ActionType::Stop => stop(si.sig),
+                ActionType::Cont => cont(si.sig),
                 ActionType::User { entry } => {
                     log::info!("[do signal] user defined signal action");
                     // 在跳转到用户定义的信号处理程序之前，内核需要保存当前进程的上下文，
                     // 包括程序计数器、寄存器状态、栈指针等。此外，当前的信号屏蔽集也需要被保存，
                     // 因为信号处理程序可能会被嵌套调用（即一个信号处理程序中可能会触发另一个信号），
                     // 所以需要确保每个信号处理程序能恢复到它被调用时的屏蔽集状态
-                    let old_mask = task.sig_mask();
+                    let old_mask = *task.sig_mask();
                     // 在执行用户定义的信号处理程序之前，内核会将当前处理的信号添加到信号屏蔽集中。
                     // 这样做是为了防止在处理该信号的过程中，相同的信号再次中断
-                    task.sig_mask().add_signal(sig);
+                    task.sig_mask().add_signal(si.sig);
                     // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
                     // 这些信息定义在Action的mask字段
-                    task.sig_mask().add_signals(action.mask);
+                    *task.sig_mask() |= action.mask;
 
-                    let ucontext_ptr = save_context_into_sigstack(*old_mask)?;
+                    let ucontext_ptr = save_context_into_sigstack(old_mask)?;
                     let cx = task.trap_context_mut();
                     // 用户自定义的sa_handler的参数，void myhandler(int signo,siginfo_t *si,void
                     // *ucontext); TODO:实现siginfo
                     // a0
-                    cx.user_x[10] = sig.raw();
+                    cx.user_x[10] = si.sig.raw();
                     // a2
                     cx.user_x[12] = ucontext_ptr;
                     cx.sepc = entry;
@@ -168,11 +171,6 @@ pub fn do_signal() -> SysResult<()> {
         }
         Ok(())
     })
-}
-
-/// ignore the signal
-fn ignore(sig: Sig) {
-    log::debug!("Recevie signal {}. Action: ignore", sig);
 }
 
 /// terminate the process
@@ -235,16 +233,78 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> SysResult<usize> {
     Ok(ptr)
 }
 
-pub struct WaitHandlableSignal(pub Arc<Task>);
+/// wait for signals and don't need siginfo as return value
+pub struct WaitExpectSignals<'a> {
+    task: &'a Arc<Task>,
+    expect: SigSet,
+    set_waker: bool,
+}
 
-impl Future for WaitHandlableSignal {
-    type Output = usize;
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
-        self.0
+impl<'a> WaitExpectSignals<'a> {
+    pub fn new(task: &'a Arc<Task>, expect: SigSet) -> Self {
+        Self {
+            task,
+            expect,
+            set_waker: false,
+        }
+    }
+}
+
+impl<'a> Future for WaitExpectSignals<'a> {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        if !self.set_waker {
+            self.task.with_mut_sig_pending(|pending| {
+                pending.set_waker(Some(cx.waker().clone()));
+            });
+        };
+        self.task
             .with_mut_sig_pending(|pending| -> Poll<Self::Output> {
-                match pending.has_signal_to_handle(*current_task().sig_mask()) {
-                    true => Poll::Ready(get_time_ms()),
+                match pending.has_expect_signals(self.expect) {
+                    true => {
+                        pending.set_waker(None);
+                        Poll::Ready(())
+                    }
                     false => Poll::Pending,
+                }
+            })
+    }
+}
+
+/// wait for a signal and need the siginfo of the expected signal
+pub struct WaitExpectSignal<'a> {
+    task: &'a Arc<Task>,
+    expect: Sig,
+    set_waker: bool,
+}
+
+impl<'a> WaitExpectSignal<'a> {
+    pub fn new(task: &'a Arc<Task>, expect: Sig) -> Self {
+        Self {
+            task,
+            expect,
+            set_waker: false,
+        }
+    }
+}
+
+impl<'a> Future for WaitExpectSignal<'a> {
+    type Output = SigInfo;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        if !self.set_waker {
+            self.task.with_mut_sig_pending(|pending| {
+                pending.set_waker(Some(cx.waker().clone()));
+            });
+            self.set_waker = true;
+            return Poll::Pending;
+        };
+        self.task
+            .with_mut_sig_pending(|pending| -> Poll<Self::Output> {
+                if let Some(si) = pending.has_expect_signal(self.expect) {
+                    pending.set_waker(None);
+                    Poll::Ready(si)
+                } else {
+                    Poll::Pending
                 }
             })
     }
@@ -315,7 +375,18 @@ impl ITimer {
                 self.activated = false;
             }
             self.next_expire = now + self.interval;
-            current_task().receive_signal(self.sig, false);
+            current_task().receive_siginfo(
+                SigInfo {
+                    sig: self.sig,
+                    // The SI-TIMER value indicates that the signal was triggered by a timer
+                    // expiration. This usually refers to POSIX timers set through the
+                    // timer_settime() function, rather than traditional UNIX timers set through
+                    // setter() or alarm(). Therefore, only set si_code field SI_KERNEL
+                    code: SigInfo::KERNEL,
+                    details: SigDetails::None,
+                },
+                false,
+            );
         }
     }
 

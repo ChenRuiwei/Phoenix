@@ -21,8 +21,8 @@ impl TaskManager {
         self.0.lock().insert(task.tid(), Arc::downgrade(task));
     }
 
-    pub fn remove(&self, task: &Arc<Task>) {
-        self.0.lock().remove(&task.tid());
+    pub fn remove(&self, tid: Tid) {
+        self.0.lock().remove(&tid);
     }
 
     /// Get the init process.

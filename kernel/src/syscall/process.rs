@@ -3,6 +3,10 @@
 use alloc::{string::String, vec::Vec};
 
 use async_utils::yield_now;
+use signal::{
+    siginfo::*,
+    sigset::{Sig, SigSet},
+};
 use systype::{SysError, SysResult, SyscallResult};
 use vfs::{sys_root_dentry, DISK_FS_NAME, FS_MANAGER};
 use vfs_core::{InodeMode, OpenFlags, AT_FDCWD};
@@ -11,7 +15,7 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     syscall::{at_helper, resolve_path},
-    task::{spawn_user_task, PGid, Pid, TASK_MANAGER},
+    task::{signal::WaitExpectSignal, spawn_user_task, PGid, Pid, TASK_MANAGER},
 };
 
 bitflags! {
@@ -122,47 +126,91 @@ pub async fn sys_wait4(
         p if p > 0 => WaitFor::Pid(p as Pid),
         p => WaitFor::PGid(p as PGid),
     };
-    loop {
-        // log::debug!("[sys_wait4]: finding zombie children for {target:?}");
-        let children = task.children();
-        if children.is_empty() {
-            log::warn!("[sys_wait4] fail: no child");
-            return Err(SysError::ECHILD);
-        }
-        let res_task = match target {
-            WaitFor::AnyChild => children.values().find(|c| c.is_zombie()),
-            WaitFor::Pid(pid) => {
-                if let Some(child) = children.get(&pid) {
-                    if child.is_zombie() {
-                        task.time_stat()
-                            .update_child_time(child.time_stat().user_system_time());
-                        Some(child)
-                    } else {
-                        None
-                    }
+    // 首先检查一遍等待的进程是否已经是zombie了
+    let children = task.children();
+    if children.is_empty() {
+        log::warn!("[sys_wait4] fail: no child");
+        return Err(SysError::ECHILD);
+    }
+    let res_task = match target {
+        WaitFor::AnyChild => children.values().find(|c| c.is_zombie()),
+        WaitFor::Pid(pid) => {
+            if let Some(child) = children.get(&pid) {
+                if child.is_zombie() {
+                    task.time_stat()
+                        .update_child_time(child.time_stat().user_system_time());
+                    Some(child)
                 } else {
-                    log::warn!("[sys_wait4] fail: no child with pid {pid}");
-                    return Err(SysError::ECHILD);
+                    None
+                }
+            } else {
+                log::warn!("[sys_wait4] fail: no child with pid {pid}");
+                return Err(SysError::ECHILD);
+            }
+        }
+        WaitFor::PGid(_) => unimplemented!(),
+        WaitFor::AnyChildInGroup => unimplemented!(),
+    };
+    if let Some(res_task) = res_task {
+        if wstatus.not_null() {
+            // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
+            // wstatus macros can be found in "bits/waitstatus.h"
+            let status = (res_task.exit_code() & 0xff) << 8;
+            log::trace!("[sys_wait4] wstatus: {:#x}", status);
+            wstatus.write(&task, status)?;
+        }
+        let tid = res_task.tid();
+        task.remove_child(tid);
+        TASK_MANAGER.remove(tid);
+        return Ok(res_task.pid());
+    } else if option.contains(WaitOptions::WNOHANG) {
+        return Ok(0);
+    } else {
+        // 如果等待的进程还不是zombie，那么本进程进行await，
+        // 直到等待的进程do_exit然后发送SIGCHLD信号唤醒自己
+        let (child_pid, exit_code, utime, stime) = match target {
+            WaitFor::AnyChild => {
+                let si = WaitExpectSignal::new(&task, Sig::SIGCHLD).await;
+                match si.details {
+                    SigDetails::CHLD {
+                        pid,
+                        status,
+                        utime,
+                        stime,
+                    } => (pid, status, utime, stime),
+                    _ => unreachable!(),
                 }
             }
-            WaitFor::PGid(_) => unimplemented!(),
+            WaitFor::Pid(pid) => loop {
+                let si = WaitExpectSignal::new(&task, Sig::SIGCHLD).await;
+                match si.details {
+                    SigDetails::CHLD {
+                        pid: child_pid,
+                        status,
+                        utime,
+                        stime,
+                    } => {
+                        if child_pid == pid {
+                            break (pid, status, utime, stime);
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            },
             WaitFor::AnyChildInGroup => unimplemented!(),
+            WaitFor::PGid(_) => unimplemented!(),
         };
-        if let Some(res_task) = res_task {
-            if wstatus.not_null() {
-                // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
-                // wstatus macros can be found in "bits/waitstatus.h"
-                let status = (res_task.exit_code() & 0xff) << 8;
-                log::trace!("[sys_wait4] wstatus: {:#x}", status);
-                wstatus.write(&task, status)?;
-            }
-            task.remove_child(res_task.tid());
-            TASK_MANAGER.remove(res_task);
-            return Ok(res_task.pid());
-        } else if option.contains(WaitOptions::WNOHANG) {
-            return Ok(0);
+        task.time_stat().update_child_time((utime, stime));
+        if wstatus.not_null() {
+            // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
+            // wstatus macros can be found in "bits/waitstatus.h"
+            let status = (exit_code & 0xff) << 8;
+            log::trace!("[sys_wait4] wstatus: {:#x}", status);
+            wstatus.write(&task, status)?;
         }
-        yield_now().await;
+        task.remove_child(child_pid);
+        TASK_MANAGER.remove(child_pid);
+        return Ok(child_pid);
     }
 }
 

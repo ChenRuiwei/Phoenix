@@ -2,7 +2,10 @@ extern crate alloc;
 use alloc::collections::VecDeque;
 use core::task::Waker;
 
-use crate::sigset::{Sig, SigSet, NSIG};
+use crate::{
+    siginfo::SigInfo,
+    sigset::{Sig, SigSet, NSIG},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionType {
@@ -50,10 +53,10 @@ impl Action {
 /// TODO:可否只留有一个bitmap?
 pub struct SigPending {
     /// 接收到的所有信号
-    pub queue: VecDeque<Sig>,
+    pub queue: VecDeque<SigInfo>,
     /// 比特位的内容代表是否收到信号，主要用来防止queue收到重复信号
     pub bitmap: SigSet,
-    // pub waker: Option<Waker>,
+    pub waker: Option<Waker>,
 }
 
 impl SigPending {
@@ -61,36 +64,61 @@ impl SigPending {
         Self {
             queue: VecDeque::new(),
             bitmap: SigSet::empty(),
+            waker: None,
         }
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }
 
-    pub fn add(&mut self, sig: Sig) {
-        if !self.bitmap.contain_signal(sig) {
-            self.queue.push_back(sig);
-            self.bitmap.add_signal(sig);
+    pub fn add(&mut self, si: SigInfo) {
+        if !self.bitmap.contain_signal(si.sig) {
+            self.bitmap.add_signal(si.sig);
+            self.queue.push_back(si);
         }
     }
 
-    pub fn pop(&mut self) -> Option<Sig> {
-        if let Some(sig) = self.queue.pop_front() {
-            self.bitmap.remove_signal(sig);
-            Some(sig)
+    pub fn pop(&mut self) -> Option<SigInfo> {
+        if let Some(si) = self.queue.pop_front() {
+            self.bitmap.remove_signal(si.sig);
+            Some(si)
         } else {
             None
         }
     }
 
-    pub fn has_signal_to_handle(&self, blocked: SigSet) -> bool {
-        // if there is any signal in pending list and it haven't been blocked
-        !(!blocked & self.bitmap).is_empty()
+    #[inline]
+    pub fn has_expect_signals(&self, expect: SigSet) -> bool {
+        !(expect & self.bitmap).is_empty()
     }
 
-    pub fn contain(&self, sig: Sig) -> bool {
-        self.bitmap.contain_signal(sig)
+    #[inline]
+    pub fn has_expect_signal(&self, expect: Sig) -> Option<SigInfo> {
+        if self.bitmap.contain_signal(expect) {
+            Some(
+                self.queue
+                    .iter()
+                    .find(|si| si.sig == expect)
+                    .unwrap()
+                    .clone(),
+            )
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn set_waker(&mut self, waker: Option<Waker>) {
+        self.waker = waker;
+    }
+
+    pub fn recv(&mut self, si: SigInfo) {
+        self.add(si);
+        if let Some(waker) = self.waker.as_ref() {
+            waker.wake_by_ref(); // 调用 wake_by_ref，不消耗 waker
+        }
     }
 }
 
@@ -116,14 +144,13 @@ impl SigHandlers {
         }
     }
 
-    /// This function will not replace the default processing of SIG_KILL and
+    /// This function will not update the default processing of SIG_KILL and
     /// SIG_STOP signals
-    pub fn replace(&mut self, sig: Sig, new: Action) -> Action {
-        let old = self.actions[sig.index()];
+    pub fn update(&mut self, sig: Sig, new: Action) {
+        // let old = self.actions[sig.index()];
         if sig.is_kill_or_stop() {
-            return old;
+            return;
         }
         self.actions[sig.index()] = new;
-        old
     }
 }

@@ -1,9 +1,7 @@
-use core::mem;
-
-use async_utils::yield_now;
 use config::process::INIT_PROC_PID;
 use signal::{
     action::{Action, ActionType},
+    siginfo::{SigDetails, SigInfo},
     signal_stack::{SignalStack, UContext},
     sigset::{Sig, SigSet},
 };
@@ -13,7 +11,7 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     task::{
-        signal::{do_signal, SigAction, SIG_DFL, SIG_IGN},
+        signal::{SigAction, WaitExpectSignals, SIG_DFL, SIG_IGN},
         TASK_MANAGER,
     },
 };
@@ -34,6 +32,14 @@ pub fn sys_sigaction(
     if !signum.is_valid() {
         return Err(SysError::EINVAL);
     }
+    if action.is_null() {
+        if old_action.is_null() {
+            return Ok(0);
+        }
+        let old = task.sig_handlers().get(signum).unwrap();
+        old_action.write(&task, (*old).into())?;
+        return Ok(0);
+    }
     let action = action.read(&task)?;
     let new = Action {
         atype: match action.sa_handler {
@@ -44,10 +50,11 @@ pub fn sys_sigaction(
         flags: action.sa_flags,
         mask: action.sa_mask,
     };
-    let old = task.sig_handlers().replace(signum, new);
+    task.sig_handlers().update(signum, new);
     // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
-        old_action.write(&task, old.into())?;
+        let old = task.sig_handlers().get(signum).unwrap();
+        old_action.write(&task, (*old).into())?;
     }
     Ok(0)
 }
@@ -70,7 +77,7 @@ pub fn sys_sigprocmask(
         let set = set.read(&task)?;
         match how {
             SIGBLOCK => {
-                task.sig_mask().add_signals(set);
+                *task.sig_mask() |= set;
             }
             SIGUNBLOCK => {
                 task.sig_mask().remove(set);
@@ -139,7 +146,14 @@ pub fn sys_kill(pid: isize, signum: i32) -> SyscallResult {
         -1 => {
             TASK_MANAGER.for_each(|task| {
                 if task.pid() != INIT_PROC_PID && task.is_leader() && sig.raw() != 0 {
-                    task.receive_signal(sig, false);
+                    task.receive_siginfo(
+                        SigInfo {
+                            sig,
+                            code: SigInfo::USER,
+                            details: SigDetails::Kill { pid: task.pid() },
+                        },
+                        false,
+                    );
                 }
                 Ok(())
             })?;
@@ -147,7 +161,14 @@ pub fn sys_kill(pid: isize, signum: i32) -> SyscallResult {
         _ if pid > 0 => {
             if let Some(task) = TASK_MANAGER.get(pid as usize) {
                 if task.is_leader() {
-                    task.receive_signal(sig, false);
+                    task.receive_siginfo(
+                        SigInfo {
+                            sig,
+                            code: SigInfo::USER,
+                            details: SigDetails::Kill { pid: task.pid() },
+                        },
+                        false,
+                    );
                 } else {
                     // sys_kill is sent to process not thread
                     return Err(SysError::ESRCH);
@@ -181,7 +202,14 @@ pub fn sys_tgkill(tgid: isize, tid: isize, signum: i32) -> SyscallResult {
     task.with_mut_thread_group(|tg| -> SyscallResult {
         for thread in tg.iter() {
             if thread.tid() == tid as usize {
-                thread.receive_signal(sig, true);
+                thread.receive_siginfo(
+                    SigInfo {
+                        sig,
+                        code: SigInfo::TKILL,
+                        details: SigDetails::Kill { pid: task.pid() },
+                    },
+                    true,
+                );
                 return Ok(0);
             }
         }
@@ -189,7 +217,7 @@ pub fn sys_tgkill(tgid: isize, tid: isize, signum: i32) -> SyscallResult {
     })
 }
 
-/// An  obsolete predecessor to tgkill().  It allows only the target thread ID
+/// An obsolete predecessor to tgkill(). It allows only the target thread ID
 /// to be specified, which may result in the wrong thread being signaled if a
 /// thread terminates and its thread ID is recycled.  Avoid using this system
 /// call.
@@ -199,7 +227,14 @@ pub fn sys_tkill(tid: isize, signum: i32) -> SyscallResult {
         return Err(SysError::EINVAL);
     }
     let task = TASK_MANAGER.get(tid as usize).ok_or(SysError::ESRCH)?;
-    task.receive_signal(sig, true);
+    task.receive_siginfo(
+        SigInfo {
+            sig,
+            code: SigInfo::TKILL,
+            details: SigDetails::Kill { pid: task.pid() },
+        },
+        true,
+    );
     Ok(0)
 }
 
@@ -218,17 +253,9 @@ pub async fn sys_sigsuspend(mask: UserReadPtr<SigSet>) -> SyscallResult {
     let task = current_task();
     let mut mask = mask.read(&task)?;
     let oldmask = task.sig_mask_replace(&mut mask);
-    // TODO:这里可以改成WaitHandlableSignal这样或许更快？
-    // WaitHandlableSignal(task).await
-    loop {
-        yield_now().await;
-        if task.with_mut_sig_pending(|pending| -> bool {
-            pending.has_signal_to_handle(*task.sig_mask())
-        }) {
-            *task.sig_mask() = oldmask;
-            // TODO: 根据Linux这里理论上应该等到signal
-            // handler返回时sys_sigsuspend再返回，但是貌似其他队都没有这样做
-            break Err(SysError::EINTR);
-        }
-    }
+    WaitExpectSignals::new(&task, *task.sig_mask()).await;
+    // TODO: 根据Linux这里理论上应该等到signal
+    // handler返回时sys_sigsuspend再返回，但是貌似其他队都没有这样做
+    *task.sig_mask() = oldmask;
+    Err(SysError::EINTR)
 }

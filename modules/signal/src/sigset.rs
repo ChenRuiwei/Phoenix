@@ -121,10 +121,6 @@ impl SigSet {
         self.insert(SigSet::from_bits(1 << sig.index()).unwrap())
     }
 
-    pub fn add_signals(&mut self, sigset: SigSet) {
-        *self |= sigset
-    }
-
     pub fn contain_signal(&self, sig: Sig) -> bool {
         self.contains(SigSet::from_bits(1 << sig.index()).unwrap())
     }

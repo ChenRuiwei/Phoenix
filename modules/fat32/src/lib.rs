@@ -142,7 +142,7 @@ impl fatfs::Seek for DiskCursor {
     fn seek(&mut self, pos: fatfs::SeekFrom) -> Result<u64, Self::Error> {
         match pos {
             fatfs::SeekFrom::Start(i) => {
-                log::debug!("Seek, start {i}",);
+                // log::debug!("Seek, start {i}",);
                 self.set_position(i as usize);
                 Ok(i)
             }
