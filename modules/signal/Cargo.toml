@@ -6,12 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-memory = { path = "../memory/" }
-
-crossbeam-queue = { version = "0", default-features = false, features = [
-    "alloc",
-    "nightly",
-] }
 bitflags = "2.5"
 log = "0.4"
-

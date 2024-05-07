@@ -7,7 +7,7 @@ use core::{
 };
 
 use async_utils::yield_now;
-use futex::{Futexes, RobustListHead};
+use futex::RobustListHead;
 use systype::{SysError, SyscallResult};
 use time::timespec::TimeSpec;
 use timer::timelimited_task::TimeLimitedTaskFuture;

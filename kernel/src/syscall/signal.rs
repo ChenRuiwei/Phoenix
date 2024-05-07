@@ -105,7 +105,7 @@ pub fn sys_sigreturn() -> SyscallResult {
     log::trace!("[sys_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
     let ucontext = ucontext_ptr.read(&task)?;
     *task.sig_mask() = ucontext.uc_sigmask;
-    task.set_signal_stack((ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack));
+    *task.signal_stack() = (ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack);
     cx.sepc = ucontext.uc_mcontext.sepc;
     cx.user_x = ucontext.uc_mcontext.user_x;
     Ok(0)

@@ -269,14 +269,14 @@ pub fn sys_clone(
     stack: usize,
     _parent_tid_ptr: usize,
     _tls_ptr: usize,
-    _chilren_tid_ptr: usize,
+    chilren_tid_ptr: usize,
 ) -> SyscallResult {
     let exit_signal = flags & 0xff;
     let flags = CloneFlags::from_bits(flags as u64 & !0xff).ok_or(SysError::EINVAL)?;
 
     log::info!("[sys_clone] flags {flags:?}");
     let stack = if stack != 0 { Some(stack.into()) } else { None };
-    let new_task = current_task().do_clone(flags, stack);
+    let new_task = current_task().do_clone(flags, stack, chilren_tid_ptr);
     new_task.trap_context_mut().set_user_a0(0);
     let new_tid = new_task.tid();
     log::info!("[sys_clone] clone a new thread, tid {new_tid}, clone flags {flags:?}",);
@@ -307,8 +307,7 @@ pub async fn sys_sched_yield() -> SyscallResult {
 // TODO: do the futex wake up at the address when task terminates
 pub fn sys_set_tid_address(tidptr: usize) -> SyscallResult {
     let task = current_task();
-    let ta = task.tid_address();
-    ta.clear_child_tid = Some(tidptr);
+    task.tid_address_mut().clear_child_tid = Some(tidptr);
     Ok(task.tid())
 }
 

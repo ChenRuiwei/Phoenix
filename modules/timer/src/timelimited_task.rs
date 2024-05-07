@@ -17,7 +17,6 @@ pub enum TimeLimitedTaskOutput<T> {
 pub struct TimeLimitedTaskFuture<F: Future + Send + 'static> {
     expire: Duration,
     future: F,
-    // TODO: can delete this ?
     in_timermanager: bool,
 }
 

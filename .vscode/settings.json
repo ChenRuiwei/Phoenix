@@ -6,11 +6,6 @@
   ],
   "rust-analyzer.linkedProjects": [
     "./kernel/Cargo.toml",
-    "./modules/signal/Cargo.toml",
-    "./arch/Cargo.toml",
-    "./modules/signal/Cargo.toml",
-    "./kernel/Cargo.toml",
-    "./kernel/Cargo.toml"
   ],
   "rust-analyzer.checkOnSave": true
 }

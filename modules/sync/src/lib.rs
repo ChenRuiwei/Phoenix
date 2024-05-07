@@ -9,7 +9,4 @@ extern crate alloc;
 #[macro_use]
 extern crate bitflags;
 
-pub mod mailbox;
 pub mod mutex;
-
-pub use mailbox::{Event, Mailbox};

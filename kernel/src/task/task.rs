@@ -20,13 +20,9 @@ use signal::{
     signal_stack::SignalStack,
     sigset::{Sig, SigSet},
 };
-use spin::Once;
 use sync::mutex::SpinNoIrqLock;
-use time::{stat::TaskTimeStat, timeval::ITimerVal};
-use vfs::{
-    fd_table::{self, FdTable},
-    sys_root_dentry,
-};
+use time::stat::TaskTimeStat;
+use vfs::{fd_table::FdTable, sys_root_dentry};
 use vfs_core::Dentry;
 
 use super::{
@@ -34,13 +30,14 @@ use super::{
     tid::{Pid, Tid, TidHandle},
 };
 use crate::{
-    mm::{
-        memory_space::{self, init_stack},
-        MemorySpace,
-    },
+    mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
     processor::env::SumGuard,
     syscall,
-    task::{manager::TASK_MANAGER, schedule, tid::alloc_tid},
+    task::{
+        manager::TASK_MANAGER,
+        schedule,
+        tid::{alloc_tid, TidAddress},
+    },
     trap::TrapContext,
 };
 
@@ -291,16 +288,12 @@ impl Task {
         unsafe { &mut *self.sig_stack.get() }
     }
 
-    pub fn set_signal_stack(&self, stack: Option<SignalStack>) {
-        unsafe {
-            *self.sig_stack.get() = stack;
-        }
-    }
-
+    #[inline]
     pub fn sig_ucontext_ptr(&self) -> usize {
         self.sig_ucontext_ptr.load(Ordering::Relaxed)
     }
 
+    #[inline]
     pub fn set_sig_ucontext_ptr(&self, ptr: usize) {
         self.sig_ucontext_ptr.store(ptr, Ordering::Relaxed)
     }
@@ -309,8 +302,12 @@ impl Task {
         unsafe { &mut *self.time_stat.get() }
     }
 
-    pub fn tid_address(&self) -> &mut TidAddress {
+    pub fn tid_address_mut(&self) -> &mut TidAddress {
         unsafe { &mut *self.tid_address.get() }
+    }
+
+    pub fn tid_address(&self) -> &TidAddress {
+        unsafe { &*self.tid_address.get() }
     }
 
     pub unsafe fn switch_page_table(&self) {
@@ -322,6 +319,7 @@ impl Task {
         self: &Arc<Self>,
         flags: syscall::CloneFlags,
         stack: Option<VirtAddr>,
+        chilren_tid_ptr: usize,
     ) -> Arc<Self> {
         use syscall::CloneFlags;
         let tid = alloc_tid();
@@ -378,6 +376,15 @@ impl Task {
         if let Some(sp) = stack {
             trap_context.get_mut().set_user_sp(sp.bits());
         }
+        let tid_address = if flags.contains(CloneFlags::CHILD_CLEARTID) {
+            log::warn!("CloneFlags::CHILD_CLEARTID");
+            SyncUnsafeCell::new(TidAddress {
+                set_child_tid: None,
+                clear_child_tid: Some(chilren_tid_ptr),
+            })
+        } else {
+            SyncUnsafeCell::new(TidAddress::new())
+        };
 
         let new = Arc::new(Self {
             tid,
@@ -401,13 +408,20 @@ impl Task {
             sig_ucontext_ptr: AtomicUsize::new(0),
             itimers,
             futexes,
-            tid_address: SyncUnsafeCell::new(TidAddress::new()),
+            tid_address,
         });
 
         if !flags.contains(CloneFlags::THREAD) {
             self.add_child(new.clone());
         }
         new.with_mut_thread_group(|tg| tg.push(new.clone()));
+
+        if flags.contains(CloneFlags::CHILD_SETTID) {
+            log::warn!("CloneFlags::CHILD_SETTID");
+            UserWritePtr::from_usize(chilren_tid_ptr)
+                .write(self, new.tid())
+                .expect("CloneFlags::CHILD_SETTID error");
+        }
 
         TASK_MANAGER.add(&new);
         new
@@ -442,7 +456,7 @@ impl Task {
         log::debug!("[Task::do_execve] allocing stack");
         let sp_init = self.with_mut_memory_space(|m| m.alloc_stack(USER_STACK_SIZE));
 
-        let guard = SumGuard::new();
+        let _guard = SumGuard::new();
         let (sp, argc, argv, envp) = init_stack(sp_init, argv, envp, auxv);
 
         // alloc heap
@@ -480,6 +494,14 @@ impl Task {
             }
             init_proc.children.lock().extend(children.clone());
         });
+
+        if let Some(address) = self.tid_address().clear_child_tid {
+            log::info!("[do_exit] clear_child_tid: {}", address);
+            UserWritePtr::from_usize(address)
+                .write(self, 0)
+                .expect("tid address write error");
+            self.with_mut_futexes(|futexes| futexes.wake(address as u32, 1));
+        }
 
         // NOTE: leader will be removed by parent calling `sys_wait4`
         if !self.is_leader() {
@@ -536,24 +558,5 @@ impl ThreadGroup {
 
     pub fn iter(&self) -> impl Iterator<Item = Arc<Task>> + '_ {
         self.members.values().map(|t| t.upgrade().unwrap())
-    }
-}
-
-/// Tid address which may be set by `set_tid_address` syscall.
-pub struct TidAddress {
-    /// When set, when spawning a new thread, the kernel sets the thread's tid
-    /// to this address.
-    pub set_child_tid: Option<usize>,
-    /// When set, when the thread exits, the kernel sets the thread's tid to
-    /// this address, and wake up a futex waiting on this address.
-    pub clear_child_tid: Option<usize>,
-}
-
-impl TidAddress {
-    pub fn new() -> Self {
-        Self {
-            set_child_tid: None,
-            clear_child_tid: None,
-        }
     }
 }

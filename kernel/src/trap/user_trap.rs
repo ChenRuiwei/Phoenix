@@ -103,7 +103,7 @@ pub fn trap_return(task: &Arc<Task>) {
         fn __return_to_user(cx: *mut TrapContext);
     }
 
-    do_signal();
+    do_signal().expect("do signal error");
 
     log::info!("[kernel] trap return to user...");
     unsafe {
