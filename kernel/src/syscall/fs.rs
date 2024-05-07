@@ -1,14 +1,25 @@
-use alloc::{ffi::CString, sync::Arc};
+use alloc::{collections::BTreeMap, ffi::CString, sync::Arc, vec::Vec};
+use core::{
+    future::{self, Future},
+    mem::size_of,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
+use async_utils::{dyn_future, Async};
 use driver::BLOCK_DEVICE;
+use memory::VirtAddr;
 use systype::{SysError, SysResult, SyscallResult};
+use time::timespec::TimeSpec;
+use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{pipe::new_pipe, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    is_absolute_path, Dentry, Inode, InodeMode, MountFlags, OpenFlags, Path, AT_FDCWD, AT_REMOVEDIR,
+    is_absolute_path, Dentry, Inode, InodeMode, InodeType, MountFlags, OpenFlags, Path, PollEvents,
+    SeekFrom, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use crate::{
-    mm::{UserReadPtr, UserWritePtr},
+    mm::{UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr},
     processor::hart::current_task,
 };
 
@@ -82,7 +93,7 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
     let task = current_task();
     let buf = buf.read_array(&task, len)?;
     let file = task.with_fd_table(|table| table.get(fd))?;
-    let ret = file.write(file.pos(), &buf)?;
+    let ret = file.write(file.pos(), &buf).await?;
     Ok(ret)
 }
 
@@ -291,6 +302,19 @@ pub fn sys_fstat(fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
     Ok(0)
 }
 
+pub fn sys_fstatat(
+    dirfd: isize,
+    pathname: UserReadPtr<u8>,
+    stat_buf: UserWritePtr<Kstat>,
+    flags: i32,
+) -> SyscallResult {
+    let task = current_task();
+    let path = pathname.read_cstr(&task)?;
+    let dentry = at_helper(dirfd, &path, InodeMode::empty())?;
+    stat_buf.write(&task, Kstat::from_vfs_file(dentry.inode()?)?)?;
+    Ok(0)
+}
+
 pub async fn sys_mount(
     source: UserReadPtr<u8>,
     target: UserReadPtr<u8>,
@@ -366,9 +390,11 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
     const LEN_BEFORE_NAME: usize = 19;
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
-    if let Some(dirent) = file.read_dir()? {
+    // HACK: code looks ugly
+    let mut writen_len = 0;
+    while let Some(dirent) = file.read_dir()? {
         log::debug!("[sys_getdents64] dirent {dirent:?}");
-        let buf = UserWritePtr::<LinuxDirent64>::from(buf);
+        let buf = UserWritePtr::<LinuxDirent64>::from(buf + writen_len);
         let ret_len = LEN_BEFORE_NAME + dirent.name.len() + 1;
         let linux_dirent = LinuxDirent64 {
             d_ino: dirent.ino,
@@ -376,16 +402,16 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
             d_reclen: ret_len as u16,
             d_type: dirent.itype as u8,
         };
-        if ret_len > len {
-            return Err(SysError::EINVAL);
+        if writen_len + ret_len > len {
+            file.seek(SeekFrom::Current(-1));
+            break;
         }
         let name_buf = UserWritePtr::<u8>::from(buf.as_usize() + LEN_BEFORE_NAME);
         buf.write(&task, linux_dirent)?;
         name_buf.write_cstr(&task, &dirent.name)?;
-        Ok(ret_len)
-    } else {
-        Ok(0)
+        writen_len += ret_len;
     }
+    Ok(writen_len)
 }
 
 /// pipe() creates a pipe, a unidirectional data channel that can be used for
@@ -444,6 +470,170 @@ pub fn sys_unlinkat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32) -> Sysc
     } else {
         parent.unlink(dentry.name())
     }
+}
+
+pub fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> SyscallResult {
+    let task = current_task();
+    let file = task.with_fd_table(|table| table.get(fd))?;
+    file.ioctl(cmd, arg)
+}
+
+const F_DUPFD: i32 = 0;
+const F_DUPFD_CLOEXEC: i32 = 1030;
+const F_GETFD: i32 = 1;
+const F_SETFD: i32 = 2;
+const F_GETFL: i32 = 3;
+const F_SETFL: i32 = 4;
+
+// TODO:
+pub fn sys_fcntl(fd: usize, op: i32, arg: usize) -> SyscallResult {
+    let task = current_task();
+    match op {
+        F_DUPFD_CLOEXEC => {
+            let new_fd = task.with_mut_fd_table(|table| table.dup_with_bound(fd, arg));
+            new_fd
+        }
+        F_SETFD => {
+            const FD_CLOEXEC: usize = 1;
+            let file = task.with_fd_table(|table| table.get(fd))?;
+            let flags = file.flags();
+            if arg & FD_CLOEXEC == 0 {
+                // do not close on execve
+                file.set_flags(flags & !OpenFlags::O_CLOEXEC);
+            } else {
+                // do close on execve
+                file.set_flags(flags | OpenFlags::O_CLOEXEC);
+            }
+            Ok(0)
+        }
+        _ => {
+            log::warn!("fcntl cmd: {} not implemented, returning 0 as default", op);
+            Ok(0)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct IoVec {
+    base: usize,
+    len: usize,
+}
+
+/// The writev() system call writes iovcnt buffers of data described by iov to
+/// the file associated with the file descriptor fd ("gather output").
+pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> SyscallResult {
+    let task = current_task();
+    let file = task.with_fd_table(|f| f.get(fd))?;
+
+    let mut offset = file.pos();
+    let mut total_len = 0;
+    let iovs = iov.read_array(&task, iovcnt)?;
+    for (i, iov) in iovs.iter().enumerate() {
+        if iov.len == 0 {
+            continue;
+        }
+
+        let ptr = UserReadPtr::<u8>::from(iov.base);
+        log::debug!("syscall writev: iov #{i}, ptr: {ptr}, len: {}", iov.len);
+
+        let buf = ptr.into_slice(&task, iov.len)?;
+        let write_len = file.write(offset, &buf).await?;
+
+        total_len += write_len;
+        offset += write_len;
+    }
+    file.seek(SeekFrom::Current(total_len as i64));
+    Ok(total_len)
+}
+
+#[derive(Debug, Copy, Clone)]
+#[repr(C)]
+pub struct PollFd {
+    fd: i32,      // file descriptor
+    events: i16,  // requested events
+    revents: i16, // returned events
+}
+
+pub async fn sys_ppoll(
+    fds: UserRdWrPtr<PollFd>,
+    nfds: usize,
+    timeout_ts: UserReadPtr<TimeSpec>,
+    sigmask: usize,
+) -> SyscallResult {
+    let task = current_task();
+    let fds_va: VirtAddr = fds.as_usize().into();
+    let mut poll_fds = fds.read_array(&task, nfds)?;
+    let timeout = if timeout_ts.is_null() {
+        None
+    } else {
+        Some(timeout_ts.read(&task)?.into())
+    };
+
+    pub struct PollFuture<'a> {
+        futures: Vec<Async<'a, SysResult<PollEvents>>>,
+        ready_cnt: usize,
+    }
+
+    impl Future for PollFuture<'_> {
+        type Output = Vec<(usize, SysResult<PollEvents>)>;
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            let this = unsafe { self.get_unchecked_mut() };
+            let mut ret_vec = Vec::new();
+            for (i, future) in this.futures.iter_mut().enumerate() {
+                let result = unsafe { Pin::new_unchecked(future).poll(cx) };
+                if let Poll::Ready(result) = result {
+                    this.ready_cnt += 1;
+                    ret_vec.push((i, result))
+                }
+            }
+            if this.ready_cnt > 0 {
+                Poll::Ready(ret_vec)
+            } else {
+                Poll::Pending
+            }
+        }
+    }
+
+    let mut futures = Vec::<Async<SysResult<PollEvents>>>::with_capacity(nfds);
+    for (i, poll_fd) in poll_fds.iter().enumerate() {
+        let fd = poll_fd.fd as usize;
+        let events = PollEvents::from_bits(poll_fd.events).unwrap();
+        let file = task.with_fd_table(|table| table.get(fd))?;
+        let future = dyn_future(async move { file.poll(events).await });
+        futures.push(future);
+    }
+
+    let poll_future = PollFuture {
+        futures,
+        ready_cnt: 0,
+    };
+
+    let mut poll_fds_slice = unsafe { UserSlice::<PollFd>::new_unchecked(fds_va, nfds) };
+
+    let ret_vec = if let Some(timeout) = timeout {
+        match TimeLimitedTaskFuture::new(timeout, poll_future).await {
+            TimeLimitedTaskOutput::Ok(ret_vec) => ret_vec,
+            TimeLimitedTaskOutput::TimeOut => {
+                log::debug!("[sys_ppoll]: timeout");
+                return Ok(0);
+            }
+        }
+    } else {
+        poll_future.await
+    };
+
+    let ret = ret_vec.len();
+    for (i, result) in ret_vec {
+        if let Ok(result) = result {
+            poll_fds[i].revents |= result.bits() as i16;
+        } else {
+            poll_fds[i].revents |= PollEvents::POLLERR.bits() as i16;
+        }
+    }
+    poll_fds_slice.copy_from_slice(&poll_fds);
+    Ok(ret)
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as

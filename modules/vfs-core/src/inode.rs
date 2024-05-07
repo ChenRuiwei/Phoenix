@@ -14,7 +14,7 @@ use crate::{
     alloc_ino,
     file::File,
     super_block,
-    utils::{NodePermission, RenameFlag, Stat, Time, TimeSpec},
+    utils::{RenameFlag, Stat, Time, TimeSpec},
     Dentry, SuperBlock,
 };
 

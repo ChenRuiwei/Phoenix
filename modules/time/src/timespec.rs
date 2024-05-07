@@ -33,6 +33,7 @@ impl From<Duration> for TimeSpec {
         }
     }
 }
+
 impl From<TimeSpec> for Duration {
     fn from(time_spec: TimeSpec) -> Self {
         Duration::new(time_spec.tv_sec as u64, time_spec.tv_nsec as u32)

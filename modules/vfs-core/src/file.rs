@@ -6,9 +6,10 @@ use core::{
 
 use async_trait::async_trait;
 use config::mm::PAGE_SIZE;
-use systype::{ASyscallResult, SysResult, SyscallResult};
+use spin::Mutex;
+use systype::{ASyscallResult, SysError, SysResult, SyscallResult};
 
-use crate::{Dentry, DirEntry, Inode, InodeType, SeekFrom};
+use crate::{Dentry, DirEntry, Inode, InodeType, OpenFlags, PollEvents, SeekFrom};
 
 pub struct FileMeta {
     /// Dentry which pointes to this file.
@@ -18,6 +19,7 @@ pub struct FileMeta {
     /// Offset position of this file.
     /// WARN: may cause trouble if this is not locked with other things.
     pub pos: AtomicUsize,
+    pub flags: Mutex<OpenFlags>,
 }
 
 impl FileMeta {
@@ -26,12 +28,26 @@ impl FileMeta {
             dentry,
             inode,
             pos: 0.into(),
+            flags: Mutex::new(OpenFlags::empty()),
+        }
+    }
+
+    pub fn new_with_flags(
+        dentry: Arc<dyn Dentry>,
+        inode: Arc<dyn Inode>,
+        flags: OpenFlags,
+    ) -> Self {
+        Self {
+            dentry,
+            inode,
+            pos: 0.into(),
+            flags: Mutex::new(flags),
         }
     }
 }
 
 #[async_trait]
-pub trait File: Send + Sync + 'static {
+pub trait File: Send + Sync {
     fn meta(&self) -> &FileMeta;
 
     /// Called by read(2) and related system calls.
@@ -44,7 +60,7 @@ pub trait File: Send + Sync + 'static {
     ///
     /// On success, the number of bytes written is returned, and the file offset
     /// is incremented by the number of bytes actually written.
-    fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult;
+    async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult;
 
     /// Read directory entries. This is called by the getdents(2) system call.
     ///
@@ -53,6 +69,21 @@ pub trait File: Send + Sync + 'static {
     fn read_dir(&self) -> SysResult<Option<DirEntry>>;
 
     fn flush(&self) -> SysResult<usize>;
+
+    fn ioctl(&self, cmd: usize, arg: usize) -> SyscallResult {
+        Err(SysError::ENOTTY)
+    }
+
+    async fn poll(&self, events: PollEvents) -> SysResult<PollEvents> {
+        let mut res = PollEvents::empty();
+        if events.contains(PollEvents::POLLIN) {
+            res |= PollEvents::POLLIN;
+        }
+        if events.contains(PollEvents::POLLOUT) {
+            res |= PollEvents::POLLOUT;
+        }
+        Ok(res)
+    }
 
     fn inode(&self) -> Arc<dyn Inode> {
         self.meta().inode.clone()
@@ -105,6 +136,14 @@ pub trait File: Send + Sync + 'static {
 impl dyn File {
     pub fn dentry(&self) -> Arc<dyn Dentry> {
         self.meta().dentry.clone()
+    }
+
+    pub fn flags(&self) -> OpenFlags {
+        self.meta().flags.lock().clone()
+    }
+
+    pub fn set_flags(&self, flags: OpenFlags) {
+        *self.meta().flags.lock() = flags;
     }
 
     /// Read all data from this file synchronously.

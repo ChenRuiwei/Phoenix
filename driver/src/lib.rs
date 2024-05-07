@@ -9,7 +9,7 @@ use core::{
     task::Waker,
 };
 
-use qemu::virtio_blk::VirtIOBlkDev;
+use qemu::{uart::UartDevice, virtio_blk::VirtIOBlkDev};
 use spin::{Lazy, Once};
 use sync::mutex::SpinNoIrqLock;
 
@@ -41,12 +41,18 @@ pub trait CharDevice: Send + Sync {
 
 pub fn init() {
     init_block_device();
+    init_char_device();
 }
 
+pub static CHAR_DEVICE: Once<Arc<dyn CharDevice>> = Once::new();
 pub static BLOCK_DEVICE: Once<Arc<dyn BlockDevice>> = Once::new();
 
 fn init_block_device() {
     BLOCK_DEVICE.call_once(|| Arc::new(VirtIOBlkDev::new()));
+}
+
+fn init_char_device() {
+    CHAR_DEVICE.call_once(|| Arc::new(UartDevice::new()));
 }
 
 struct Stdout;
@@ -59,6 +65,11 @@ impl Write for Stdout {
         }
         Ok(())
     }
+}
+
+pub fn getchar() -> u8 {
+    let char_device = CHAR_DEVICE.get().unwrap();
+    char_device.getchar()
 }
 
 pub fn print(args: fmt::Arguments<'_>) {

@@ -125,6 +125,7 @@ pub fn sys_mmap(
                 todo!()
             } else {
                 let file = task.with_fd_table(|table| table.get(fd))?;
+                // PERF: lazy alloc for mmap
                 let start_va =
                     task.with_mut_memory_space(|m| m.alloc_mmap_area(perm, length, file, offset))?;
                 Ok(start_va.bits())
@@ -152,5 +153,12 @@ pub fn sys_mmap(
 /// set to indicate the error (probably to EINVAL).
 // TODO:
 pub fn sys_munmap(addr: VirtAddr, length: usize) -> SyscallResult {
+    // if !addr.is_aligned() {
+    //     return Err(SysError::EINVAL);
+    // }
+
+    // let task = current_task();
+    // let range = VirtAddr::from(addr)..VirtAddr::from(addr + length);
+    // task.with_mut_memory_space(|m| m.unmap(range));
     Ok(0)
 }

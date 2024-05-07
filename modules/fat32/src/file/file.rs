@@ -61,7 +61,7 @@ impl File for FatFileFile {
         }
     }
 
-    fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         if buf.is_empty() {
             return Ok(0);
         }

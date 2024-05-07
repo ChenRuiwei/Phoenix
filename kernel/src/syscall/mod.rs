@@ -58,7 +58,7 @@ macro_rules! strace {
 
 /// Handle syscall exception with `syscall_id` and other arguments.
 pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
-    pub use SyscallNo::*;
+    use SyscallNo::*;
     let Some(syscall_no) = SyscallNo::from_repr(syscall_no) else {
         log::error!("Syscall number not included: {}", syscall_no);
         return Ok(0);
@@ -72,8 +72,13 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         SCHED_YIELD => sys_sched_yield().await,
         CLONE => sys_clone(args[0], args[1], args[2], args[3], args[4]),
         WAIT4 => sys_wait4(args[0] as _, args[1].into(), args[2] as _, args[3]).await,
+        GETTID => sys_gettid(),
         GETPID => sys_getpid(),
         GETPPID => sys_getppid(),
+        GETPGID => sys_getpgid(args[0]),
+        SET_TID_ADDRESS => sys_set_tid_address(args[0]),
+        GETUID => sys_getuid(),
+        GETEUID => sys_geteuid(),
         // Memory
         BRK => sys_brk(args[0].into()),
         MMAP => sys_mmap(
@@ -96,6 +101,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         DUP => sys_dup(args[0]),
         DUP3 => sys_dup3(args[0], args[1], args[2] as _),
         FSTAT => sys_fstat(args[0], args[1].into()),
+        FSTATAT => sys_fstatat(args[0] as _, args[1].into(), args[2].into(), args[3] as _),
         GETDENTS64 => sys_getdents64(args[0], args[1], args[2]),
         UNLINKAT => sys_unlinkat(args[0] as _, args[1].into(), args[2] as _),
         MOUNT => {
@@ -110,6 +116,11 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         }
         UMOUNT2 => sys_umount2(args[0].into(), args[1] as _).await,
         PIPE2 => sys_pipe2(args[0].into(), args[1] as _),
+        IOCTL => sys_ioctl(args[0], args[1], args[2]),
+        FCNTL => sys_fcntl(args[0], args[1] as _, args[2]),
+        GETUID => sys_getuid(),
+        WRITEV => sys_writev(args[0], args[1].into(), args[2]).await,
+        PPOLL => sys_ppoll(args[0].into(), args[1], args[2].into(), args[3]).await,
         // Signal
         RT_SIGPROCMASK => sys_sigprocmask(args[0], args[1].into(), args[2].into()),
         RT_SIGACTION => sys_sigaction(args[0] as _, args[1].into(), args[2].into()),
@@ -139,14 +150,8 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
             )
             .await
         }
-        GET_ROBUST_LIST => sys_get_robust_list(
-            args[0] as i32,
-            UserWritePtr::<RobustListHead>::from(args[1]),
-            UserWritePtr::<usize>::from(args[2]),
-        ),
-        SET_ROBUST_LIST => {
-            sys_set_robust_list(UserReadPtr::<RobustListHead>::from(args[0]), args[1])
-        }
+        GET_ROBUST_LIST => sys_get_robust_list(args[0] as _, args[1].into(), args[2].into()),
+        SET_ROBUST_LIST => sys_set_robust_list(args[0].into(), args[1]),
         // Miscellaneous
         UNAME => sys_uname(args[0].into()),
         GETRUSAGE => sys_getrusage(args[0] as _, args[1].into()),

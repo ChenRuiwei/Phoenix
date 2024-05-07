@@ -114,8 +114,15 @@ pub trait Dentry: Send + Sync {
         self.meta().children.lock().get(name).cloned()
     }
 
+    fn set_inode(&self, inode: Arc<dyn Inode>) {
+        if self.meta().inode.lock().is_some() {
+            log::warn!("[Dentry::set_inode] replace inode in {:?}", self.name());
+        }
+        *self.meta().inode.lock() = Some(inode);
+    }
+
     /// Insert a child dentry to this dentry.
-    fn insert(self: Arc<Self>, child: Arc<dyn Dentry>) -> Option<Arc<dyn Dentry>> {
+    fn insert(&self, child: Arc<dyn Dentry>) -> Option<Arc<dyn Dentry>> {
         self.meta()
             .children
             .lock()
@@ -155,13 +162,6 @@ impl dyn Dentry {
         self.meta().inode.lock().is_none()
     }
 
-    pub fn set_inode(&self, inode: Arc<dyn Inode>) {
-        if self.meta().inode.lock().is_some() {
-            log::warn!("[Dentry::set_inode] replace inode in {:?}", self.name());
-        }
-        *self.meta().inode.lock() = Some(inode);
-    }
-
     pub fn clear_inode(&self) {
         *self.meta().inode.lock() = None;
     }
@@ -180,7 +180,13 @@ impl dyn Dentry {
         self.clone().arc_open()
     }
 
+    // PERF: lookup in fat32 in slow since there is no cache, we iter the dir every
+    // time to lookup for only a single file
     pub fn lookup(self: &Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+        let child = self.get_child(name);
+        if child.is_some() {
+            return Ok(child.unwrap());
+        }
         self.clone().arc_lookup(name)
     }
 

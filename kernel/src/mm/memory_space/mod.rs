@@ -1,4 +1,4 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{string::String, sync::Arc, vec::Vec};
 use core::ops::Range;
 
 use async_utils::block_on;
@@ -24,7 +24,7 @@ use crate::{
         MMIO,
     },
     processor::env::SumGuard,
-    task::aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_PHDR},
+    task::aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR},
 };
 
 mod range_map;
@@ -339,7 +339,8 @@ impl MemorySpace {
             .expect("too many stack!");
 
         // align to 16 bytes
-        let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
+        // let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
+        let sp_init = VirtAddr::from(range.end.bits() - PAGE_SIZE);
         log::debug!("alloc stack: {range:x?}, sp_init: {sp_init:x?}");
 
         let vm_area = VmArea::new(range, MapPerm::URW, VmAreaType::Stack);
@@ -389,6 +390,10 @@ impl MemorySpace {
             Ok(_) => new_brk,
             Err(_) => range.end,
         }
+    }
+
+    pub fn unmap(range: Range<VirtAddr>) {
+        todo!()
     }
 
     /// Clone a same `MemorySpace` from another user space, including datas in
@@ -540,4 +545,125 @@ impl MemorySpace {
         log::warn!("==== print all done ====");
         unsafe { set_kernel_trap() };
     }
+}
+
+pub fn init_stack(
+    sp_init: VirtAddr,
+    args: Vec<String>,
+    envp: Vec<String>,
+    auxv: Vec<AuxHeader>,
+) -> (usize, usize, usize, usize) {
+    // spec says:
+    //      In the standard RISC-V calling convention, the stack grows downward
+    //      and the stack pointer is always kept 16-byte aligned.
+
+    // 参考：https://www.cnblogs.com/likaiming/p/11193697.html
+    // 初始化之后的栈应该长这样子：
+    // content                         size(bytes) + comment
+    // -----------------------------------------------------------------------------
+    //
+    // [argc = number of args]         8
+    // [argv[0](pointer)]              8
+    // [argv[1](pointer)]              8
+    // [argv[...](pointer)]            8 * x
+    // [argv[n-1](pointer)]            8
+    // [argv[n](pointer)]              8 (=NULL)
+    //
+    // [envp[0](pointer)]              8
+    // [envp[1](pointer)]              8
+    // [envp[..](pointer)]             8 * x
+    // [envp[term](pointer)]           8 (=NULL)
+    //
+    // [auxv[0](Elf64_auxv_t)]         16
+    // [auxv[1](Elf64_auxv_t)]         16
+    // [auxv[..](Elf64_auxv_t)]        16 * x
+    // [auxv[term](Elf64_auxv_t)]      16 (=NULL)
+    //
+    // [padding]                       >= 0
+    // [rand bytes]                    16
+    // [String identifying platform]   >= 0
+    // [padding for align]             >= 0 (sp - (get_random_int() % 8192)) &
+    // (~0xf)
+    //
+    // [argument ASCIIZ strings]       >= 0
+    // [environment ASCIIZ str]        >= 0
+    // --------------------------------------------------------------------------------
+    // 在构建栈的时候，我们从底向上塞各个东西
+
+    let mut sp = sp_init.bits();
+    debug_assert!(sp & 0xf == 0);
+
+    // 存放环境与参数的字符串本身
+    fn push_str(sp: &mut usize, s: &str) -> usize {
+        let len = s.len();
+        *sp -= len + 1; // +1 for NUL ('\0')
+        unsafe {
+            // core::ptr::copy_nonoverlapping(s.as_ptr(), *sp as *mut u8, len);
+            for (i, c) in s.bytes().enumerate() {
+                log::trace!(
+                    "push_str: {:x} ({:x}) <- {:?}",
+                    *sp + i,
+                    i,
+                    core::str::from_utf8_unchecked(&[c])
+                );
+                *((*sp as *mut u8).add(i)) = c;
+            }
+            *(*sp as *mut u8).add(len) = 0u8;
+        }
+        *sp
+    }
+
+    let env_ptrs: Vec<usize> = envp.iter().rev().map(|s| push_str(&mut sp, s)).collect();
+    let arg_ptrs: Vec<usize> = args.iter().rev().map(|s| push_str(&mut sp, s)).collect();
+
+    // 随机对齐 (我们取 0 长度的随机对齐), 平台标识符，随机数与对齐
+    fn align16(sp: &mut usize) {
+        *sp = (*sp - 1) & !0xf;
+    }
+
+    let rand_size = 0;
+    let platform = "RISC-V64";
+    let rand_bytes = "Meow~ O4 here;D"; // 15 + 1 char for 16bytes
+
+    sp -= rand_size;
+    push_str(&mut sp, platform);
+    push_str(&mut sp, rand_bytes);
+    align16(&mut sp);
+
+    // 存放 auxv
+    fn push_aux_elm(sp: &mut usize, elm: &AuxHeader) {
+        *sp -= core::mem::size_of::<AuxHeader>();
+        unsafe {
+            core::ptr::write(*sp as *mut AuxHeader, *elm);
+        }
+    }
+    // 注意推栈是 "倒着" 推的，所以先放 null, 再逆着放别的
+    push_aux_elm(&mut sp, &AuxHeader::new(AT_NULL, 0));
+    for aux in auxv.into_iter().rev() {
+        push_aux_elm(&mut sp, &aux);
+    }
+
+    // 存放 envp 与 argv 指针
+    fn push_usize(sp: &mut usize, ptr: usize) {
+        *sp -= core::mem::size_of::<usize>();
+        log::debug!("addr: 0x{:x}, content: {:x}", *sp, ptr);
+        unsafe {
+            core::ptr::write(*sp as *mut usize, ptr);
+        }
+    }
+
+    push_usize(&mut sp, 0);
+    env_ptrs.iter().for_each(|ptr| push_usize(&mut sp, *ptr));
+    let env_ptr_ptr = sp;
+
+    push_usize(&mut sp, 0);
+    arg_ptrs.iter().for_each(|ptr| push_usize(&mut sp, *ptr));
+    let arg_ptr_ptr = sp;
+
+    // 存放 argc
+    let argc = args.len();
+    push_usize(&mut sp, argc);
+
+    // 返回值
+    (sp, argc, arg_ptr_ptr, env_ptr_ptr)
 }

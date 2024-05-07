@@ -15,3 +15,4 @@ systype = { path = "../modules/systype/" }
 log = "0.4"
 spin = { version = "0.9", features = ["lazy"] }
 virtio-drivers = { version = "0.7" }
+uart_16550 = "0.3"

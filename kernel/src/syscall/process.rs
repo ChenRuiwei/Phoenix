@@ -3,6 +3,7 @@
 use alloc::{string::String, vec::Vec};
 
 use async_utils::yield_now;
+use memory::VirtAddr;
 use signal::{
     siginfo::*,
     sigset::{Sig, SigSet},
@@ -82,6 +83,10 @@ pub fn sys_exit_group(exit_code: i32) -> SyscallResult {
     });
     task.set_exit_code(exit_code);
     Ok(0)
+}
+
+pub fn sys_gettid() -> SyscallResult {
+    Ok(current_task().tid())
 }
 
 /// getpid() returns the process ID (PID) of the calling process.
@@ -281,5 +286,71 @@ pub fn sys_clone(
 
 pub async fn sys_sched_yield() -> SyscallResult {
     yield_now().await;
+    Ok(0)
+}
+
+/// The system call set_tid_address() sets the clear_child_tid value for the
+/// calling thread to tidptr.
+///
+/// When a thread whose clear_child_tid is not NULL terminates, then, if the
+/// thread is sharing memory with other threads, then 0 is written at the
+/// address specified in clear_child_tid and the kernel performs the following
+/// operation:
+///
+/// futex(clear_child_tid, FUTEX_WAKE, 1, NULL, NULL, 0);
+///
+/// The effect of this operation is to wake a single thread that is performing a
+/// futex wait on the memory location. Errors from the futex wake operation are
+/// ignored.
+///
+/// set_tid_address() always returns the caller's thread ID.
+// TODO: do the futex wake up at the address when task terminates
+pub fn sys_set_tid_address(tidptr: usize) -> SyscallResult {
+    let task = current_task();
+    let ta = task.tid_address();
+    ta.clear_child_tid = Some(tidptr);
+    Ok(task.tid())
+}
+
+/// getpgid() returns the PGID of the process specified by pid. If pid is zero,
+/// the process ID of the calling process is used. (Retrieving the PGID of a
+/// process other than the caller is rarely necessary, and the POSIX.1 getpgrp()
+/// is preferred for that task.)
+pub fn sys_getpgid(pid: usize) -> SyscallResult {
+    let target_task = if pid == 0 {
+        current_task()
+    } else {
+        TASK_MANAGER.get(pid).ok_or(SysError::ESRCH)?
+    };
+
+    Ok(target_task.pid().into())
+}
+
+/// setpgid() sets the PGID of the process specified by pid to pgid. If pid is
+/// zero, then the process ID of the calling process is used. If pgid is zero,
+/// then the PGID of the process specified by pid is made the same as its
+/// process ID. If setpgid() is used to move a process from one process group to
+/// another (as is done by some shells when creating pipelines), both process
+/// groups must be part of the same session (see setsid(2) and credentials(7)).
+/// In this case, the pgid specifies an existing process group to be joined and
+/// the session ID of that group must match the session ID of the joining
+/// process.
+pub fn sys_setpgid(pid: usize, pgid: usize) -> SyscallResult {
+    let target_task = if pid == 0 {
+        current_task()
+    } else {
+        TASK_MANAGER.get(pid).ok_or(SysError::ESRCH)?
+    };
+
+    Ok(target_task.pid().into())
+}
+
+// TODO:
+pub fn sys_getuid() -> SyscallResult {
+    Ok(0)
+}
+
+// TODO:
+pub fn sys_geteuid() -> SyscallResult {
     Ok(0)
 }

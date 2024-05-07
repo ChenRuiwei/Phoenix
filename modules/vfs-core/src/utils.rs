@@ -67,104 +67,6 @@ pub struct StatFs {
     pub f_spare: [isize; 4],
 }
 
-bitflags::bitflags! {
-    // 文件权限
-    #[derive(Copy, Clone)]
-    pub struct NodePermission: u16 {
-        // 文件所有者拥有读权限
-        const OWNER_READ = 0o100;
-        // 文件所有者拥有写权限
-        const OWNER_WRITE = 0o200;
-        // 文件所有者拥有执行权限
-        const OWNER_EXEC = 0o400;
-
-        // 组用户拥有读权限
-        const GROUP_READ = 0o10;
-        // 组用户拥有写权限
-        const GROUP_WRITE = 0o20;
-        // 组用户拥有执行权限
-        const GROUP_EXEC = 0o40;
-
-        // 其他用户拥有读权限
-        const OTHER_READ = 0o1;
-        // 其他用户拥有写权限
-        const OTHER_WRITE = 0o2;
-        // 其他用户拥有执行权限
-        const OTHER_EXEC = 0o4;
-    }
-}
-
-impl From<&str> for NodePermission {
-    fn from(value: &str) -> Self {
-        let bytes = value.as_bytes();
-        assert_eq!(bytes.len(), PERMISSION_LEN);
-        let mut perm = NodePermission::empty();
-
-        let perms = [
-            (NodePermission::OWNER_READ, b'r'),
-            (NodePermission::OWNER_WRITE, b'w'),
-            (NodePermission::OWNER_EXEC, b'x'),
-            (NodePermission::GROUP_READ, b'r'),
-            (NodePermission::GROUP_WRITE, b'w'),
-            (NodePermission::GROUP_EXEC, b'x'),
-            (NodePermission::OTHER_READ, b'r'),
-            (NodePermission::OTHER_WRITE, b'w'),
-            (NodePermission::OTHER_EXEC, b'x'),
-        ];
-
-        for (i, &(flag, ch)) in perms.iter().enumerate() {
-            if bytes[i] == ch {
-                perm |= flag;
-            }
-        }
-        perm
-    }
-}
-
-impl NodePermission {
-    // 将权限解析为一个长度为9的字符数组，由r, w, x, -组成
-    pub const fn get_permission_self(&self) -> [u8; 9] {
-        let mut perm = [b'-'; 9];
-        if self.contains(Self::OWNER_READ) {
-            perm[0] = b'r';
-        }
-        if self.contains(Self::OWNER_WRITE) {
-            perm[1] = b'w';
-        }
-        if self.contains(Self::OWNER_EXEC) {
-            perm[2] = b'x';
-        }
-        if self.contains(Self::GROUP_READ) {
-            perm[3] = b'r';
-        }
-        if self.contains(Self::GROUP_WRITE) {
-            perm[4] = b'w';
-        }
-        if self.contains(Self::GROUP_EXEC) {
-            perm[5] = b'x';
-        }
-        if self.contains(Self::OTHER_READ) {
-            perm[6] = b'r';
-        }
-        if self.contains(Self::OTHER_WRITE) {
-            perm[7] = b'w';
-        }
-        if self.contains(Self::OTHER_EXEC) {
-            perm[8] = b'x';
-        }
-        perm
-    }
-
-    // 返回文件默认权限，所有用户都可以读和写，但是不能执行
-    pub const fn get_permission_file_default() -> Self {
-        Self::from_bits_truncate(0o666)
-    }
-
-    pub const fn get_permission_dir_default() -> Self {
-        Self::from_bits_truncate(0o755)
-    }
-}
-
 /// Directory entry.
 #[derive(Debug, Clone)]
 #[repr(C)]
@@ -176,26 +78,35 @@ pub struct DirEntry {
 }
 
 bitflags! {
-    /// ppoll 使用，表示对应在文件上等待或者发生过的事件
-    pub struct PollEvents: u16 {
-        /// 可读
-        const IN = 0x0001;
-        /// 可写
-        const OUT = 0x0004;
-        /// 报错
-        const ERR = 0x0008;
-        /// 已终止，如 pipe 的另一端已关闭连接的情况
-        const HUP = 0x0010;
-        /// 无效的 fd
-        const INVAL = 0x0020;
+    // See in "bits/poll.h"
+    pub struct PollEvents: i16 {
+        // Event types that can be polled for. These bits may be set in `events' to
+        // indicate the interesting event types; they will appear in `revents' to
+        // indicate the status of the file descriptor.
+        /// There is data to read.
+        const POLLIN = 0x001;
+        /// There is urgent data to read.
+        const POLLPRI = 0x002;
+        ///  Writing now will not block.
+        const POLLOUT = 0x004;
+
+        // Event types always implicitly polled for. These bits need not be set in
+        // `events', but they will appear in `revents' to indicate the status of the
+        // file descriptor.
+        /// Error condition.
+        const POLLERR = 0x008;
+        /// Hang up.
+        const POLLHUP = 0x010;
+        /// Invalid poll request.
+        const POLLNVAL = 0x020;
     }
 }
 
-#[repr(C)]
 #[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(C)]
 pub struct TimeSpec {
-    pub sec: u64,  // 秒
-    pub nsec: u64, // 纳秒, 范围在0~999999999
+    pub sec: u64,
+    pub nsec: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]

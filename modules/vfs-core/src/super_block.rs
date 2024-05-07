@@ -13,9 +13,7 @@ use crate::{Dentry, FileSystemType, Inode, Mutex, StatFs};
 pub struct SuperBlockMeta {
     /// Block device that hold this file system.
     // TODO: dyn file for device?
-    pub device: Arc<dyn BlockDevice>,
-    /// Size of a block in bytes.
-    pub block_size: usize,
+    pub device: Option<Arc<dyn BlockDevice>>,
     /// File system type.
     pub fs_type: Weak<dyn FileSystemType>,
     /// Root dentry points to the mount point.
@@ -28,11 +26,9 @@ pub struct SuperBlockMeta {
 }
 
 impl SuperBlockMeta {
-    pub fn new(device: Arc<dyn BlockDevice>, fs_type: Arc<dyn FileSystemType>) -> Self {
-        let block_size = device.block_size();
+    pub fn new(device: Option<Arc<dyn BlockDevice>>, fs_type: Arc<dyn FileSystemType>) -> Self {
         Self {
             device,
-            block_size,
             root_dentry: Once::new(),
             fs_type: Arc::downgrade(&fs_type),
             inodes: Mutex::new(Vec::new()),

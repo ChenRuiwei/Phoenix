@@ -1,7 +1,8 @@
 use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
-use driver::print;
+use async_utils::yield_now;
+use driver::{print, sbi::console_getchar, CHAR_DEVICE};
 use systype::SyscallResult;
 use vfs_core::{File, FileMeta, Inode, InodeMeta, InodeMode};
 
@@ -46,7 +47,7 @@ impl File for StdOutFile {
         todo!()
     }
 
-    fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         if let Ok(data) = core::str::from_utf8(buf) {
             print!("{}", data);
         } else {
@@ -102,10 +103,20 @@ impl File for StdInFile {
     }
 
     async fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
-        todo!()
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        let mut cnt = 0;
+        while cnt < buf.len() {
+            let c = console_getchar();
+            buf[cnt] = c;
+            cnt += 1;
+            yield_now().await;
+        }
+        Ok(cnt)
     }
 
-    fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
         todo!()
     }
 
