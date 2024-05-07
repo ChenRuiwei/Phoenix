@@ -395,7 +395,7 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
     let mut writen_len = 0;
-    while let Some(dirent) = file.base_read_dir()? {
+    while let Some(dirent) = file.read_dir()? {
         log::debug!("[sys_getdents64] dirent {dirent:?}");
         let buf = UserWritePtr::<LinuxDirent64>::from(buf + writen_len);
         let c_name_len = dirent.name.len() + 1;

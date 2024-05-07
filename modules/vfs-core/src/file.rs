@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::ToString, sync::Arc, vec::Vec};
 use core::{
     sync::atomic::{AtomicUsize, Ordering},
     usize,
@@ -9,7 +9,9 @@ use config::mm::PAGE_SIZE;
 use spin::Mutex;
 use systype::{ASyscallResult, SysError, SysResult, SyscallResult};
 
-use crate::{Dentry, DirEntry, Inode, InodeType, OpenFlags, PollEvents, SeekFrom, SuperBlock};
+use crate::{
+    Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom, SuperBlock,
+};
 
 pub struct FileMeta {
     /// Dentry which pointes to this file.
@@ -68,11 +70,8 @@ pub trait File: Send + Sync {
     /// If it read to the end of directory, it will return an empty entry.
     fn base_read_dir(&self) -> SysResult<Option<DirEntry>>;
 
-    fn base_list_dir(&self) -> SysResult<Vec<DirEntry>> {
-        todo!()
-    }
-
-    fn read_dir(&self) -> SysResult<Option<DirEntry>> {
+    /// Load all dentry and inodes in a directory. Will not advance dir offset.
+    fn base_load_dir(&self) -> SysResult<()> {
         todo!()
     }
 
@@ -163,6 +162,39 @@ impl dyn File {
 
     pub fn set_flags(&self, flags: OpenFlags) {
         *self.meta().flags.lock() = flags;
+    }
+
+    pub fn load_dir(&self) -> SysResult<()> {
+        let inode = self.inode();
+        if inode.state() == InodeState::Init {
+            self.base_load_dir()?;
+            inode.set_state(InodeState::Synced)
+        }
+        Ok(())
+    }
+
+    pub fn read_dir(&self) -> SysResult<Option<DirEntry>> {
+        self.load_dir()?;
+        // PERF: should cache the iter stream
+        if let Some(sub_dentry) = self
+            .dentry()
+            .children()
+            .values()
+            .filter(|c| !c.is_negetive())
+            .nth(self.pos())
+        {
+            self.seek(SeekFrom::Current(1))?;
+            let inode = sub_dentry.inode()?;
+            let dirent = DirEntry {
+                ino: inode.ino() as u64,
+                off: self.pos() as u64,
+                itype: inode.itype(),
+                name: sub_dentry.name_string(),
+            };
+            Ok(Some(dirent))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Read all data from this file synchronously.

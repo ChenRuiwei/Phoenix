@@ -37,6 +37,8 @@ pub struct InodeMetaInner {
     pub mtime: TimeSpec,
     /// Last status change time.
     pub ctime: TimeSpec,
+    ///
+    pub state: InodeState,
 }
 
 impl InodeMeta {
@@ -50,6 +52,7 @@ impl InodeMeta {
                 atime: TimeSpec::default(),
                 mtime: TimeSpec::default(),
                 ctime: TimeSpec::default(),
+                state: InodeState::Init,
             }),
         }
     }
@@ -77,9 +80,31 @@ impl dyn Inode {
     pub fn set_size(&self, size: usize) {
         self.meta().inner.lock().size = size;
     }
+
+    pub fn state(&self) -> InodeState {
+        self.meta().inner.lock().state
+    }
+
+    pub fn set_state(&self, state: InodeState) {
+        self.meta().inner.lock().state = state;
+    }
 }
 
 impl_downcast!(sync Inode);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InodeState {
+    /// Init state, indicates that this inode is not loaded from disk yet.
+    Init = 0x1,
+    /// inode dirty, data which is pointed to by inode is not dirty
+    DirtyInode = 0x2,
+    /// data already changed but not yet sync (inode not change)
+    DirtyData = 0x3,
+    /// inode and date changed together
+    DirtyAll = 0x4,
+    /// already sync
+    Synced = 0x5,
+}
 
 bitflags! {
     #[derive(Debug, Clone, Copy, Eq, PartialEq)]

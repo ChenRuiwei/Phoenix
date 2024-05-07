@@ -82,6 +82,30 @@ impl File for FatDirFile {
         Ok(Some(entry))
     }
 
+    fn base_load_dir(&self) -> SysResult<()> {
+        let inode = self
+            .inode()
+            .downcast_arc::<FatDirInode>()
+            .map_err(|_| SysError::ENOTDIR)?;
+        let mut iter = inode.dir.lock().iter();
+        while let Some(entry) = iter.next() {
+            let Ok(entry) = entry else {
+                return Err(SysError::EIO);
+            };
+            let name = entry.file_name();
+            let sub_dentry = self.dentry().get_child_or_create(&name);
+            let new_inode: Arc<dyn Inode> = if entry.is_dir() {
+                let new_dir = entry.to_dir();
+                FatDirInode::new(self.super_block(), new_dir)
+            } else {
+                let new_file = entry.to_file();
+                FatFileInode::new(self.super_block(), new_file)
+            };
+            sub_dentry.set_inode(new_inode);
+        }
+        Ok(())
+    }
+
     /// Called when the VFS needs to move the file position index.
     ///
     /// Return the result offset.

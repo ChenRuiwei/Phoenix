@@ -122,6 +122,10 @@ pub trait Dentry: Send + Sync {
         self.meta().parent.as_ref().map(|p| p.upgrade().unwrap())
     }
 
+    fn children(&self) -> BTreeMap<String, Arc<dyn Dentry>> {
+        self.meta().children.lock().clone()
+    }
+
     fn get_child(&self, name: &str) -> Option<Arc<dyn Dentry>> {
         self.meta().children.lock().get(name).cloned()
     }
