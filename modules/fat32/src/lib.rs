@@ -6,7 +6,7 @@ use alloc::sync::Arc;
 use core::mem::size_of;
 
 use driver::{println, BlockDevice};
-use fatfs::{DefaultTimeProvider, Dir, Error, File, FileSystem, LossyOemCpConverter};
+use fatfs::{DefaultTimeProvider, Dir, DirIter, Error, File, FileSystem, LossyOemCpConverter};
 use sync::mutex::SpinNoIrqLock;
 use systype::SysError;
 
@@ -29,6 +29,7 @@ fn new_shared<T>(val: T) -> Shared<T> {
 
 type FatDir = Dir<DiskCursor, DefaultTimeProvider, LossyOemCpConverter>;
 type FatFile = File<DiskCursor, DefaultTimeProvider, LossyOemCpConverter>;
+type FatDirIter = DirIter<DiskCursor, DefaultTimeProvider, LossyOemCpConverter>;
 type FatFs = FileSystem<DiskCursor, DefaultTimeProvider, LossyOemCpConverter>;
 
 pub const fn as_sys_err(err: fatfs::Error<()>) -> systype::SysError {

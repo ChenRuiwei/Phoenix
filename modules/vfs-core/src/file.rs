@@ -9,7 +9,7 @@ use config::mm::PAGE_SIZE;
 use spin::Mutex;
 use systype::{ASyscallResult, SysError, SysResult, SyscallResult};
 
-use crate::{Dentry, DirEntry, Inode, InodeType, OpenFlags, PollEvents, SeekFrom};
+use crate::{Dentry, DirEntry, Inode, InodeType, OpenFlags, PollEvents, SeekFrom, SuperBlock};
 
 pub struct FileMeta {
     /// Dentry which pointes to this file.
@@ -68,6 +68,10 @@ pub trait File: Send + Sync {
     /// If it read to the end of directory, it will return an empty entry.
     fn base_read_dir(&self) -> SysResult<Option<DirEntry>>;
 
+    fn base_list_dir(&self) -> SysResult<Vec<DirEntry>> {
+        todo!()
+    }
+
     fn read_dir(&self) -> SysResult<Option<DirEntry>> {
         todo!()
     }
@@ -106,8 +110,7 @@ pub trait File: Send + Sync {
     ///
     /// Return the result offset.
     fn seek(&self, pos: SeekFrom) -> SysResult<usize> {
-        let meta = self.meta();
-        let mut res_pos = meta.pos.load(Ordering::Relaxed);
+        let mut res_pos = self.pos();
         match pos {
             SeekFrom::Current(off) => {
                 if off < 0 {
@@ -120,7 +123,7 @@ pub trait File: Send + Sync {
                 res_pos = off as usize;
             }
             SeekFrom::End(off) => {
-                let size = meta.inode.size();
+                let size = self.size();
                 if off < 0 {
                     res_pos = size - off.abs() as usize;
                 } else {
@@ -128,20 +131,32 @@ pub trait File: Send + Sync {
                 }
             }
         }
-        meta.pos.store(res_pos, Ordering::Relaxed);
+        self.set_pos(res_pos);
         Ok(res_pos)
     }
 
     fn pos(&self) -> usize {
         self.meta().pos.load(Ordering::Relaxed)
     }
-}
 
-impl dyn File {
-    pub fn dentry(&self) -> Arc<dyn Dentry> {
+    fn set_pos(&self, pos: usize) {
+        self.meta().pos.store(pos, Ordering::Relaxed)
+    }
+
+    fn dentry(&self) -> Arc<dyn Dentry> {
         self.meta().dentry.clone()
     }
 
+    fn super_block(&self) -> Arc<dyn SuperBlock> {
+        self.meta().dentry.super_block()
+    }
+
+    fn size(&self) -> usize {
+        self.meta().inode.size()
+    }
+}
+
+impl dyn File {
     pub fn flags(&self) -> OpenFlags {
         self.meta().flags.lock().clone()
     }
