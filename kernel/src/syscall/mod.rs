@@ -57,15 +57,16 @@ macro_rules! strace {
 }
 
 /// Handle syscall exception with `syscall_id` and other arguments.
-pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
+pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
     use SyscallNo::*;
 
     let Some(syscall_no) = SyscallNo::from_repr(syscall_no) else {
         log::error!("Syscall number not included: {}", syscall_no);
-        return Ok(0);
+        unimplemented!()
     };
+    log::info!("[syscall] handle {syscall_no}");
     strace!("{}, args: {:?}", syscall_no, args);
-    match syscall_no {
+    let result = match syscall_no {
         // Process
         EXIT => sys_exit(args[0] as _),
         EXIT_GROUP => sys_exit_group(args[0] as _),
@@ -160,6 +161,16 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         _ => {
             log::error!("Unsupported syscall: {}", syscall_no);
             Ok(0)
+        }
+    };
+    match result {
+        Ok(ret) => {
+            log::info!("[syscall] {syscall_no} return val {ret:#x}");
+            ret
+        }
+        Err(e) => {
+            log::warn!("[syscall] {syscall_no} return err {e:?}",);
+            -(e as isize) as usize
         }
     }
 }

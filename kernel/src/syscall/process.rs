@@ -130,6 +130,7 @@ pub async fn sys_wait4(
         p if p > 0 => WaitFor::Pid(p as Pid),
         p => WaitFor::PGid(p as PGid),
     };
+    log::info!("[sys_wait4] target: {target:?}, option: {option:?}");
     loop {
         // log::debug!("[sys_wait4]: finding zombie children for {target:?}");
         let children = task.children();
@@ -161,7 +162,10 @@ pub async fn sys_wait4(
                 // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
                 // wstatus macros can be found in "bits/waitstatus.h"
                 let status = (res_task.exit_code() & 0xff) << 8;
-                log::trace!("[sys_wait4] wstatus: {:#x}", status);
+                log::debug!(
+                    "[sys_wait4] exit_code: {}, wstatus: {status:#x}",
+                    res_task.exit_code()
+                );
                 wstatus.write(&task, status)?;
             }
             task.remove_child(res_task.tid());
