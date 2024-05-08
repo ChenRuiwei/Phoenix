@@ -120,7 +120,6 @@ user:
 	@echo "building user..."
 	@cd user && make build
 	@$(foreach elf, $(USER_ELFS), $(OBJCOPY) $(elf) --strip-all -O binary $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.bin, $(elf));)
-	@cp ./testcase/22/busybox $(TARGET_DIR)/busybox
 	@echo "building user finished"
 
 PHONY += fs-img
