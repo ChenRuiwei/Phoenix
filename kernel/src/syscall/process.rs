@@ -1,6 +1,9 @@
 //! Syscall for processes operations.
 
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 use async_utils::yield_now;
 use memory::VirtAddr;
@@ -233,7 +236,7 @@ pub async fn sys_execve(
     envp: UserReadPtr<usize>,
 ) -> SyscallResult {
     let task = current_task();
-    let path = path.read_cstr(&task)?;
+    let mut path = path.read_cstr(&task)?;
 
     let read_2d_cstr = |ptr2d: UserReadPtr<usize>| -> SysResult<Vec<String>> {
         let ptr_vec: Vec<UserReadPtr<u8>> = ptr2d
@@ -249,12 +252,18 @@ pub async fn sys_execve(
         Ok(result)
     };
 
-    let argv = read_2d_cstr(argv)?;
+    let mut argv = read_2d_cstr(argv)?;
     let envp = read_2d_cstr(envp)?;
 
     log::info!("[sys_execve]: path: {path:?}, argv: {argv:?}, envp: {envp:?}",);
 
     // TODO: should we add envp
+
+    if path.ends_with(".sh") {
+        path = "/busybox".to_string();
+        argv.insert(0, "busybox".to_string());
+        argv.insert(1, "sh".to_string());
+    }
 
     let mut elf_data = Vec::new();
     let file = resolve_path(&path)?.open()?;

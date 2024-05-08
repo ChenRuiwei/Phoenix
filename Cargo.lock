@@ -519,6 +519,7 @@ dependencies = [
  "log",
  "ringbuffer",
  "spin",
+ "strum",
  "sync",
  "systype",
  "vfs-core",

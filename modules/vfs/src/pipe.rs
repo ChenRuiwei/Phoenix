@@ -101,7 +101,7 @@ impl File for PipeWriteFile {
         Ok(len)
     }
 
-    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
+    fn base_read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
         todo!()
     }
 
@@ -143,7 +143,7 @@ impl File for PipeReadFile {
         todo!()
     }
 
-    fn read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
+    fn base_read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
         todo!()
     }
 

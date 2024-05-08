@@ -63,6 +63,7 @@ macro_rules! strace {
 /// Handle syscall exception with `syscall_id` and other arguments.
 pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
     use SyscallNo::*;
+
     let Some(syscall_no) = SyscallNo::from_repr(syscall_no) else {
         log::error!("Syscall number not included: {}", syscall_no);
         return Ok(0);
@@ -124,6 +125,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         FCNTL => sys_fcntl(args[0], args[1] as _, args[2]),
         GETUID => sys_getuid(),
         WRITEV => sys_writev(args[0], args[1].into(), args[2]).await,
+        READV => sys_readv(args[0], args[1].into(), args[2]).await,
         PPOLL => sys_ppoll(args[0].into(), args[1], args[2].into(), args[3]).await,
         // Signal
         RT_SIGPROCMASK => sys_sigprocmask(args[0], args[1].into(), args[2].into()),

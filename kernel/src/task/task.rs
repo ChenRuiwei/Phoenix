@@ -32,7 +32,7 @@ use super::{
 };
 use crate::{
     mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
-    processor::env::SumGuard,
+    processor::env::{within_sum, SumGuard},
     syscall,
     task::{
         manager::TASK_MANAGER,
@@ -464,11 +464,13 @@ impl Task {
         log::debug!("[Task::do_execve] allocing stack");
         let sp_init = self.with_mut_memory_space(|m| m.alloc_stack(USER_STACK_SIZE));
 
-        let _guard = SumGuard::new();
-        let (sp, argc, argv, envp) = init_stack(sp_init, argv, envp, auxv);
+        let (sp, argc, argv, envp) = within_sum(|| init_stack(sp_init, argv, envp, auxv));
 
         // alloc heap
         self.with_mut_memory_space(|m| m.alloc_heap_lazily());
+
+        // close fd on exec
+        self.with_mut_fd_table(|table| table.close_on_exec());
 
         // init trap context
         self.trap_context_mut()

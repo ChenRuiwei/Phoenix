@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::ToString, sync::Arc, vec::Vec};
 use core::{
     sync::atomic::{AtomicUsize, Ordering},
     usize,
@@ -9,7 +9,9 @@ use config::mm::PAGE_SIZE;
 use spin::Mutex;
 use systype::{ASyscallResult, SysError, SysResult, SyscallResult};
 
-use crate::{Dentry, DirEntry, Inode, InodeType, OpenFlags, PollEvents, SeekFrom};
+use crate::{
+    Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom, SuperBlock,
+};
 
 pub struct FileMeta {
     /// Dentry which pointes to this file.
@@ -66,7 +68,12 @@ pub trait File: Send + Sync {
     ///
     /// For every call, this function will return an valid entry, or an error.
     /// If it read to the end of directory, it will return an empty entry.
-    fn read_dir(&self) -> SysResult<Option<DirEntry>>;
+    fn base_read_dir(&self) -> SysResult<Option<DirEntry>>;
+
+    /// Load all dentry and inodes in a directory. Will not advance dir offset.
+    fn base_load_dir(&self) -> SysResult<()> {
+        todo!()
+    }
 
     fn flush(&self) -> SysResult<usize>;
 
@@ -102,8 +109,7 @@ pub trait File: Send + Sync {
     ///
     /// Return the result offset.
     fn seek(&self, pos: SeekFrom) -> SysResult<usize> {
-        let meta = self.meta();
-        let mut res_pos = meta.pos.load(Ordering::Relaxed);
+        let mut res_pos = self.pos();
         match pos {
             SeekFrom::Current(off) => {
                 if off < 0 {
@@ -116,7 +122,7 @@ pub trait File: Send + Sync {
                 res_pos = off as usize;
             }
             SeekFrom::End(off) => {
-                let size = meta.inode.size();
+                let size = self.size();
                 if off < 0 {
                     res_pos = size - off.abs() as usize;
                 } else {
@@ -124,26 +130,71 @@ pub trait File: Send + Sync {
                 }
             }
         }
-        meta.pos.store(res_pos, Ordering::Relaxed);
+        self.set_pos(res_pos);
         Ok(res_pos)
     }
 
     fn pos(&self) -> usize {
         self.meta().pos.load(Ordering::Relaxed)
     }
-}
 
-impl dyn File {
-    pub fn dentry(&self) -> Arc<dyn Dentry> {
+    fn set_pos(&self, pos: usize) {
+        self.meta().pos.store(pos, Ordering::Relaxed)
+    }
+
+    fn dentry(&self) -> Arc<dyn Dentry> {
         self.meta().dentry.clone()
     }
 
+    fn super_block(&self) -> Arc<dyn SuperBlock> {
+        self.meta().dentry.super_block()
+    }
+
+    fn size(&self) -> usize {
+        self.meta().inode.size()
+    }
+}
+
+impl dyn File {
     pub fn flags(&self) -> OpenFlags {
         self.meta().flags.lock().clone()
     }
 
     pub fn set_flags(&self, flags: OpenFlags) {
         *self.meta().flags.lock() = flags;
+    }
+
+    pub fn load_dir(&self) -> SysResult<()> {
+        let inode = self.inode();
+        if inode.state() == InodeState::Init {
+            self.base_load_dir()?;
+            inode.set_state(InodeState::Synced)
+        }
+        Ok(())
+    }
+
+    pub fn read_dir(&self) -> SysResult<Option<DirEntry>> {
+        self.load_dir()?;
+        // PERF: should cache the iter stream
+        if let Some(sub_dentry) = self
+            .dentry()
+            .children()
+            .values()
+            .filter(|c| !c.is_negetive())
+            .nth(self.pos())
+        {
+            self.seek(SeekFrom::Current(1))?;
+            let inode = sub_dentry.inode()?;
+            let dirent = DirEntry {
+                ino: inode.ino() as u64,
+                off: self.pos() as u64,
+                itype: inode.itype(),
+                name: sub_dentry.name_string(),
+            };
+            Ok(Some(dirent))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Read all data from this file synchronously.
@@ -156,14 +207,14 @@ impl dyn File {
             let len = self
                 .read(idx, &mut buffer.as_mut_slice()[idx..idx + PAGE_SIZE])
                 .await?;
-            log::trace!("[read_all_from_start] read len: {}", len);
+            // log::trace!("[read_all_from_start] read len: {}", len);
             if len < PAGE_SIZE {
                 break;
             }
             debug_assert_eq!(len, PAGE_SIZE);
             idx += len;
             buffer.resize(idx + PAGE_SIZE, 0);
-            log::trace!("[read_all_from_start] buf len: {}", buffer.len());
+            // log::trace!("[read_all_from_start] buf len: {}", buffer.len());
         }
         self.seek(SeekFrom::Start(old_pos as u64))?;
         Ok(())

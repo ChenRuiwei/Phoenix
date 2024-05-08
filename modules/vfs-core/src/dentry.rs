@@ -61,29 +61,41 @@ pub trait Dentry: Send + Sync {
     fn meta(&self) -> &DentryMeta;
 
     /// Open a file associated with the inode that this dentry points to.
-    fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>>;
+    fn base_open(self: Arc<Self>) -> SysResult<Arc<dyn File>>;
 
     /// Look up in a directory inode and find file with `name`.
     ///
     /// If the named inode does not exist, a negative dentry will be created as
     /// a child and returned. Returning an error code from this routine must
     /// only be done on a real error.
-    fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>>;
+    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>>;
 
     /// Called by the open(2) and creat(2) system calls. Create an inode for a
     /// dentry in the directory inode.
     ///
     /// If the dentry itself has a negative child with `name`, it will create an
     /// inode for the negative child and return the child.
-    fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>>;
+    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>>;
 
     /// Called by the unlink(2) system call. Delete a file inode in a directory
     /// inode.
-    fn arc_unlink(self: Arc<Self>, name: &str) -> SyscallResult;
+    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult;
 
     /// Called by the rmdir(2) system call. Delete a dir inode in a directory
     /// inode.
-    fn arc_rmdir(self: Arc<Self>, name: &str) -> SyscallResult;
+    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult;
+
+    fn base_new_negative_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+        todo!()
+    }
+
+    fn get_child_or_create(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+        self.get_child(name).unwrap_or_else(|| {
+            let new_dentry = self.clone().base_new_negative_child(name);
+            self.insert(new_dentry.clone());
+            new_dentry
+        })
+    }
 
     fn inode(&self) -> SysResult<Arc<dyn Inode>> {
         self.meta()
@@ -108,6 +120,10 @@ pub trait Dentry: Send + Sync {
 
     fn parent(&self) -> Option<Arc<dyn Dentry>> {
         self.meta().parent.as_ref().map(|p| p.upgrade().unwrap())
+    }
+
+    fn children(&self) -> BTreeMap<String, Arc<dyn Dentry>> {
+        self.meta().children.lock().clone()
     }
 
     fn get_child(&self, name: &str) -> Option<Arc<dyn Dentry>> {
@@ -177,7 +193,7 @@ impl dyn Dentry {
     }
 
     pub fn open(self: &Arc<Self>) -> SysResult<Arc<dyn File>> {
-        self.clone().arc_open()
+        self.clone().base_open()
     }
 
     // PERF: lookup in fat32 in slow since there is no cache, we iter the dir every
@@ -187,19 +203,19 @@ impl dyn Dentry {
         if child.is_some() {
             return Ok(child.unwrap());
         }
-        self.clone().arc_lookup(name)
+        self.clone().base_lookup(name)
     }
 
     pub fn create(self: &Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
-        self.clone().arc_create(name, mode)
+        self.clone().base_create(name, mode)
     }
 
     pub fn unlink(self: &Arc<Self>, name: &str) -> SyscallResult {
-        self.clone().arc_unlink(name)
+        self.clone().base_unlink(name)
     }
 
     pub fn rmdir(self: &Arc<Self>, name: &str) -> SyscallResult {
-        self.clone().arc_rmdir(name)
+        self.clone().base_rmdir(name)
     }
 }
 
@@ -208,23 +224,23 @@ impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
         todo!()
     }
 
-    fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
+    fn base_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
         todo!()
     }
 
-    fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn arc_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
         todo!()
     }
 
-    fn arc_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
         todo!()
     }
 }

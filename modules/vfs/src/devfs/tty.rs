@@ -11,6 +11,7 @@ use async_utils::{suspend_now, take_waker, yield_now};
 use config::process::INIT_PROC_PID;
 use driver::{getchar, print, CHAR_DEVICE};
 use spin::Once;
+use strum::FromRepr;
 use sync::mutex::{SleepLock, SpinNoIrqLock};
 use systype::{SysResult, SyscallResult};
 use vfs_core::{Dentry, DentryMeta, File, FileMeta, Inode, InodeMeta, InodeMode, Path, SuperBlock};
@@ -38,23 +39,23 @@ impl Dentry for TtyDentry {
         &self.meta
     }
 
-    fn arc_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
+    fn base_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
         Ok(TtyFile::new(self.clone(), self.inode()?))
     }
 
-    fn arc_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn arc_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn arc_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
         todo!()
     }
 
-    fn arc_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
         todo!()
     }
 }
@@ -86,54 +87,49 @@ static PRINT_MUTEX: SleepLock<bool> = SleepLock::new(false);
 
 type Pid = u32;
 
-// For struct termios
-/// Gets the current serial port settings.
-const TCGETS: usize = 0x5401;
-/// Sets the serial port settings immediately.
-const TCSETS: usize = 0x5402;
-/// Sets the serial port settings after allowing the input and output buffers to
-/// drain/empty.
-const TCSETSW: usize = 0x5403;
-/// Sets the serial port settings after flushing the input and output buffers.
-const TCSETSF: usize = 0x5404;
-/// For struct termio
-/// Gets the current serial port settings.
-const TCGETA: usize = 0x5405;
-/// Sets the serial port settings immediately.
-#[allow(unused)]
-const TCSETA: usize = 0x5406;
-/// Sets the serial port settings after allowing the input and output buffers to
-/// drain/empty.
-#[allow(unused)]
-const TCSETAW: usize = 0x5407;
-/// Sets the serial port settings after flushing the input and output buffers.
-#[allow(unused)]
-const TCSETAF: usize = 0x5408;
-/// If the terminal is using asynchronous serial data transmission, and arg is
-/// zero, then send a break (a stream of zero bits) for between 0.25 and 0.5
-/// seconds.
-const TCSBRK: usize = 0x5409;
-/// Get the process group ID of the foreground process group on this terminal.
-const TIOCGPGRP: usize = 0x540F;
-/// Set the foreground process group ID of this terminal.
-const TIOCSPGRP: usize = 0x5410;
-/// Get window size.
-const TIOCGWINSZ: usize = 0x5413;
-/// Set window size.
-const TIOCSWINSZ: usize = 0x5414;
-/// Non-cloexec
-#[allow(unused)]
-const FIONCLEX: usize = 0x5450;
-/// Cloexec
-#[allow(unused)]
-const FIOCLEX: usize = 0x5451;
-/// rustc using pipe and ioctl pipe file with this request id
-/// for non-blocking/blocking IO control setting
-#[allow(unused)]
-const FIONBIO: usize = 0x5421;
-/// Read time
-#[allow(unused)]
-const RTC_RD_TIME: usize = 0x80247009;
+/// Defined in <asm-generic/ioctls.h>
+#[derive(FromRepr, Debug)]
+#[repr(usize)]
+enum TtyIoctlCmd {
+    // For struct termios
+    /// Gets the current serial port settings.
+    TCGETS = 0x5401,
+    /// Sets the serial port settings immediately.
+    TCSETS = 0x5402,
+    /// Sets the serial port settings after allowing the input and output
+    /// buffers to drain/empty.
+    TCSETSW = 0x5403,
+    /// Sets the serial port settings after flushing the input and output
+    /// buffers.
+    TCSETSF = 0x5404,
+    /// For struct termio
+    /// Gets the current serial port settings.
+    TCGETA = 0x5405,
+    /// Sets the serial port settings immediately.
+    #[allow(unused)]
+    TCSETA = 0x5406,
+    /// Sets the serial port settings after allowing the input and output
+    /// buffers to drain/empty.
+    #[allow(unused)]
+    TCSETAW = 0x5407,
+    /// Sets the serial port settings after flushing the input and output
+    /// buffers.
+    #[allow(unused)]
+    TCSETAF = 0x5408,
+    /// If the terminal is using asynchronous serial data transmission, and arg
+    /// is zero, then send a break (a stream of zero bits) for between 0.25
+    /// and 0.5 seconds.
+    TCSBRK = 0x5409,
+    /// Get the process group ID of the foreground process group on this
+    /// terminal.
+    TIOCGPGRP = 0x540F,
+    /// Set the foreground process group ID of this terminal.
+    TIOCSPGRP = 0x5410,
+    /// Get window size.
+    TIOCGWINSZ = 0x5413,
+    /// Set window size.
+    TIOCSWINSZ = 0x5414,
+}
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -322,7 +318,12 @@ impl File for TtyFile {
 
     /// See `ioctl_tty` manual page.
     fn ioctl(&self, cmd: usize, arg: usize) -> SyscallResult {
-        log::info!("[TtyFile::ioctl] cmd {:#x}, value {:#x}", cmd, arg);
+        use TtyIoctlCmd::*;
+        let Some(cmd) = TtyIoctlCmd::from_repr(cmd) else {
+            log::error!("[TtyFile::ioctl] cmd {cmd} not included");
+            unimplemented!()
+        };
+        log::info!("[TtyFile::ioctl] cmd {:?}, value {:#x}", cmd, arg);
         match cmd {
             TCGETS | TCGETA => {
                 unsafe {
@@ -337,26 +338,26 @@ impl File for TtyFile {
                 Ok(0)
             }
             TIOCGPGRP => {
+                let fg_pgid = self.inner.lock().fg_pgid;
+                log::info!("[TtyFile::ioctl] get fg pgid {fg_pgid}");
                 unsafe {
-                    *(arg as *mut Pid) = self.inner.lock().fg_pgid;
-                    log::info!("[TtyFile::ioctl] get fg pgid {}", *(arg as *const Pid));
+                    *(arg as *mut Pid) = fg_pgid;
                 }
                 Ok(0)
             }
             TIOCSPGRP => {
                 unsafe {
-                    log::info!("[TtyFile::ioctl] set fg pgid {}", *(arg as *const Pid));
                     self.inner.lock().fg_pgid = *(arg as *const Pid);
                 }
+                let fg_pgid = self.inner.lock().fg_pgid;
+                log::info!("[TtyFile::ioctl] set fg pgid {fg_pgid}");
                 Ok(0)
             }
             TIOCGWINSZ => {
+                let win_size = self.inner.lock().win_size;
+                log::info!("[TtyFile::ioctl] get window size {win_size:?}",);
                 unsafe {
-                    *(arg as *mut WinSize) = self.inner.lock().win_size;
-                    log::info!(
-                        "[TtyFile::ioctl] get window size {:?}",
-                        *(arg as *const WinSize)
-                    );
+                    *(arg as *mut WinSize) = win_size;
                 }
                 Ok(0)
             }
@@ -371,7 +372,7 @@ impl File for TtyFile {
         }
     }
 
-    fn read_dir(&self) -> SysResult<Option<vfs_core::DirEntry>> {
+    fn base_read_dir(&self) -> SysResult<Option<vfs_core::DirEntry>> {
         todo!()
     }
 
@@ -380,23 +381,22 @@ impl File for TtyFile {
     }
 }
 
-#[repr(C)]
+/// Defined in <asm-generic/termbits.h>
 #[derive(Clone, Copy)]
+#[repr(C)]
 struct Termios {
-    /// Input modes
+    /// Input mode flags.
     pub iflag: u32,
-    /// Ouput modes
+    /// Output mode flags.
     pub oflag: u32,
-    /// Control modes
+    /// Control mode flags.
     pub cflag: u32,
-    /// Local modes
+    /// Local mode flags.
     pub lflag: u32,
+    /// Line discipline.
     pub line: u8,
-    /// Terminal special characters.
+    /// control characters.
     pub cc: [u8; 19],
-    // pub cc: [u8; 32],
-    // pub ispeed: u32,
-    // pub ospeed: u32,
 }
 
 impl Termios {
@@ -431,8 +431,6 @@ impl Termios {
                 255, // VEOL2
                 0, 0,
             ],
-            // ispeed: 0,
-            // ospeed: 0,
         }
     }
 }

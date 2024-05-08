@@ -326,7 +326,7 @@ impl MemorySpace {
 
     /// Alloc stack and map it in the page table.
     ///
-    /// Return address of the stack top, which is aligned to 16 bytes.
+    /// Return the address of the stack top, which is aligned to 16 bytes.
     ///
     /// The stack has a range of [sp - size, sp].
     pub fn alloc_stack(&mut self, size: usize) -> VirtAddr {
@@ -339,9 +339,8 @@ impl MemorySpace {
             .expect("too many stack!");
 
         // align to 16 bytes
-        // let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
-        let sp_init = VirtAddr::from(range.end.bits() - PAGE_SIZE);
-        log::debug!("alloc stack: {range:x?}, sp_init: {sp_init:x?}");
+        let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
+        log::debug!("[MemorySpace::alloc_stack] stack: {range:x?}, sp_init: {sp_init:x?}");
 
         let vm_area = VmArea::new(range, MapPerm::URW, VmAreaType::Stack);
         self.push_vma(vm_area);
@@ -432,8 +431,7 @@ impl MemorySpace {
                             todo!()
                         }
                         _ => {
-                            // Else,
-                            // copy-on-write
+                            // copy on write
                             let mut new_flags = pte.flags() | PTEFlags::COW;
                             new_flags.remove(PTEFlags::W);
                             pte.set_flags(new_flags);

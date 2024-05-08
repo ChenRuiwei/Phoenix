@@ -31,6 +31,7 @@ impl From<VirtAddr> for OffsetAddr {
         }
     }
 }
+
 impl From<PhysPageNum> for OffsetPageNum {
     fn from(ppn: PhysPageNum) -> Self {
         Self { ppn_u: ppn.0 }

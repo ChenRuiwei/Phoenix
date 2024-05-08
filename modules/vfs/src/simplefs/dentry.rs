@@ -26,13 +26,13 @@ impl Dentry for SimpleDentry {
         &self.meta
     }
 
-    fn arc_open(
+    fn base_open(
         self: alloc::sync::Arc<Self>,
     ) -> systype::SysResult<alloc::sync::Arc<dyn vfs_core::File>> {
         todo!()
     }
 
-    fn arc_lookup(
+    fn base_lookup(
         self: alloc::sync::Arc<Self>,
         name: &str,
     ) -> systype::SysResult<alloc::sync::Arc<dyn Dentry>> {
@@ -49,7 +49,7 @@ impl Dentry for SimpleDentry {
         Ok(sub_dentry)
     }
 
-    fn arc_create(
+    fn base_create(
         self: alloc::sync::Arc<Self>,
         name: &str,
         mode: vfs_core::InodeMode,
@@ -63,11 +63,11 @@ impl Dentry for SimpleDentry {
         Ok(sub_dentry)
     }
 
-    fn arc_unlink(self: alloc::sync::Arc<Self>, name: &str) -> systype::SyscallResult {
+    fn base_unlink(self: alloc::sync::Arc<Self>, name: &str) -> systype::SyscallResult {
         todo!()
     }
 
-    fn arc_rmdir(self: alloc::sync::Arc<Self>, name: &str) -> systype::SyscallResult {
+    fn base_rmdir(self: alloc::sync::Arc<Self>, name: &str) -> systype::SyscallResult {
         todo!()
     }
 }

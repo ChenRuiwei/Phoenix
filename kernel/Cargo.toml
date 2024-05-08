@@ -14,7 +14,7 @@ logging = { path = "../modules/logging/" }
 executor = { path = "../modules/executor/" }
 systype = { path = "../modules/systype/" }
 memory = { path = "../modules/memory/" }
-async_utils = { path = "../modules/async_utils/" }
+async_utils = { path = "../crates/async_utils/" }
 vfs = { path = "../modules/vfs/" }
 vfs-core = { path = "../modules/vfs-core/" }
 recycle_allocator = { path = "../crates/recycle_allocator/" }

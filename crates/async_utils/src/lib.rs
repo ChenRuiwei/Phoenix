@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+
 extern crate alloc;
 
 use alloc::{boxed::Box, sync::Arc, task::Wake, vec::Vec};
@@ -221,7 +222,7 @@ impl SuspendFuture {
 impl Future for SuspendFuture {
     type Output = ();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
         match self.has_suspended {
             true => Poll::Ready(()),
             false => {

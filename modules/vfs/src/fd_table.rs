@@ -1,7 +1,7 @@
 use alloc::{sync::Arc, vec::Vec};
 
 use systype::{SysError, SysResult};
-use vfs_core::File;
+use vfs_core::{File, OpenFlags};
 
 use crate::devfs::{
     stdio::{StdInFile, StdOutFile},
@@ -40,13 +40,13 @@ impl FdTable {
             }
             lower_bound
         } else {
-            let mut idx = lower_bound;
-            loop {
+            for idx in lower_bound..self.table.len() {
                 if self.table[idx].is_none() {
                     return idx;
                 }
-                idx += 1;
             }
+            self.table.push(None);
+            self.table.len()
         }
     }
 
@@ -109,6 +109,16 @@ impl FdTable {
         let new_fd = self.find_free_slot_and_create(lower_bound);
         self.insert(new_fd, file);
         Ok(new_fd)
+    }
+
+    pub fn close_on_exec(&mut self) {
+        for (_, slot) in self.table.iter_mut().enumerate() {
+            if let Some(file) = slot {
+                if file.flags().contains(OpenFlags::O_CLOEXEC) {
+                    *slot = None;
+                }
+            }
+        }
     }
 
     /// Take the ownership of the given fd.

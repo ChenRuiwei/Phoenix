@@ -1,4 +1,4 @@
-use config::mm::{HART_START_ADDR, KERNEL_START};
+use config::{mm::HART_START_ADDR, processor::HART_NUM};
 use driver::{println, sbi};
 
 const BOOT_BANNER: &str = r#"
@@ -13,7 +13,7 @@ pub fn print_banner() {
     println!("{}", BOOT_BANNER);
 }
 
-/// Clear BSS segment at start up
+/// Clear BSS segment at start up.
 pub fn clear_bss() {
     extern "C" {
         fn _sbss();
@@ -25,23 +25,12 @@ pub fn clear_bss() {
     }
 }
 
-pub fn hart_start(hart_id: usize) {
-    use crate::processor::hart::HARTS;
-
-    // only start two harts
-    let mut has_another = false;
-    let hart_num = unsafe { HARTS.len() };
-    for i in 0..hart_num {
-        if has_another {
-            break;
-        }
+pub fn start_harts(hart_id: usize) {
+    for i in 0..HART_NUM {
         if i == hart_id {
             continue;
         }
-        let status = sbi::hart_start(i, HART_START_ADDR);
+        let status: isize = sbi::hart_start(i, HART_START_ADDR) as _;
         println!("[kernel] start to wake up hart {i}... status {status}");
-        if status == 0 {
-            has_another = true;
-        }
     }
 }

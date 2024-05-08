@@ -234,7 +234,7 @@ impl VmArea {
 
     pub fn handle_page_fault(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         log::debug!(
-            "[VmArea::handle_page_fault]: {self:?}, {vpn:?} at page table {:?}",
+            "[VmArea::handle_page_fault] {self:?}, {vpn:?} at page table {:?}",
             page_table.root_ppn
         );
         let page: Page;
@@ -290,7 +290,7 @@ impl VmArea {
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, Arc::new(page));
                     // FIXME: if lazy alloc is not contiguous
-                    self.range_vpn.end = vpn;
+                    self.range_vpn.end = vpn + 1;
                     unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                 }
                 _ => {}
