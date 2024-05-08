@@ -29,9 +29,7 @@ USER_BINS := $(patsubst $(USER_APPS_DIR)/%.rs, $(TARGET_DIR)/%.bin, $(USER_APPS)
 
 FS_IMG_DIR := ./fs-img
 FS_IMG := $(FS_IMG_DIR)/sdcard.img
-TEST := 23
-TEST_DIR := ./testcase/$(TEST)
-# TEST_DIR := ./testcase/24/preliminary/
+TEST_DIR := ./testcase/24/preliminary/
 
 # Crate features
 export STRACE :=
@@ -78,7 +76,16 @@ $(KERNEL_ASM): $(KERNEL_ELF)
 
 # Phony targets
 PHONY := all
-all: build run
+all:
+	@rm -rf .cargo
+	@cp -r cargo-submit .cargo
+	@rm -rf kernel/.cargo
+	@cp -r kernel/cargo-submit kernel/.cargo
+	@rm -rf user/.cargo
+	@cp -r user/cargo-submit user/.cargo
+	@make kernel MODE=release
+	@cp target/riscv64gc-unknown-none-elf/release/kernel kernel-qemu
+
 
 PHONY += build_docker
 build_docker:

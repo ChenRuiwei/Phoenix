@@ -4,6 +4,6 @@
 .idea
 .gdbinit
 target/
-vendor/
+# vendor/
 fs-img/
 kernel/src/link_app.asm
