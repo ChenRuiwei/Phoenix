@@ -26,6 +26,7 @@ use vfs::{fd_table::FdTable, sys_root_dentry};
 use vfs_core::Dentry;
 
 use super::{
+    resource::CpuMask,
     signal::ITimer,
     tid::{Pid, Tid, TidHandle},
 };
@@ -101,6 +102,7 @@ pub struct Task {
     futexes: Shared<Futexes>,
     ///
     tid_address: SyncUnsafeCell<TidAddress>,
+    cpus_allowed: SyncUnsafeCell<CpuMask>,
 }
 
 impl core::fmt::Debug for Task {
@@ -170,6 +172,7 @@ impl Task {
             ]),
             futexes: new_shared(Futexes::new()),
             tid_address: SyncUnsafeCell::new(TidAddress::new()),
+            cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
         });
         task.thread_group.lock().push(task.clone());
 
@@ -310,6 +313,10 @@ impl Task {
         unsafe { &*self.tid_address.get() }
     }
 
+    pub fn cpus_allowed(&self) -> &mut CpuMask {
+        unsafe { &mut *self.cpus_allowed.get() }
+    }
+
     pub unsafe fn switch_page_table(&self) {
         self.memory_space.lock().switch_page_table()
     }
@@ -409,6 +416,7 @@ impl Task {
             itimers,
             futexes,
             tid_address,
+            cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
         });
 
         if !flags.contains(CloneFlags::THREAD) {

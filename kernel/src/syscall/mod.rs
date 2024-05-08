@@ -7,6 +7,7 @@ mod misc;
 mod mm;
 mod process;
 mod resource;
+mod sched;
 mod signal;
 mod time;
 
@@ -26,7 +27,10 @@ use time::*;
 
 use crate::{
     mm::{FutexWord, UserReadPtr, UserWritePtr},
-    syscall::futex::{sys_futex, sys_get_robust_list, sys_set_robust_list},
+    syscall::{
+        futex::{sys_futex, sys_get_robust_list, sys_set_robust_list},
+        sched::*,
+    },
 };
 
 #[cfg(feature = "strace")]
@@ -152,6 +156,12 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         }
         GET_ROBUST_LIST => sys_get_robust_list(args[0] as _, args[1].into(), args[2].into()),
         SET_ROBUST_LIST => sys_set_robust_list(args[0].into(), args[1]),
+        // Shedule
+        SCHED_SETSCHEDULER => sys_sched_setscheduler(),
+        SCHED_GETSCHEDULER => sys_sched_getscheduler(),
+        SCHED_GETPARAM => sys_sched_getparam(),
+        SCHED_SETAFFINITY => sys_sched_setaffinity(args[0], args[1], args[2].into()),
+        SCHED_GETAFFINITY => sys_sched_getaffinity(args[0], args[1], args[2].into()),
         // Miscellaneous
         UNAME => sys_uname(args[0].into()),
         GETRUSAGE => sys_getrusage(args[0] as _, args[1].into()),
