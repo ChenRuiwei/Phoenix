@@ -47,9 +47,9 @@ const TESTCASES: [&str; 32] = [
 
 #[no_mangle]
 fn main() -> i32 {
-    println!("******************************");
-    println!("begin running preliminary tests");
-    println!("******************************");
+    // println!("******************************");
+    // println!("begin running preliminary tests");
+    // println!("******************************");
     if fork() == 0 {
         for testcase in TESTCASES {
             let pid = fork();
@@ -69,9 +69,9 @@ fn main() -> i32 {
                 waitpid(pid as usize, &mut exit_code);
             }
         }
-        println!("******************************");
-        println!("test finished");
-        println!("******************************");
+        // println!("******************************");
+        // println!("test finished");
+        // println!("******************************");
     } else {
         loop {
             let mut exit_code: i32 = 0;
@@ -79,10 +79,10 @@ fn main() -> i32 {
             if pid < 0 {
                 break;
             }
-            println!(
-                "[initproc] Released a zombie process, pid={}, exit_code={}",
-                pid, exit_code,
-            );
+            // println!(
+            //     "[initproc] Released a zombie process, pid={}, exit_code={}",
+            //     pid, exit_code,
+            // );
         }
     }
     0

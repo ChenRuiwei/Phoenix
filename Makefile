@@ -83,7 +83,7 @@ all:
 	@cp -r kernel/cargo-submit kernel/.cargo
 	@rm -rf user/.cargo
 	@cp -r user/cargo-submit user/.cargo
-	@make kernel MODE=release
+	@make user kernel MODE=release
 	@cp target/riscv64gc-unknown-none-elf/release/kernel kernel-qemu
 
 

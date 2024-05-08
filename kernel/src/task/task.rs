@@ -12,6 +12,7 @@ use core::{
 
 use arch::memory::sfence_vma_all;
 use config::{mm::USER_STACK_SIZE, process::INIT_PROC_PID};
+use driver::shutdown;
 use futex::Futexes;
 use memory::VirtAddr;
 use signal::{
@@ -484,15 +485,11 @@ impl Task {
     // TODO:
     pub fn do_exit(self: &Arc<Self>) {
         log::info!("thread {} do exit", self.tid());
-        assert_ne!(
-            self.tid(),
-            INIT_PROC_PID,
-            "initproc die!!!, sepc {:#x}",
-            self.trap_context_mut().sepc
-        );
+        if self.tid() == INIT_PROC_PID {
+            shutdown();
+        }
 
         log::debug!("[Task::do_exit] set children to be zombie and reparent them to init");
-        debug_assert_ne!(self.tid(), INIT_PROC_PID);
         self.with_mut_children(|children| {
             if children.is_empty() {
                 return;
