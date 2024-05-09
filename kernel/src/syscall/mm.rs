@@ -97,6 +97,8 @@ pub fn sys_brk(addr: VirtAddr) -> SyscallResult {
 /// the error.
 // NOTE: Memory mapped by mmap() is preserved across fork(2), with the same
 // attributes.
+// TODO: MAP_SHARED should be shared only specified by file but not mm region?
+// MAP_PRIVATE use copy on write, what if other process modify the file?
 pub fn sys_mmap(
     addr: VirtAddr,
     length: usize,
@@ -122,6 +124,8 @@ pub fn sys_mmap(
     match flags.intersection(MmapFlags::MAP_TYPE_MASK) {
         MmapFlags::MAP_SHARED => {
             if flags.contains(MmapFlags::MAP_ANONYMOUS) {
+                // TODO: MAP_ANONYMOUS & MAP_SHARED is not supported, May be they share this by
+                // pointing to the same addr region by parent and child process
                 todo!()
             } else {
                 let file = task.with_fd_table(|table| table.get(fd))?;

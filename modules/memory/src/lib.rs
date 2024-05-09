@@ -11,6 +11,7 @@ extern crate alloc;
 pub mod address;
 pub mod frame;
 pub mod heap;
+pub mod page;
 pub mod page_table;
 pub mod pte;
 

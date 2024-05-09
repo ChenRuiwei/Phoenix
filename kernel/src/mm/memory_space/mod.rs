@@ -500,7 +500,7 @@ impl MemorySpace {
             .find_free_range(MMAP_RANGE, length)
             .expect("mmap range is full");
         let start = range.start;
-        let mut vma = VmArea::new_mmap(range, perm, Some(file.clone()), flags);
+        let mut vma = VmArea::new_mmap(range, perm, flags, Some(file.clone()), offset);
         vma.map(&mut self.page_table);
         let mut buf = unsafe { UserSlice::new_unchecked(vma.start_va(), length) };
         block_on(async { file.read(offset, &mut buf).await })?;
@@ -515,7 +515,7 @@ impl MemorySpace {
             log::error!("[handle_page_fault] no area containing {va:?}");
             SysError::EFAULT
         })?;
-        vm_area.handle_page_fault(&mut self.page_table, va.floor());
+        vm_area.handle_page_fault(&mut self.page_table, va.floor())?;
         Ok(())
     }
 

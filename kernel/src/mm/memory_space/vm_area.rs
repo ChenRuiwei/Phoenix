@@ -2,12 +2,14 @@ use alloc::{collections::BTreeMap, sync::Arc};
 use core::ops::Range;
 
 use arch::memory::sfence_vma_vaddr;
+use async_utils::block_on;
 use config::mm::PAGE_SIZE;
-use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
+use memory::{page::Page, pte::PTEFlags, PageTableEntry, VirtAddr, VirtPageNum};
+use systype::SysResult;
 use vfs_core::File;
 
 use crate::{
-    mm::{Page, PageTable},
+    mm::{PageTable, UserSlice},
     processor::env::SumGuard,
     syscall::MmapFlags,
 };
@@ -90,8 +92,11 @@ pub struct VmArea {
     pub map_perm: MapPerm,
     pub vma_type: VmAreaType,
     // For mmap
-    pub backup_file: Option<Arc<dyn File>>,
     pub mmap_flags: MmapFlags,
+    /// The underlying file being mapped.
+    pub backed_file: Option<Arc<dyn File>>,
+    /// Start offset in the file.
+    pub offset: usize,
 }
 
 impl core::fmt::Debug for VmArea {
@@ -120,8 +125,9 @@ impl VmArea {
             pages: BTreeMap::new(),
             vma_type,
             map_perm,
-            backup_file: None,
+            backed_file: None,
             mmap_flags: MmapFlags::default(),
+            offset: 0,
         };
         log::trace!("[VmArea::new] {new:?}");
         new
@@ -130,8 +136,9 @@ impl VmArea {
     pub fn new_mmap(
         range_va: Range<VirtAddr>,
         map_perm: MapPerm,
-        file: Option<Arc<dyn File>>,
         mmap_flags: MmapFlags,
+        file: Option<Arc<dyn File>>,
+        offset: usize,
     ) -> Self {
         let start_vpn: VirtPageNum = range_va.start.floor();
         let end_vpn: VirtPageNum = range_va.end.ceil();
@@ -140,8 +147,9 @@ impl VmArea {
             pages: BTreeMap::new(),
             vma_type: VmAreaType::Mmap,
             map_perm,
-            backup_file: file,
+            backed_file: file,
             mmap_flags,
+            offset,
         };
         log::trace!("[VmArea::new_mmap] {new:?}");
         new
@@ -154,8 +162,9 @@ impl VmArea {
             pages: BTreeMap::new(),
             vma_type: another.vma_type,
             map_perm: another.map_perm,
-            backup_file: another.backup_file.clone(),
+            backed_file: another.backed_file.clone(),
             mmap_flags: another.mmap_flags,
+            offset: another.offset,
         }
     }
 
@@ -242,7 +251,11 @@ impl VmArea {
         }
     }
 
-    pub fn handle_page_fault(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
+    pub fn handle_page_fault(
+        &mut self,
+        page_table: &mut PageTable,
+        vpn: VirtPageNum,
+    ) -> SysResult<()> {
         log::debug!(
             "[VmArea::handle_page_fault] {self:?}, {vpn:?} at page table {:?}",
             page_table.root_ppn
@@ -303,8 +316,19 @@ impl VmArea {
                     self.range_vpn.end = vpn + 1;
                     unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                 }
+                VmAreaType::Mmap => {
+                    if !self.mmap_flags.contains(MmapFlags::MAP_ANONYMOUS) {
+                        let file = self.backed_file.as_ref().unwrap();
+                        let offset = self.offset + (vpn - self.start_vpn()) * PAGE_SIZE;
+                        let mut buf = unsafe { UserSlice::new_unchecked(vpn.to_va(), PAGE_SIZE) };
+                        block_on(async { file.read(offset, &mut buf).await })?;
+                        unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                    } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
+                    }
+                }
                 _ => {}
             }
         }
+        Ok(())
     }
 }
