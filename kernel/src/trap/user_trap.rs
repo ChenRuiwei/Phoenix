@@ -39,20 +39,11 @@ pub async fn trap_handler(task: &Arc<Task>) {
     match cause {
         Trap::Exception(Exception::UserEnvCall) => {
             let syscall_no = cx.syscall_no();
-            log::info!("[trap_handler] handle syscall no {syscall_no}");
             cx.set_user_pc_to_next();
             // get system call return value
-            let result = syscall(syscall_no, cx.syscall_args()).await;
+            let ret = syscall(syscall_no, cx.syscall_args()).await;
             // cx is changed during sys_exec, so we have to call it again
             cx = task.trap_context_mut();
-            let ret = match result {
-                Ok(ret) => ret,
-                Err(e) => {
-                    log::warn!("[trap_handler] syscall no {syscall_no} return, err {e:?}",);
-                    -(e as isize) as usize
-                }
-            };
-            log::info!("[trap_handler] handle syscall no {syscall_no} return val {ret:#x}");
             cx.set_user_a0(ret);
         }
         Trap::Exception(Exception::StorePageFault)
