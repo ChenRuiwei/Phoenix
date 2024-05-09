@@ -24,6 +24,7 @@ use crate::{
         MMIO,
     },
     processor::env::SumGuard,
+    syscall::MmapFlags,
     task::aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR},
 };
 
@@ -467,10 +468,28 @@ impl MemorySpace {
         self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
+    pub fn alloc_mmap_private_anon(&mut self, perm: MapPerm, length: usize) -> SysResult<VirtAddr> {
+        const MMAP_RANGE: Range<VirtAddr> =
+            VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
+        let range = self
+            .areas
+            .find_free_range(MMAP_RANGE, length)
+            .expect("mmap range is full");
+        let start = range.start;
+        let mut vma = VmArea::new(range, perm, VmAreaType::Mmap);
+        vma.map(&mut self.page_table);
+        let mut buf = Vec::with_capacity(length);
+        buf.fill(0);
+        vma.copy_data_with_offset(&self.page_table, 0, &buf);
+        self.areas.try_insert(vma.range_va(), vma).unwrap();
+        Ok(start)
+    }
+
     pub fn alloc_mmap_area(
         &mut self,
-        perm: MapPerm,
         length: usize,
+        perm: MapPerm,
+        flags: MmapFlags,
         file: Arc<dyn File>,
         offset: usize,
     ) -> SysResult<VirtAddr> {
@@ -481,7 +500,7 @@ impl MemorySpace {
             .find_free_range(MMAP_RANGE, length)
             .expect("mmap range is full");
         let start = range.start;
-        let mut vma = VmArea::new_mmap(range, perm, file.clone());
+        let mut vma = VmArea::new_mmap(range, perm, Some(file.clone()), flags);
         vma.map(&mut self.page_table);
         let mut buf = unsafe { UserSlice::new_unchecked(vma.start_va(), length) };
         block_on(async { file.read(offset, &mut buf).await })?;
