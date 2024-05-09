@@ -147,18 +147,18 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> SyscallResult {
         // Futex
         FUTEX => {
             sys_futex(
-                FutexWord::from(args[0]),
-                args[1] as i32,
-                args[2] as u32,
-                args[3] as u32,
-                args[4] as u32,
-                args[5] as u32,
+                args[0].into(),
+                args[1] as _,
+                args[2] as _,
+                args[3] as _,
+                args[4] as _,
+                args[5] as _,
             )
             .await
         }
         GET_ROBUST_LIST => sys_get_robust_list(args[0] as _, args[1].into(), args[2].into()),
         SET_ROBUST_LIST => sys_set_robust_list(args[0].into(), args[1]),
-        // Shedule
+        // Schedule
         SCHED_SETSCHEDULER => sys_sched_setscheduler(),
         SCHED_GETSCHEDULER => sys_sched_getscheduler(),
         SCHED_GETPARAM => sys_sched_getparam(),
