@@ -9,6 +9,7 @@ use vfs_core::File;
 use crate::{
     mm::{Page, PageTable},
     processor::env::SumGuard,
+    syscall::MmapFlags,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +91,7 @@ pub struct VmArea {
     pub vma_type: VmAreaType,
     // For mmap
     pub backup_file: Option<Arc<dyn File>>,
+    pub mmap_flags: MmapFlags,
 }
 
 impl core::fmt::Debug for VmArea {
@@ -119,12 +121,18 @@ impl VmArea {
             vma_type,
             map_perm,
             backup_file: None,
+            mmap_flags: MmapFlags::default(),
         };
         log::trace!("[VmArea::new] {new:?}");
         new
     }
 
-    pub fn new_mmap(range_va: Range<VirtAddr>, map_perm: MapPerm, file: Arc<dyn File>) -> Self {
+    pub fn new_mmap(
+        range_va: Range<VirtAddr>,
+        map_perm: MapPerm,
+        file: Option<Arc<dyn File>>,
+        mmap_flags: MmapFlags,
+    ) -> Self {
         let start_vpn: VirtPageNum = range_va.start.floor();
         let end_vpn: VirtPageNum = range_va.end.ceil();
         let new = Self {
@@ -132,7 +140,8 @@ impl VmArea {
             pages: BTreeMap::new(),
             vma_type: VmAreaType::Mmap,
             map_perm,
-            backup_file: Some(file),
+            backup_file: file,
+            mmap_flags,
         };
         log::trace!("[VmArea::new_mmap] {new:?}");
         new
@@ -146,6 +155,7 @@ impl VmArea {
             vma_type: another.vma_type,
             map_perm: another.map_perm,
             backup_file: another.backup_file.clone(),
+            mmap_flags: another.mmap_flags,
         }
     }
 

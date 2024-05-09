@@ -17,6 +17,7 @@ use consts::*;
 pub use fs::resolve_path;
 use fs::*;
 use misc::*;
+pub use mm::MmapFlags;
 use mm::*;
 pub use process::CloneFlags;
 use process::*;

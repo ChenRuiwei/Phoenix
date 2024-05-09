@@ -4,10 +4,10 @@
 
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
-    fmt::{Debug, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     intrinsics::{atomic_load_acquire, size_of},
     marker::PhantomData,
-    ops::ControlFlow,
+    ops::{self, ControlFlow},
 };
 
 use memory::VirtAddr;
@@ -23,10 +23,10 @@ use crate::{
     },
 };
 
-pub trait Policy: Clone + Copy + 'static {}
+trait Policy: Clone + Copy + 'static {}
 
-pub trait Read: Policy {}
-pub trait Write: Policy {}
+trait Read: Policy {}
+trait Write: Policy {}
 
 #[derive(Clone, Copy)]
 pub struct In;
@@ -56,32 +56,116 @@ pub type UserReadPtr<T> = UserPtr<T, In>;
 pub type UserWritePtr<T> = UserPtr<T, Out>;
 pub type UserRdWrPtr<T> = UserPtr<T, InOut>;
 
-impl<T: Clone + Copy + 'static> Debug for UserReadPtr<T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("UserReadPtr")
-            .field("ptr", &self.ptr)
-            .finish()
-    }
-}
-
-impl<T: Clone + Copy + 'static> Debug for UserWritePtr<T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("UserWritePtr")
-            .field("ptr", &self.ptr)
-            .finish()
-    }
-}
-
-impl<T: Clone + Copy + 'static> Debug for UserRdWrPtr<T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("UserRdWrPtr")
-            .field("ptr", &self.ptr)
-            .finish()
-    }
-}
-
 unsafe impl<T: Clone + Copy + 'static, P: Policy> Send for UserPtr<T, P> {}
 unsafe impl<T: Clone + Copy + 'static, P: Policy> Sync for UserPtr<T, P> {}
+
+macro_rules! impl_fmt {
+    ($name:ident) => {
+        impl<T: Clone + Copy + 'static> fmt::Display for $name<T> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "{}({})", stringify!($name), self.as_usize())
+            }
+        }
+
+        impl<T: Clone + Copy + 'static> fmt::Debug for $name<T> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.debug_struct(stringify!($name))
+                    .field("ptr", &self.ptr)
+                    .finish()
+            }
+        }
+    };
+}
+
+impl_fmt!(UserReadPtr);
+impl_fmt!(UserWritePtr);
+impl_fmt!(UserRdWrPtr);
+
+pub struct UserRef<'a, T> {
+    i_ref: &'a mut T,
+    _guard: SumGuard,
+}
+
+impl<'a, T> UserRef<'a, T> {
+    pub fn new(i_ref: &'a mut T) -> Self {
+        Self {
+            i_ref,
+            _guard: SumGuard::new(),
+        }
+    }
+
+    pub unsafe fn new_unchecked(ptr: *mut T) -> Self {
+        let i_ref = unsafe { &mut *ptr };
+        Self::new(i_ref)
+    }
+
+    pub fn ptr(&self) -> *const T {
+        self.i_ref as _
+    }
+
+    pub fn ptr_mut(&mut self) -> *mut T {
+        self.i_ref as _
+    }
+}
+
+impl<'a, T> ops::Deref for UserRef<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.i_ref
+    }
+}
+
+impl<T: Clone + Copy + 'static + Debug> Debug for UserRef<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result {
+        f.debug_struct("UserRef").field("ref", &self.i_ref).finish()
+    }
+}
+
+pub struct UserMut<'a, T> {
+    i_ref: &'a mut T,
+    _guard: SumGuard,
+}
+
+impl<'a, T> UserMut<'a, T> {
+    pub fn new(i_ref: &'a mut T) -> Self {
+        Self {
+            i_ref,
+            _guard: SumGuard::new(),
+        }
+    }
+
+    pub unsafe fn new_unchecked(ptr: *mut T) -> Self {
+        let i_ref = unsafe { &mut *ptr };
+        Self::new(i_ref)
+    }
+
+    pub fn ptr(&self) -> *const T {
+        self.i_ref as _
+    }
+
+    pub fn ptr_mut(&mut self) -> *mut T {
+        self.i_ref as _
+    }
+}
+
+impl<'a, T> core::ops::Deref for UserMut<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.i_ref
+    }
+}
+
+impl<'a, T> ops::DerefMut for UserMut<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.i_ref
+    }
+}
+
+impl<T: Clone + Copy + 'static + Debug> Debug for UserMut<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result {
+        f.debug_struct("UserMut").field("mut", &self.i_ref).finish()
+    }
+}
 
 /// User slice. Hold slice from `UserPtr` and a `SumGuard` to provide user
 /// space access.
@@ -118,7 +202,7 @@ impl<'a, T> core::ops::DerefMut for UserSlice<'a, T> {
 }
 
 impl<T: Clone + Copy + 'static + Debug> Debug for UserSlice<'_, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result {
         f.debug_struct("UserSlice")
             .field("slice", &self.slice.iter())
             .finish()
@@ -156,17 +240,18 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
 }
 
 // TODO: consider return EFAULT when self is null.
-// TODO: ref or slice should hold `SumGuard`
 impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
-    pub fn into_ref(self, task: &Arc<Task>) -> SysResult<&T> {
-        debug_assert!(self.not_null());
+    pub fn into_ref(self, task: &Arc<Task>) -> SysResult<UserRef<T>> {
+        if self.is_null() {
+            return Err(SysError::EFAULT);
+        }
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>(),
             PageFaultAccessType::RO,
         )?;
-        let res = unsafe { &*self.ptr };
-        Ok(res)
+        let res = unsafe { &mut *self.ptr };
+        Ok(UserRef::new(res))
     }
 
     pub fn into_slice(self, task: &Arc<Task>, n: usize) -> SysResult<UserSlice<T>> {
@@ -182,9 +267,9 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
 
     pub fn read(self, task: &Arc<Task>) -> SysResult<T> {
         if self.is_null() {
+            log::warn!("[UserReadPtr] null ptr");
             return Err(SysError::EFAULT);
         }
-        // debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>(),
@@ -201,7 +286,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
             size_of::<T>() * n,
             PageFaultAccessType::RO,
         )?;
-
         let mut res = Vec::with_capacity(n);
         unsafe {
             let ptr = self.ptr;
@@ -209,7 +293,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
                 res.push(ptr.add(i).read());
             }
         }
-
         Ok(res)
     }
 
@@ -218,8 +301,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     pub fn read_cvec(self, task: &Arc<Task>) -> SysResult<Vec<usize>> {
         debug_assert!(self.not_null());
         let mut vec = Vec::with_capacity(32);
-        let mut has_ended = false;
-
         task.ensure_user_area(
             VirtAddr::from(self.as_usize()),
             usize::MAX,
@@ -229,7 +310,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
                 for _ in 0..len {
                     let c = ptr.read();
                     if c == 0 {
-                        has_ended = true;
                         return ControlFlow::Break(None);
                     }
                     vec.push(c);
@@ -238,14 +318,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
                 ControlFlow::Continue(())
             },
         )?;
-
-        if has_ended {
-            Ok(vec)
-        } else {
-            // FIXME: I doubt that this condition will never happen.
-            panic!("This will not happen");
-            Err(SysError::EINVAL)
-        }
+        Ok(vec)
     }
 }
 
@@ -254,7 +327,6 @@ impl<P: Read> UserPtr<u8, P> {
     pub fn read_cstr(self, task: &Arc<Task>) -> SysResult<String> {
         debug_assert!(self.not_null());
         let mut str = String::with_capacity(32);
-        let mut has_ended = false;
 
         task.ensure_user_area(
             VirtAddr::from(self.as_usize()),
@@ -265,7 +337,6 @@ impl<P: Read> UserPtr<u8, P> {
                 for _ in 0..len {
                     let c = ptr.read();
                     if c == 0 {
-                        has_ended = true;
                         return ControlFlow::Break(None);
                     }
                     str.push(c as char);
@@ -274,20 +345,13 @@ impl<P: Read> UserPtr<u8, P> {
                 ControlFlow::Continue(())
             },
         )?;
-
-        if has_ended {
-            Ok(str)
-        } else {
-            // FIXME: I doubt that this condition will never happen.
-            panic!("This will not happen");
-            Err(SysError::EINVAL)
-        }
+        Ok(str)
     }
 }
 
-// TODO: ref or slice should hold `SumGuard`
+// TODO: should ref hold SumGuard?
 impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
-    pub fn into_mut(self, task: &Arc<Task>) -> SysResult<&mut T> {
+    pub fn into_mut(self, task: &Arc<Task>) -> SysResult<UserMut<T>> {
         debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
@@ -295,7 +359,7 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
             PageFaultAccessType::RW,
         )?;
         let res = unsafe { &mut *self.ptr };
-        Ok(res)
+        Ok(UserMut::new(res))
     }
 
     pub fn into_mut_slice(self, task: &Arc<Task>, n: usize) -> SysResult<UserSlice<T>> {
@@ -402,12 +466,6 @@ impl<T: Clone + Copy + 'static, P: Policy> From<usize> for UserPtr<T, P> {
     }
 }
 
-impl<T: Clone + Copy + 'static, P: Policy> Display for UserPtr<T, P> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "UserPtr({:#x})", self.as_usize())
-    }
-}
-
 impl Task {
     pub fn just_ensure_user_area(
         &self,
@@ -498,6 +556,7 @@ impl PageFaultAccessType {
 }
 
 pub struct FutexWord(u32);
+
 impl FutexWord {
     pub fn from(a: usize) -> Self {
         Self(a as u32)

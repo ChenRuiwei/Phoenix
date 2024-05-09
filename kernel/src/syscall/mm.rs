@@ -9,7 +9,7 @@ use crate::{
 
 bitflags! {
     // See in "bits/mman-linux.h"
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct MmapFlags: i32 {
         // Sharing types (must choose one and only one of these).
         /// Share changes.
@@ -113,7 +113,7 @@ pub fn sys_mmap(
     let prot = MmapProt::from_bits_truncate(prot);
     let perm = MapPerm::from(prot);
 
-    log::debug!("[sys_mmap] prot:{prot:?}, flags:{flags:?}, perm:{perm:?}");
+    log::info!("[sys_mmap] prot:{prot:?}, flags:{flags:?}, perm:{perm:?}");
 
     if addr.is_null() && flags.contains(MmapFlags::MAP_FIXED) {
         return Err(SysError::EINVAL);
@@ -126,13 +126,22 @@ pub fn sys_mmap(
             } else {
                 let file = task.with_fd_table(|table| table.get(fd))?;
                 // PERF: lazy alloc for mmap
-                let start_va =
-                    task.with_mut_memory_space(|m| m.alloc_mmap_area(perm, length, file, offset))?;
+                let start_va = task.with_mut_memory_space(|m| {
+                    m.alloc_mmap_area(length, perm, flags, file, offset)
+                })?;
                 Ok(start_va.bits())
             }
         }
         MmapFlags::MAP_PRIVATE => {
-            todo!()
+            if flags.contains(MmapFlags::MAP_ANONYMOUS) {
+                let start_va =
+                    task.with_mut_memory_space(|m| m.alloc_mmap_private_anon(perm, length))?;
+                return Ok(start_va.bits());
+            }
+            let file = task.with_fd_table(|table| table.get(fd))?;
+            let start_va = task
+                .with_mut_memory_space(|m| m.alloc_mmap_area(length, perm, flags, file, offset))?;
+            Ok(start_va.bits())
         }
         _ => Err(SysError::EINVAL),
     }

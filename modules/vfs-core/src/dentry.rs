@@ -85,13 +85,14 @@ pub trait Dentry: Send + Sync {
     /// inode.
     fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult;
 
-    fn base_new_negative_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+    /// Create a negetive child dentry with `name`.
+    fn base_new_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
         todo!()
     }
 
     fn get_child_or_create(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
         self.get_child(name).unwrap_or_else(|| {
-            let new_dentry = self.clone().base_new_negative_child(name);
+            let new_dentry = self.clone().base_new_child(name);
             self.insert(new_dentry.clone());
             new_dentry
         })
