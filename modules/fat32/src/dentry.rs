@@ -154,7 +154,7 @@ impl Dentry for FatDentry {
         Ok(0)
     }
 
-    fn base_new_negative_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+    fn base_new_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
         Self::new(name, self.super_block(), Some(self))
     }
 }

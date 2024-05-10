@@ -175,12 +175,7 @@ pub fn sys_set_robust_list(
     if len != mem::size_of::<RobustListHead>() {
         return Err(SysError::EINVAL);
     }
-    let head = robust_list_head.into_ref(&task)?;
-    task.with_mut_futexes(|futexes| {
-        futexes.robust_list.store(
-            head as *const RobustListHead as *mut RobustListHead,
-            Ordering::SeqCst,
-        )
-    });
+    let mut head = robust_list_head.into_ref(&task)?;
+    task.with_mut_futexes(|futexes| futexes.robust_list.store(head.ptr_mut(), Ordering::SeqCst));
     Ok(0)
 }

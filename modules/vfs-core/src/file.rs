@@ -175,7 +175,6 @@ impl dyn File {
 
     pub fn read_dir(&self) -> SysResult<Option<DirEntry>> {
         self.load_dir()?;
-        // PERF: should cache the iter stream
         if let Some(sub_dentry) = self
             .dentry()
             .children()

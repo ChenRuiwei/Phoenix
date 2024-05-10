@@ -389,7 +389,7 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
         d_type: u8,
         // d_name follows here, which will be written later
     }
-    // NOTE: cnsidering C struct align, we can not use `size_of` directly, because
+    // NOTE: Considering C struct align, we can not use `size_of` directly, because
     // `size_of::<LinuxDirent64>` equals 24, which is not what we want.
     const LEN_BEFORE_NAME: usize = 19;
     let task = current_task();
