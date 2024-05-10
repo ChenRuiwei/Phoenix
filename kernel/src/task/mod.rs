@@ -6,7 +6,6 @@ pub mod signal;
 pub mod task;
 mod tid;
 
-use async_utils::block_on;
 pub use manager::TASK_MANAGER;
 pub use schedule::{spawn_kernel_task, spawn_user_task};
 pub use task::Task;

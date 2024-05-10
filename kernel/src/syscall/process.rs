@@ -166,9 +166,9 @@ pub async fn sys_wait4(
             // wstatus macros can be found in "bits/waitstatus.h"
             let status = (res_task.exit_code() & 0xff) << 8;
             log::debug!(
-                    "[sys_wait4] exit_code: {}, wstatus: {status:#x}",
-                    res_task.exit_code()
-                );
+                "[sys_wait4] exit_code: {}, wstatus: {status:#x}",
+                res_task.exit_code()
+            );
             wstatus.write(&task, status)?;
         }
         let tid = res_task.tid();

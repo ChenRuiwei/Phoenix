@@ -187,6 +187,12 @@ pub fn nanosleep(req: &TimeSpec, rem: &mut TimeSpec) -> isize {
     )
 }
 
+pub fn sleep(ms: usize) -> isize {
+    let req = TimeSpec::from_ms(ms);
+    let mut rem = TimeSpec::from_ms(0);
+    nanosleep(&req, &mut rem)
+}
+
 //************ signal ***************/
 pub fn sigaction(sig_no: Sig, act: &SigAction, old_act: &mut SigAction) -> isize {
     sys_sigaction(

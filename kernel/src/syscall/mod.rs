@@ -85,6 +85,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         SET_TID_ADDRESS => sys_set_tid_address(args[0]),
         GETUID => sys_getuid(),
         GETEUID => sys_geteuid(),
+        SETPGID => sys_setpgid(args[0], args[1]),
         // Memory
         BRK => sys_brk(args[0].into()),
         MMAP => sys_mmap(
@@ -124,7 +125,6 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         PIPE2 => sys_pipe2(args[0].into(), args[1] as _),
         IOCTL => sys_ioctl(args[0], args[1], args[2]),
         FCNTL => sys_fcntl(args[0], args[1] as _, args[2]),
-        GETUID => sys_getuid(),
         WRITEV => sys_writev(args[0], args[1].into(), args[2]).await,
         READV => sys_readv(args[0], args[1].into(), args[2]).await,
         PPOLL => sys_ppoll(args[0].into(), args[1], args[2].into(), args[3]).await,

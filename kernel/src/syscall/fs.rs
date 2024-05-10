@@ -141,7 +141,7 @@ pub fn sys_openat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32, mode: u32
     let dentry = at_helper(dirfd, &pathname, mode)?;
     if flags.contains(OpenFlags::O_CREAT) {
         // If pathname does not exist, create it as a regular file.
-        if flags.contains(OpenFlags::O_EXCL) && !dentry.is_negetive()  {
+        if flags.contains(OpenFlags::O_EXCL) && !dentry.is_negetive() {
             return Err(SysError::EEXIST);
         }
         let parent = dentry.parent().expect("can not be root dentry");

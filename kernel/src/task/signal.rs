@@ -9,7 +9,7 @@ use core::{
 
 use arch::time::{get_time_duration, get_time_ms};
 use signal::{
-    action::{Action, ActionType},
+    action::{Action, ActionType, SigActionFlag},
     siginfo::{SigDetails, SigInfo},
     signal_stack::{MContext, UContext},
     sigset::{Sig, SigSet},
@@ -20,7 +20,7 @@ use time::timeval::ITimerVal;
 use super::Task;
 use crate::{mm::UserWritePtr, processor::hart::current_task};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 #[repr(C)]
 pub struct SigAction {
     /// sa_handler specifies the action to be associated with signum and can be
@@ -30,38 +30,27 @@ pub struct SigAction {
     /// 3. A pointer to a signal handling function. This function receives the
     ///    signal number as its only argument.
     pub sa_handler: usize,
+    pub sa_flags: SigActionFlag,
+    pub restorer: usize,
     /// sa_mask specifies a mask of signals which should be blocked during
     /// execution of the signal handler.
     pub sa_mask: SigSet,
-    pub sa_flags: usize,
 }
 pub const SIG_DFL: usize = 0;
 pub const SIG_IGN: usize = 1;
 
-impl Default for SigAction {
-    fn default() -> Self {
-        SigAction {
-            sa_handler: 0,
-            sa_mask: SigSet::empty(),
-            sa_flags: Default::default(),
-        }
-    }
-}
 impl From<Action> for SigAction {
     fn from(action: Action) -> Self {
-        match action.atype {
-            ActionType::Ignore => SigAction {
-                sa_handler: SIG_IGN,
-                ..Default::default()
-            },
-            ActionType::Kill | ActionType::Stop | ActionType::Cont => SigAction {
-                sa_handler: SIG_DFL,
-                ..Default::default()
-            },
-            ActionType::User { entry } => SigAction {
-                sa_handler: entry.into(),
-                ..Default::default()
-            },
+        let sa_handler = match action.atype {
+            ActionType::Ignore => SIG_IGN,
+            ActionType::Kill | ActionType::Stop | ActionType::Cont => SIG_DFL,
+            ActionType::User { entry } => entry.into(),
+        };
+        Self {
+            sa_handler,
+            sa_flags: action.flags,
+            restorer: 0,
+            sa_mask: action.mask,
         }
     }
 }
@@ -120,7 +109,7 @@ pub fn do_signal() -> SysResult<()> {
         if pending.is_empty() {
             return Ok(());
         }
-        log::info!("[do signal] there is some signals to be handled");
+        log::info!("[do signal] there are some signals to be handled");
         let len = pending.queue.len();
         for _ in 0..len {
             let si = pending.pop().unwrap();
@@ -128,7 +117,7 @@ pub fn do_signal() -> SysResult<()> {
                 pending.add(si);
                 continue;
             }
-            let action = task.sig_handlers().get(si.sig).unwrap().clone();
+            let action = task.sig_handlers().get(si.sig).clone();
             match action.atype {
                 ActionType::Ignore => {
                     log::debug!("Recevie signal {}. Action: ignore", si.sig);
