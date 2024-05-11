@@ -177,7 +177,8 @@ fn terminate(sig: Sig) {
         for t in tg.iter() {
             t.set_zombie();
         }
-    })
+    });
+    task.set_exit_code(sig.raw() as i32);
 }
 
 /// stop the process
