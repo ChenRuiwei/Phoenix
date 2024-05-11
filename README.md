@@ -1,5 +1,7 @@
 # Phoenix OS
 
+![哈工大深圳](docs/image/哈工大深圳.jpg)
+
 Phoenix OS is a Unix-like OS for 2024 OS-Competition
 
 ## 项目描述

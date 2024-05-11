@@ -536,6 +536,7 @@ dependencies = [
  "downcast-rs",
  "driver",
  "log",
+ "memory",
  "spin",
  "sync",
  "systype",

@@ -519,7 +519,7 @@ impl Task {
 
         if let Some(address) = self.tid_address().clear_child_tid {
             log::info!("[do_exit] clear_child_tid: {}", address);
-            UserWritePtr::from_usize(address)
+            UserWritePtr::from(address)
                 .write(self, 0)
                 .expect("tid address write error");
             self.with_mut_futexes(|futexes| futexes.wake(address as u32, 1));
@@ -530,6 +530,7 @@ impl Task {
             self.with_mut_thread_group(|tg| tg.remove(self));
             TASK_MANAGER.remove(self.tid())
         } else {
+            // TODO: drop most of resource
             if let Some(parent) = self.parent() {
                 let parent = parent.upgrade().unwrap();
                 parent.receive_siginfo(

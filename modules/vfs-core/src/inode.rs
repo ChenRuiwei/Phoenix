@@ -7,15 +7,16 @@ use core::{mem::MaybeUninit, sync::atomic::AtomicUsize};
 
 use bitflags::Flags;
 use downcast_rs::{impl_downcast, DowncastSync};
-use spin::Mutex;
+use spin::Once;
 use systype::{SysError, SysResult};
 
 use crate::{
+    address_space::AddressSpace,
     alloc_ino,
     file::File,
     super_block,
     utils::{RenameFlag, Stat, Time, TimeSpec},
-    Dentry, SuperBlock,
+    Dentry, Mutex, SuperBlock,
 };
 
 pub struct InodeMeta {
@@ -25,6 +26,7 @@ pub struct InodeMeta {
     pub mode: InodeMode,
     pub super_block: Weak<dyn SuperBlock>,
 
+    pub address_space: Option<AddressSpace>,
     pub inner: Mutex<InodeMetaInner>,
 }
 
@@ -43,10 +45,17 @@ pub struct InodeMetaInner {
 
 impl InodeMeta {
     pub fn new(mode: InodeMode, super_block: Arc<dyn SuperBlock>, size: usize) -> Self {
+        let itype = mode.to_type();
+        let address_space = if itype.is_file() || itype.is_block_device() {
+            Some(AddressSpace::new())
+        } else {
+            None
+        };
         Self {
             ino: alloc_ino(),
             mode,
             super_block: Arc::downgrade(&super_block),
+            address_space,
             inner: Mutex::new(InodeMetaInner {
                 size,
                 atime: TimeSpec::default(),
@@ -71,6 +80,13 @@ impl dyn Inode {
 
     pub fn itype(&self) -> InodeType {
         self.meta().mode.to_type()
+    }
+
+    pub fn address_space<'a>(self: &'a Arc<dyn Inode>) -> Option<&'a AddressSpace> {
+        self.meta().address_space.as_ref().map(|a| {
+            a.set_inode(self.clone());
+            a
+        })
     }
 
     pub fn size(&self) -> usize {

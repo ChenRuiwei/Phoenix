@@ -40,11 +40,11 @@ impl File for FatDirFile {
         &self.meta
     }
 
-    async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         Err(SysError::EISDIR)
     }
 
-    async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         Err(SysError::EISDIR)
     }
 

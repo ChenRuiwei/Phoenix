@@ -43,11 +43,11 @@ impl File for StdOutFile {
         &self.meta
     }
 
-    async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         todo!()
     }
 
-    async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         if let Ok(data) = core::str::from_utf8(buf) {
             print!("{}", data);
         } else {
@@ -102,7 +102,7 @@ impl File for StdInFile {
         &self.meta
     }
 
-    async fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
         if buf.is_empty() {
             return Ok(0);
         }
@@ -116,7 +116,7 @@ impl File for StdInFile {
         Ok(cnt)
     }
 
-    async fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn base_write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
         todo!()
     }
 
