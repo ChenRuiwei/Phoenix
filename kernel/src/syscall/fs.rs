@@ -94,10 +94,10 @@ impl Kstat {
 // TODO:
 pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallResult {
     let task = current_task();
-    let buf = buf.read_array(&task, len)?;
     let file = task.with_fd_table(|table| table.get(fd))?;
+    let buf = buf.into_slice(&task, len)?;
     let pos = file.pos();
-    let ret = file.write(file.pos(), &buf).await?;
+    let ret = file.write(pos, &buf).await?;
     file.seek(SeekFrom::Current((pos + ret) as i64));
     Ok(ret)
 }
@@ -114,7 +114,7 @@ pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallRe
     let mut buf = buf.into_mut_slice(&task, len)?;
     let pos = file.pos();
     let ret = file.read(pos, &mut buf).await?;
-    file.seek(SeekFrom::Current((pos + ret) as i64));
+    file.seek(SeekFrom::Current((pos + ret) as i64))?;
     Ok(ret)
 }
 
@@ -399,6 +399,7 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
     let mut writen_len = 0;
+    let _ = UserWritePtr::<u8>::from(buf).into_mut_slice(&task, len)?;
     while let Some(dirent) = file.read_dir()? {
         log::debug!("[sys_getdents64] dirent {dirent:?}");
         let buf = UserWritePtr::<LinuxDirent64>::from(buf + writen_len);
@@ -413,12 +414,12 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
         };
         log::debug!("[sys_getdents64] linux dirent {linux_dirent:?}");
         if writen_len + rec_len > len {
-            file.seek(SeekFrom::Current(-1));
+            file.seek(SeekFrom::Current(-1))?;
             break;
         }
         let name_buf = UserWritePtr::<u8>::from(buf.as_usize() + LEN_BEFORE_NAME);
-        buf.write(&task, linux_dirent)?;
-        name_buf.write_cstr(&task, &dirent.name)?;
+        buf.write_unchecked(&task, linux_dirent)?;
+        name_buf.write_cstr_unchecked(&task, &dirent.name)?;
         writen_len += rec_len;
     }
     Ok(writen_len)
@@ -535,7 +536,6 @@ pub struct IoVec {
 pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|f| f.get(fd))?;
-
     let mut offset = file.pos();
     let mut total_len = 0;
     let iovs = iov.read_array(&task, iovcnt)?;
@@ -543,17 +543,14 @@ pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> Sy
         if iov.len == 0 {
             continue;
         }
-
         let ptr = UserReadPtr::<u8>::from(iov.base);
         log::debug!("[sys_writev] iov #{i}, ptr: {ptr}, len: {}", iov.len);
-
         let buf = ptr.into_slice(&task, iov.len)?;
         let write_len = file.write(offset, &buf).await?;
-
         total_len += write_len;
         offset += write_len;
     }
-    file.seek(SeekFrom::Current(total_len as i64));
+    file.seek(SeekFrom::Current(total_len as i64))?;
     Ok(total_len)
 }
 
@@ -562,7 +559,6 @@ pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> Sy
 pub async fn sys_readv(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|f| f.get(fd))?;
-
     let mut offset = file.pos();
     let mut total_len = 0;
     let iovs = iov.read_array(&task, iovcnt)?;
@@ -570,17 +566,14 @@ pub async fn sys_readv(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> Sys
         if iov.len == 0 {
             continue;
         }
-
         let ptr = UserWritePtr::<u8>::from(iov.base);
         log::debug!("[sys_readv] iov #{i}, ptr: {ptr}, len: {}", iov.len);
-
         let mut buf = ptr.into_mut_slice(&task, iov.len)?;
         let write_len = file.read(offset, &mut buf).await?;
-
         total_len += write_len;
         offset += write_len;
     }
-    file.seek(SeekFrom::Current(total_len as i64));
+    file.seek(SeekFrom::Current(total_len as i64))?;
     Ok(total_len)
 }
 
@@ -634,7 +627,7 @@ pub async fn sys_ppoll(
     }
 
     let mut futures = Vec::<Async<SysResult<PollEvents>>>::with_capacity(nfds);
-    for (i, poll_fd) in poll_fds.iter().enumerate() {
+    for poll_fd in poll_fds.iter() {
         let fd = poll_fd.fd as usize;
         let events = PollEvents::from_bits(poll_fd.events).unwrap();
         let file = task.with_fd_table(|table| table.get(fd))?;

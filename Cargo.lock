@@ -530,11 +530,13 @@ dependencies = [
 name = "vfs-core"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "async-trait",
  "bitflags 2.5.0",
  "config",
  "downcast-rs",
  "driver",
+ "hashbrown",
  "log",
  "memory",
  "spin",

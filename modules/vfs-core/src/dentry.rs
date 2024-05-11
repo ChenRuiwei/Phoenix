@@ -2,13 +2,22 @@ use alloc::{
     collections::BTreeMap,
     string::{String, ToString},
     sync::{Arc, Weak},
+    vec::Vec,
 };
-use core::mem::MaybeUninit;
+use core::{
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+};
 
+use ahash::AHasher;
 use spin::Once;
 use systype::{SysError, SysResult, SyscallResult};
 
-use crate::{inode::Inode, super_block, File, InodeMode, InodeType, Mutex, SuperBlock};
+use crate::{
+    dcache::{self, dcache, DCACHE},
+    inode::Inode,
+    super_block, File, InodeMode, InodeType, Mutex, SuperBlock,
+};
 
 pub struct DentryMeta {
     /// Name of this file or directory.
@@ -17,6 +26,7 @@ pub struct DentryMeta {
     /// Parent dentry. `None` if root dentry.
     pub parent: Option<Weak<dyn Dentry>>,
 
+    pub hash_key: HashKey,
     /// Inode it points to. May be `None`, which is called negative dentry.
     pub inode: Mutex<Option<Arc<dyn Inode>>>,
     /// Children dentries. Key value pair is <name, dentry>.
@@ -31,29 +41,54 @@ impl DentryMeta {
         parent: Option<Arc<dyn Dentry>>,
     ) -> Self {
         log::debug!("[Dentry::new] new dentry with name {name}");
-        Self {
-            name: name.to_string(),
-            super_block: Arc::downgrade(&super_block),
-            inode: Mutex::new(None),
-            parent: parent.map(|p| Arc::downgrade(&p)),
-            children: Mutex::new(BTreeMap::new()),
+        let super_block = Arc::downgrade(&super_block);
+        let inode = Mutex::new(None);
+        if let Some(parent) = parent {
+            let mut ahasher = AHasher::default();
+            name.hash(&mut ahasher);
+            let hash_key = HashKey {
+                parent_ino: parent.inode().unwrap().ino(),
+                name_hash: ahasher.finish(),
+            };
+            Self {
+                name: name.to_string(),
+                super_block,
+                inode,
+                parent: Some(Arc::downgrade(&parent)),
+                children: Mutex::new(BTreeMap::new()),
+                hash_key,
+            }
+        } else {
+            let hash_key = HashKey {
+                parent_ino: 0,
+                name_hash: 0,
+            };
+            Self {
+                name: name.to_string(),
+                super_block,
+                inode,
+                parent: None,
+                children: Mutex::new(BTreeMap::new()),
+                hash_key,
+            }
         }
     }
+}
 
-    pub fn new_with_inode(
-        name: &str,
-        super_block: Arc<dyn SuperBlock>,
-        inode: Arc<dyn Inode>,
-        parent: Option<Weak<dyn Dentry>>,
-    ) -> Self {
-        log::debug!("[Dentry::new_with_inode] new dentry with name {name}");
-        Self {
-            name: name.to_string(),
-            super_block: Arc::downgrade(&super_block),
-            parent,
-            inode: Mutex::new(Some(inode)),
-            children: Mutex::new(BTreeMap::new()),
-        }
+#[derive(Copy, Eq, Hash, PartialEq, Clone, Debug)]
+pub struct HashKey {
+    pub parent_ino: usize,
+    pub name_hash: u64,
+}
+
+impl HashKey {
+    pub fn new(parent: &Arc<dyn Dentry>, name: &str) -> SysResult<Self> {
+        let mut ahasher = AHasher::default();
+        name.hash(&mut ahasher);
+        Ok(Self {
+            parent_ino: parent.inode()?.ino(),
+            name_hash: ahasher.finish(),
+        })
     }
 }
 
@@ -88,14 +123,6 @@ pub trait Dentry: Send + Sync {
     /// Create a negetive child dentry with `name`.
     fn base_new_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
         todo!()
-    }
-
-    fn get_child_or_create(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
-        self.get_child(name).unwrap_or_else(|| {
-            let new_dentry = self.clone().base_new_child(name);
-            self.insert(new_dentry.clone());
-            new_dentry
-        })
     }
 
     fn inode(&self) -> SysResult<Arc<dyn Inode>> {
@@ -183,9 +210,8 @@ impl dyn Dentry {
         *self.meta().inode.lock() = None;
     }
 
-    // TODO:
-    pub fn hash(&self) -> usize {
-        todo!()
+    pub fn hash(&self) -> HashKey {
+        self.meta().hash_key
     }
 
     /// Remove a child from this dentry and return the child.
@@ -198,6 +224,11 @@ impl dyn Dentry {
     }
 
     pub fn lookup(self: &Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+        // let hash_key = HashKey::new(self, name)?;
+        // if let Some(child) = dcache().get(hash_key) {
+        //     log::warn!("[Dentry::lookup] find child in hash");
+        //     return Ok(child);
+        // }
         let child = self.get_child(name);
         if child.is_some() {
             log::trace!(
@@ -223,6 +254,21 @@ impl dyn Dentry {
 
     pub fn rmdir(self: &Arc<Self>, name: &str) -> SyscallResult {
         self.clone().base_rmdir(name)
+    }
+
+    /// Create a negetive child dentry with `name`.
+    pub fn new_child(self: &Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+        let child = self.clone().base_new_child(name);
+        dcache().insert(child.clone());
+        child
+    }
+
+    pub fn get_child_or_create(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+        self.get_child(name).unwrap_or_else(|| {
+            let new_dentry = self.clone().new_child(name);
+            self.insert(new_dentry.clone());
+            new_dentry
+        })
     }
 }
 

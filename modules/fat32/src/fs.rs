@@ -34,7 +34,8 @@ impl FileSystemType for FatFsType {
         let root_inode = FatDirInode::new(sb.clone(), sb.fs.root_dir());
         // FIXME: abs_mnt_path should not passed into dentry.
         // FIXME: parent dentry should be inserted if this is not "/"
-        let root_dentry = FatDentry::new_with_inode(abs_mnt_path, sb.clone(), root_inode, None);
+        let root_dentry = FatDentry::new(abs_mnt_path, sb.clone(), None).into_dyn();
+        root_dentry.set_inode(root_inode);
         sb.set_root_dentry(root_dentry.clone());
         self.insert_sb(abs_mnt_path, sb);
         Ok(root_dentry)
