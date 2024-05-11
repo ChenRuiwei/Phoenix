@@ -29,7 +29,7 @@ impl ActionType {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Action {
     pub atype: ActionType,
     // 一个位掩码，每个比特位对应于系统中的一个信号。它用于在处理程序例程执行期间阻塞其他信号。
@@ -39,7 +39,7 @@ pub struct Action {
 }
 
 bitflags! {
-    #[derive(Default, Copy, Clone)]
+    #[derive(Default, Copy, Clone, Debug)]
     pub struct SigActionFlag : usize {
         const SA_NOCLDSTOP = 1;
         const SA_NOCLDWAIT = 2;
@@ -137,7 +137,7 @@ impl SigPending {
         }
     }
 }
-
+#[derive(Clone)]
 pub struct SigHandlers {
     /// 注意信号编号与数组索引有1个offset，因此在Sig中有个index()函数负责-1
     actions: [Action; NSIG],
@@ -155,13 +155,20 @@ impl SigHandlers {
         self.actions[sig.index()]
     }
 
-    /// This function will not update the default processing of SIG_KILL and
-    /// SIG_STOP signals
     pub fn update(&mut self, sig: Sig, new: Action) {
-        // let old = self.actions[sig.index()];
-        if sig.is_kill_or_stop() {
-            return;
-        }
+        debug_assert!(!sig.is_kill_or_stop());
         self.actions[sig.index()] = new;
+    }
+
+    /// it is used in execve because it changed the memory
+    pub fn reset_user_defined(&mut self) {
+        for n in 0..NSIG {
+            match self.actions[n].atype {
+                ActionType::User { .. } => {
+                    self.actions[n].atype = ActionType::default(Sig::from_i32((n + 1) as _));
+                }
+                _ => {}
+            }
+        }
     }
 }

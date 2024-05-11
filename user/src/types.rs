@@ -1,7 +1,7 @@
 pub use signal::sigset::Sig;
 use signal::sigset::SigSet;
 pub use time::{timespec::TimeSpec, timeval::TimeVal};
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Default)]
 #[repr(C)]
 pub struct SigAction {
     /// sa_handler specifies the action to be associated with signum and can be
@@ -11,10 +11,25 @@ pub struct SigAction {
     /// 3. A pointer to a signal handling function. This function receives the
     ///    signal number as its only argument.
     pub sa_handler: usize,
+    pub sa_flags: SigActionFlag,
+    pub restorer: usize,
     /// sa_mask specifies a mask of signals which should be blocked during
     /// execution of the signal handler.
     pub sa_mask: SigSet,
-    pub sa_flags: usize,
+}
+
+bitflags! {
+    #[derive(Default, Copy, Clone)]
+    pub struct SigActionFlag : usize {
+        const SA_NOCLDSTOP = 1;
+        const SA_NOCLDWAIT = 2;
+        const SA_SIGINFO = 4;
+        const SA_ONSTACK = 0x08000000;
+        const SA_RESTART = 0x10000000;
+        const SA_NODEFER = 0x40000000;
+        const SA_RESETHAND = 0x80000000;
+        const SA_RESTORER = 0x04000000;
+    }
 }
 
 bitflags! {

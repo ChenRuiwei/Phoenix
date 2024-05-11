@@ -102,6 +102,9 @@ extern "C" {
     fn sigreturn_trampoline();
 }
 
+/// Signal dispositions and actions are process-wide: if an unhandled signal is
+/// delivered to a thread, then it will affect (terminate, stop, continue, be
+/// ignored in) all members of the thread group.
 pub fn do_signal() -> SysResult<()> {
     let task = current_task();
     task.with_mut_sig_pending(|pending| -> SysResult<()> {
@@ -117,7 +120,7 @@ pub fn do_signal() -> SysResult<()> {
                 pending.add(si);
                 continue;
             }
-            let action = task.sig_handlers().get(si.sig).clone();
+            let action = task.with_sig_handlers(|handlers| handlers.get(si.sig).clone());
             log::debug!("[do_signal] handling signal {}", si.sig);
             match action.atype {
                 ActionType::Ignore => {
@@ -133,9 +136,11 @@ pub fn do_signal() -> SysResult<()> {
                     // 因为信号处理程序可能会被嵌套调用（即一个信号处理程序中可能会触发另一个信号），
                     // 所以需要确保每个信号处理程序能恢复到它被调用时的屏蔽集状态
                     let old_mask = *task.sig_mask();
-                    // 在执行用户定义的信号处理程序之前，内核会将当前处理的信号添加到信号屏蔽集中。
-                    // 这样做是为了防止在处理该信号的过程中，相同的信号再次中断
-                    task.sig_mask().add_signal(si.sig);
+                    // The signal being delivered is also added to the signal mask, unless
+                    // SA_NODEFER was specified when registering the handler.
+                    if !action.flags.contains(SigActionFlag::SA_NODEFER) {
+                        task.sig_mask().add_signal(si.sig)
+                    };
                     // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
                     // 这些信息定义在Action的mask字段
                     *task.sig_mask() |= action.mask;
@@ -191,11 +196,13 @@ fn save_context_into_sigstack(old_blocked: SigSet) -> SysResult<usize> {
     let task = current_task();
     let cx = task.trap_context_mut();
     cx.user_fx.encounter_signal();
-    let signal_stack = task.signal_stack().take();
+    let signal_stack = task.sig_stack().take();
     let stack_top = match signal_stack {
-        Some(s) => s.get_stack_top(),
+        Some(s) => {
+            log::info!("[sigstack] use user defined signal stack");
+            s.get_stack_top()
+        }
         None => {
-            log::info!("[sigstack] signal stack use user stack");
             // 如果进程未定义专门的信号栈，用户自定义的信号处理函数将使用进程的普通栈空间，
             // 即和其他普通函数相同的栈。这个栈通常就是进程的主栈，
             // 也就是在进程启动时由操作系统自动分配的栈。
@@ -380,12 +387,17 @@ impl ITimer {
         }
     }
 
+    // TODO: It may be something wrong?
     pub fn set(&mut self, new: ITimerVal) -> ITimerVal {
         debug_assert!(new.is_valid());
         let now = (self.now)();
         let old = ITimerVal {
             it_interval: self.interval.into(),
-            it_value: (self.next_expire - now).into(),
+            it_value: if self.next_expire < now {
+                Duration::ZERO.into()
+            } else {
+                (self.next_expire - now).into()
+            },
         };
         self.interval = new.it_interval.into();
         self.next_expire = now + new.it_value.into();

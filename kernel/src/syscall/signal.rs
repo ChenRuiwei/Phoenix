@@ -34,14 +34,21 @@ pub fn sys_sigaction(
 ) -> SyscallResult {
     let task = current_task();
     let signum = Sig::from_i32(signum);
-    if !signum.is_valid() {
+    if !signum.is_valid() || signum.is_kill_or_stop() {
         return Err(SysError::EINVAL);
     }
+    log::info!(
+        "[sys_sigaction] sig:{:?}, new_ptr:{}, old_ptr:{}, old_sa_type:{:?}",
+        signum,
+        action.as_usize(),
+        old_action.as_usize(),
+        task.with_sig_handlers(|handlers| { handlers.get(signum).atype })
+    );
     if action.is_null() {
         if old_action.is_null() {
             return Ok(0);
         }
-        let old = task.sig_handlers().get(signum);
+        let old = task.with_sig_handlers(|handlers| handlers.get(signum));
         old_action.write(&task, old.into())?;
         return Ok(0);
     }
@@ -55,10 +62,11 @@ pub fn sys_sigaction(
         flags: action.sa_flags,
         mask: action.sa_mask,
     };
-    task.sig_handlers().update(signum, new);
+    log::info!("[sys_sigaction] new_action:{:?}", new);
+    task.with_mut_sig_handlers(|handlers| handlers.update(signum, new));
     // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
-        let old = task.sig_handlers().get(signum);
+        let old = task.with_sig_handlers(|handlers| handlers.get(signum));
         old_action.write(&task, old.into())?;
     }
     Ok(0)
@@ -66,6 +74,7 @@ pub fn sys_sigaction(
 
 /// how决定如何修改当前的信号屏蔽字;set指定了需要添加、移除或设置的信号;
 /// 当前的信号屏蔽字会被保存在 oldset 指向的位置
+/// The use of sigprocmask() is unspecified in a multithreaded process;
 pub fn sys_sigprocmask(
     how: usize,
     set: UserReadPtr<SigSet>,
@@ -79,7 +88,10 @@ pub fn sys_sigprocmask(
         old_set.write(&task, *task.sig_mask())?;
     }
     if !set.is_null() {
-        let set = set.read(&task)?;
+        let mut set = set.read(&task)?;
+        // It is not possible to block SIGKILL or SIGSTOP.  Attempts to do so are
+        // silently ignored.
+        set.remove(SigSet::SIGKILL | SigSet::SIGCONT);
         match how {
             SIGBLOCK => {
                 *task.sig_mask() |= set;
@@ -105,7 +117,7 @@ pub fn sys_sigreturn() -> SyscallResult {
     log::trace!("[sys_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
     let ucontext = ucontext_ptr.read(&task)?;
     *task.sig_mask() = ucontext.uc_sigmask;
-    *task.signal_stack() = (ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack);
+    *task.sig_stack() = (ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack);
     cx.sepc = ucontext.uc_mcontext.sepc;
     cx.user_x = ucontext.uc_mcontext.user_x;
     Ok(cx.user_x[10])

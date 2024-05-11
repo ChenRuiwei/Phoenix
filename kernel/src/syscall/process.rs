@@ -180,7 +180,7 @@ pub async fn sys_wait4(
     } else {
         // 如果等待的进程还不是zombie，那么本进程进行await，
         // 直到等待的进程do_exit然后发送SIGCHLD信号唤醒自己
-        let (child_pid, exit_code, utime, stime) = match target {
+        let (child_pid, exit_code, utime, stime, signum) = match target {
             WaitFor::AnyChild => {
                 let si = WaitExpectSignal::new(&task, Sig::SIGCHLD).await;
                 match si.details {
@@ -189,7 +189,7 @@ pub async fn sys_wait4(
                         status,
                         utime,
                         stime,
-                    } => (pid, status, utime, stime),
+                    } => (pid, status, utime, stime, si.sig.raw()),
                     _ => unreachable!(),
                 }
             }
@@ -203,7 +203,7 @@ pub async fn sys_wait4(
                         stime,
                     } => {
                         if child_pid == pid {
-                            break (pid, status, utime, stime);
+                            break (pid, status, utime, stime, si.sig.raw());
                         }
                     }
                     _ => unreachable!(),
@@ -285,8 +285,15 @@ pub fn sys_clone(
 ) -> SyscallResult {
     let exit_signal = flags & 0xff;
     let flags = CloneFlags::from_bits(flags as u64 & !0xff).ok_or(SysError::EINVAL)?;
-
     log::info!("[sys_clone] flags {flags:?}");
+    // if flags.contains(CloneFlags::THREAD) {
+    // // EINVAL:
+    // // CLONE_SIGHAND was specified in the flags mask, but CLONE_VM was not.
+    // // CLONE_THREAD was specified in the flags mask, but CLONE_SIGHAND was not.
+    // if !flags.contains(CloneFlags::SIGHAND) || !flags.contains(CloneFlags::VM) {
+    //     return Err(SysError::EINVAL);
+    // }
+    // }
     let stack = if stack != 0 { Some(stack.into()) } else { None };
     let new_task = current_task().do_clone(flags, stack, chilren_tid_ptr);
     new_task.trap_context_mut().set_user_a0(0);
