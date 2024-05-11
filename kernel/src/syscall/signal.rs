@@ -41,8 +41,8 @@ pub fn sys_sigaction(
         if old_action.is_null() {
             return Ok(0);
         }
-        let old = task.sig_handlers().get(signum).unwrap();
-        old_action.write(&task, (*old).into())?;
+        let old = task.sig_handlers().get(signum);
+        old_action.write(&task, old.into())?;
         return Ok(0);
     }
     let action = action.read(&task)?;
@@ -58,8 +58,8 @@ pub fn sys_sigaction(
     task.sig_handlers().update(signum, new);
     // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
-        let old = task.sig_handlers().get(signum).unwrap();
-        old_action.write(&task, (*old).into())?;
+        let old = task.sig_handlers().get(signum);
+        old_action.write(&task, old.into())?;
     }
     Ok(0)
 }

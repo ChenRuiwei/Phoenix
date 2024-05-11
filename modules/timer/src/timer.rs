@@ -7,6 +7,7 @@ use sync::mutex::SpinNoIrqLock;
 
 pub struct Timer {
     pub expire: Duration,
+    // TODO: remove Option
     pub callback: Option<Waker>,
 }
 
@@ -47,7 +48,7 @@ impl TimerManager {
 
     pub fn check(&self, current: Duration) {
         let mut timers = self.timers.lock();
-        if let Some(timer) = timers.peek() {
+        while let Some(timer) = timers.peek() {
             if current >= timer.0.expire {
                 log::info!(
                     "[Timer Manager] there is a timer expired, current:{:?}, expire:{:?}",
@@ -56,6 +57,8 @@ impl TimerManager {
                 );
                 let mut timer = timers.pop().unwrap().0;
                 timer.callback.take().unwrap().wake();
+            } else {
+                break;
             }
         }
     }

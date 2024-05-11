@@ -16,7 +16,7 @@ impl TimeSpec {
     pub fn from_ms(ms: usize) -> Self {
         Self {
             tv_sec: ms / 1000,
-            tv_nsec: (ms % 1000) * 1000,
+            tv_nsec: (ms % 1000) * 1_000_000,
         }
     }
 

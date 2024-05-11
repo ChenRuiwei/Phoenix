@@ -8,17 +8,14 @@ use user_lib::*;
 fn sleepy() {
     let time: usize = 1000;
     let mut rem = TimeSpec::from_ms(0);
-    if nanosleep(&TimeSpec::from_ms(time), &mut rem) != 0 {
-        println!("Interrupted, remaining {} msecs", rem.into_ms());
+    for i in 1..=5 {
+        sleep(time);
+        // let mut rem = TimeSpec::from_ms(0);
+        // if nanosleep(&TimeSpec::from_ms(time), &mut rem) != 0 {
+        //     println!("Interrupted, remaining {} msecs", rem.into_ms());
+        // }
+        println!("sleep {} x {} msecs.", i, time);
     }
-    println!("sleep {} msecs.", time);
-    // for i in 1..=5 {
-    //     let mut rem = TimeSpec::from_ms(0);
-    //     if nanosleep(&TimeSpec::from_ms(time), &mut rem) != 0 {
-    //         println!("Interrupted, remaining {} msecs", rem.into_ms());
-    //     }
-    //     println!("sleep {} x {} msecs.", i, time);
-    // }
     exit(0);
 }
 

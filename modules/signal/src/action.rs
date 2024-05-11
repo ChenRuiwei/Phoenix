@@ -2,6 +2,8 @@ extern crate alloc;
 use alloc::collections::VecDeque;
 use core::task::Waker;
 
+use bitflags::*;
+
 use crate::{
     siginfo::SigInfo,
     sigset::{Sig, SigSet, NSIG},
@@ -32,8 +34,22 @@ pub struct Action {
     pub atype: ActionType,
     // 一个位掩码，每个比特位对应于系统中的一个信号。它用于在处理程序例程执行期间阻塞其他信号。
     // 在例程结束后，内核会重置其值，回复到信号处理之前的原值
-    pub flags: usize,
+    pub flags: SigActionFlag,
     pub mask: SigSet,
+}
+
+bitflags! {
+    #[derive(Default, Copy, Clone)]
+    pub struct SigActionFlag : usize {
+        const SA_NOCLDSTOP = 1;
+        const SA_NOCLDWAIT = 2;
+        const SA_SIGINFO = 4;
+        const SA_ONSTACK = 0x08000000;
+        const SA_RESTART = 0x10000000;
+        const SA_NODEFER = 0x40000000;
+        const SA_RESETHAND = 0x80000000;
+        const SA_RESTORER = 0x04000000;
+    }
 }
 
 impl Action {
@@ -41,7 +57,7 @@ impl Action {
         let atype = ActionType::default(sig);
         Self {
             atype,
-            flags: 0,
+            flags: Default::default(),
             mask: SigSet::empty(),
         }
     }
@@ -130,18 +146,13 @@ pub struct SigHandlers {
 impl SigHandlers {
     pub fn new() -> Self {
         Self {
-            // TODO: 这里应该是要+1吧，因为信号从1开始
             actions: core::array::from_fn(|signo| Action::new((signo + 1).into())),
         }
     }
 
-    // TODO: debug asssert sig is valid
-    pub fn get(&self, sig: Sig) -> Option<&Action> {
-        if sig.is_valid() {
-            Some(&self.actions[sig.index()])
-        } else {
-            None
-        }
+    pub fn get(&self, sig: Sig) -> Action {
+        debug_assert!(sig.is_valid());
+        self.actions[sig.index()]
     }
 
     /// This function will not update the default processing of SIG_KILL and

@@ -575,3 +575,8 @@ impl FutexWord {
         unsafe { atomic_load_acquire(self.0 as *const u32) }
     }
 }
+impl From<usize> for FutexWord {
+    fn from(a: usize) -> Self {
+        Self(a as u32)
+    }
+}
