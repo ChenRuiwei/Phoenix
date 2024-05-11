@@ -263,7 +263,7 @@ impl TtyFile {
 
 #[async_trait]
 impl File for TtyFile {
-    async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         let mut cnt = 0;
         loop {
             let ch: u8;
@@ -283,9 +283,7 @@ impl File for TtyFile {
                 }
             }
             log::debug!(
-                "[TtyFuture::poll] recv ch {}, cnt {}, len {}",
-                ch,
-                cnt,
+                "[TtyFuture::poll] recv ch {ch}, cnt {cnt}, len {}",
                 buf.len()
             );
             buf[cnt] = ch;
@@ -301,7 +299,7 @@ impl File for TtyFile {
         }
     }
 
-    async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         let utf8_buf: Vec<u8> = buf.iter().filter(|c| c.is_ascii()).map(|c| *c).collect();
         if PRINT_LOCKED {
             let _locked = PRINT_MUTEX.lock().await;

@@ -9,6 +9,7 @@ mod inode;
 mod path;
 mod super_block;
 mod utils;
+pub mod address_space;
 
 #[macro_use]
 extern crate bitflags;

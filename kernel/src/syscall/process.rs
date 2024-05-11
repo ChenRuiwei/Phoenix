@@ -166,9 +166,9 @@ pub async fn sys_wait4(
             // wstatus macros can be found in "bits/waitstatus.h"
             let status = (res_task.exit_code() & 0xff) << 8;
             log::debug!(
-                    "[sys_wait4] exit_code: {}, wstatus: {status:#x}",
-                    res_task.exit_code()
-                );
+                "[sys_wait4] exit_code: {}, wstatus: {status:#x}",
+                res_task.exit_code()
+            );
             wstatus.write(&task, status)?;
         }
         let tid = res_task.tid();
@@ -215,8 +215,8 @@ pub async fn sys_wait4(
         task.time_stat().update_child_time((utime, stime));
         if wstatus.not_null() {
             // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
-            // wstatus macros can be found in "bits/waitstatus.h"
-            let status = (exit_code & 0xff) << 8;
+            // wstatus macros can be found in <bits/waitstatus.h>
+            let status = ((exit_code & 0xff) << 8) | 17;
             log::trace!("[sys_wait4] wstatus: {:#x}", status);
             wstatus.write(&task, status)?;
         }
@@ -269,9 +269,8 @@ pub async fn sys_execve(
         argv.insert(1, "sh".to_string());
     }
 
-    let mut elf_data = Vec::new();
     let file = resolve_path(&path)?.open()?;
-    file.read_all_from_start(&mut elf_data).await?;
+    let elf_data = file.read_all().await?;
     task.do_execve(&elf_data, argv, envp);
     Ok(0)
 }

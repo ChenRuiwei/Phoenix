@@ -36,7 +36,7 @@ impl File for FatFileFile {
         &self.meta
     }
 
-    async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         match self.itype() {
             InodeType::File => {
                 let mut file = self.file.lock();
@@ -45,24 +45,15 @@ impl File for FatFileFile {
                     file.seek(fatfs::SeekFrom::Start(offset as u64))
                         .map_err(as_sys_err)?;
                 }
-                let mut buf = buf;
-                let mut count = 0;
-                while !buf.is_empty() {
-                    let len = file.read(buf).map_err(as_sys_err)?;
-                    if len == 0 {
-                        break;
-                    }
-                    count += len;
-                    buf = &mut buf[len..];
-                }
-                self.seek(SeekFrom::Start((offset + count) as u64));
+                let count = file.read(buf).map_err(as_sys_err)?;
+                log::trace!("[FatFileFile::base_read] count {count}");
                 Ok(count)
             }
             _ => Err(SysError::EISDIR),
         }
     }
 
-    async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         if buf.is_empty() {
             return Ok(0);
         }

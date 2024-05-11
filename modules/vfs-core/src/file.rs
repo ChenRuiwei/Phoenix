@@ -1,16 +1,19 @@
-use alloc::{boxed::Box, string::ToString, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::ToString, sync::Arc, vec, vec::Vec};
 use core::{
+    cmp, ops,
     sync::atomic::{AtomicUsize, Ordering},
     usize,
 };
 
 use async_trait::async_trait;
-use config::mm::PAGE_SIZE;
+use config::mm::{PAGE_MASK, PAGE_SIZE};
+use memory::{address, page::Page};
 use spin::Mutex;
 use systype::{ASyscallResult, SysError, SysResult, SyscallResult};
 
 use crate::{
-    Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom, SuperBlock,
+    address_space, Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom,
+    SuperBlock,
 };
 
 pub struct FileMeta {
@@ -56,13 +59,13 @@ pub trait File: Send + Sync {
     ///
     /// On success, the number of bytes read is returned (zero indicates end of
     /// file), and the file position is advanced by this number.
-    async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult;
+    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult;
 
     /// Called by write(2) and related system calls.
     ///
     /// On success, the number of bytes written is returned, and the file offset
     /// is incremented by the number of bytes actually written.
-    async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult;
+    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult;
 
     /// Read directory entries. This is called by the getdents(2) system call.
     ///
@@ -164,6 +167,65 @@ impl dyn File {
         *self.meta().flags.lock() = flags;
     }
 
+    pub async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+        log::info!(
+            "[File::read] file {}, offset {offset}, buf len {}",
+            self.dentry().path(),
+            buf.len()
+        );
+        let mut buf = buf;
+        let mut count = 0;
+        let mut offset = offset;
+        let inode = self.inode();
+        self.set_pos(offset);
+        let Some(address_space) = inode.address_space() else {
+            log::debug!("[File::read] read without address_space");
+            let count = self.base_read(offset, buf).await?;
+            self.set_pos(offset + count);
+            return Ok(count);
+        };
+        log::debug!("[File::read] read with address_space");
+        while !buf.is_empty() && offset < self.size() {
+            let offset_aligned = offset & !PAGE_MASK;
+            let offset_in_page = offset - offset_aligned;
+            let len = if let Some(page) = address_space.get_page(offset_aligned) {
+                log::trace!("[File::read] offset {offset_aligned} cached in address space");
+                let len = cmp::min(buf.len(), PAGE_SIZE - offset_in_page).min(self.size() - offset);
+                buf[0..len]
+                    .copy_from_slice(page.bytes_array_range(offset_in_page..offset_in_page + len));
+                len
+            } else {
+                log::trace!("[File::read] offset {offset_aligned} not cached in address space");
+                let page = Page::new();
+                let len = self.base_read(offset_aligned, page.bytes_array()).await?;
+                if len == 0 {
+                    log::warn!("[File::read] reaching file end");
+                    break;
+                }
+                let len = cmp::min(buf.len(), len);
+                buf[0..len]
+                    .copy_from_slice(page.bytes_array_range(offset_in_page..offset_in_page + len));
+                address_space.insert_page(offset_aligned, page);
+                len
+            };
+            log::trace!("[File::read] read count {len}, buf len {}", buf.len());
+            count += len;
+            offset += len;
+            buf = &mut buf[len..];
+        }
+        self.set_pos(offset);
+        log::info!("[File::read] read count {count}");
+        Ok(count)
+    }
+
+    /// Called by write(2) and related system calls.
+    ///
+    /// On success, the number of bytes written is returned, and the file offset
+    /// is incremented by the number of bytes actually written.
+    pub async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+        self.base_write(offset, buf).await
+    }
+
     pub fn load_dir(&self) -> SysResult<()> {
         let inode = self.inode();
         if inode.state() == InodeState::Init {
@@ -197,25 +259,10 @@ impl dyn File {
     }
 
     /// Read all data from this file synchronously.
-    pub async fn read_all_from_start(&self, buffer: &mut Vec<u8>) -> SysResult<()> {
-        let old_pos = self.seek(SeekFrom::Start(0_u64))?;
-        buffer.clear();
-        buffer.resize(PAGE_SIZE, 0);
-        let mut idx = 0;
-        loop {
-            let len = self
-                .read(idx, &mut buffer.as_mut_slice()[idx..idx + PAGE_SIZE])
-                .await?;
-            // log::trace!("[read_all_from_start] read len: {}", len);
-            if len < PAGE_SIZE {
-                break;
-            }
-            debug_assert_eq!(len, PAGE_SIZE);
-            idx += len;
-            buffer.resize(idx + PAGE_SIZE, 0);
-            // log::trace!("[read_all_from_start] buf len: {}", buffer.len());
-        }
-        self.seek(SeekFrom::Start(old_pos as u64))?;
-        Ok(())
+    pub async fn read_all(&self) -> SysResult<Vec<u8>> {
+        log::info!("[File::read_all_from_start] file size {}", self.size());
+        let mut buf = vec![0; self.size()];
+        self.read(0, &mut buf).await;
+        Ok(buf)
     }
 }
