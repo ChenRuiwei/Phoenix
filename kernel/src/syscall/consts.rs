@@ -1,6 +1,6 @@
 //! # Syscall numbers
 //!
-//! Syscall numbers from "asm-generic/unistd.h".
+//! Syscall numbers from <asm-generic/unistd.h>.
 
 #![allow(unused)]
 

@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(new_uninit)]
 
+mod address_space;
 mod dentry;
 mod file;
 mod file_system_type;
@@ -9,7 +10,6 @@ mod inode;
 mod path;
 mod super_block;
 mod utils;
-pub mod address_space;
 
 #[macro_use]
 extern crate bitflags;
@@ -20,6 +20,7 @@ pub const PERMISSION_LEN: usize = 9;
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
+pub use address_space::*;
 pub use dentry::*;
 pub use file::*;
 pub use file_system_type::*;

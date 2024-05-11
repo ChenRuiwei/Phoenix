@@ -216,7 +216,7 @@ pub async fn sys_wait4(
         if wstatus.not_null() {
             // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
             // wstatus macros can be found in <bits/waitstatus.h>
-            let status = ((exit_code & 0xff) << 8) | 17;
+            let status = ((exit_code & 0xff) << 8);
             log::trace!("[sys_wait4] wstatus: {:#x}", status);
             wstatus.write(&task, status)?;
         }

@@ -118,6 +118,7 @@ pub fn do_signal() -> SysResult<()> {
                 continue;
             }
             let action = task.sig_handlers().get(si.sig).clone();
+            log::debug!("[do_signal] handling signal {}", si.sig);
             match action.atype {
                 ActionType::Ignore => {
                     log::debug!("Recevie signal {}. Action: ignore", si.sig);

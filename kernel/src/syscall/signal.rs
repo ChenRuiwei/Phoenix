@@ -108,7 +108,7 @@ pub fn sys_sigreturn() -> SyscallResult {
     *task.signal_stack() = (ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack);
     cx.sepc = ucontext.uc_mcontext.sepc;
     cx.user_x = ucontext.uc_mcontext.user_x;
-    Ok(0)
+    Ok(cx.user_x[10])
 }
 
 pub fn sys_signalstack(

@@ -144,8 +144,8 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         CLOCK_GETTIME => sys_clock_gettime(args[0], args[1].into()),
         CLOCK_SETTIME => sys_clock_settime(args[0], args[1].into()),
         CLOCK_GETRES => sys_clock_getres(args[0], args[1].into()),
-        GETITIMER => sys_getitier(args[0] as _, args[1].into()),
-        SETITIMER => sys_setitier(args[0] as _, args[1].into(), args[2].into()),
+        GETITIMER => sys_getitimer(args[0] as _, args[1].into()),
+        SETITIMER => sys_setitimer(args[0] as _, args[1].into(), args[2].into()),
         // Futex
         FUTEX => {
             sys_futex(

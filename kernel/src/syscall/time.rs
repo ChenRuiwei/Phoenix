@@ -160,7 +160,7 @@ pub fn sys_clock_getres(_clockid: usize, res: UserWritePtr<TimeSpec>) -> Syscall
 /// Three  types  of  timers—specified via the which argument—are provided, each
 /// of which counts against a different clock and generates a different signal
 /// on timer expiration:
-pub fn sys_setitier(
+pub fn sys_setitimer(
     which: i32,
     new_value: UserReadPtr<ITimerVal>,
     old_value: UserWritePtr<ITimerVal>,
@@ -180,7 +180,7 @@ pub fn sys_setitier(
     Ok(0)
 }
 
-pub fn sys_getitier(which: i32, curr_value: UserWritePtr<ITimerVal>) -> SyscallResult {
+pub fn sys_getitimer(which: i32, curr_value: UserWritePtr<ITimerVal>) -> SyscallResult {
     if which < 0 || which > 2 {
         return Err(SysError::EINVAL);
     }
