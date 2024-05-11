@@ -88,11 +88,15 @@ pub struct Task {
     cwd: Shared<Arc<dyn Dentry>>,
     /// received signals
     sig_pending: SpinNoIrqLock<SigPending>,
-    /// 存储了对每个信号的处理方法。
-    sig_handlers: SyncUnsafeCell<SigHandlers>,
+    /// It is set to shared because SYS_CLONE has CLONE_SIGHAND flag which can
+    /// share the same handler table with child process.
+    /// And also because all threads in the same thread group share the same
+    /// handlers
+    sig_handlers: Shared<SigHandlers>,
     /// 信号掩码用于标识哪些信号被阻塞，不应该被该进程处理。
     /// 这是进程级别的持续性设置，通常用于防止进程在关键操作期间被中断.
     /// 注意与信号处理时期的临时掩码做区别
+    /// Each of the threads in a process has its own signal mask.
     sig_mask: SyncUnsafeCell<SigSet>,
     /// User can set `sig_stack` by `sys_signalstack`.
     sig_stack: SyncUnsafeCell<Option<SignalStack>>,
@@ -161,7 +165,7 @@ impl Task {
             cwd: new_shared(sys_root_dentry()),
             sig_pending: SpinNoIrqLock::new(SigPending::new()),
             sig_mask: SyncUnsafeCell::new(SigSet::empty()),
-            sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
+            sig_handlers: new_shared(SigHandlers::new()),
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
@@ -271,10 +275,6 @@ impl Task {
         *self.cwd.lock() = dentry;
     }
 
-    pub fn sig_handlers(&self) -> &mut SigHandlers {
-        unsafe { &mut *self.sig_handlers.get() }
-    }
-
     pub fn sig_mask(&self) -> &mut SigSet {
         unsafe { &mut *self.sig_mask.get() }
     }
@@ -287,7 +287,7 @@ impl Task {
         old
     }
 
-    pub fn signal_stack(&self) -> &mut Option<SignalStack> {
+    pub fn sig_stack(&self) -> &mut Option<SignalStack> {
         unsafe { &mut *self.sig_stack.get() }
     }
 
@@ -343,6 +343,11 @@ impl Task {
         let itimers;
         let fd_table;
         let futexes;
+        let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
+            self.sig_handlers.clone()
+        } else {
+            new_shared(self.with_sig_handlers(|handlers| handlers.clone()))
+        };
         if flags.contains(CloneFlags::THREAD) {
             is_leader = false;
             leader = Some(Arc::downgrade(self));
@@ -409,7 +414,7 @@ impl Task {
             fd_table,
             sig_pending: SpinNoIrqLock::new(SigPending::new()),
             sig_mask: SyncUnsafeCell::new(SigSet::empty()),
-            sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
+            sig_handlers,
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
@@ -475,6 +480,13 @@ impl Task {
         // init trap context
         self.trap_context_mut()
             .init_user(sp, entry, argc, argv, envp);
+
+        // Any alternate signal stack is not preserved
+        *self.sig_stack() = None;
+
+        // During an execve, the dispositions of handled signals are reset
+        // to the default; the dispositions of ignored signals are left unchanged
+        self.with_mut_sig_handlers(|handlers| handlers.reset_user_defined());
     }
 
     // NOTE: After all of the threads in a thread group is terminated, the parent
@@ -544,6 +556,7 @@ impl Task {
     with_!(sig_pending, SigPending);
     with_!(itimers, [ITimer; 3]);
     with_!(futexes, Futexes);
+    with_!(sig_handlers, SigHandlers);
 }
 
 /// Hold a group of threads which belongs to the same process.

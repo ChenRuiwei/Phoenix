@@ -74,6 +74,12 @@ impl Futexes {
                     break;
                 }
             }
+            log::info!(
+                "[futex] wake {} waiters in uaddr {}, expect to wake {} waiters",
+                count,
+                uaddr,
+                n,
+            );
         }
         count as usize
     }
