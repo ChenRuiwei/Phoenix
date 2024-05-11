@@ -96,7 +96,9 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
     let task = current_task();
     let buf = buf.read_array(&task, len)?;
     let file = task.with_fd_table(|table| table.get(fd))?;
+    let pos = file.pos();
     let ret = file.write(file.pos(), &buf).await?;
+    file.seek(SeekFrom::Current((pos + ret) as i64));
     Ok(ret)
 }
 
@@ -110,7 +112,9 @@ pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallRe
     let file = task.with_fd_table(|table| table.get(fd))?;
     log::info!("[sys_read] reading file {}", file.dentry().path());
     let mut buf = buf.into_mut_slice(&task, len)?;
-    let ret = file.read(file.pos(), &mut buf).await?;
+    let pos = file.pos();
+    let ret = file.read(pos, &mut buf).await?;
+    file.seek(SeekFrom::Current((pos + ret) as i64));
     Ok(ret)
 }
 

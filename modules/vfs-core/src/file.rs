@@ -99,11 +99,6 @@ pub trait File: Send + Sync {
         self.meta().inode.clone()
     }
 
-    // NOTE: super block has an arc of inode
-    fn i_cnt(&self) -> usize {
-        Arc::strong_count(&self.meta().inode)
-    }
-
     fn itype(&self) -> InodeType {
         self.meta().inode.itype()
     }
@@ -167,6 +162,10 @@ impl dyn File {
         *self.meta().flags.lock() = flags;
     }
 
+    /// Read at an `offset`, and will fill `buf` until `buf` is full or eof is
+    /// reached. Will not advance offset.
+    ///
+    /// Returns count of bytes actually read or an error.
     pub async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         log::info!(
             "[File::read] file {}, offset {offset}, buf len {}",
@@ -177,11 +176,9 @@ impl dyn File {
         let mut count = 0;
         let mut offset = offset;
         let inode = self.inode();
-        self.set_pos(offset);
         let Some(address_space) = inode.address_space() else {
             log::debug!("[File::read] read without address_space");
             let count = self.base_read(offset, buf).await?;
-            self.set_pos(offset + count);
             return Ok(count);
         };
         log::debug!("[File::read] read with address_space");
@@ -199,7 +196,7 @@ impl dyn File {
                 let page = Page::new();
                 let len = self.base_read(offset_aligned, page.bytes_array()).await?;
                 if len == 0 {
-                    log::warn!("[File::read] reaching file end");
+                    log::warn!("[File::read] reach file end");
                     break;
                 }
                 let len = cmp::min(buf.len(), len);
@@ -213,7 +210,6 @@ impl dyn File {
             offset += len;
             buf = &mut buf[len..];
         }
-        self.set_pos(offset);
         log::info!("[File::read] read count {count}");
         Ok(count)
     }

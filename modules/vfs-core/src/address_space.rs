@@ -11,7 +11,7 @@ use crate::{Inode, Mutex};
 
 pub struct AddressSpace {
     inode: Once<Weak<dyn Inode>>,
-    /// Map from file offset to page cache.
+    /// Map from aligned file offset to page cache.
     pages: Mutex<BTreeMap<usize, Arc<Page>>>,
 }
 
