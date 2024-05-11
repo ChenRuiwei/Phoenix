@@ -1,7 +1,8 @@
-use alloc::{collections::BTreeMap, ffi::CString, sync::Arc, vec::Vec};
+use alloc::{collections::BTreeMap, ffi::CString, sync::Arc, vec, vec::Vec};
 use core::{
     future::{self, Future},
     mem::size_of,
+    ops::DerefMut,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -98,7 +99,7 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
     let buf = buf.into_slice(&task, len)?;
     let pos = file.pos();
     let ret = file.write(pos, &buf).await?;
-    file.seek(SeekFrom::Current((pos + ret) as i64));
+    file.seek(SeekFrom::Current(ret as i64));
     Ok(ret)
 }
 
@@ -114,7 +115,7 @@ pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallRe
     let mut buf = buf.into_mut_slice(&task, len)?;
     let pos = file.pos();
     let ret = file.read(pos, &mut buf).await?;
-    file.seek(SeekFrom::Current((pos + ret) as i64))?;
+    file.seek(SeekFrom::Current(ret as i64))?;
     Ok(ret)
 }
 
@@ -664,6 +665,89 @@ pub async fn sys_ppoll(
     }
     poll_fds_slice.copy_from_slice(&poll_fds);
     Ok(ret)
+}
+
+/// sendfile() copies data between one file descriptor and another. Because
+/// this copying is done within the kernel, sendfile() is more efficient than
+/// the combination of read(2) and write(2), which would require transferring
+/// data to and from user space.
+///
+/// in_fd should be a file descriptor opened for reading and out_fd should be a
+/// descriptor opened for writing.
+///
+/// If offset is not NULL, then it points to a variable holding the file offset
+/// from which sendfile() will start reading data from in_fd. When sendfile()
+/// returns, this variable will be set to the offset of the byte following
+/// the last byte that was read. If offset is not NULL, then sendfile() does
+/// not modify the file offset of in_fd; otherwise the file offset is adjusted
+/// to reflect the number of bytes read from in_fd.
+///
+/// If offset is NULL, then data will be read from in_fd starting at the file
+/// offset, and the file offset will be updated by the call.
+///
+/// count is the number of bytes to copy between the file descriptors.
+///
+/// The in_fd argument must correspond to a file which supports mmap(2)-like
+/// operations (i.e., it cannot be a socket). Except since Linux 5.12 and if
+/// out_fd is a pipe, in which case sendfile() desugars to a splice(2) and its
+/// restrictions apply.
+///
+/// If the transfer was successful, the number of bytes written to out_fd is
+/// returned. Note that a successful call to sendfile() may write fewer bytes
+/// than requested; the caller should be prepared to retry the call if there
+/// were unsent bytes.
+pub async fn sys_sendfile(
+    out_fd: usize,
+    in_fd: usize,
+    offset: UserRdWrPtr<usize>,
+    count: usize,
+) -> SyscallResult {
+    let task = current_task();
+    let in_file = task.with_fd_table(|table| table.get(in_fd))?;
+    let out_file = task.with_fd_table(|table| table.get(out_fd))?;
+
+    if !in_file.flags().readable() || !out_file.flags().writable() {
+        return Err(SysError::EBADF);
+    }
+    let mut buf = vec![0 as u8; count];
+    if offset.is_null() {
+        let len = in_file.read(in_file.pos(), &mut buf).await?;
+        in_file.seek(SeekFrom::Current(len as i64))?;
+    } else {
+        let mut offset = offset.into_mut(&task)?;
+        let len = in_file.read(*offset, &mut buf).await?;
+        *offset.deref_mut() = *offset + len;
+    }
+    let ret = out_file.write(out_file.pos(), &buf).await?;
+    out_file.seek(SeekFrom::Current(ret as i64))?;
+    Ok(ret)
+
+    // let mut buf = vec![0 as u8; count];
+    // let nbytes = match offset_ptr {
+    //     0 => input_file.file.read(&mut buf, input_file.flags).await?,
+    //     _ => {
+    //         UserCheck::new()
+    //             .check_readable_slice(offset_ptr as *const u8,
+    // core::mem::size_of::<usize>())?;         let _sum_guard =
+    // SumGuard::new();         let input_offset = unsafe { *(offset_ptr as
+    // *const usize) };         let nbytes = input_file.file.pread(&mut buf,
+    // input_offset).await?;         // let old_offset =
+    // input_file.offset()?;         // input_file.seek(input_offset)?;
+    //         // let nbytes = input_file.read(&mut buf).await?;
+    //         // input_file.seek(old_offset as usize)?;
+    //         unsafe {
+    //             *(offset_ptr as *mut usize) = *(offset_ptr as *mut usize) +
+    // nbytes as usize;         }
+    //         nbytes
+    //     }
+    // };
+    // info!("[sys_sendfile]: read {} bytes from inputfile", nbytes);
+    // let ret = output_file
+    //     .file
+    //     .write(&buf[0..nbytes as usize], output_file.flags)
+    //     .await;
+    // debug!("[sys_sendfile]: finished");
+    // ret
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as
