@@ -125,7 +125,7 @@ impl Drop for Task {
 pub enum TaskState {
     Running,
     Zombie,
-    Stop(),
+    Stopped,
 }
 
 macro_rules! with_ {
@@ -258,6 +258,10 @@ impl Task {
         unsafe {
             (*self.waker.get()) = Some(waker);
         }
+    }
+
+    pub fn get_waker(&self) -> &Waker {
+        unsafe { (*self.waker.get()).as_ref().unwrap() }
     }
 
     pub fn set_zombie(&self) {
@@ -559,6 +563,7 @@ impl Task {
     with_!(itimers, [ITimer; 3]);
     with_!(futexes, Futexes);
     with_!(sig_handlers, SigHandlers);
+    with_!(state, TaskState);
 }
 
 /// Hold a group of threads which belongs to the same process.

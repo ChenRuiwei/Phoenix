@@ -89,12 +89,12 @@ pub async fn trap_handler(task: &Arc<Task>) {
 
 /// Trap return to user mode.
 #[no_mangle]
-pub fn trap_return(task: &Arc<Task>) {
+pub async fn trap_return(task: &Arc<Task>) {
     extern "C" {
         fn __return_to_user(cx: *mut TrapContext);
     }
 
-    do_signal().expect("do signal error");
+    do_signal().await.expect("do signal error");
 
     log::info!("[kernel] trap return to user...");
     unsafe {

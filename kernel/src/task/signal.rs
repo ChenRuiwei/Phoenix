@@ -1,4 +1,4 @@
-use alloc::sync::Arc;
+use alloc::{sync::Arc, task};
 use core::{
     alloc::Layout,
     future::Future,
@@ -9,6 +9,7 @@ use core::{
 };
 
 use arch::time::{get_time_duration, get_time_ms};
+use async_utils::take_waker;
 use signal::{
     action::{self, Action, ActionType, SigActionFlag},
     siginfo::{SigDetails, SigInfo},
@@ -19,7 +20,7 @@ use systype::SysResult;
 use time::timeval::ITimerVal;
 
 use super::Task;
-use crate::{mm::UserWritePtr, processor::hart::current_task};
+use crate::{mm::UserWritePtr, processor::hart::current_task, task::task::TaskState};
 
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
@@ -106,7 +107,7 @@ extern "C" {
 /// Signal dispositions and actions are process-wide: if an unhandled signal is
 /// delivered to a thread, then it will affect (terminate, stop, continue, be
 /// ignored in) all members of the thread group.
-pub fn do_signal() -> SysResult<()> {
+pub async fn do_signal() -> SysResult<()> {
     let task = current_task();
     let old_mask = *task.sig_mask();
     loop {
@@ -117,8 +118,8 @@ pub fn do_signal() -> SysResult<()> {
             match action.atype {
                 ActionType::Ignore => {}
                 ActionType::Kill => terminate(si.sig),
-                ActionType::Stop => stop(si.sig),
-                ActionType::Cont => cont(si.sig),
+                ActionType::Stop => stop(si.sig, &task),
+                ActionType::Cont => cont(si.sig, &task),
                 ActionType::User { entry } => {
                     // The signal being delivered is also added to the signal mask, unless
                     // SA_NODEFER was specified when registering the handler.
@@ -131,9 +132,9 @@ pub fn do_signal() -> SysResult<()> {
                     let cx = task.trap_context_mut();
                     cx.user_fx.encounter_signal();
                     let signal_stack = task.sig_stack().take();
-                    let stack_top = match signal_stack {
+                    let sp = match signal_stack {
                         Some(s) => {
-                            log::info!("[sigstack] use user defined signal stack");
+                            log::error!("[sigstack] use user defined signal stack. Unimplemented");
                             s.get_stack_top()
                         }
                         None => {
@@ -146,8 +147,7 @@ pub fn do_signal() -> SysResult<()> {
                     };
                     // extend the signal_stack
                     // 在栈上压入一个UContext，存储trap frame里的寄存器信息
-                    let ucontext_sz = size_of::<UContext>();
-                    let ucontext_ptr = UserWritePtr::<UContext>::from(stack_top - ucontext_sz);
+                    let ucontext_ptr = UserWritePtr::<UContext>::from(sp - size_of::<UContext>());
                     // TODO: should increase the size of the signal_stack? It seams umi doesn't do
                     // that
                     let ucontext = UContext {
@@ -170,16 +170,15 @@ pub fn do_signal() -> SysResult<()> {
                     if action.flags.contains(SigActionFlag::SA_SIGINFO) {
                         // a2
                         cx.user_x[12] = new_sp;
-                        let siginfo_sz = size_of::<SigInfo>();
-                        let siginfo_ptr = UserWritePtr::<SigInfo>::from(new_sp - siginfo_sz);
+                        let siginfo_ptr =
+                            UserWritePtr::<SigInfo>::from(new_sp - size_of::<SigInfo>());
                         new_sp = siginfo_ptr.as_usize();
                         siginfo_ptr.write(&task, si.clone())?;
                         cx.user_x[11] = new_sp;
                     }
                     cx.sepc = entry;
-                    // ra (when the sigaction set by user finished,if user forgets to call
-                    // sys_sigreturn, it will return to sigreturn_trampoline, which
-                    // calls sys_sigreturn)
+                    // ra (when the sigaction set by user finished,it will return to
+                    // sigreturn_trampoline, which calls sys_sigreturn)
                     cx.user_x[1] = sigreturn_trampoline as usize;
                     // sp (it will be used later by sys_sigreturn to restore ucontext)
                     cx.user_x[2] = new_sp;
@@ -205,20 +204,65 @@ fn terminate(sig: Sig) {
     // 将信号放入低7位 (第8位是core dump标志,在gdb调试崩溃程序中用到)
     task.set_exit_code(sig.raw() as i32 & 0x7F);
 }
-
-/// stop the process
-fn stop(sig: Sig) {
-    let task = current_task();
-
-    // loop {
-    //     if task.with_sig_handlers(f)
-    // }
-    // unimplemented!()
+fn stop(sig: Sig, task: &Arc<Task>) {
+    log::warn!("[do_signal] task stopped!");
+    task.with_mut_thread_group(|tg| {
+        for t in tg.iter() {
+            t.with_mut_state(|state| *state = TaskState::Stopped);
+            t.set_exit_code(sig.raw() as i32 & 0x7F);
+        }
+    });
+    let parent = task.parent().unwrap().upgrade().unwrap();
+    if !parent
+        .with_sig_handlers(|handlers| handlers.get(Sig::SIGCHLD))
+        .flags
+        .contains(SigActionFlag::SA_NOCLDSTOP)
+    {
+        parent.receive_siginfo(
+            SigInfo {
+                sig: Sig::SIGCHLD,
+                code: SigInfo::CLD_STOPPED,
+                details: SigDetails::CHLD {
+                    pid: task.pid(),
+                    status: sig.raw() as i32 & 0x7F,
+                    utime: task.time_stat().user_time(),
+                    stime: task.time_stat().sys_time(),
+                },
+            },
+            false,
+        );
+    }
 }
-
 /// continue the process if it is currently stopped
-fn cont(sig: Sig) {
-    unimplemented!()
+fn cont(sig: Sig, task: &Arc<Task>) {
+    log::warn!("[do_signal] task continue");
+    task.with_mut_thread_group(|tg| {
+        for t in tg.iter() {
+            t.with_mut_state(|state| *state = TaskState::Running);
+            t.get_waker().wake_by_ref();
+            t.set_exit_code(0);
+        }
+    });
+    let parent = task.parent().unwrap().upgrade().unwrap();
+    if !parent
+        .with_sig_handlers(|handlers| handlers.get(Sig::SIGCHLD))
+        .flags
+        .contains(SigActionFlag::SA_NOCLDSTOP)
+    {
+        parent.receive_siginfo(
+            SigInfo {
+                sig: Sig::SIGCHLD,
+                code: SigInfo::CLD_CONTINUED,
+                details: SigDetails::CHLD {
+                    pid: task.pid(),
+                    status: sig.raw() as i32 & 0x7F,
+                    utime: task.time_stat().user_time(),
+                    stime: task.time_stat().sys_time(),
+                },
+            },
+            false,
+        );
+    }
 }
 
 /// wait for more than one signal and don't need siginfo as return value
