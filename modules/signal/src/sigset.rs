@@ -78,7 +78,7 @@ impl From<usize> for Sig {
 }
 
 bitflags! {
-    #[derive(Copy, Clone, Debug, Default)]
+    #[derive(Copy, Clone, Default)]
     pub struct SigSet: u64 {
         const SIGHUP    = 1 << 0 ;
         const SIGINT    = 1 << 1 ;
@@ -113,6 +113,7 @@ bitflags! {
         const SIGSYS    = 1 << 30;
         const SIGLEGACYMAX  = 1 << 31;
         const SIGMAX   = 1 << 63;
+        // const SYNCHRONOUS_MASK = SIGSEGV | SIGBUS;
     }
 }
 
@@ -127,5 +128,11 @@ impl SigSet {
 
     pub fn remove_signal(&mut self, sig: Sig) {
         self.remove(SigSet::from_bits(1 << sig.index()).unwrap())
+    }
+}
+
+impl fmt::Debug for SigSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#018X}", self.bits())
     }
 }

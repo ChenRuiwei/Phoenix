@@ -15,7 +15,7 @@ use timer::timelimited_task::ksleep_ms;
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
-    task::signal::WaitExpectSignals,
+    task::signal::WaitExpectSigSet,
 };
 
 /// Retrieves the current time of day.
@@ -68,7 +68,7 @@ pub async fn sys_nanosleep(
     let req = req.read(&task)?;
     let sleep_ms = req.into_ms();
     let current_ms = get_time_ms();
-    let wait_signal_future = WaitExpectSignals::new(&task, !*task.sig_mask());
+    let wait_signal_future = WaitExpectSigSet::new(&task, !*task.sig_mask());
     match Select2Futures::new(wait_signal_future, ksleep_ms(sleep_ms)).await {
         SelectOutput::Output1(_) => {
             log::info!("[sys_nanosleep] interrupt by signal");

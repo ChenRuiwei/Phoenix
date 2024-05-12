@@ -125,6 +125,7 @@ impl Drop for Task {
 pub enum TaskState {
     Running,
     Zombie,
+    Stop(),
 }
 
 macro_rules! with_ {

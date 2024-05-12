@@ -1,6 +1,6 @@
 extern crate alloc;
 use alloc::collections::VecDeque;
-use core::task::Waker;
+use core::{panic, task::Waker};
 
 use bitflags::*;
 
@@ -96,13 +96,38 @@ impl SigPending {
         }
     }
 
-    pub fn pop(&mut self) -> Option<SigInfo> {
-        if let Some(si) = self.queue.pop_front() {
-            self.bitmap.remove_signal(si.sig);
-            Some(si)
-        } else {
-            None
+    /// Dequeue a signal and return the SigInfo to the caller
+    pub fn dequeue_signal(&mut self, mask: &SigSet) -> Option<SigInfo> {
+        // 这些信号通常是由程序中的错误或异常操作触发的，如非法内存访问（导致
+        // SIGSEGV）、硬件异常（可能导致
+        // SIGBUS）等。同步信号的处理通常需要立即响应，
+        // 因为它们指示了程序运行中的严重问题
+        let synchronous_mask: SigSet = SigSet::SIGSEGV
+            | SigSet::SIGBUS
+            | SigSet::SIGILL
+            | SigSet::SIGTRAP
+            | SigSet::SIGFPE
+            | SigSet::SIGSYS;
+        let mut x = self.bitmap & (!*mask);
+        let mut sig = Sig::from_i32(0);
+        if !x.is_empty() {
+            if !(x & synchronous_mask).is_empty() {
+                x &= synchronous_mask;
+            }
+            sig = Sig::from_i32((x.bits().trailing_zeros() + 1) as _);
         }
+        if sig.raw() == 0 {
+            return None;
+        }
+        for i in 0..self.queue.len() {
+            if self.queue[i].sig == sig {
+                self.bitmap.remove_signal(sig);
+                return self.queue.remove(i);
+            }
+        }
+        // if it isn't in self.queue, it must be wrong
+        log::error!("[dequeue_signal] I suppose it won't go here");
+        return None;
     }
 
     #[inline]

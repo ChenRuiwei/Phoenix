@@ -669,6 +669,10 @@ pub async fn sys_ppoll(
     Ok(ret)
 }
 
+pub fn sys_umask() -> SyscallResult {
+    Ok(0o777)
+}
+
 /// The dirfd argument is used in conjunction with the pathname argument as
 /// follows:
 /// + If the pathname given in pathname is absolute, then dirfd is ignored.

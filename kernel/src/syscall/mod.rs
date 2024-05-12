@@ -169,6 +169,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         // Miscellaneous
         UNAME => sys_uname(args[0].into()),
         GETRUSAGE => sys_getrusage(args[0] as _, args[1].into()),
+        UMASK => sys_umask(),
         _ => {
             log::error!("Unsupported syscall: {}", syscall_no);
             Ok(0)

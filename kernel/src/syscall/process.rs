@@ -6,20 +6,14 @@ use alloc::{
 };
 
 use async_utils::yield_now;
-use memory::VirtAddr;
-use signal::{
-    siginfo::*,
-    sigset::{Sig, SigSet},
-};
+use signal::{siginfo::*, sigset::Sig};
 use systype::{SysError, SysResult, SyscallResult};
-use vfs::{sys_root_dentry, DISK_FS_NAME, FS_MANAGER};
-use vfs_core::{InodeMode, OpenFlags, AT_FDCWD};
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
-    syscall::{at_helper, resolve_path},
-    task::{signal::WaitExpectSignal, spawn_user_task, PGid, Pid, TASK_MANAGER},
+    syscall::resolve_path,
+    task::{signal::WaitOneSignal, spawn_user_task, PGid, Pid, TASK_MANAGER},
 };
 
 bitflags! {
@@ -179,7 +173,7 @@ pub async fn sys_wait4(
         // 直到等待的进程do_exit然后发送SIGCHLD信号唤醒自己
         let (child_pid, exit_code, utime, stime) = match target {
             WaitFor::AnyChild => {
-                let si = WaitExpectSignal::new(&task, Sig::SIGCHLD).await;
+                let si = WaitOneSignal::new(&task, Sig::SIGCHLD).await;
                 match si.details {
                     SigDetails::CHLD {
                         pid,
@@ -191,7 +185,7 @@ pub async fn sys_wait4(
                 }
             }
             WaitFor::Pid(pid) => loop {
-                let si = WaitExpectSignal::new(&task, Sig::SIGCHLD).await;
+                let si = WaitOneSignal::new(&task, Sig::SIGCHLD).await;
                 match si.details {
                     SigDetails::CHLD {
                         pid: child_pid,

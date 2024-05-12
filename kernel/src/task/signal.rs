@@ -2,6 +2,7 @@ use alloc::sync::Arc;
 use core::{
     alloc::Layout,
     future::Future,
+    intrinsics::size_of,
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
@@ -9,7 +10,7 @@ use core::{
 
 use arch::time::{get_time_duration, get_time_ms};
 use signal::{
-    action::{Action, ActionType, SigActionFlag},
+    action::{self, Action, ActionType, SigActionFlag},
     siginfo::{SigDetails, SigInfo},
     signal_stack::{MContext, UContext},
     sigset::{Sig, SigSet},
@@ -107,35 +108,18 @@ extern "C" {
 /// ignored in) all members of the thread group.
 pub fn do_signal() -> SysResult<()> {
     let task = current_task();
-    task.with_mut_sig_pending(|pending| -> SysResult<()> {
-        // if there is no signal to be handle, just return
-        if pending.is_empty() {
-            return Ok(());
-        }
-        log::info!("[do signal] there are some signals to be handled");
-        let len = pending.queue.len();
-        for _ in 0..len {
-            let si = pending.pop().unwrap();
-            if !si.sig.is_kill_or_stop() && task.sig_mask().contain_signal(si.sig) {
-                pending.add(si);
-                continue;
-            }
-            let action = task.with_sig_handlers(|handlers| handlers.get(si.sig).clone());
-            log::debug!("[do_signal] handling signal {}", si.sig);
+    let old_mask = *task.sig_mask();
+    loop {
+        if let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
+            log::info!("[do signal] Handlering signal: {:?}", si);
+            let action = task.with_sig_handlers(|handlers| handlers.get(si.sig));
+            log::info!("[do signal] {:?}", action);
             match action.atype {
-                ActionType::Ignore => {
-                    log::debug!("Recevie signal {}. Action: ignore", si.sig);
-                }
+                ActionType::Ignore => {}
                 ActionType::Kill => terminate(si.sig),
                 ActionType::Stop => stop(si.sig),
                 ActionType::Cont => cont(si.sig),
                 ActionType::User { entry } => {
-                    log::info!("[do signal] user defined signal action");
-                    // 在跳转到用户定义的信号处理程序之前，内核需要保存当前进程的上下文，
-                    // 包括程序计数器、寄存器状态、栈指针等。此外，当前的信号屏蔽集也需要被保存，
-                    // 因为信号处理程序可能会被嵌套调用（即一个信号处理程序中可能会触发另一个信号），
-                    // 所以需要确保每个信号处理程序能恢复到它被调用时的屏蔽集状态
-                    let old_mask = *task.sig_mask();
                     // The signal being delivered is also added to the signal mask, unless
                     // SA_NODEFER was specified when registering the handler.
                     if !action.flags.contains(SigActionFlag::SA_NODEFER) {
@@ -144,33 +128,73 @@ pub fn do_signal() -> SysResult<()> {
                     // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
                     // 这些信息定义在Action的mask字段
                     *task.sig_mask() |= action.mask;
-
-                    let ucontext_ptr = save_context_into_sigstack(old_mask)?;
                     let cx = task.trap_context_mut();
-                    // 用户自定义的sa_handler的参数，void myhandler(int signo,siginfo_t *si,void
-                    // *ucontext); TODO:实现siginfo
-                    // a0
+                    cx.user_fx.encounter_signal();
+                    let signal_stack = task.sig_stack().take();
+                    let stack_top = match signal_stack {
+                        Some(s) => {
+                            log::info!("[sigstack] use user defined signal stack");
+                            s.get_stack_top()
+                        }
+                        None => {
+                            // 如果进程未定义专门的信号栈，
+                            // 用户自定义的信号处理函数将使用进程的普通栈空间，
+                            // 即和其他普通函数相同的栈。这个栈通常就是进程的主栈，
+                            // 也就是在进程启动时由操作系统自动分配的栈。
+                            cx.user_x[2]
+                        }
+                    };
+                    // extend the signal_stack
+                    // 在栈上压入一个UContext，存储trap frame里的寄存器信息
+                    let ucontext_sz = size_of::<UContext>();
+                    let ucontext_ptr = UserWritePtr::<UContext>::from(stack_top - ucontext_sz);
+                    // TODO: should increase the size of the signal_stack? It seams umi doesn't do
+                    // that
+                    let ucontext = UContext {
+                        uc_link: 0,
+                        uc_sigmask: old_mask,
+                        uc_stack: signal_stack.unwrap_or_default(),
+                        uc_mcontext: MContext {
+                            sepc: cx.sepc,
+                            user_x: cx.user_x,
+                        },
+                    };
+                    log::trace!("[save_context_into_sigstack] ucontext_ptr: {ucontext_ptr:?}");
+                    let mut new_sp = ucontext_ptr.as_usize();
+                    ucontext_ptr.write(&task, ucontext)?;
+                    // user defined void (*sa_handler)(int);
                     cx.user_x[10] = si.sig.raw();
-                    // a2
-                    cx.user_x[12] = ucontext_ptr;
+                    // if sa_flags contains SA_SIGINFO, It means user defined function is
+                    // void (*sa_sigaction)(int, siginfo_t *, void *ucontext); which two more
+                    // parameters
+                    if action.flags.contains(SigActionFlag::SA_SIGINFO) {
+                        // a2
+                        cx.user_x[12] = new_sp;
+                        let siginfo_sz = size_of::<SigInfo>();
+                        let siginfo_ptr = UserWritePtr::<SigInfo>::from(new_sp - siginfo_sz);
+                        new_sp = siginfo_ptr.as_usize();
+                        siginfo_ptr.write(&task, si.clone())?;
+                        cx.user_x[11] = new_sp;
+                    }
                     cx.sepc = entry;
                     // ra (when the sigaction set by user finished,if user forgets to call
                     // sys_sigreturn, it will return to sigreturn_trampoline, which
                     // calls sys_sigreturn)
                     cx.user_x[1] = sigreturn_trampoline as usize;
                     // sp (it will be used later by sys_sigreturn to restore ucontext)
-                    cx.user_x[2] = ucontext_ptr;
-                    task.set_sig_ucontext_ptr(ucontext_ptr);
+                    cx.user_x[2] = new_sp;
+                    task.set_sig_ucontext_ptr(new_sp);
                 }
             }
+        } else {
+            break;
         }
-        Ok(())
-    })
+    }
+    Ok(())
 }
 
 /// terminate the process
 fn terminate(sig: Sig) {
-    log::info!("Recevie signal {}. Action: terminate", sig);
     // exit all the memers of a thread group
     let task = current_task();
     task.with_thread_group(|tg| {
@@ -178,67 +202,33 @@ fn terminate(sig: Sig) {
             t.set_zombie();
         }
     });
-    task.set_exit_code(sig.raw() as i32);
+    // 将信号放入低7位 (第8位是core dump标志,在gdb调试崩溃程序中用到)
+    task.set_exit_code(sig.raw() as i32 & 0x7F);
 }
 
 /// stop the process
 fn stop(sig: Sig) {
-    log::info!("Recevie signal {}. Action: stop", sig);
+    let task = current_task();
+
+    // loop {
+    //     if task.with_sig_handlers(f)
+    // }
     // unimplemented!()
 }
 
 /// continue the process if it is currently stopped
 fn cont(sig: Sig) {
-    log::info!("Recevie signal {}. Action: continue", sig);
     unimplemented!()
 }
 
-fn save_context_into_sigstack(old_blocked: SigSet) -> SysResult<usize> {
-    let task = current_task();
-    let cx = task.trap_context_mut();
-    cx.user_fx.encounter_signal();
-    let signal_stack = task.sig_stack().take();
-    let stack_top = match signal_stack {
-        Some(s) => {
-            log::info!("[sigstack] use user defined signal stack");
-            s.get_stack_top()
-        }
-        None => {
-            // 如果进程未定义专门的信号栈，用户自定义的信号处理函数将使用进程的普通栈空间，
-            // 即和其他普通函数相同的栈。这个栈通常就是进程的主栈，
-            // 也就是在进程启动时由操作系统自动分配的栈。
-            cx.user_x[2]
-        }
-    };
-    // extend the signal_stack
-    // 在栈上压入一个UContext，存储trap frame里的寄存器信息
-    let ucontext_sz = Layout::new::<UContext>().pad_to_align().size();
-    let ucontext_ptr = UserWritePtr::<UContext>::from(stack_top - ucontext_sz);
-    // TODO: should increase the size of the signal_stack? It seams umi doesn't do
-    // that
-    let ucontext = UContext {
-        uc_link: 0,
-        uc_sigmask: old_blocked,
-        uc_stack: signal_stack.unwrap_or_default(),
-        uc_mcontext: MContext {
-            sepc: cx.sepc,
-            user_x: cx.user_x,
-        },
-    };
-    let ptr = ucontext_ptr.as_usize();
-    log::trace!("[save_context_into_sigstack] ucontext_ptr: {ucontext_ptr:?}");
-    ucontext_ptr.write(&task, ucontext)?;
-    Ok(ptr)
-}
-
-/// wait for signals and don't need siginfo as return value
-pub struct WaitExpectSignals<'a> {
+/// wait for more than one signal and don't need siginfo as return value
+pub struct WaitExpectSigSet<'a> {
     task: &'a Arc<Task>,
     expect: SigSet,
     set_waker: bool,
 }
 
-impl<'a> WaitExpectSignals<'a> {
+impl<'a> WaitExpectSigSet<'a> {
     pub fn new(task: &'a Arc<Task>, expect: SigSet) -> Self {
         Self {
             task,
@@ -248,7 +238,7 @@ impl<'a> WaitExpectSignals<'a> {
     }
 }
 
-impl<'a> Future for WaitExpectSignals<'a> {
+impl<'a> Future for WaitExpectSigSet<'a> {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         if !self.set_waker {
@@ -270,13 +260,13 @@ impl<'a> Future for WaitExpectSignals<'a> {
 }
 
 /// wait for a signal and need the siginfo of the expected signal
-pub struct WaitExpectSignal<'a> {
+pub struct WaitOneSignal<'a> {
     task: &'a Arc<Task>,
     expect: Sig,
     set_waker: bool,
 }
 
-impl<'a> WaitExpectSignal<'a> {
+impl<'a> WaitOneSignal<'a> {
     pub fn new(task: &'a Arc<Task>, expect: Sig) -> Self {
         Self {
             task,
@@ -286,7 +276,7 @@ impl<'a> WaitExpectSignal<'a> {
     }
 }
 
-impl<'a> Future for WaitExpectSignal<'a> {
+impl<'a> Future for WaitOneSignal<'a> {
     type Output = SigInfo;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         if !self.set_waker {
