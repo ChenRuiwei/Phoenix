@@ -10,6 +10,7 @@ bitflags::bitflags! {
     #[derive(Debug, Clone)]
     pub struct OpenFlags: i32 {
         // reserve 3 bits for the access mode
+        // NOTE: bitflags do not encourage zero bit flag, we should check `O_RDONLY` by the opposite of `O_WRONLY`
         const O_RDONLY      = 0;
         const O_WRONLY      = 1;
         const O_RDWR        = 2;
@@ -34,6 +35,16 @@ bitflags::bitflags! {
         const O_NOATIME     = 0o1000000;
         const O_PATH        = 0o10000000;
         const O_TMPFILE     = 0o20200000;
+    }
+}
+
+impl OpenFlags {
+    pub fn readable(&self) -> bool {
+        !self.contains(OpenFlags::O_WRONLY) || self.contains(OpenFlags::O_RDWR)
+    }
+
+    pub fn writable(&self) -> bool {
+        self.contains(OpenFlags::O_WRONLY) || self.contains(OpenFlags::O_RDWR)
     }
 }
 

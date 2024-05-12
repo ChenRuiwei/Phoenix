@@ -30,7 +30,7 @@ fn main() -> i32 {
                 break;
             }
             println!(
-                "[initproc] Released a zombie process, pid={}, wstatus={}",
+                "[initproc] release a zombie process, pid={}, wstatus={}",
                 pid, wstatus,
             );
         }

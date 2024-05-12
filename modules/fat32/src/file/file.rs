@@ -49,7 +49,8 @@ impl File for FatFileFile {
                 log::trace!("[FatFileFile::base_read] count {count}");
                 Ok(count)
             }
-            _ => Err(SysError::EISDIR),
+            InodeType::Dir => Err(SysError::EISDIR),
+            _ => unreachable!(),
         }
     }
 
@@ -80,10 +81,10 @@ impl File for FatFileFile {
                     let new_size = offset + buf.len();
                     self.inode().set_size(new_size);
                 }
-                self.seek(SeekFrom::Start((offset + buf.len()) as u64));
                 Ok(buf.len())
             }
-            _ => Err(SysError::EISDIR),
+            InodeType::Dir => Err(SysError::EISDIR),
+            _ => unreachable!(),
         }
     }
 

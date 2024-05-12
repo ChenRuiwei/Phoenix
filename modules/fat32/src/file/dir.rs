@@ -105,31 +105,4 @@ impl File for FatDirFile {
         }
         Ok(())
     }
-
-    /// Called when the VFS needs to move the file position index.
-    ///
-    /// Return the result offset.
-    fn seek(&self, pos: SeekFrom) -> SysResult<usize> {
-        let mut res_pos = self.pos();
-        match pos {
-            SeekFrom::Current(off) => match off {
-                1 => res_pos += off as usize,
-                -1 => {
-                    res_pos -= off.abs() as usize;
-                    let mut iter = self.dir.lock().iter();
-                    iter.nth(res_pos);
-                    *self.iter_cache.lock() = iter;
-                }
-                _ => unimplemented!(),
-            },
-            SeekFrom::Start(off) => {
-                unimplemented!()
-            }
-            SeekFrom::End(off) => {
-                unimplemented!()
-            }
-        }
-        self.set_pos(res_pos);
-        Ok(res_pos)
-    }
 }

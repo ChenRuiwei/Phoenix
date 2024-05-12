@@ -3,6 +3,7 @@
 #![feature(new_uninit)]
 
 mod address_space;
+mod dcache;
 mod dentry;
 mod file;
 mod file_system_type;
@@ -21,6 +22,7 @@ use alloc::sync::Arc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub use address_space::*;
+pub use dcache::*;
 pub use dentry::*;
 pub use file::*;
 pub use file_system_type::*;

@@ -12,10 +12,10 @@ use core::{
 
 use memory::VirtAddr;
 use riscv::register::scause;
-use systype::{SysError, SysResult};
+use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{
-    processor::env::SumGuard,
+    processor::{env::SumGuard, hart::current_task},
     task::Task,
     trap::{
         kernel_trap::{set_kernel_user_rw_trap, will_read_fail, will_write_fail},
@@ -139,11 +139,11 @@ impl<'a, T> UserMut<'a, T> {
         Self::new(i_ref)
     }
 
-    pub fn ptr(&self) -> *const T {
+    pub fn as_ptr(&self) -> *const T {
         self.i_ref as _
     }
 
-    pub fn ptr_mut(&mut self) -> *mut T {
+    pub fn as_mut_ptr(&mut self) -> *mut T {
         self.i_ref as _
     }
 }
@@ -236,6 +236,14 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
 
     pub fn as_usize(&self) -> usize {
         self.ptr as usize
+    }
+
+    pub fn as_ptr(&self) -> *const T {
+        self.ptr
+    }
+
+    pub fn as_mut_ptr(&self) -> *mut T {
+        self.ptr
     }
 }
 
@@ -384,6 +392,12 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         Ok(())
     }
 
+    pub fn write_unchecked(self, task: &Arc<Task>, val: T) -> SysResult<()> {
+        debug_assert!(self.not_null());
+        unsafe { core::ptr::write(self.ptr, val) };
+        Ok(())
+    }
+
     pub fn write_array(self, task: &Arc<Task>, val: &[T]) -> SysResult<()> {
         debug_assert!(self.not_null());
         task.just_ensure_user_area(
@@ -458,6 +472,20 @@ impl<P: Write> UserPtr<u8, P> {
             Err(SysError::EINVAL)
         }
     }
+
+    pub fn write_cstr_unchecked(self, task: &Arc<Task>, val: &str) -> SysResult<()> {
+        debug_assert!(self.not_null());
+        let mut bytes = val.as_bytes();
+        let mut ptr = self.as_mut_ptr();
+        for byte in bytes {
+            unsafe {
+                ptr.write(*byte);
+                ptr = ptr.offset(1)
+            };
+        }
+        unsafe { ptr.write(0) };
+        Ok(())
+    }
 }
 
 impl<T: Clone + Copy + 'static, P: Policy> From<usize> for UserPtr<T, P> {
@@ -500,8 +528,7 @@ impl Task {
         let mut readable_len = 0;
         while readable_len < len {
             if test_fn(curr_vaddr.0) {
-                self.with_mut_memory_space(|m| m.handle_page_fault(curr_vaddr))
-                    .map_err(|_| SysError::EFAULT)?;
+                self.with_mut_memory_space(|m| m.handle_page_fault(curr_vaddr))?
             }
 
             let next_page_beg: VirtAddr = VirtAddr::from(curr_vaddr.floor().next());
@@ -531,14 +558,13 @@ impl Task {
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct PageFaultAccessType: u8 {
-        const READ = 1 << 1;
-        const WRITE = 1 << 2;
-        const EXECUTE = 1 << 3;
+        const READ = 1 << 0;
+        const WRITE = 1 << 1;
+        const EXECUTE = 1 << 2;
     }
 }
 
 impl PageFaultAccessType {
-    // no write & no execute == read only
     pub const RO: Self = Self::READ;
     // can't use | (bits or) here
     // see https://github.com/bitflags/bitflags/issues/180

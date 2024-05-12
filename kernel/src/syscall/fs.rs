@@ -1,7 +1,8 @@
-use alloc::{collections::BTreeMap, ffi::CString, sync::Arc, vec::Vec};
+use alloc::{collections::BTreeMap, ffi::CString, sync::Arc, vec, vec::Vec};
 use core::{
     future::{self, Future},
     mem::size_of,
+    ops::DerefMut,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -94,9 +95,11 @@ impl Kstat {
 // TODO:
 pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallResult {
     let task = current_task();
-    let buf = buf.read_array(&task, len)?;
     let file = task.with_fd_table(|table| table.get(fd))?;
-    let ret = file.write(file.pos(), &buf).await?;
+    let buf = buf.into_slice(&task, len)?;
+    let pos = file.pos();
+    let ret = file.write(pos, &buf).await?;
+    file.seek(SeekFrom::Current(ret as i64));
     Ok(ret)
 }
 
@@ -110,7 +113,9 @@ pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallRe
     let file = task.with_fd_table(|table| table.get(fd))?;
     log::info!("[sys_read] reading file {}", file.dentry().path());
     let mut buf = buf.into_mut_slice(&task, len)?;
-    let ret = file.read(file.pos(), &mut buf).await?;
+    let pos = file.pos();
+    let ret = file.read(pos, &mut buf).await?;
+    file.seek(SeekFrom::Current(ret as i64))?;
     Ok(ret)
 }
 
@@ -395,6 +400,7 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
     let mut writen_len = 0;
+    let _ = UserWritePtr::<u8>::from(buf).into_mut_slice(&task, len)?;
     while let Some(dirent) = file.read_dir()? {
         log::debug!("[sys_getdents64] dirent {dirent:?}");
         let buf = UserWritePtr::<LinuxDirent64>::from(buf + writen_len);
@@ -409,12 +415,12 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
         };
         log::debug!("[sys_getdents64] linux dirent {linux_dirent:?}");
         if writen_len + rec_len > len {
-            file.seek(SeekFrom::Current(-1));
+            file.seek(SeekFrom::Current(-1))?;
             break;
         }
         let name_buf = UserWritePtr::<u8>::from(buf.as_usize() + LEN_BEFORE_NAME);
-        buf.write(&task, linux_dirent)?;
-        name_buf.write_cstr(&task, &dirent.name)?;
+        buf.write_unchecked(&task, linux_dirent)?;
+        name_buf.write_cstr_unchecked(&task, &dirent.name)?;
         writen_len += rec_len;
     }
     Ok(writen_len)
@@ -531,7 +537,6 @@ pub struct IoVec {
 pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|f| f.get(fd))?;
-
     let mut offset = file.pos();
     let mut total_len = 0;
     let iovs = iov.read_array(&task, iovcnt)?;
@@ -539,17 +544,14 @@ pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> Sy
         if iov.len == 0 {
             continue;
         }
-
         let ptr = UserReadPtr::<u8>::from(iov.base);
         log::debug!("[sys_writev] iov #{i}, ptr: {ptr}, len: {}", iov.len);
-
         let buf = ptr.into_slice(&task, iov.len)?;
         let write_len = file.write(offset, &buf).await?;
-
         total_len += write_len;
         offset += write_len;
     }
-    file.seek(SeekFrom::Current(total_len as i64));
+    file.seek(SeekFrom::Current(total_len as i64))?;
     Ok(total_len)
 }
 
@@ -558,7 +560,6 @@ pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> Sy
 pub async fn sys_readv(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> SyscallResult {
     let task = current_task();
     let file = task.with_fd_table(|f| f.get(fd))?;
-
     let mut offset = file.pos();
     let mut total_len = 0;
     let iovs = iov.read_array(&task, iovcnt)?;
@@ -566,17 +567,14 @@ pub async fn sys_readv(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> Sys
         if iov.len == 0 {
             continue;
         }
-
         let ptr = UserWritePtr::<u8>::from(iov.base);
         log::debug!("[sys_readv] iov #{i}, ptr: {ptr}, len: {}", iov.len);
-
         let mut buf = ptr.into_mut_slice(&task, iov.len)?;
         let write_len = file.read(offset, &mut buf).await?;
-
         total_len += write_len;
         offset += write_len;
     }
-    file.seek(SeekFrom::Current(total_len as i64));
+    file.seek(SeekFrom::Current(total_len as i64))?;
     Ok(total_len)
 }
 
@@ -630,7 +628,7 @@ pub async fn sys_ppoll(
     }
 
     let mut futures = Vec::<Async<SysResult<PollEvents>>>::with_capacity(nfds);
-    for (i, poll_fd) in poll_fds.iter().enumerate() {
+    for poll_fd in poll_fds.iter() {
         let fd = poll_fd.fd as usize;
         let events = PollEvents::from_bits(poll_fd.events).unwrap();
         let file = task.with_fd_table(|table| table.get(fd))?;
@@ -667,6 +665,89 @@ pub async fn sys_ppoll(
     }
     poll_fds_slice.copy_from_slice(&poll_fds);
     Ok(ret)
+}
+
+/// sendfile() copies data between one file descriptor and another. Because
+/// this copying is done within the kernel, sendfile() is more efficient than
+/// the combination of read(2) and write(2), which would require transferring
+/// data to and from user space.
+///
+/// in_fd should be a file descriptor opened for reading and out_fd should be a
+/// descriptor opened for writing.
+///
+/// If offset is not NULL, then it points to a variable holding the file offset
+/// from which sendfile() will start reading data from in_fd. When sendfile()
+/// returns, this variable will be set to the offset of the byte following
+/// the last byte that was read. If offset is not NULL, then sendfile() does
+/// not modify the file offset of in_fd; otherwise the file offset is adjusted
+/// to reflect the number of bytes read from in_fd.
+///
+/// If offset is NULL, then data will be read from in_fd starting at the file
+/// offset, and the file offset will be updated by the call.
+///
+/// count is the number of bytes to copy between the file descriptors.
+///
+/// The in_fd argument must correspond to a file which supports mmap(2)-like
+/// operations (i.e., it cannot be a socket). Except since Linux 5.12 and if
+/// out_fd is a pipe, in which case sendfile() desugars to a splice(2) and its
+/// restrictions apply.
+///
+/// If the transfer was successful, the number of bytes written to out_fd is
+/// returned. Note that a successful call to sendfile() may write fewer bytes
+/// than requested; the caller should be prepared to retry the call if there
+/// were unsent bytes.
+pub async fn sys_sendfile(
+    out_fd: usize,
+    in_fd: usize,
+    offset: UserRdWrPtr<usize>,
+    count: usize,
+) -> SyscallResult {
+    let task = current_task();
+    let in_file = task.with_fd_table(|table| table.get(in_fd))?;
+    let out_file = task.with_fd_table(|table| table.get(out_fd))?;
+
+    if !in_file.flags().readable() || !out_file.flags().writable() {
+        return Err(SysError::EBADF);
+    }
+    let mut buf = vec![0 as u8; count];
+    if offset.is_null() {
+        let len = in_file.read(in_file.pos(), &mut buf).await?;
+        in_file.seek(SeekFrom::Current(len as i64))?;
+    } else {
+        let mut offset = offset.into_mut(&task)?;
+        let len = in_file.read(*offset, &mut buf).await?;
+        *offset.deref_mut() = *offset + len;
+    }
+    let ret = out_file.write(out_file.pos(), &buf).await?;
+    out_file.seek(SeekFrom::Current(ret as i64))?;
+    Ok(ret)
+
+    // let mut buf = vec![0 as u8; count];
+    // let nbytes = match offset_ptr {
+    //     0 => input_file.file.read(&mut buf, input_file.flags).await?,
+    //     _ => {
+    //         UserCheck::new()
+    //             .check_readable_slice(offset_ptr as *const u8,
+    // core::mem::size_of::<usize>())?;         let _sum_guard =
+    // SumGuard::new();         let input_offset = unsafe { *(offset_ptr as
+    // *const usize) };         let nbytes = input_file.file.pread(&mut buf,
+    // input_offset).await?;         // let old_offset =
+    // input_file.offset()?;         // input_file.seek(input_offset)?;
+    //         // let nbytes = input_file.read(&mut buf).await?;
+    //         // input_file.seek(old_offset as usize)?;
+    //         unsafe {
+    //             *(offset_ptr as *mut usize) = *(offset_ptr as *mut usize) +
+    // nbytes as usize;         }
+    //         nbytes
+    //     }
+    // };
+    // info!("[sys_sendfile]: read {} bytes from inputfile", nbytes);
+    // let ret = output_file
+    //     .file
+    //     .write(&buf[0..nbytes as usize], output_file.flags)
+    //     .await;
+    // debug!("[sys_sendfile]: finished");
+    // ret
 }
 
 pub fn sys_umask() -> SyscallResult {
