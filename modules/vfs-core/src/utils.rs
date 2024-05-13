@@ -7,10 +7,11 @@ use alloc::{
 use crate::{FileSystemType, InodeMode, InodeType, PERMISSION_LEN};
 
 bitflags::bitflags! {
+    // Defined in <bits/fcntl-linux.h>.
     #[derive(Debug, Clone)]
     pub struct OpenFlags: i32 {
         // reserve 3 bits for the access mode
-        // NOTE: bitflags do not encourage zero bit flag, we should check `O_RDONLY` by the opposite of `O_WRONLY`
+        // NOTE: bitflags do not encourage zero bit flag, we should not directly check `O_RDONLY`
         const O_RDONLY      = 0;
         const O_WRONLY      = 1;
         const O_RDWR        = 2;

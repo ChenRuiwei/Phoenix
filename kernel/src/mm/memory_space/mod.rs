@@ -503,7 +503,7 @@ impl MemorySpace {
         let mut vma = VmArea::new_mmap(range, perm, flags, Some(file.clone()), offset);
         vma.map(&mut self.page_table);
         let mut buf = unsafe { UserSlice::new_unchecked(vma.start_va(), length) };
-        block_on(async { file.read(offset, &mut buf).await })?;
+        block_on(async { file.read_at(offset, &mut buf).await })?;
         vma.copy_data_with_offset(&self.page_table, 0, &buf);
         self.areas.try_insert(vma.range_va(), vma).unwrap();
         Ok(start)

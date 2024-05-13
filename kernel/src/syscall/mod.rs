@@ -131,13 +131,13 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         PPOLL => sys_ppoll(args[0].into(), args[1], args[2].into(), args[3]).await,
         SENDFILE => sys_sendfile(args[0], args[1], args[2].into(), args[3]).await,
         // Signal
-        RT_SIGPROCMASK => sys_sigprocmask(args[0], args[1].into(), args[2].into()),
-        RT_SIGACTION => sys_sigaction(args[0] as _, args[1].into(), args[2].into()),
+        RT_SIGPROCMASK => sys_rt_sigprocmask(args[0], args[1].into(), args[2].into()),
+        RT_SIGACTION => sys_rt_sigaction(args[0] as _, args[1].into(), args[2].into()),
         KILL => sys_kill(args[0] as _, args[1] as _),
         TKILL => sys_tkill(args[0] as _, args[1] as _),
         TGKILL => sys_tgkill(args[0] as _, args[1] as _, args[2] as _),
-        RT_SIGRETURN => sys_sigreturn(),
-        RT_SIGSUSPEND => sys_sigsuspend(args[0].into()).await,
+        RT_SIGRETURN => sys_rt_sigreturn(),
+        RT_SIGSUSPEND => sys_rt_sigsuspend(args[0].into()).await,
         // times
         GETTIMEOFDAY => sys_gettimeofday(args[0].into(), args[1]),
         TIMES => sys_times(args[0].into()),

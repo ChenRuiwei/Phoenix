@@ -321,7 +321,7 @@ impl VmArea {
                         let file = self.backed_file.as_ref().unwrap();
                         let offset = self.offset + (vpn - self.start_vpn()) * PAGE_SIZE;
                         let mut buf = unsafe { UserSlice::new_unchecked(vpn.to_va(), PAGE_SIZE) };
-                        block_on(async { file.read(offset, &mut buf).await })?;
+                        block_on(async { file.read_at(offset, &mut buf).await })?;
                         unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                     } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
                     }

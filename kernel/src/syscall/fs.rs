@@ -97,9 +97,7 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
     let task = current_task();
     let file = task.with_fd_table(|table| table.get(fd))?;
     let buf = buf.into_slice(&task, len)?;
-    let pos = file.pos();
-    let ret = file.write(pos, &buf).await?;
-    file.seek(SeekFrom::Current(ret as i64));
+    let ret = file.write(&buf).await?;
     Ok(ret)
 }
 
@@ -113,9 +111,7 @@ pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallRe
     let file = task.with_fd_table(|table| table.get(fd))?;
     log::info!("[sys_read] reading file {}", file.dentry().path());
     let mut buf = buf.into_mut_slice(&task, len)?;
-    let pos = file.pos();
-    let ret = file.read(pos, &mut buf).await?;
-    file.seek(SeekFrom::Current(ret as i64))?;
+    let ret = file.read(&mut buf).await?;
     Ok(ret)
 }
 
@@ -547,7 +543,7 @@ pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> Sy
         let ptr = UserReadPtr::<u8>::from(iov.base);
         log::debug!("[sys_writev] iov #{i}, ptr: {ptr}, len: {}", iov.len);
         let buf = ptr.into_slice(&task, iov.len)?;
-        let write_len = file.write(offset, &buf).await?;
+        let write_len = file.write_at(offset, &buf).await?;
         total_len += write_len;
         offset += write_len;
     }
@@ -570,7 +566,7 @@ pub async fn sys_readv(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> Sys
         let ptr = UserWritePtr::<u8>::from(iov.base);
         log::debug!("[sys_readv] iov #{i}, ptr: {ptr}, len: {}", iov.len);
         let mut buf = ptr.into_mut_slice(&task, iov.len)?;
-        let write_len = file.read(offset, &mut buf).await?;
+        let write_len = file.read_at(offset, &mut buf).await?;
         total_len += write_len;
         offset += write_len;
     }
@@ -703,51 +699,21 @@ pub async fn sys_sendfile(
     count: usize,
 ) -> SyscallResult {
     let task = current_task();
-    let in_file = task.with_fd_table(|table| table.get(in_fd))?;
-    let out_file = task.with_fd_table(|table| table.get(out_fd))?;
-
+    let (in_file, out_file) =
+        task.with_fd_table(|table| Ok((table.get(in_fd)?, table.get(out_fd)?)))?;
     if !in_file.flags().readable() || !out_file.flags().writable() {
         return Err(SysError::EBADF);
     }
     let mut buf = vec![0 as u8; count];
     if offset.is_null() {
-        let len = in_file.read(in_file.pos(), &mut buf).await?;
-        in_file.seek(SeekFrom::Current(len as i64))?;
+        in_file.read(&mut buf).await?;
     } else {
         let mut offset = offset.into_mut(&task)?;
-        let len = in_file.read(*offset, &mut buf).await?;
+        let len = in_file.read_at(*offset, &mut buf).await?;
         *offset.deref_mut() = *offset + len;
     }
-    let ret = out_file.write(out_file.pos(), &buf).await?;
-    out_file.seek(SeekFrom::Current(ret as i64))?;
+    let ret = out_file.write(&buf).await?;
     Ok(ret)
-
-    // let mut buf = vec![0 as u8; count];
-    // let nbytes = match offset_ptr {
-    //     0 => input_file.file.read(&mut buf, input_file.flags).await?,
-    //     _ => {
-    //         UserCheck::new()
-    //             .check_readable_slice(offset_ptr as *const u8,
-    // core::mem::size_of::<usize>())?;         let _sum_guard =
-    // SumGuard::new();         let input_offset = unsafe { *(offset_ptr as
-    // *const usize) };         let nbytes = input_file.file.pread(&mut buf,
-    // input_offset).await?;         // let old_offset =
-    // input_file.offset()?;         // input_file.seek(input_offset)?;
-    //         // let nbytes = input_file.read(&mut buf).await?;
-    //         // input_file.seek(old_offset as usize)?;
-    //         unsafe {
-    //             *(offset_ptr as *mut usize) = *(offset_ptr as *mut usize) +
-    // nbytes as usize;         }
-    //         nbytes
-    //     }
-    // };
-    // info!("[sys_sendfile]: read {} bytes from inputfile", nbytes);
-    // let ret = output_file
-    //     .file
-    //     .write(&buf[0..nbytes as usize], output_file.flags)
-    //     .await;
-    // debug!("[sys_sendfile]: finished");
-    // ret
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as
