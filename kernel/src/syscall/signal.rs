@@ -16,18 +16,11 @@ use crate::{
     },
 };
 
-/// 功能：为当前进程设置某种信号的处理函数，同时保存设置之前的处理函数。
-/// 参数：signum 表示信号的编号，action 表示要设置成的处理函数的指针
-/// old_action 表示用于保存设置之前的处理函数的指针。
-/// 返回值：如果传入参数错误（比如传入的 action 或 old_action
-/// 为空指针或者） 信号类型不存在返回 -1 ，否则返回 0 。
-/// syscall ID: 134
-///
 /// NOTE: sigaction() can be called with a NULL second argument to query the
 /// current signal handler. It can also be used to check whether a given signal
 /// is valid for the current machine by calling it with NULL second and third
 /// arguments.
-pub fn sys_sigaction(
+pub fn sys_rt_sigaction(
     signum: i32,
     action: UserReadPtr<SigAction>,
     old_action: UserWritePtr<SigAction>,
@@ -38,10 +31,7 @@ pub fn sys_sigaction(
         return Err(SysError::EINVAL);
     }
     log::info!(
-        "[sys_sigaction] {:?}, new_ptr:{}, old_ptr:{}, old_type:{:?}",
-        signum,
-        action.as_usize(),
-        old_action.as_usize(),
+        "[sys_rt_sigaction] {signum:?}, new_ptr:{action}, old_ptr:{old_action}, old_sa_type:{:?}",
         task.with_sig_handlers(|handlers| { handlers.get(signum).atype })
     );
     if action.is_null() {
@@ -74,7 +64,7 @@ pub fn sys_sigaction(
 /// how决定如何修改当前的信号屏蔽字;set指定了需要添加、移除或设置的信号;
 /// 当前的信号屏蔽字会被保存在 oldset 指向的位置
 /// The use of sigprocmask() is unspecified in a multithreaded process;
-pub fn sys_sigprocmask(
+pub fn sys_rt_sigprocmask(
     how: usize,
     set: UserReadPtr<SigSet>,
     old_set: UserWritePtr<SigSet>,
@@ -109,11 +99,13 @@ pub fn sys_sigprocmask(
     Ok(0)
 }
 
-pub fn sys_sigreturn() -> SyscallResult {
+// NOTE: should return a0 of the saved user context, since signal handler has
+// preempted the return of the last trap call.
+pub fn sys_rt_sigreturn() -> SyscallResult {
     let task = current_task();
     let cx = task.trap_context_mut();
     let ucontext_ptr = UserReadPtr::<UContext>::from(task.sig_ucontext_ptr());
-    log::trace!("[sys_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
+    log::trace!("[sys_rt_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
     let ucontext = ucontext_ptr.read(&task)?;
     *task.sig_mask() = ucontext.uc_sigmask;
     *task.sig_stack() = (ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack);
@@ -122,7 +114,7 @@ pub fn sys_sigreturn() -> SyscallResult {
     Ok(cx.user_x[10])
 }
 
-pub fn sys_signalstack(
+pub fn sys_rt_signalstack(
     _ss: UserReadPtr<SignalStack>,
     old_ss: UserWritePtr<SignalStack>,
 ) -> SyscallResult {
@@ -283,7 +275,7 @@ pub fn sys_tkill(tid: isize, signum: i32) -> SyscallResult {
 ///
 /// It is not possible to block SIGKILL or SIGSTOP; specifying these signals in
 /// mask, has no effect on the thread's signal mask.
-pub async fn sys_sigsuspend(mask: UserReadPtr<SigSet>) -> SyscallResult {
+pub async fn sys_rt_sigsuspend(mask: UserReadPtr<SigSet>) -> SyscallResult {
     let task = current_task();
     let mut mask = mask.read(&task)?;
     let oldmask = task.sig_mask_replace(&mut mask);

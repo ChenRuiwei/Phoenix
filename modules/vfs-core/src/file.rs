@@ -166,7 +166,7 @@ impl dyn File {
     /// reached. Will not advance offset.
     ///
     /// Returns count of bytes actually read or an error.
-    pub async fn read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    pub async fn read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         log::info!(
             "[File::read] file {}, offset {offset}, buf len {}",
             self.dentry().path(),
@@ -218,8 +218,24 @@ impl dyn File {
     ///
     /// On success, the number of bytes written is returned, and the file offset
     /// is incremented by the number of bytes actually written.
-    pub async fn write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    pub async fn write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         self.base_write(offset, buf).await
+    }
+
+    /// Read from offset in self, and will fill `buf` until `buf` is full or eof
+    /// is reached. Will advance offset.
+    pub async fn read(&self, buf: &mut [u8]) -> SyscallResult {
+        let pos = self.pos();
+        let ret = self.read_at(pos, buf).await?;
+        self.set_pos(pos + ret);
+        Ok(ret)
+    }
+
+    pub async fn write(&self, buf: &[u8]) -> SyscallResult {
+        let pos = self.pos();
+        let ret = self.write_at(pos, buf).await?;
+        self.set_pos(pos + ret);
+        Ok(ret)
     }
 
     pub fn load_dir(&self) -> SysResult<()> {
@@ -258,7 +274,7 @@ impl dyn File {
     pub async fn read_all(&self) -> SysResult<Vec<u8>> {
         log::info!("[File::read_all_from_start] file size {}", self.size());
         let mut buf = vec![0; self.size()];
-        self.read(0, &mut buf).await;
+        self.read_at(0, &mut buf).await;
         Ok(buf)
     }
 }
