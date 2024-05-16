@@ -98,21 +98,11 @@ impl SigPending {
 
     /// Dequeue a signal and return the SigInfo to the caller
     pub fn dequeue_signal(&mut self, mask: &SigSet) -> Option<SigInfo> {
-        // 这些信号通常是由程序中的错误或异常操作触发的，如非法内存访问（导致
-        // SIGSEGV）、硬件异常（可能导致
-        // SIGBUS）等。同步信号的处理通常需要立即响应，
-        // 因为它们指示了程序运行中的严重问题
-        let synchronous_mask: SigSet = SigSet::SIGSEGV
-            | SigSet::SIGBUS
-            | SigSet::SIGILL
-            | SigSet::SIGTRAP
-            | SigSet::SIGFPE
-            | SigSet::SIGSYS;
         let mut x = self.bitmap & (!*mask);
         let mut sig = Sig::from_i32(0);
         if !x.is_empty() {
-            if !(x & synchronous_mask).is_empty() {
-                x &= synchronous_mask;
+            if !(x & SigSet::SYNCHRONOUS_MASK).is_empty() {
+                x &= SigSet::SYNCHRONOUS_MASK;
             }
             sig = Sig::from_i32((x.bits().trailing_zeros() + 1) as _);
         }

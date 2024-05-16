@@ -107,7 +107,7 @@ extern "C" {
 /// Signal dispositions and actions are process-wide: if an unhandled signal is
 /// delivered to a thread, then it will affect (terminate, stop, continue, be
 /// ignored in) all members of the thread group.
-pub async fn do_signal() -> SysResult<()> {
+pub fn do_signal() -> SysResult<()> {
     let task = current_task();
     let old_mask = *task.sig_mask();
     loop {
@@ -208,7 +208,10 @@ fn stop(sig: Sig, task: &Arc<Task>) {
     log::warn!("[do_signal] task stopped!");
     task.with_mut_thread_group(|tg| {
         for t in tg.iter() {
-            t.with_mut_state(|state| *state = TaskState::Stopped);
+            t.with_mut_state(|state| match state {
+                TaskState::Running => *state = TaskState::Stopped,
+                _ => {}
+            });
             t.set_exit_code(sig.raw() as i32 & 0x7F);
         }
     });
@@ -238,8 +241,13 @@ fn cont(sig: Sig, task: &Arc<Task>) {
     log::warn!("[do_signal] task continue");
     task.with_mut_thread_group(|tg| {
         for t in tg.iter() {
-            t.with_mut_state(|state| *state = TaskState::Running);
-            t.get_waker().wake_by_ref();
+            t.with_mut_state(|state| match state {
+                TaskState::Stopped => {
+                    *state = TaskState::Running;
+                    t.get_waker().wake_by_ref();
+                }
+                _ => {}
+            });
             t.set_exit_code(0);
         }
     });

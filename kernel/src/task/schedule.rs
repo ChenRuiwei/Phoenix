@@ -77,7 +77,7 @@ pub async fn task_loop(task: Arc<Task>) {
     task.set_waker(async_utils::take_waker().await);
 
     loop {
-        trap::user_trap::trap_return(&task).await;
+        trap::user_trap::trap_return(&task);
 
         // task may be set to zombie by other task, e.g. execve will kill other tasks in
         // the same thread group

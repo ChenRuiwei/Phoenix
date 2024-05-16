@@ -82,50 +82,56 @@ impl MemorySpace {
 
     /// Create a kernel space.
     pub fn new_kernel() -> Self {
-        log::info!("[kernel] trampoline {:#x}", sigreturn_trampoline as usize);
-        log::info!(
+        log::debug!("[kernel] trampoline {:#x}", sigreturn_trampoline as usize);
+        log::debug!(
             "[kernel] .text [{:#x}, {:#x}) [{:#x}, {:#x})",
             _stext as usize,
             _strampoline as usize,
             _etrampoline as usize,
             _etext as usize
         );
-        log::info!(
+        log::debug!(
             "[kernel] .text.trampoline [{:#x}, {:#x})",
             _strampoline as usize,
             _etrampoline as usize,
         );
-        log::info!(
+        log::debug!(
             "[kernel] .rodata [{:#x}, {:#x})",
             _srodata as usize,
             _erodata as usize
         );
-        log::info!(
+        log::debug!(
             "[kernel] .data [{:#x}, {:#x})",
             _sdata as usize,
             _edata as usize
         );
-        log::info!(
+        log::debug!(
             "[kernel] .stack [{:#x}, {:#x})",
             _sstack as usize,
             _estack as usize
         );
-        log::info!(
+        log::debug!(
             "[kernel] .bss [{:#x}, {:#x})",
             _sbss as usize,
             _ebss as usize
         );
-        log::info!(
+        log::debug!(
             "[kernel] physical mem [{:#x}, {:#x})",
             _ekernel as usize,
             MEMORY_END
         );
 
         let mut memory_space = Self::new();
-        log::info!("[kernel] mapping .text section");
+        log::debug!("[kernel] mapping .text section");
         memory_space.push_vma(VmArea::new(
             (_stext as usize).into()..(_strampoline as usize).into(),
             MapPerm::RX,
+            VmAreaType::Physical,
+        ));
+        log::debug!("[kernel] mapping signal-return trampoline");
+        memory_space.push_vma(VmArea::new(
+            (_strampoline as usize).into()..(_etrampoline as usize).into(),
+            MapPerm::URX,
             VmAreaType::Physical,
         ));
         memory_space.push_vma(VmArea::new(
@@ -133,43 +139,37 @@ impl MemorySpace {
             MapPerm::RX,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping .rodata section");
+        log::debug!("[kernel] mapping .rodata section");
         memory_space.push_vma(VmArea::new(
             (_srodata as usize).into()..(_erodata as usize).into(),
             MapPerm::R,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping .data section");
+        log::debug!("[kernel] mapping .data section");
         memory_space.push_vma(VmArea::new(
             (_sdata as usize).into()..(_edata as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping .stack section");
+        log::debug!("[kernel] mapping .stack section");
         memory_space.push_vma(VmArea::new(
             (_sstack as usize).into()..(_estack as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping .bss section");
+        log::debug!("[kernel] mapping .bss section");
         memory_space.push_vma(VmArea::new(
             (_sbss as usize).into()..(_ebss as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping signal-return trampoline");
-        memory_space.push_vma(VmArea::new(
-            (_strampoline as usize).into()..(_etrampoline as usize).into(),
-            MapPerm::URX,
-            VmAreaType::Physical,
-        ));
-        log::info!("[kernel] mapping physical memory");
+        log::debug!("[kernel] mapping physical memory");
         memory_space.push_vma(VmArea::new(
             (_ekernel as usize).into()..MEMORY_END.into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping mmio registers");
+        log::debug!("[kernel] mapping mmio registers");
         for pair in MMIO {
             memory_space.push_vma(VmArea::new(
                 (pair.0 + VIRT_RAM_OFFSET).into()..(pair.0 + pair.1 + VIRT_RAM_OFFSET).into(),
@@ -177,7 +177,7 @@ impl MemorySpace {
                 VmAreaType::Mmio,
             ));
         }
-        log::info!("[kernel] KERNEL SPACE init finished");
+        log::debug!("[kernel] KERNEL SPACE init finished");
         memory_space
     }
 

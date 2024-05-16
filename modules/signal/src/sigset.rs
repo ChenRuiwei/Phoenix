@@ -113,7 +113,13 @@ bitflags! {
         const SIGSYS    = 1 << 30;
         const SIGLEGACYMAX  = 1 << 31;
         const SIGMAX   = 1 << 63;
-        // const SYNCHRONOUS_MASK = SIGSEGV | SIGBUS;
+        // 下面信号通常是由程序中的错误或异常操作触发的，如非法内存访问（导致
+        // SIGSEGV）、硬件异常（可能导致
+        // SIGBUS）等。同步信号的处理通常需要立即响应，
+        // 因为它们指示了程序运行中的严重问题
+        //  const SYNCHRONOUS_MASK: SigSet::SIGSEGV | SigSet::SIGBUS
+        // | SigSet::SIGILL | SigSet::SIGTRAP | SigSet::SIGFPE | SigSet::SIGSYS;
+        const SYNCHRONOUS_MASK = (1<<3) | (1<<4) | (1<<6) | (1<<7) | (1<<10) | (1<<30) ;
     }
 }
 
