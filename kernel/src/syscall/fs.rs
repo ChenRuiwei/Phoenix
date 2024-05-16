@@ -27,6 +27,7 @@ use crate::{
     },
 };
 
+// Defined in <bits/struct_stat.h>
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Kstat {
@@ -714,6 +715,22 @@ pub async fn sys_sendfile(
     }
     let ret = out_file.write(&buf).await?;
     Ok(ret)
+}
+
+/// access() checks whether the calling process can access the file pathname.
+/// If pathname is a symbolic link, it is dereferenced.
+// TODO:
+pub fn sys_faccessat(
+    dirfd: isize,
+    pathname: UserReadPtr<u8>,
+    mode: usize,
+    flags: usize,
+) -> SyscallResult {
+    let task = current_task();
+    let pathname = pathname.read_cstr(&task)?;
+    let dentry = at_helper(dirfd, &pathname, InodeMode::empty())?;
+    dentry.open()?;
+    Ok(0)
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as

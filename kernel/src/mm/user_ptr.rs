@@ -23,10 +23,10 @@ use crate::{
     },
 };
 
-trait Policy: Clone + Copy + 'static {}
+pub trait Policy: Clone + Copy + 'static {}
 
-trait Read: Policy {}
-trait Write: Policy {}
+pub trait Read: Policy {}
+pub trait Write: Policy {}
 
 #[derive(Clone, Copy)]
 pub struct In;
@@ -417,28 +417,6 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
 }
 
 impl<P: Write> UserPtr<u8, P> {
-    /// should only be used at syscall getdent with dynamic-len structure
-    pub unsafe fn write_as_bytes<U>(self, task: &Arc<Task>, val: &U) -> SysResult<()> {
-        debug_assert!(self.not_null());
-
-        let len = size_of::<U>();
-        task.just_ensure_user_area(
-            VirtAddr::from(self.as_usize()),
-            len,
-            PageFaultAccessType::RW,
-        )?;
-
-        unsafe {
-            let view = core::slice::from_raw_parts(val as *const U as *const u8, len);
-            let mut ptr = self.ptr;
-            for &c in view {
-                ptr.write(c);
-                ptr = ptr.offset(1);
-            }
-        }
-        Ok(())
-    }
-
     pub fn write_cstr(self, task: &Arc<Task>, val: &str) -> SysResult<()> {
         debug_assert!(self.not_null());
 
