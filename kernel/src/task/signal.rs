@@ -7,7 +7,7 @@ use core::{
     time::Duration,
 };
 
-use arch::time::{get_time_duration, get_time_ms};
+use arch::time::get_time_duration;
 use signal::{
     action::{Action, ActionType, SigActionFlag},
     siginfo::{SigDetails, SigInfo},

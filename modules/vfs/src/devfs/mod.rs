@@ -1,10 +1,7 @@
 use alloc::sync::Arc;
 
 use driver::BlockDevice;
-use vfs_core::{
-    Dentry, FileSystemType, FileSystemTypeMeta, Inode, InodeMeta, InodeMode, Path, SuperBlock,
-    SuperBlockMeta,
-};
+use vfs_core::{Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, SuperBlock, SuperBlockMeta};
 
 use crate::{
     simplefs::{dentry::SimpleDentry, inode::SimpleInode},
@@ -34,7 +31,7 @@ impl FileSystemType for DevFsType {
     fn arc_mount(
         self: alloc::sync::Arc<Self>,
         abs_mount_path: &str,
-        flags: vfs_core::MountFlags,
+        _flags: vfs_core::MountFlags,
         dev: Option<alloc::sync::Arc<dyn driver::BlockDevice>>,
     ) -> systype::SysResult<alloc::sync::Arc<dyn vfs_core::Dentry>> {
         // TODO: parent path resolve
@@ -48,7 +45,7 @@ impl FileSystemType for DevFsType {
         Ok(mount_dentry)
     }
 
-    fn kill_sb(&self, sb: alloc::sync::Arc<dyn vfs_core::SuperBlock>) -> systype::SysResult<()> {
+    fn kill_sb(&self, _sb: alloc::sync::Arc<dyn vfs_core::SuperBlock>) -> systype::SysResult<()> {
         todo!()
     }
 }
@@ -77,7 +74,7 @@ impl SuperBlock for DevSuperBlock {
         todo!()
     }
 
-    fn sync_fs(&self, wait: isize) -> systype::SysResult<()> {
+    fn sync_fs(&self, _wait: isize) -> systype::SysResult<()> {
         todo!()
     }
 }

@@ -1,8 +1,6 @@
-use alloc::{collections::BTreeMap, ffi::CString, sync::Arc, vec, vec::Vec};
+use alloc::{ffi::CString, sync::Arc, vec, vec::Vec};
 use core::{
-    future::{self, Future},
-    mem::size_of,
-    ops::DerefMut,
+    future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -15,16 +13,13 @@ use time::timespec::TimeSpec;
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{pipefs::new_pipe, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    is_absolute_path, Dentry, Inode, InodeMode, InodeType, MountFlags, OpenFlags, Path, PollEvents,
-    SeekFrom, AT_FDCWD, AT_REMOVEDIR,
+    is_absolute_path, Dentry, Inode, InodeMode, MountFlags, OpenFlags, Path, PollEvents, SeekFrom,
+    AT_FDCWD, AT_REMOVEDIR,
 };
 
 use crate::{
     mm::{UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr},
-    processor::{
-        env::within_sum,
-        hart::{current_task, local_hart},
-    },
+    processor::{env::within_sum, hart::current_task},
 };
 
 // Defined in <bits/struct_stat.h>
@@ -296,7 +291,7 @@ pub fn sys_dup3(oldfd: usize, newfd: usize, flags: i32) -> SyscallResult {
     if oldfd == newfd {
         return Err(SysError::EINVAL);
     }
-    let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+    let _flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     let task = current_task();
     task.with_mut_fd_table(|table| table.dup3(oldfd, newfd))
 }
@@ -312,7 +307,7 @@ pub fn sys_fstatat(
     dirfd: isize,
     pathname: UserReadPtr<u8>,
     stat_buf: UserWritePtr<Kstat>,
-    flags: i32,
+    _flags: i32,
 ) -> SyscallResult {
     let task = current_task();
     let path = pathname.read_cstr(&task)?;
@@ -345,8 +340,8 @@ pub async fn sys_mount(
         .get(&fstype)
         .unwrap_or(&fat32_type.clone())
         .clone();
-    let fs_root = match fs_type.name() {
-        name @ ("fat32") => {
+    let _fs_root = match fs_type.name() {
+        name @ "fat32" => {
             let dev = if name.eq("fat32") {
                 // here should be getting device according to inode
                 // it seems that device hasn't been associated with inode yet.
@@ -374,7 +369,7 @@ pub async fn sys_mount(
 pub async fn sys_umount2(target: UserReadPtr<u8>, flags: u32) -> SyscallResult {
     let task = current_task();
     let mount_path = target.read_cstr(&task)?;
-    let flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+    let _flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     log::info!("[sys_umount2] umount path:{mount_path:?}");
     Ok(0)
 }
@@ -437,7 +432,7 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
 /// requirement standardizing this behavior was added in POSIX.1-2008 TC2. The
 /// Linux-specific pipe2() system call likewise does not modify pipefd on
 /// failure.
-pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
+pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, _flags: i32) -> SyscallResult {
     let task = current_task();
     let (pipe_read, pipe_write) = new_pipe();
     let pipe = task.with_mut_fd_table(|table| {
@@ -587,7 +582,7 @@ pub async fn sys_ppoll(
     fds: UserRdWrPtr<PollFd>,
     nfds: usize,
     timeout_ts: UserReadPtr<TimeSpec>,
-    sigmask: usize,
+    _sigmask: usize,
 ) -> SyscallResult {
     let task = current_task();
     let fds_va: VirtAddr = fds.as_usize().into();
@@ -723,8 +718,8 @@ pub async fn sys_sendfile(
 pub fn sys_faccessat(
     dirfd: isize,
     pathname: UserReadPtr<u8>,
-    mode: usize,
-    flags: usize,
+    _mode: usize,
+    _flags: usize,
 ) -> SyscallResult {
     let task = current_task();
     let pathname = pathname.read_cstr(&task)?;

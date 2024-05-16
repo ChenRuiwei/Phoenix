@@ -3,10 +3,7 @@ use alloc::{sync::Arc, vec::Vec};
 use systype::{SysError, SysResult};
 use vfs_core::{File, OpenFlags};
 
-use crate::devfs::{
-    stdio::{StdInFile, StdOutFile},
-    tty::{TtyFile, TTY},
-};
+use crate::devfs::tty::TTY;
 
 pub type Fd = usize;
 
@@ -107,7 +104,7 @@ impl FdTable {
     pub fn dup_with_bound(&mut self, old_fd: Fd, lower_bound: usize) -> SysResult<Fd> {
         let file = self.get(old_fd)?;
         let new_fd = self.find_free_slot_and_create(lower_bound);
-        self.insert(new_fd, file);
+        self.insert(new_fd, file)?;
         Ok(new_fd)
     }
 

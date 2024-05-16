@@ -10,18 +10,13 @@ pub mod simplefs;
 
 extern crate alloc;
 
-use alloc::{
-    collections::BTreeMap,
-    string::{String, ToString},
-    sync::Arc,
-};
+use alloc::{collections::BTreeMap, string::String, sync::Arc};
 
 use devfs::tty;
-use driver::{println, BLOCK_DEVICE};
+use driver::BLOCK_DEVICE;
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
-use systype::SysResult;
-use vfs_core::{Dentry, DentryMeta, DirEntry, File, FileMeta, FileSystemType, MountFlags};
+use vfs_core::{Dentry, FileSystemType, MountFlags};
 
 use crate::devfs::DevFsType;
 
@@ -61,7 +56,7 @@ pub fn init() {
 
     let devfs = FS_MANAGER.lock().get("devfs").unwrap().clone();
     devfs.mount("/dev", MountFlags::empty(), None).unwrap();
-    tty::init();
+    tty::init().unwrap();
 }
 
 pub fn sys_root_dentry() -> Arc<dyn Dentry> {

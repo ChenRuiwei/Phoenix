@@ -1,19 +1,18 @@
-use alloc::{boxed::Box, string::ToString, sync::Arc, vec, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
 use core::{
-    cmp, ops,
+    cmp,
     sync::atomic::{AtomicUsize, Ordering},
     usize,
 };
 
 use async_trait::async_trait;
 use config::mm::{PAGE_MASK, PAGE_SIZE};
-use memory::{address, page::Page};
+use memory::page::Page;
 use spin::Mutex;
-use systype::{ASyscallResult, SysError, SysResult, SyscallResult};
+use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{
-    address_space, Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom,
-    SuperBlock,
+    Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom, SuperBlock,
 };
 
 pub struct FileMeta {
@@ -67,7 +66,7 @@ pub trait File: Send + Sync {
 
     fn flush(&self) -> SysResult<usize>;
 
-    fn ioctl(&self, cmd: usize, arg: usize) -> SyscallResult {
+    fn ioctl(&self, _cmd: usize, _arg: usize) -> SyscallResult {
         Err(SysError::ENOTTY)
     }
 
@@ -261,7 +260,7 @@ impl dyn File {
     pub async fn read_all(&self) -> SysResult<Vec<u8>> {
         log::info!("[File::read_all] file size {}", self.size());
         let mut buf = vec![0; self.size()];
-        self.read_at(0, &mut buf).await;
+        self.read_at(0, &mut buf).await?;
         Ok(buf)
     }
 }

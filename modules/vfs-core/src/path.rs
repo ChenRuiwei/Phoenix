@@ -3,11 +3,10 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
-use core::fmt::Error;
 
-use systype::{SysError, SysResult, SyscallResult};
+use systype::{SysError, SysResult};
 
-use crate::{dentry, Dentry, InodeMode, OpenFlags};
+use crate::{Dentry, InodeMode};
 
 #[derive(Clone)]
 pub struct Path {
@@ -37,7 +36,7 @@ impl Path {
     }
 
     /// Walk until path has been resolved.
-    pub fn walk(&self, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    pub fn walk(&self, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         let path = self.path.as_str();
         let mut dentry = if is_absolute_path(path) {
             self.root.clone()

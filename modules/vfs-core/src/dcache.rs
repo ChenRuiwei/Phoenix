@@ -1,14 +1,9 @@
-use alloc::{
-    collections::BTreeSet,
-    string::{String, ToString},
-    sync::Arc,
-    vec::{self, Vec},
-};
+use alloc::{string::String, sync::Arc, vec::Vec};
 
 use hashbrown::HashMap;
 use spin::Once;
 
-use crate::{dentry, Dentry, Mutex};
+use crate::{Dentry, Mutex};
 
 pub static DCACHE: Once<DentryHashMap> = Once::new();
 

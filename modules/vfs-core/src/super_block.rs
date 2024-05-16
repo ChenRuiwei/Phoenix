@@ -78,7 +78,7 @@ impl<T: Send + Sync + 'static> SuperBlock for MaybeUninit<T> {
         todo!()
     }
 
-    fn sync_fs(&self, wait: isize) -> SysResult<()> {
+    fn sync_fs(&self, _wait: isize) -> SysResult<()> {
         todo!()
     }
 }

@@ -1,21 +1,13 @@
-use alloc::{
-    boxed::Box,
-    ffi::CString,
-    string::{String, ToString},
-    sync::Arc,
-};
-use core::sync::atomic::Ordering;
+use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
-use fatfs::{Read, Seek, Write};
 use systype::{SysError, SysResult, SyscallResult};
-use vfs_core::{Dentry, DirEntry, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
+use vfs_core::{DirEntry, File, FileMeta, Inode, SeekFrom};
 
 use crate::{
-    as_sys_err,
-    dentry::{self, FatDentry},
-    inode::{self, dir::FatDirInode, FatFileInode},
-    new_shared, DiskCursor, FatDir, FatDirIter, Shared,
+    dentry::FatDentry,
+    inode::{dir::FatDirInode, FatFileInode},
+    new_shared, FatDir, FatDirIter, Shared,
 };
 
 pub struct FatDirFile {
@@ -40,11 +32,11 @@ impl File for FatDirFile {
         &self.meta
     }
 
-    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read(&self, _offset: usize, _buf: &mut [u8]) -> SyscallResult {
         Err(SysError::EISDIR)
     }
 
-    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
         Err(SysError::EISDIR)
     }
 
@@ -60,7 +52,6 @@ impl File for FatDirFile {
         let Ok(entry) = entry else {
             return Err(SysError::EIO);
         };
-        let pos = self.pos();
         let name = entry.file_name();
         self.seek(SeekFrom::Current(1))?;
         let sub_dentry = self.dentry().get_child_or_create(&name);
@@ -83,11 +74,7 @@ impl File for FatDirFile {
     }
 
     fn base_load_dir(&self) -> SysResult<()> {
-        let inode = self
-            .inode()
-            .downcast_arc::<FatDirInode>()
-            .map_err(|_| SysError::ENOTDIR)?;
-        let mut iter = inode.dir.lock().iter();
+        let mut iter = self.dir.lock().iter();
         while let Some(entry) = iter.next() {
             let Ok(entry) = entry else {
                 return Err(SysError::EIO);

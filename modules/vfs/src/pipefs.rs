@@ -6,9 +6,7 @@ use config::fs::PIPE_BUF_CAPACITY;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sync::mutex::SpinNoIrqLock;
 use systype::SysError;
-use vfs_core::{
-    arc_zero, File, FileMeta, FileSystemType, FileSystemTypeMeta, Inode, InodeMeta, InodeMode,
-};
+use vfs_core::{arc_zero, File, FileMeta, FileSystemType, Inode, InodeMeta, InodeMode};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
@@ -83,11 +81,11 @@ impl File for PipeWriteFile {
         &self.meta
     }
 
-    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn base_read(&self, _offset: usize, _buf: &mut [u8]) -> systype::SysResult<usize> {
         todo!()
     }
 
-    async fn base_write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn base_write(&self, _offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
         let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()
@@ -118,7 +116,7 @@ impl File for PipeReadFile {
         &self.meta
     }
 
-    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn base_read(&self, _offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
         let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()
@@ -141,7 +139,7 @@ impl File for PipeReadFile {
         Ok(len)
     }
 
-    async fn base_write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn base_write(&self, _offset: usize, _buf: &[u8]) -> systype::SysResult<usize> {
         todo!()
     }
 

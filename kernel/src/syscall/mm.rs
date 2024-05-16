@@ -1,11 +1,7 @@
-use async_utils::dyn_future;
 use memory::VirtAddr;
 use systype::{SysError, SyscallResult};
 
-use crate::{
-    mm::memory_space::vm_area::{MapPerm, VmArea},
-    processor::hart::current_task,
-};
+use crate::{mm::memory_space::vm_area::MapPerm, processor::hart::current_task};
 
 bitflags! {
     // See in "bits/mman-linux.h"
@@ -165,7 +161,7 @@ pub fn sys_mmap(
 /// On success, munmap() returns 0. On failure, it returns -1, and errno is
 /// set to indicate the error (probably to EINVAL).
 // TODO:
-pub fn sys_munmap(addr: VirtAddr, length: usize) -> SyscallResult {
+pub fn sys_munmap(_addr: VirtAddr, _length: usize) -> SyscallResult {
     // if !addr.is_aligned() {
     //     return Err(SysError::EINVAL);
     // }

@@ -2,22 +2,12 @@ use alloc::{
     collections::BTreeMap,
     string::{String, ToString},
     sync::{Arc, Weak},
-    vec::Vec,
 };
-use core::{
-    hash::{Hash, Hasher},
-    mem::MaybeUninit,
-};
+use core::mem::MaybeUninit;
 
-use ahash::AHasher;
-use spin::Once;
 use systype::{SysError, SysResult, SyscallResult};
 
-use crate::{
-    dcache::{self, dcache, DCACHE},
-    inode::Inode,
-    super_block, File, InodeMode, InodeType, Mutex, SuperBlock,
-};
+use crate::{inode::Inode, File, InodeMode, Mutex, SuperBlock};
 
 pub struct DentryMeta {
     /// Name of this file or directory.
@@ -91,7 +81,7 @@ pub trait Dentry: Send + Sync {
     fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult;
 
     /// Create a negetive child dentry with `name`.
-    fn base_new_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+    fn base_new_child(self: Arc<Self>, _name: &str) -> Arc<dyn Dentry> {
         todo!()
     }
 
@@ -247,19 +237,19 @@ impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
         todo!()
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SyscallResult {
         todo!()
     }
 
-    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_rmdir(self: Arc<Self>, _name: &str) -> SyscallResult {
         todo!()
     }
 

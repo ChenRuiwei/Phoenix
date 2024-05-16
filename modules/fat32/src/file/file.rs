@@ -1,20 +1,11 @@
-use alloc::{
-    boxed::Box,
-    string::{String, ToString},
-    sync::Arc,
-};
+use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
 use fatfs::{Read, Seek, Write};
-use systype::{ASyscallResult, SysError, SyscallResult};
-use vfs_core::{Dentry, DirEntry, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
+use systype::{SysError, SyscallResult};
+use vfs_core::{File, FileMeta, InodeType};
 
-use crate::{
-    as_sys_err,
-    dentry::{self, FatDentry},
-    inode::{self, dir::FatDirInode, file::FatFileInode},
-    FatFile, Shared,
-};
+use crate::{as_sys_err, dentry::FatDentry, inode::file::FatFileInode, FatFile, Shared};
 
 pub struct FatFileFile {
     meta: FileMeta,

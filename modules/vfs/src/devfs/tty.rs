@@ -1,14 +1,7 @@
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use core::{
-    future::Future,
-    mem::MaybeUninit,
-    pin::Pin,
-    task::{Poll, Waker},
-};
 
 use async_trait::async_trait;
-use async_utils::{suspend_now, take_waker, yield_now};
-use config::process::INIT_PROC_PID;
+use async_utils::{take_waker, yield_now};
 use driver::{getchar, print, CHAR_DEVICE};
 use spin::Once;
 use strum::FromRepr;
@@ -45,19 +38,19 @@ impl Dentry for TtyDentry {
         Ok(TtyFile::new(self.clone(), self.inode()?))
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SyscallResult {
         todo!()
     }
 
-    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_rmdir(self: Arc<Self>, _name: &str) -> SyscallResult {
         todo!()
     }
 }
@@ -256,7 +249,7 @@ impl TtyFile {
         })
     }
 
-    pub fn handle_irq(&self, ch: u8) {
+    pub fn handle_irq(&self, _ch: u8) {
         todo!()
         // log::debug!("[TtyFile::handle_irq] handle irq, ch {}", ch);
         // self.buf.lock().push(ch);
@@ -283,7 +276,7 @@ impl TtyFile {
 
 #[async_trait]
 impl File for TtyFile {
-    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
         let mut cnt = 0;
         loop {
             let ch: u8;
@@ -319,7 +312,7 @@ impl File for TtyFile {
         }
     }
 
-    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
         let utf8_buf: Vec<u8> = buf.iter().filter(|c| c.is_ascii()).map(|c| *c).collect();
         if PRINT_LOCKED {
             let _locked = PRINT_MUTEX.lock().await;

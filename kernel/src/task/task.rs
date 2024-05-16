@@ -32,7 +32,7 @@ use super::{
 };
 use crate::{
     mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
-    processor::env::{within_sum, SumGuard},
+    processor::env::within_sum,
     syscall,
     task::{
         manager::TASK_MANAGER,

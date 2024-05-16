@@ -1,12 +1,12 @@
-use alloc::sync::{Arc, Weak};
+use alloc::sync::Arc;
 
 use systype::SysError;
-use vfs_core::{dcache, Dentry, DentryMeta, Inode, InodeType, SuperBlock};
+use vfs_core::{Dentry, DentryMeta, Inode, InodeType, SuperBlock};
 
 use crate::{
     as_sys_err,
     file::{FatDirFile, FatFileFile},
-    inode::{self, dir::FatDirInode, file::FatFileInode},
+    inode::{dir::FatDirInode, file::FatFileInode},
 };
 
 pub struct FatDentry {
@@ -56,7 +56,6 @@ impl Dentry for FatDentry {
 
     fn base_lookup(self: Arc<Self>, name: &str) -> systype::SysResult<Arc<dyn Dentry>> {
         let sb = self.super_block();
-        let self_clone = self.clone();
         let inode = self
             .inode()?
             .downcast_arc::<FatDirInode>()

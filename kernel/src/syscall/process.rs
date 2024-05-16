@@ -6,19 +6,13 @@ use alloc::{
 };
 
 use async_utils::yield_now;
-use memory::VirtAddr;
-use signal::{
-    siginfo::*,
-    sigset::{Sig, SigSet},
-};
+use signal::{siginfo::*, sigset::Sig};
 use systype::{SysError, SysResult, SyscallResult};
-use vfs::{sys_root_dentry, DISK_FS_NAME, FS_MANAGER};
-use vfs_core::{InodeMode, OpenFlags, AT_FDCWD};
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
-    syscall::{at_helper, resolve_path},
+    syscall::resolve_path,
     task::{signal::WaitExpectSignal, spawn_user_task, PGid, Pid, TASK_MANAGER},
 };
 
@@ -180,7 +174,7 @@ pub async fn sys_wait4(
     } else {
         // 如果等待的进程还不是zombie，那么本进程进行await，
         // 直到等待的进程do_exit然后发送SIGCHLD信号唤醒自己
-        let (child_pid, exit_code, utime, stime, signum) = match target {
+        let (child_pid, exit_code, utime, stime, _signum) = match target {
             WaitFor::AnyChild => {
                 let si = WaitExpectSignal::new(&task, Sig::SIGCHLD).await;
                 match si.details {
@@ -216,7 +210,7 @@ pub async fn sys_wait4(
         if wstatus.not_null() {
             // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
             // wstatus macros can be found in <bits/waitstatus.h>
-            let status = ((exit_code & 0xff) << 8);
+            let status = (exit_code & 0xff) << 8;
             log::trace!("[sys_wait4] wstatus: {:#x}", status);
             wstatus.write(&task, status)?;
         }
@@ -283,7 +277,7 @@ pub fn sys_clone(
     _tls_ptr: usize,
     chilren_tid_ptr: usize,
 ) -> SyscallResult {
-    let exit_signal = flags & 0xff;
+    let _exit_signal = flags & 0xff;
     let flags = CloneFlags::from_bits(flags as u64 & !0xff).ok_or(SysError::EINVAL)?;
     log::info!("[sys_clone] flags {flags:?}");
     // if flags.contains(CloneFlags::THREAD) {
@@ -353,7 +347,7 @@ pub fn sys_getpgid(pid: usize) -> SyscallResult {
 /// In this case, the pgid specifies an existing process group to be joined and
 /// the session ID of that group must match the session ID of the joining
 /// process.
-pub fn sys_setpgid(pid: usize, pgid: usize) -> SyscallResult {
+pub fn sys_setpgid(pid: usize, _pgid: usize) -> SyscallResult {
     let target_task = if pid == 0 {
         current_task()
     } else {

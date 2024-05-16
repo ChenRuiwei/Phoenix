@@ -1,10 +1,8 @@
-use alloc::{collections::BTreeMap, sync::Arc};
+use alloc::sync::Arc;
 
-use vfs_core::{
-    DentryMeta, FileSystemType, FileSystemTypeMeta, InodeType, StatFs, SuperBlock, SuperBlockMeta,
-};
+use vfs_core::{FileSystemType, FileSystemTypeMeta, StatFs, SuperBlock, SuperBlockMeta};
 
-use crate::{as_sys_err, dentry::FatDentry, inode::dir::FatDirInode, DiskCursor, FatFs, Mutex};
+use crate::{as_sys_err, dentry::FatDentry, inode::dir::FatDirInode, DiskCursor, FatFs};
 
 pub struct FatFsType {
     meta: FileSystemTypeMeta,
@@ -26,7 +24,7 @@ impl FileSystemType for FatFsType {
     fn arc_mount(
         self: Arc<Self>,
         abs_mnt_path: &str,
-        flags: vfs_core::MountFlags,
+        _flags: vfs_core::MountFlags,
         dev: Option<Arc<dyn driver::BlockDevice>>,
     ) -> systype::SysResult<Arc<dyn vfs_core::Dentry>> {
         debug_assert!(dev.is_some());
@@ -41,7 +39,7 @@ impl FileSystemType for FatFsType {
         Ok(root_dentry)
     }
 
-    fn kill_sb(&self, sb: Arc<dyn vfs_core::SuperBlock>) -> systype::SysResult<()> {
+    fn kill_sb(&self, _sb: Arc<dyn vfs_core::SuperBlock>) -> systype::SysResult<()> {
         todo!()
     }
 }
@@ -100,7 +98,7 @@ impl SuperBlock for FatSuperBlock {
         })
     }
 
-    fn sync_fs(&self, wait: isize) -> systype::SysResult<()> {
+    fn sync_fs(&self, _wait: isize) -> systype::SysResult<()> {
         todo!()
     }
 }

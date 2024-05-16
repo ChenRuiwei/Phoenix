@@ -16,8 +16,7 @@ use timer::timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
 use crate::{
-    strace,
-    syscall::{syscall, SyscallNo},
+    syscall::syscall,
     task::{signal::do_signal, Task},
     trap::set_user_trap,
 };

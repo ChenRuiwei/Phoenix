@@ -1,5 +1,3 @@
-use alloc::sync::Arc;
-
 use config::mm::VIRT_RAM_OFFSET;
 use sync::mutex::SpinNoIrqLock;
 use uart_16550::MmioSerialPort;
@@ -14,7 +12,7 @@ impl UartDevice {
     pub fn new() -> Self {
         const SERIAL_PORT_BASE_ADDRESS: usize = 0x1000_0000 + VIRT_RAM_OFFSET;
 
-        let mut serial_port = unsafe { MmioSerialPort::new(SERIAL_PORT_BASE_ADDRESS) };
+        let serial_port = unsafe { MmioSerialPort::new(SERIAL_PORT_BASE_ADDRESS) };
 
         Self {
             device: SpinNoIrqLock::new(serial_port),

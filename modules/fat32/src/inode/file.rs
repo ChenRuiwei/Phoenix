@@ -1,5 +1,4 @@
 use alloc::sync::Arc;
-use core::any::TypeId;
 
 use vfs_core::{Inode, InodeMeta, InodeMode, InodeType, Stat, SuperBlock};
 

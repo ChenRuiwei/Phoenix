@@ -11,9 +11,7 @@ mod sched;
 mod signal;
 mod time;
 
-use ::futex::RobustListHead;
 pub use consts::SyscallNo;
-use consts::*;
 pub use fs::resolve_path;
 use fs::*;
 use misc::*;
@@ -23,15 +21,11 @@ pub use process::CloneFlags;
 use process::*;
 use resource::*;
 use signal::*;
-use systype::SyscallResult;
 use time::*;
 
-use crate::{
-    mm::{FutexWord, UserReadPtr, UserWritePtr},
-    syscall::{
-        futex::{sys_futex, sys_get_robust_list, sys_set_robust_list},
-        sched::*,
-    },
+use crate::syscall::{
+    futex::{sys_futex, sys_get_robust_list, sys_set_robust_list},
+    sched::*,
 };
 
 #[cfg(feature = "strace")]

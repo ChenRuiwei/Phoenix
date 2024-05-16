@@ -1,10 +1,6 @@
-use alloc::{
-    ffi::CString,
-    string::String,
-    sync::{Arc, Weak},
-};
+use alloc::string::String;
 
-use crate::{FileSystemType, InodeMode, InodeType, PERMISSION_LEN};
+use crate::InodeType;
 
 bitflags::bitflags! {
     // Defined in <bits/fcntl-linux.h>.

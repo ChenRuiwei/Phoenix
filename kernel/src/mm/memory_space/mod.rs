@@ -392,7 +392,7 @@ impl MemorySpace {
         }
     }
 
-    pub fn unmap(range: Range<VirtAddr>) {
+    pub fn unmap(_range: Range<VirtAddr>) {
         todo!()
     }
 

@@ -4,7 +4,7 @@
 
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
-    fmt::{self, Debug, Display, Formatter},
+    fmt::{self, Debug},
     intrinsics::{atomic_load_acquire, size_of},
     marker::PhantomData,
     ops::{self, ControlFlow},
@@ -12,10 +12,10 @@ use core::{
 
 use memory::VirtAddr;
 use riscv::register::scause;
-use systype::{SysError, SysResult, SyscallResult};
+use systype::{SysError, SysResult};
 
 use crate::{
-    processor::{env::SumGuard, hart::current_task},
+    processor::env::SumGuard,
     task::Task,
     trap::{
         kernel_trap::{set_kernel_user_rw_trap, will_read_fail, will_write_fail},
@@ -392,7 +392,7 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         Ok(())
     }
 
-    pub fn write_unchecked(self, task: &Arc<Task>, val: T) -> SysResult<()> {
+    pub fn write_unchecked(self, _task: &Arc<Task>, val: T) -> SysResult<()> {
         debug_assert!(self.not_null());
         unsafe { core::ptr::write(self.ptr, val) };
         Ok(())
@@ -451,9 +451,9 @@ impl<P: Write> UserPtr<u8, P> {
         }
     }
 
-    pub fn write_cstr_unchecked(self, task: &Arc<Task>, val: &str) -> SysResult<()> {
+    pub fn write_cstr_unchecked(self, _task: &Arc<Task>, val: &str) -> SysResult<()> {
         debug_assert!(self.not_null());
-        let mut bytes = val.as_bytes();
+        let bytes = val.as_bytes();
         let mut ptr = self.as_mut_ptr();
         for byte in bytes {
             unsafe {
