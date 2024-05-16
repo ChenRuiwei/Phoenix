@@ -167,7 +167,7 @@ impl WinSize {
 pub fn init() -> SysResult<()> {
     let path = "/dev/tty";
     let path = Path::new(sys_root_dentry(), sys_root_dentry(), path);
-    let tty_dentry = path.walk(InodeMode::empty())?;
+    let tty_dentry = path.walk()?;
     let parent = tty_dentry.parent().unwrap();
     let tty_dentry = TtyDentry::new("tty", parent.super_block(), Some(parent.clone()));
     parent.insert(tty_dentry.clone());
@@ -276,7 +276,7 @@ impl TtyFile {
 
 #[async_trait]
 impl File for TtyFile {
-    async fn base_read(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
         let mut cnt = 0;
         loop {
             let ch: u8;
@@ -312,7 +312,7 @@ impl File for TtyFile {
         }
     }
 
-    async fn base_write(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
         let utf8_buf: Vec<u8> = buf.iter().filter(|c| c.is_ascii()).map(|c| *c).collect();
         if PRINT_LOCKED {
             let _locked = PRINT_MUTEX.lock().await;

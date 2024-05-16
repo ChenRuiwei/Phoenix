@@ -788,7 +788,7 @@ pub fn at_helper(fd: isize, path: &str, mode: InodeMode) -> SysResult<Arc<dyn De
         let file = task.with_fd_table(|table| table.get(fd))?;
         Path::new(sys_root_dentry(), file.dentry(), path)
     };
-    path.walk(mode)
+    path.walk()
 }
 
 /// Given a path, absolute or relative, will find.

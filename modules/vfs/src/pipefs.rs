@@ -81,11 +81,11 @@ impl File for PipeWriteFile {
         &self.meta
     }
 
-    async fn base_read(&self, _offset: usize, _buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> systype::SysResult<usize> {
         todo!()
     }
 
-    async fn base_write(&self, _offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
         let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()
@@ -116,7 +116,7 @@ impl File for PipeReadFile {
         &self.meta
     }
 
-    async fn base_read(&self, _offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
         let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()
@@ -139,7 +139,7 @@ impl File for PipeReadFile {
         Ok(len)
     }
 
-    async fn base_write(&self, _offset: usize, _buf: &[u8]) -> systype::SysResult<usize> {
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> systype::SysResult<usize> {
         todo!()
     }
 

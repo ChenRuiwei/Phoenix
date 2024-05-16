@@ -59,9 +59,8 @@ macro_rules! strace {
 /// Handle syscall exception with `syscall_id` and other arguments.
 pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
     use SyscallNo::*;
-
     let Some(syscall_no) = SyscallNo::from_repr(syscall_no) else {
-        log::error!("Syscall number not included: {}", syscall_no);
+        log::error!("Syscall number not included: {syscall_no}");
         unimplemented!()
     };
     log::info!("[syscall] handle {syscall_no}");

@@ -6,6 +6,7 @@
 pub mod devfs;
 pub mod fd_table;
 pub mod pipefs;
+pub mod procfs;
 pub mod simplefs;
 
 extern crate alloc;
@@ -14,11 +15,12 @@ use alloc::{collections::BTreeMap, string::String, sync::Arc};
 
 use devfs::tty;
 use driver::BLOCK_DEVICE;
+use procfs::init_procfs;
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 use vfs_core::{Dentry, FileSystemType, MountFlags};
 
-use crate::devfs::DevFsType;
+use crate::{devfs::DevFsType, procfs::ProcFsType};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
@@ -37,6 +39,10 @@ fn register_all_fs() {
 
     let devfs = DevFsType::new();
     FS_MANAGER.lock().insert(devfs.name_string(), devfs);
+
+    let procfs = ProcFsType::new();
+    FS_MANAGER.lock().insert(procfs.name_string(), procfs);
+
     log::info!("[vfs] register fs success");
 }
 
@@ -57,6 +63,12 @@ pub fn init() {
     devfs
         .mount("dev", Some(diskfs_root.clone()), MountFlags::empty(), None)
         .unwrap();
+
+    let procfs = FS_MANAGER.lock().get("procfs").unwrap().clone();
+    let procfs_dentry = procfs
+        .mount("proc", Some(diskfs_root.clone()), MountFlags::empty(), None)
+        .unwrap();
+    init_procfs(procfs_dentry).unwrap();
 
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);
 

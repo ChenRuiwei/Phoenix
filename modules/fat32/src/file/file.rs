@@ -27,7 +27,7 @@ impl File for FatFileFile {
         &self.meta
     }
 
-    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         match self.itype() {
             InodeType::File => {
                 let mut file = self.file.lock();
@@ -45,7 +45,7 @@ impl File for FatFileFile {
         }
     }
 
-    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         if buf.is_empty() {
             return Ok(0);
         }

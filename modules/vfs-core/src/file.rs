@@ -41,17 +41,9 @@ impl FileMeta {
 pub trait File: Send + Sync {
     fn meta(&self) -> &FileMeta;
 
-    /// Called by read(2) and related system calls.
-    ///
-    /// On success, the number of bytes read is returned (zero indicates end of
-    /// file), and the file position is advanced by this number.
-    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult;
+    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult;
 
-    /// Called by write(2) and related system calls.
-    ///
-    /// On success, the number of bytes written is returned, and the file offset
-    /// is incremented by the number of bytes actually written.
-    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult;
+    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult;
 
     /// Read directory entries. This is called by the getdents(2) system call.
     ///
@@ -164,7 +156,7 @@ impl dyn File {
         let inode = self.inode();
         let Some(address_space) = inode.address_space() else {
             log::debug!("[File::read] read without address_space");
-            let count = self.base_read(offset, buf).await?;
+            let count = self.base_read_at(offset, buf).await?;
             return Ok(count);
         };
         log::debug!("[File::read] read with address_space");
@@ -180,7 +172,9 @@ impl dyn File {
             } else {
                 log::trace!("[File::read] offset {offset_aligned} not cached in address space");
                 let page = Page::new();
-                let len = self.base_read(offset_aligned, page.bytes_array()).await?;
+                let len = self
+                    .base_read_at(offset_aligned, page.bytes_array())
+                    .await?;
                 if len == 0 {
                     log::warn!("[File::read] reach file end");
                     break;
@@ -205,7 +199,7 @@ impl dyn File {
     /// On success, the number of bytes written is returned, and the file offset
     /// is incremented by the number of bytes actually written.
     pub async fn write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
-        self.base_write(offset, buf).await
+        self.base_write_at(offset, buf).await
     }
 
     /// Read from offset in self, and will fill `buf` until `buf` is full or eof
