@@ -57,7 +57,7 @@ impl Path {
                         dentry = sub_dentry
                     }
                     Err(e) => {
-                        log::error!("[Path::walk] {e:?} when walking in path {path}");
+                        log::warn!("[Path::walk] {e:?} when walking in path {path}");
                         return Err(e);
                     }
                 },

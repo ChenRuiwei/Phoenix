@@ -208,11 +208,7 @@ impl VmArea {
         let pte_flags: PTEFlags = self.map_perm.into();
         if self.vma_type == VmAreaType::Physical || self.vma_type == VmAreaType::Mmio {
             for vpn in self.range_vpn() {
-                page_table.map(
-                    vpn,
-                    VirtAddr::from(vpn).to_offset().to_pa().into(),
-                    pte_flags,
-                )
+                page_table.map(vpn, vpn.to_offset().to_ppn(), pte_flags)
             }
         } else {
             for vpn in self.range_vpn() {

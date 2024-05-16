@@ -1,9 +1,9 @@
 use alloc::sync::Arc;
 
-use systype::SysError;
-use vfs_core::{Dentry, DentryMeta, InodeType, SuperBlock};
+use systype::{SysError, SysResult};
+use vfs_core::{Dentry, DentryMeta, File, InodeMode, InodeType, SuperBlock};
 
-use super::inode::SimpleInode;
+use super::{file::SimpleDirFile, inode::SimpleInode};
 
 pub struct SimpleDentry {
     meta: DentryMeta,
@@ -19,6 +19,10 @@ impl SimpleDentry {
             meta: DentryMeta::new(name, super_block, parent),
         })
     }
+
+    pub fn into_dyn(self: Arc<Self>) -> Arc<dyn Dentry> {
+        self.clone()
+    }
 }
 
 impl Dentry for SimpleDentry {
@@ -26,48 +30,39 @@ impl Dentry for SimpleDentry {
         &self.meta
     }
 
-    fn base_open(
-        self: alloc::sync::Arc<Self>,
-    ) -> systype::SysResult<alloc::sync::Arc<dyn vfs_core::File>> {
-        todo!()
+    fn base_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
+        let inode = self.inode()?;
+        match inode.itype() {
+            InodeType::Dir => Ok(SimpleDirFile::new(self.clone(), inode)),
+            _ => unreachable!(),
+        }
     }
 
-    fn base_lookup(
-        self: alloc::sync::Arc<Self>,
-        name: &str,
-    ) -> systype::SysResult<alloc::sync::Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
         if !self.inode()?.itype().is_dir() {
             return Err(SysError::ENOTDIR);
         }
-        let self_clone = self.clone();
-        let sub_dentry: Arc<dyn Dentry> = self.get_child(name).unwrap_or_else(|| {
-            let sb = self.super_block();
-            let new_dentry = SimpleDentry::new(name, sb.clone(), Some(self.clone()));
-            self_clone.insert(new_dentry.clone());
-            new_dentry
-        });
+        let sub_dentry = self.into_dyn().get_child_or_create(name);
         Ok(sub_dentry)
     }
 
-    fn base_create(
-        self: alloc::sync::Arc<Self>,
-        name: &str,
-        mode: vfs_core::InodeMode,
-    ) -> systype::SysResult<alloc::sync::Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         let sb = self.super_block();
-        let sub_dentry = self
-            .get_child(name)
-            .unwrap_or_else(|| Self::new(name, sb.clone(), Some(self)));
+        let sub_dentry = self.into_dyn().get_child_or_create(name);
         let sub_inode = SimpleInode::new(mode, sb, 0);
         sub_dentry.set_inode(sub_inode);
         Ok(sub_dentry)
     }
 
-    fn base_unlink(self: alloc::sync::Arc<Self>, name: &str) -> systype::SyscallResult {
+    fn base_unlink(self: Arc<Self>, name: &str) -> systype::SyscallResult {
         todo!()
     }
 
     fn base_rmdir(self: alloc::sync::Arc<Self>, name: &str) -> systype::SyscallResult {
         todo!()
+    }
+
+    fn base_new_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+        Self::new(name, self.super_block(), Some(self))
     }
 }

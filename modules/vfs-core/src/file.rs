@@ -36,19 +36,6 @@ impl FileMeta {
             flags: Mutex::new(OpenFlags::empty()),
         }
     }
-
-    pub fn new_with_flags(
-        dentry: Arc<dyn Dentry>,
-        inode: Arc<dyn Inode>,
-        flags: OpenFlags,
-    ) -> Self {
-        Self {
-            dentry,
-            inode,
-            pos: 0.into(),
-            flags: Mutex::new(flags),
-        }
-    }
 }
 
 #[async_trait]
@@ -272,7 +259,7 @@ impl dyn File {
 
     /// Read all data from this file synchronously.
     pub async fn read_all(&self) -> SysResult<Vec<u8>> {
-        log::info!("[File::read_all_from_start] file size {}", self.size());
+        log::info!("[File::read_all] file size {}", self.size());
         let mut buf = vec![0; self.size()];
         self.read_at(0, &mut buf).await;
         Ok(buf)

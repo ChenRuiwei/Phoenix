@@ -13,7 +13,7 @@ use memory::VirtAddr;
 use systype::{SysError, SysResult, SyscallResult};
 use time::timespec::TimeSpec;
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
-use vfs::{pipe::new_pipe, sys_root_dentry, FS_MANAGER};
+use vfs::{pipefs::new_pipe, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, Dentry, Inode, InodeMode, InodeType, MountFlags, OpenFlags, Path, PollEvents,
     SeekFrom, AT_FDCWD, AT_REMOVEDIR,
@@ -710,7 +710,7 @@ pub async fn sys_sendfile(
     } else {
         let mut offset = offset.into_mut(&task)?;
         let len = in_file.read_at(*offset, &mut buf).await?;
-        *offset.deref_mut() = *offset + len;
+        *offset = *offset + len;
     }
     let ret = out_file.write(&buf).await?;
     Ok(ret)

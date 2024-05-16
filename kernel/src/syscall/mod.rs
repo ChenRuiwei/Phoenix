@@ -38,6 +38,7 @@ use crate::{
 pub const STRACE_COLOR_CODE: u8 = 35; // Purple
 
 /// Syscall trace.
+// TODO: syscall trace with exact args and return value
 #[cfg(feature = "strace")]
 #[macro_export]
 macro_rules! strace {
@@ -170,6 +171,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         // Miscellaneous
         UNAME => sys_uname(args[0].into()),
         GETRUSAGE => sys_getrusage(args[0] as _, args[1].into()),
+        SYSLOG => sys_syslog(args[0], args[1].into(), args[2]),
         _ => {
             log::error!("Unsupported syscall: {}", syscall_no);
             Ok(0)

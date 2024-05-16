@@ -6,7 +6,9 @@ use config::fs::PIPE_BUF_CAPACITY;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sync::mutex::SpinNoIrqLock;
 use systype::SysError;
-use vfs_core::{arc_zero, File, FileMeta, Inode, InodeMeta, InodeMode};
+use vfs_core::{
+    arc_zero, File, FileMeta, FileSystemType, FileSystemTypeMeta, Inode, InodeMeta, InodeMode,
+};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 

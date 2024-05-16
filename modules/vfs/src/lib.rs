@@ -5,7 +5,7 @@
 
 pub mod devfs;
 pub mod fd_table;
-pub mod pipe;
+pub mod pipefs;
 pub mod simplefs;
 
 extern crate alloc;
@@ -62,34 +62,8 @@ pub fn init() {
     let devfs = FS_MANAGER.lock().get("devfs").unwrap().clone();
     devfs.mount("/dev", MountFlags::empty(), None).unwrap();
     tty::init();
-    test().unwrap();
 }
 
 pub fn sys_root_dentry() -> Arc<dyn Dentry> {
     SYS_ROOT_DENTRY.get().unwrap().clone()
-}
-
-pub fn test() -> SysResult<()> {
-    let mut buf = [0; 512];
-    let sb = FS_MANAGER
-        .lock()
-        .get(DISK_FS_NAME)
-        .unwrap()
-        .get_sb("/")
-        .unwrap();
-
-    let root_dentry = sb.root_dentry();
-
-    // let root_dir = root_dentry.open()?;
-    // while let Some(dirent) = root_dir.read_dir()? {
-    //     println!("{}", dirent.name);
-    // }
-
-    // let dentry = root_dentry.lookup("busybox")?;
-    // let file = dentry.open()?;
-    // file.read(0, &mut buf);
-    // log::info!("{}", file.path());
-    // log::info!("{:?}", buf);
-
-    Ok(())
 }
