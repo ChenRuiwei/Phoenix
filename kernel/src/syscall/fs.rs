@@ -8,13 +8,14 @@ use core::{
 use async_utils::{dyn_future, Async};
 use driver::BLOCK_DEVICE;
 use memory::VirtAddr;
+use strum::FromRepr;
 use systype::{SysError, SysResult, SyscallResult};
 use time::timespec::TimeSpec;
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
-use vfs::{pipefs::new_pipe, sys_root_dentry, FS_MANAGER};
+use vfs::{pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    is_absolute_path, Dentry, Inode, InodeMode, MountFlags, OpenFlags, Path, PollEvents, SeekFrom,
-    AT_FDCWD, AT_REMOVEDIR,
+    is_absolute_path, split_parent_and_name, Dentry, Inode, InodeMode, MountFlags, OpenFlags, Path,
+    PollEvents, SeekFrom, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use crate::{
@@ -325,7 +326,7 @@ pub async fn sys_mount(
 ) -> SyscallResult {
     let task = current_task();
     let source = source.read_cstr(&task)?;
-    let target = target.read_cstr(&task)?; // must absolute? not mentioned in man
+    let target = target.read_cstr(&task)?;
     let fstype = fstype.read_cstr(&task)?;
     let flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     log::debug!(
@@ -356,9 +357,11 @@ pub async fn sys_mount(
             } else {
                 None
             };
+            let (parent, name) = split_parent_and_name(&target);
 
-            let abs_target = resolve_path(&target)?.path();
-            fs_type.mount(&abs_target, flags, dev)?
+            let parent = resolve_path(parent)?;
+            // let dentry = resolve_path(&target)?;
+            fs_type.mount(name.unwrap(), Some(parent), flags, dev)?
         }
         _ => return Err(SysError::EINVAL),
     };
@@ -726,6 +729,40 @@ pub fn sys_faccessat(
     let dentry = at_helper(dirfd, &pathname, InodeMode::empty())?;
     dentry.open()?;
     Ok(0)
+}
+
+/// lseek() repositions the file offset of the open file description associated
+/// with the file descriptor fd to the argument offset according to the
+/// directive whence as follows:
+/// + SEEK_SET: The file offset is set to offset bytes.
+/// + SEEK_CUR: The file offset is set to its current location plus offset
+///   bytes.
+/// + SEEK_END: The file offset is set to the size of the file plus offset
+///   bytes.
+///
+/// lseek() allows the file offset to be set beyond the end of the file (but
+/// this does not change the size of the file). If data is later written at this
+/// point, subsequent reads of the data in the gap (a "hole") return null bytes
+/// ('\0') until data is actually written into the gap.
+pub fn sys_lseek(fd: usize, offset: isize, whence: usize) -> SyscallResult {
+    #[derive(FromRepr)]
+    #[repr(usize)]
+    enum Whence {
+        SeekSet = 0,
+        SeekCur = 1,
+        SeekEnd = 2,
+        SeekData = 3,
+        SeekHold = 4,
+    }
+    let task = current_task();
+    let file = task.with_fd_table(|table| table.get(fd))?;
+    let whence = Whence::from_repr(whence).ok_or(SysError::EINVAL)?;
+    match whence {
+        Whence::SeekSet => file.seek(SeekFrom::Start(offset as u64)),
+        Whence::SeekCur => file.seek(SeekFrom::Current(offset as i64)),
+        Whence::SeekEnd => file.seek(SeekFrom::End(offset as i64)),
+        _ => todo!(),
+    }
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as

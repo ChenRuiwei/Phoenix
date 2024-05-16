@@ -47,15 +47,19 @@ pub fn init() {
     let diskfs_root = diskfs
         .mount(
             "/",
+            None,
             MountFlags::empty(),
             Some(BLOCK_DEVICE.get().unwrap().clone()),
         )
         .unwrap();
 
+    let devfs = FS_MANAGER.lock().get("devfs").unwrap().clone();
+    devfs
+        .mount("dev", Some(diskfs_root.clone()), MountFlags::empty(), None)
+        .unwrap();
+
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);
 
-    let devfs = FS_MANAGER.lock().get("devfs").unwrap().clone();
-    devfs.mount("/dev", MountFlags::empty(), None).unwrap();
     tty::init().unwrap();
 }
 

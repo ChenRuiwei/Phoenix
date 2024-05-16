@@ -80,6 +80,13 @@ pub fn split_path(path: &str) -> Vec<&str> {
         .collect()
 }
 
+pub fn split_parent_and_name(path: &str) -> (&str, Option<&str>) {
+    let trimmed_path = path.trim_start_matches('/');
+    trimmed_path.find('/').map_or((trimmed_path, None), |n| {
+        (&trimmed_path[..n], Some(&trimmed_path[n + 1..]))
+    })
+}
+
 /// # Example
 ///
 /// "/" -> "/"

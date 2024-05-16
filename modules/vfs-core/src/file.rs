@@ -92,7 +92,7 @@ pub trait File: Send + Sync {
     /// Called when the VFS needs to move the file position index.
     ///
     /// Return the result offset.
-    fn seek(&self, pos: SeekFrom) -> SysResult<usize> {
+    fn seek(&self, pos: SeekFrom) -> SyscallResult {
         let mut res_pos = self.pos();
         match pos {
             SeekFrom::Current(off) => {

@@ -54,11 +54,11 @@ pub fn sys_uname(buf: UserWritePtr<UtsName>) -> SyscallResult {
 pub fn sys_syslog(log_type: usize, bufp: UserWritePtr<u8>, len: usize) -> SyscallResult {
     let task = current_task();
     log::warn!("[sys_log] unimplemeted");
-    bufp.into_mut_slice(&task, len)?;
-    match log_type as usize {
+    match log_type {
         2 | 3 | 4 => {
             // For type equal to 2, 3, or 4, a successful call to syslog() returns the
             // number of bytes read.
+            bufp.into_mut_slice(&task, len)?;
             Ok(0)
         }
         9 => {

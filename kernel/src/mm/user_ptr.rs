@@ -263,7 +263,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     }
 
     pub fn into_slice(self, task: &Arc<Task>, n: usize) -> SysResult<UserSlice<T>> {
-        debug_assert!(n == 0 || self.not_null());
+        debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
@@ -288,7 +288,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     }
 
     pub fn read_array(self, task: &Arc<Task>, n: usize) -> SysResult<Vec<T>> {
-        debug_assert!(n == 0 || self.not_null());
+        debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
@@ -371,12 +371,14 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
     }
 
     pub fn into_mut_slice(self, task: &Arc<Task>, n: usize) -> SysResult<UserSlice<T>> {
-        debug_assert!(n == 0 || self.not_null());
+        debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
             PageFaultAccessType::RW,
         )?;
+        // WARN: `core::slice::from_raw_parts_mut` does not accept null pointer even for
+        // zero length slice, hidden bug may be caused when doing so.
         let slice = unsafe { core::slice::from_raw_parts_mut(self.ptr, n) };
         Ok(UserSlice::new(slice))
     }

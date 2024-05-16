@@ -126,6 +126,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         PPOLL => sys_ppoll(args[0].into(), args[1], args[2].into(), args[3]).await,
         SENDFILE => sys_sendfile(args[0], args[1], args[2].into(), args[3]).await,
         FACCESSAT => sys_faccessat(args[0] as _, args[1].into(), args[2], args[3]),
+        LSEEK => sys_lseek(args[0], args[1] as _, args[2]),
         // Signal
         RT_SIGPROCMASK => sys_rt_sigprocmask(args[0], args[1].into(), args[2].into()),
         RT_SIGACTION => sys_rt_sigaction(args[0] as _, args[1].into(), args[2].into()),
@@ -178,7 +179,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
             ret
         }
         Err(e) => {
-            log::warn!("[syscall] {syscall_no} return err {e:?}",);
+            log::warn!("[syscall] {syscall_no} return err {e:?}");
             -(e as isize) as usize
         }
     }
