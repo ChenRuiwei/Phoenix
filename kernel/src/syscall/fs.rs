@@ -261,6 +261,7 @@ pub fn sys_chdir(path: UserReadPtr<u8>) -> SyscallResult {
 /// On success, these system calls return the new file descriptor.  On error, -1
 /// is returned, and errno is set to indicate the error.
 pub fn sys_dup(oldfd: usize) -> SyscallResult {
+    log::info!("[sys_dup] oldfd: {oldfd}");
     let task = current_task();
     task.with_mut_fd_table(|table| table.dup(oldfd))
 }
@@ -289,15 +290,14 @@ pub fn sys_dup(oldfd: usize) -> SyscallResult {
 ///   descriptor by specifying O_CLOEXEC in flags. See the description of the
 ///   same flag in open(2) for reasons why this may be useful.
 /// + If oldfd equals newfd, then dup3() fails with the error EINVAL.
-// TODO: flags support
 pub fn sys_dup3(oldfd: usize, newfd: usize, flags: i32) -> SyscallResult {
+    let task = current_task();
     let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     log::info!("[sys_dup3] oldfd: {oldfd}, new_fd: {newfd}, flags: {flags:?}");
     if oldfd == newfd {
         return Err(SysError::EINVAL);
     }
-    let task = current_task();
-    task.with_mut_fd_table(|table| table.dup3(oldfd, newfd))
+    task.with_mut_fd_table(|table| table.dup3(oldfd, newfd, flags))
 }
 
 pub fn sys_fstat(fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
@@ -488,22 +488,32 @@ pub fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> SyscallResult {
     within_sum(|| file.ioctl(cmd, arg))
 }
 
-const F_DUPFD: i32 = 0;
-const F_DUPFD_CLOEXEC: i32 = 1030;
-const F_GETFD: i32 = 1;
-const F_SETFD: i32 = 2;
-const F_GETFL: i32 = 3;
-const F_SETFL: i32 = 4;
+// Defined in <bits/fcntl-linux.h>
+#[allow(non_camel_case_types)]
+#[derive(FromRepr, Debug, Eq, PartialEq, Clone, Copy)]
+#[repr(isize)]
+pub enum FcntlOp {
+    F_DUPFD = 0,
+    F_DUPFD_CLOEXEC = 1030,
+    F_GETFD = 1,
+    F_SETFD = 2,
+    F_GETFL = 3,
+    F_SETFL = 4,
+}
 
 // TODO:
-pub fn sys_fcntl(fd: usize, op: i32, arg: usize) -> SyscallResult {
+pub fn sys_fcntl(fd: usize, op: isize, arg: usize) -> SyscallResult {
     let task = current_task();
+    let op = FcntlOp::from_repr(op).ok_or_else(|| {
+        log::warn!("[sys_fcntl]: op {op} not implemented");
+        todo!()
+    })?;
+    log::info!("[sys_fcntl] fd: {fd}, op: {op:?}, arg: {arg}");
     match op {
-        F_DUPFD_CLOEXEC => {
-            let new_fd = task.with_mut_fd_table(|table| table.dup_with_bound(fd, arg));
-            new_fd
+        FcntlOp::F_DUPFD_CLOEXEC => {
+            task.with_mut_fd_table(|table| table.dup_with_bound(fd, arg, OpenFlags::O_CLOEXEC))
         }
-        F_SETFD => {
+        FcntlOp::F_SETFD => {
             const FD_CLOEXEC: usize = 1;
             let file = task.with_fd_table(|table| table.get(fd))?;
             let flags = file.flags();
@@ -517,7 +527,7 @@ pub fn sys_fcntl(fd: usize, op: i32, arg: usize) -> SyscallResult {
             Ok(0)
         }
         _ => {
-            log::warn!("fcntl cmd: {} not implemented, returning 0 as default", op);
+            log::warn!("fcntl cmd: {op:?} not implemented");
             Ok(0)
         }
     }
@@ -700,6 +710,7 @@ pub async fn sys_sendfile(
     offset: UserRdWrPtr<usize>,
     count: usize,
 ) -> SyscallResult {
+    log::info!("[sys_sendfile] out_fd: {out_fd}, in_fd: {in_fd}, offset: {offset}, count: {count}");
     let task = current_task();
     let (in_file, out_file) =
         task.with_fd_table(|table| Ok((table.get(in_fd)?, table.get(out_fd)?)))?;
