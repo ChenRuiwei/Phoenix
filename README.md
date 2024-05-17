@@ -14,7 +14,7 @@ Rust编写的宏内核操作系统，基于RISC-V64硬件平台，支持多核
 
 VisionFive 2赛道，初赛功能测试满分
 
-![primary_contest_result](docs/image/primary_contest_rank.png)
+![priliminary_contest_result](docs/image/primary_contest_rank.png)
 
 ## 运行
 
