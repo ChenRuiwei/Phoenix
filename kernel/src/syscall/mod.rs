@@ -95,17 +95,17 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         // File system
         READ => sys_read(args[0], args[1].into(), args[2]).await,
         WRITE => sys_write(args[0], args[1].into(), args[2]).await,
-        OPENAT => sys_openat(args[0] as _, args[1].into(), args[2] as _, args[3] as _),
+        OPENAT => sys_openat(args[0].into(), args[1].into(), args[2] as _, args[3] as _),
         CLOSE => sys_close(args[0]),
-        MKDIR => sys_mkdirat(args[0] as _, args[1].into(), args[2] as _),
+        MKDIR => sys_mkdirat(args[0].into(), args[1].into(), args[2] as _),
         GETCWD => sys_getcwd(args[0].into(), args[1]),
         CHDIR => sys_chdir(args[0].into()),
         DUP => sys_dup(args[0]),
         DUP3 => sys_dup3(args[0], args[1], args[2] as _),
         FSTAT => sys_fstat(args[0], args[1].into()),
-        FSTATAT => sys_fstatat(args[0] as _, args[1].into(), args[2].into(), args[3] as _),
+        FSTATAT => sys_fstatat(args[0].into(), args[1].into(), args[2].into(), args[3] as _),
         GETDENTS64 => sys_getdents64(args[0], args[1], args[2]),
-        UNLINKAT => sys_unlinkat(args[0] as _, args[1].into(), args[2] as _),
+        UNLINKAT => sys_unlinkat(args[0].into(), args[1].into(), args[2] as _),
         MOUNT => {
             sys_mount(
                 args[0].into(),
@@ -124,7 +124,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         READV => sys_readv(args[0], args[1].into(), args[2]).await,
         PPOLL => sys_ppoll(args[0].into(), args[1], args[2].into(), args[3]).await,
         SENDFILE => sys_sendfile(args[0], args[1], args[2].into(), args[3]).await,
-        FACCESSAT => sys_faccessat(args[0] as _, args[1].into(), args[2], args[3]),
+        FACCESSAT => sys_faccessat(args[0].into(), args[1].into(), args[2], args[3]),
         LSEEK => sys_lseek(args[0], args[1] as _, args[2]),
         // Signal
         RT_SIGPROCMASK => sys_rt_sigprocmask(args[0], args[1].into(), args[2].into()),

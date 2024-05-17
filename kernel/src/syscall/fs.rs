@@ -14,8 +14,8 @@ use time::timespec::TimeSpec;
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    is_absolute_path, split_parent_and_name, Dentry, Inode, InodeMode, MountFlags, OpenFlags, Path,
-    PollEvents, SeekFrom, AT_FDCWD, AT_REMOVEDIR,
+    is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, MountFlags, OpenFlags,
+    Path, PollEvents, SeekFrom, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use crate::{
@@ -130,12 +130,14 @@ pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallRe
 /// flags; if it is not supplied, some arbitrary bytes from the stack will be
 /// applied as the file mode.
 // TODO:
-pub fn sys_openat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32, mode: u32) -> SyscallResult {
+pub fn sys_openat(dirfd: AtFd, pathname: UserReadPtr<u8>, flags: i32, mode: u32) -> SyscallResult {
     let task = current_task();
     let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     let mode = InodeMode::from_bits_truncate(mode);
     let pathname = pathname.read_cstr(&task)?;
-    log::debug!("[sys_openat] {flags:?}, {mode:?}");
+    log::info!(
+        "[sys_openat] dirfd: {dirfd}, pathname: {pathname}, flags: {flags:?}, mode: {mode:?}"
+    );
     let dentry = at_helper(dirfd, &pathname, mode)?;
     if flags.contains(OpenFlags::O_CREAT) {
         // If pathname does not exist, create it as a regular file.
@@ -169,7 +171,7 @@ pub fn sys_close(fd: usize) -> SyscallResult {
 ///
 /// mkdir() and mkdirat() return zero on success.  On error, -1 is returned and
 /// errno is set to indicate the error.
-pub fn sys_mkdirat(dirfd: isize, pathname: UserReadPtr<u8>, mode: u32) -> SyscallResult {
+pub fn sys_mkdirat(dirfd: AtFd, pathname: UserReadPtr<u8>, mode: u32) -> SyscallResult {
     let task = current_task();
     let mode = InodeMode::from_bits_truncate(mode);
     let pathname = pathname.read_cstr(&task)?;
@@ -289,10 +291,11 @@ pub fn sys_dup(oldfd: usize) -> SyscallResult {
 /// + If oldfd equals newfd, then dup3() fails with the error EINVAL.
 // TODO: flags support
 pub fn sys_dup3(oldfd: usize, newfd: usize, flags: i32) -> SyscallResult {
+    let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+    log::info!("[sys_dup3] oldfd: {oldfd}, new_fd: {newfd}, flags: {flags:?}");
     if oldfd == newfd {
         return Err(SysError::EINVAL);
     }
-    let _flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     let task = current_task();
     task.with_mut_fd_table(|table| table.dup3(oldfd, newfd))
 }
@@ -305,7 +308,7 @@ pub fn sys_fstat(fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
 }
 
 pub fn sys_fstatat(
-    dirfd: isize,
+    dirfd: AtFd,
     pathname: UserReadPtr<u8>,
     stat_buf: UserWritePtr<Kstat>,
     _flags: i32,
@@ -467,7 +470,7 @@ pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, _flags: i32) -> SyscallResult {
 ///   on pathname. If the AT_REMOVEDIR flag is specified, it performs the
 ///   equivalent of rmdir(2) on pathname.
 // FIXME: removal is not delayed, could be done in vfs layer
-pub fn sys_unlinkat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32) -> SyscallResult {
+pub fn sys_unlinkat(dirfd: AtFd, pathname: UserReadPtr<u8>, flags: i32) -> SyscallResult {
     let task = current_task();
     let path = pathname.read_cstr(&task)?;
     let dentry = at_helper(dirfd, &path, InodeMode::empty())?;
@@ -719,7 +722,7 @@ pub async fn sys_sendfile(
 /// If pathname is a symbolic link, it is dereferenced.
 // TODO:
 pub fn sys_faccessat(
-    dirfd: isize,
+    dirfd: AtFd,
     pathname: UserReadPtr<u8>,
     _mode: usize,
     _flags: usize,
@@ -776,22 +779,24 @@ pub fn sys_lseek(fd: usize, offset: isize, whence: usize) -> SyscallResult {
 ///   than relative to the current working directory of the calling process, as
 ///   is done by open() for a relative pathname).  In this case, dirfd must be a
 ///   directory that was opened for reading (O_RDONLY) or using the O_PATH flag.
-pub fn at_helper(fd: isize, path: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+pub fn at_helper(fd: AtFd, path: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
     log::info!("[at_helper] fd: {fd}, path: {path}");
     let task = current_task();
     let path = if is_absolute_path(path) {
         Path::new(sys_root_dentry(), sys_root_dentry(), path)
-    } else if fd as i32 == AT_FDCWD {
-        Path::new(sys_root_dentry(), task.cwd(), path)
     } else {
-        let fd = fd as usize;
-        let file = task.with_fd_table(|table| table.get(fd))?;
-        Path::new(sys_root_dentry(), file.dentry(), path)
+        match fd {
+            AtFd::FdCwd => Path::new(sys_root_dentry(), task.cwd(), path),
+            AtFd::Normal(fd) => {
+                let file = task.with_fd_table(|table| table.get(fd))?;
+                Path::new(sys_root_dentry(), file.dentry(), path)
+            }
+        }
     };
     path.walk()
 }
 
 /// Given a path, absolute or relative, will find.
 pub fn resolve_path(path: &str) -> SysResult<Arc<dyn Dentry>> {
-    at_helper(AT_FDCWD as isize, path, InodeMode::empty())
+    at_helper(AtFd::FdCwd, path, InodeMode::empty())
 }

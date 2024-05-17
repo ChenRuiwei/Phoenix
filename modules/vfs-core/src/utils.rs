@@ -1,4 +1,5 @@
 use alloc::string::String;
+use core::fmt::Display;
 
 use crate::InodeType;
 
@@ -239,9 +240,43 @@ pub enum SeekFrom {
     Current(i64),
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(isize)]
+pub enum AtFd {
+    /// Special value used to indicate the *at functions should use the current
+    /// working directory.
+    FdCwd = -100,
+    /// Normal file descriptor
+    Normal(usize),
+}
+
+impl Display for AtFd {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            AtFd::FdCwd => write!(f, "AT_FDCWD"),
+            AtFd::Normal(fd) => write!(f, "{}", fd),
+        }
+    }
+}
+
+impl From<isize> for AtFd {
+    fn from(value: isize) -> Self {
+        match value {
+            AT_FDCWD => AtFd::FdCwd,
+            _ => AtFd::Normal(value as usize),
+        }
+    }
+}
+
+impl From<usize> for AtFd {
+    fn from(value: usize) -> Self {
+        (value as isize).into()
+    }
+}
+
 /// Special value used to indicate the *at functions should use the current
 /// working directory.
-pub const AT_FDCWD: i32 = -100;
+pub const AT_FDCWD: isize = -100;
 /// Do not follow symbolic links.
 pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
 /// Remove directory instead of unlinking file.

@@ -3,7 +3,7 @@ use alloc::{
     string::{String, ToString},
     sync::{Arc, Weak},
 };
-use core::mem::MaybeUninit;
+use core::{mem::MaybeUninit, str::FromStr};
 
 use systype::{SysError, SysResult, SyscallResult};
 
@@ -254,6 +254,6 @@ impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
     }
 
     fn path(&self) -> String {
-        String::new()
+        "no path".to_string()
     }
 }
