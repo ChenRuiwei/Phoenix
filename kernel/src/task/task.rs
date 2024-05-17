@@ -341,7 +341,6 @@ impl Task {
         let thread_group;
         let cwd;
         let itimers;
-        let fd_table;
         let futexes;
         let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
             self.sig_handlers.clone()
@@ -356,8 +355,6 @@ impl Task {
             thread_group = self.thread_group.clone();
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
-            // TODO: close on exec flag support
-            fd_table = self.fd_table.clone();
             futexes = self.futexes.clone();
         } else {
             is_leader = true;
@@ -371,7 +368,6 @@ impl Task {
                 ITimer::new_prof(),
             ]);
             cwd = new_shared(self.cwd());
-            fd_table = new_shared(self.fd_table.lock().clone());
             futexes = new_shared(Futexes::new());
         }
 
@@ -383,6 +379,13 @@ impl Task {
                 new_shared(self.with_mut_memory_space(|m| MemorySpace::from_user_lazily(m)));
             // TODO: avoid flushing global entries like kernel mappings
             unsafe { sfence_vma_all() };
+        }
+
+        let fd_table;
+        if flags.contains(CloneFlags::FILES) {
+            fd_table = self.fd_table.clone();
+        } else {
+            fd_table = new_shared(self.fd_table.lock().clone());
         }
 
         if let Some(sp) = stack {

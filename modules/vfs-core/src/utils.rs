@@ -5,7 +5,7 @@ use crate::InodeType;
 
 bitflags::bitflags! {
     // Defined in <bits/fcntl-linux.h>.
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct OpenFlags: i32 {
         // reserve 3 bits for the access mode
         // NOTE: bitflags do not encourage zero bit flag, we should not directly check `O_RDONLY`
