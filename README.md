@@ -8,6 +8,14 @@ Phoenix OS is a Unix-like OS for 2024 OS-Competition
 
 Rust编写的宏内核操作系统，基于RISC-V64硬件平台，支持多核
 
+## 完成情况
+
+### 初赛
+
+VisionFive 2赛道，初赛功能测试满分
+
+![primary_contest_result](docs/image/primary_contest_rank.png)
+
 ## 运行
 
 确保在项目 `my_os` 根目录下
