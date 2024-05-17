@@ -380,9 +380,15 @@ impl MemorySpace {
             .unwrap();
         log::debug!("[MemorySpace::reset_heap_break] heap range: {range:?}, new_brk: {new_brk:?}");
         let result = if new_brk > range.end {
-            self.areas.extend_back(range.start..new_brk)
+            let ret = self.areas.extend_back(range.start..new_brk);
+            let (range_va, vm_area) = self.areas.get_key_value_mut(range.start).unwrap();
+            vm_area.set_range_va(range_va);
+            ret
         } else if new_brk < range.end {
-            self.areas.reduce_back(range.start, new_brk)
+            let ret = self.areas.reduce_back(range.start, new_brk);
+            let (range_va, vm_area) = self.areas.get_key_value_mut(range.start).unwrap();
+            vm_area.set_range_va(range_va);
+            ret
         } else {
             Ok(())
         };
@@ -400,8 +406,9 @@ impl MemorySpace {
     /// memory.
     pub fn from_user(user_space: &Self) -> Self {
         let mut memory_space = Self::new_user();
-        for (_, area) in user_space.areas.iter() {
+        for (range, area) in user_space.areas.iter() {
             let new_area = VmArea::from_another(area);
+            debug_assert_eq!(range, new_area.range_va());
             memory_space.push_vma(new_area);
             // copy data from another space
             for vpn in area.range_vpn() {
@@ -418,9 +425,10 @@ impl MemorySpace {
     /// Clone a same `MemorySpace` lazily.
     pub fn from_user_lazily(user_space: &mut Self) -> Self {
         let mut memory_space = Self::new_user();
-        for (_, area) in user_space.areas.iter() {
+        for (range, area) in user_space.areas.iter() {
             log::debug!("[MemorySpace::from_user_lazily] cloning {area:?}");
             let new_area = area.clone();
+            debug_assert_eq!(range, new_area.range_va());
             for vpn in area.range_vpn() {
                 if let Some(page) = area.pages.get(&vpn) {
                     let pte = user_space.page_table.find_pte(vpn).unwrap();

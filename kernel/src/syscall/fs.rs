@@ -510,9 +510,16 @@ pub fn sys_fcntl(fd: usize, op: isize, arg: usize) -> SyscallResult {
     })?;
     log::info!("[sys_fcntl] fd: {fd}, op: {op:?}, arg: {arg}");
     match op {
+        FcntlOp::F_DUPFD => {
+            task.with_mut_fd_table(|table| table.dup_with_bound(fd, arg, OpenFlags::empty()))
+        }
         FcntlOp::F_DUPFD_CLOEXEC => {
             task.with_mut_fd_table(|table| table.dup_with_bound(fd, arg, OpenFlags::O_CLOEXEC))
         }
+        FcntlOp::F_GETFD => task.with_fd_table(|table| {
+            let fd_info = table.get(fd)?;
+            Ok(fd_info.flags().bits() as usize)
+        }),
         FcntlOp::F_SETFD => {
             let fd_flags = FdFlags::from_bits_truncate(arg as isize);
             task.with_mut_fd_table(|table| {
@@ -521,10 +528,16 @@ pub fn sys_fcntl(fd: usize, op: isize, arg: usize) -> SyscallResult {
                 Ok(0)
             })
         }
-        FcntlOp::F_GETFD => task.with_fd_table(|table| {
-            let fd_info = table.get(fd)?;
-            Ok(fd_info.flags().bits() as usize)
-        }),
+        FcntlOp::F_GETFL => {
+            let file = task.with_fd_table(|table| table.get_file(fd))?;
+            Ok(file.flags().bits() as _)
+        }
+        FcntlOp::F_SETFL => {
+            let flags = OpenFlags::from_bits_truncate(arg as _);
+            let file = task.with_fd_table(|table| table.get_file(fd))?;
+            file.set_flags(flags.status());
+            Ok(0)
+        }
         _ => {
             log::warn!("fcntl cmd: {op:?} not implemented");
             Ok(0)
@@ -776,6 +789,14 @@ pub fn sys_lseek(fd: usize, offset: isize, whence: usize) -> SyscallResult {
         Whence::SeekEnd => file.seek(SeekFrom::End(offset as i64)),
         _ => todo!(),
     }
+}
+
+/// umask() sets the calling process's file mode creation mask (umask) to mask &
+/// 0777 (i.e., only the file permission bits of mask are used), and returns the
+/// previous value of the mask.
+// TODO:
+pub fn sys_umask(_mask: i32) -> SyscallResult {
+    Ok(0x777)
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as

@@ -478,7 +478,7 @@ impl Task {
         self.with_mut_memory_space(|m| m.alloc_heap_lazily());
 
         // close fd on exec
-        self.with_mut_fd_table(|table| table.close_on_exec());
+        self.with_mut_fd_table(|table| table.do_close_on_exec());
 
         // init trap context
         self.trap_context_mut()

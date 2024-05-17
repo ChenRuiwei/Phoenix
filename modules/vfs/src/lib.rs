@@ -72,6 +72,8 @@ pub fn init() {
 
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);
 
+    sys_root_dentry().open().unwrap().load_dir();
+
     tty::init().unwrap();
 }
 

@@ -41,22 +41,30 @@ impl FileMeta {
 pub trait File: Send + Sync {
     fn meta(&self) -> &FileMeta;
 
-    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult;
+    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+        todo!()
+    }
 
-    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult;
+    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+        todo!()
+    }
 
     /// Read directory entries. This is called by the getdents(2) system call.
     ///
     /// For every call, this function will return an valid entry, or an error.
     /// If it read to the end of directory, it will return an empty entry.
-    fn base_read_dir(&self) -> SysResult<Option<DirEntry>>;
+    fn base_read_dir(&self) -> SysResult<Option<DirEntry>> {
+        todo!()
+    }
 
     /// Load all dentry and inodes in a directory. Will not advance dir offset.
     fn base_load_dir(&self) -> SysResult<()> {
         todo!()
     }
 
-    fn flush(&self) -> SysResult<usize>;
+    fn flush(&self) -> SysResult<usize> {
+        todo!()
+    }
 
     fn ioctl(&self, _cmd: usize, _arg: usize) -> SyscallResult {
         Err(SysError::ENOTTY)

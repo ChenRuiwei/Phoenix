@@ -180,8 +180,8 @@ impl FdTable {
         Ok(new_fd)
     }
 
-    pub fn close_on_exec(&mut self) {
-        for (_, slot) in self.table.iter_mut().enumerate() {
+    pub fn do_close_on_exec(&mut self) {
+        for slot in self.table.iter_mut() {
             if let Some(fd_info) = slot {
                 if fd_info.flags().contains(FdFlags::CLOEXEC) {
                     *slot = None;

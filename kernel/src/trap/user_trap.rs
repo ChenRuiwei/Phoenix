@@ -48,7 +48,7 @@ pub async fn trap_handler(task: &Arc<Task>) {
         Trap::Exception(Exception::StorePageFault)
         | Trap::Exception(Exception::InstructionPageFault)
         | Trap::Exception(Exception::LoadPageFault) => {
-            log::debug!(
+            log::info!(
                 "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
             );
             // There are serveral kinds of page faults:

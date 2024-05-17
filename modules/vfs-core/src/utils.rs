@@ -1,10 +1,15 @@
 use alloc::string::String;
 use core::fmt::Display;
 
+use bitflags::Flags;
+
 use crate::InodeType;
 
 bitflags::bitflags! {
     // Defined in <bits/fcntl-linux.h>.
+    // File access mode (O_RDONLY, O_WRONLY, O_RDWR).
+    // The file creation flags are O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL,
+    // O_NOCTTY, O_NOFOLLOW, O_TMPFILE, and O_TRUNC.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct OpenFlags: i32 {
         // reserve 3 bits for the access mode
@@ -37,12 +42,31 @@ bitflags::bitflags! {
 }
 
 impl OpenFlags {
+    pub const CREATION_FLAGS: Self = Self::O_CLOEXEC
+        .union(Self::O_CREAT)
+        .union(Self::O_DIRECTORY)
+        .union(Self::O_EXCL)
+        .union(Self::O_NOCTTY)
+        .union(Self::O_NOFOLLOW)
+        .union(Self::O_TMPFILE)
+        .union(Self::O_TRUNC);
+
     pub fn readable(&self) -> bool {
-        !self.contains(OpenFlags::O_WRONLY) || self.contains(OpenFlags::O_RDWR)
+        !self.contains(Self::O_WRONLY) || self.contains(Self::O_RDWR)
     }
 
     pub fn writable(&self) -> bool {
-        self.contains(OpenFlags::O_WRONLY) || self.contains(OpenFlags::O_RDWR)
+        self.contains(Self::O_WRONLY) || self.contains(Self::O_RDWR)
+    }
+
+    pub fn access_mode(&self) -> Self {
+        self.intersection(Self::O_ACCMODE)
+    }
+
+    pub fn status(&self) -> Self {
+        let mut ret = self.difference(Self::O_ACCMODE);
+        ret.remove(Self::CREATION_FLAGS);
+        ret
     }
 }
 
