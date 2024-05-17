@@ -124,7 +124,7 @@ pub fn sys_mmap(
                 // pointing to the same addr region by parent and child process
                 todo!()
             } else {
-                let file = task.with_fd_table(|table| table.get(fd))?;
+                let file = task.with_fd_table(|table| table.get_file(fd))?;
                 // PERF: lazy alloc for mmap
                 let start_va = task.with_mut_memory_space(|m| {
                     m.alloc_mmap_area(length, perm, flags, file, offset)
@@ -138,7 +138,7 @@ pub fn sys_mmap(
                     task.with_mut_memory_space(|m| m.alloc_mmap_private_anon(perm, length))?;
                 return Ok(start_va.bits());
             }
-            let file = task.with_fd_table(|table| table.get(fd))?;
+            let file = task.with_fd_table(|table| table.get_file(fd))?;
             let start_va = task
                 .with_mut_memory_space(|m| m.alloc_mmap_area(length, perm, flags, file, offset))?;
             Ok(start_va.bits())

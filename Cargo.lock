@@ -514,6 +514,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "async_utils",
+ "bitflags 2.5.0",
  "config",
  "driver",
  "fat32",

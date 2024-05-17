@@ -12,18 +12,37 @@ pub struct FdTable {
     table: Vec<Option<FdInfo>>,
 }
 
+bitflags::bitflags! {
+    // Defined in <bits/fcntl-linux.h>
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct FdFlags: isize {
+        const CLOEXEC = 1;
+    }
+}
+
+impl From<OpenFlags> for FdFlags {
+    fn from(value: OpenFlags) -> Self {
+        if value.contains(OpenFlags::O_CLOEXEC) {
+            FdFlags::CLOEXEC
+        } else {
+            log::warn!("[FdFlags::from] unsupported flag");
+            FdFlags::empty()
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct FdInfo {
     /// File descriptor flags, currently, only one such flag is defined:
     /// FD_CLOEXEC.
-    flags: OpenFlags,
+    flags: FdFlags,
     file: Arc<dyn File>,
 }
 
 impl FdInfo {
     pub fn new(file: Arc<dyn File>) -> Self {
         Self {
-            flags: OpenFlags::empty(),
+            flags: FdFlags::empty(),
             file,
         }
     }
@@ -32,20 +51,16 @@ impl FdInfo {
         self.file.clone()
     }
 
-    pub fn flags(&self) -> OpenFlags {
+    pub fn flags(&self) -> FdFlags {
         self.flags
     }
 
-    pub fn set_close_on_exec(&mut self) {
-        self.flags = OpenFlags::O_CLOEXEC;
+    pub fn set_flags(&mut self, flags: FdFlags) {
+        self.flags = flags
     }
 
-    /// Clone but not share file descriptor flags.
-    pub fn dup(&self) -> Self {
-        Self {
-            flags: OpenFlags::empty(),
-            file: self.file(),
-        }
+    pub fn set_close_on_exec(&mut self) {
+        self.flags = FdFlags::CLOEXEC;
     }
 }
 
@@ -92,12 +107,23 @@ impl FdTable {
         }
     }
 
-    pub fn get(&self, fd: Fd) -> SysResult<Arc<dyn File>> {
+    pub fn get_file(&self, fd: Fd) -> SysResult<Arc<dyn File>> {
+        Ok(self.get(fd)?.file())
+    }
+
+    pub fn get(&self, fd: Fd) -> SysResult<&FdInfo> {
         if fd >= self.table.len() {
             Err(SysError::EBADF)
         } else {
-            let file = self.table[fd].as_ref().ok_or(SysError::EBADF)?.file();
-            Ok(file)
+            self.table[fd].as_ref().ok_or(SysError::EBADF)
+        }
+    }
+
+    pub fn get_mut(&mut self, fd: Fd) -> SysResult<&mut FdInfo> {
+        if fd >= self.table.len() {
+            Err(SysError::EBADF)
+        } else {
+            self.table[fd].as_mut().ok_or(SysError::EBADF)
         }
     }
 
@@ -126,12 +152,12 @@ impl FdTable {
 
     /// Dup with no file descriptor flags.
     pub fn dup(&mut self, old_fd: Fd) -> SysResult<Fd> {
-        let file = self.get(old_fd)?;
+        let file = self.get_file(old_fd)?;
         self.alloc(file)
     }
 
     pub fn dup3(&mut self, old_fd: Fd, new_fd: Fd, flags: OpenFlags) -> SysResult<Fd> {
-        let file = self.get(old_fd)?;
+        let file = self.get_file(old_fd)?;
         self.insert(new_fd, file)?;
         if flags.contains(OpenFlags::O_CLOEXEC) {
             self.table[new_fd].as_mut().unwrap().set_close_on_exec();
@@ -145,7 +171,7 @@ impl FdTable {
         lower_bound: usize,
         flags: OpenFlags,
     ) -> SysResult<Fd> {
-        let file = self.get(old_fd)?;
+        let file = self.get_file(old_fd)?;
         let new_fd = self.find_free_slot_and_create(lower_bound);
         self.insert(new_fd, file)?;
         if flags.contains(OpenFlags::O_CLOEXEC) {
@@ -157,7 +183,7 @@ impl FdTable {
     pub fn close_on_exec(&mut self) {
         for (_, slot) in self.table.iter_mut().enumerate() {
             if let Some(fd_info) = slot {
-                if fd_info.flags().contains(OpenFlags::O_CLOEXEC) {
+                if fd_info.flags().contains(FdFlags::CLOEXEC) {
                     *slot = None;
                 }
             }
