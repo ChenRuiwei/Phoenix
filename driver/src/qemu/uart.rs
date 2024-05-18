@@ -1,5 +1,3 @@
-use alloc::sync::Arc;
-
 use config::mm::VIRT_RAM_OFFSET;
 use sync::mutex::SpinNoIrqLock;
 use uart_16550::MmioSerialPort;

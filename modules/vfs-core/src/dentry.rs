@@ -2,22 +2,12 @@ use alloc::{
     collections::BTreeMap,
     string::{String, ToString},
     sync::{Arc, Weak},
-    vec::Vec,
 };
-use core::{
-    hash::{Hash, Hasher},
-    mem::MaybeUninit,
-};
+use core::{mem::MaybeUninit, str::FromStr};
 
-use ahash::AHasher;
-use spin::Once;
 use systype::{SysError, SysResult, SyscallResult};
 
-use crate::{
-    dcache::{self, dcache, DCACHE},
-    inode::Inode,
-    super_block, File, InodeMode, InodeType, Mutex, SuperBlock,
-};
+use crate::{inode::Inode, File, InodeMode, Mutex, SuperBlock};
 
 pub struct DentryMeta {
     /// Name of this file or directory.
@@ -26,7 +16,6 @@ pub struct DentryMeta {
     /// Parent dentry. `None` if root dentry.
     pub parent: Option<Weak<dyn Dentry>>,
 
-    pub hash_key: HashKey,
     /// Inode it points to. May be `None`, which is called negative dentry.
     pub inode: Mutex<Option<Arc<dyn Inode>>>,
     /// Children dentries. Key value pair is <name, dentry>.
@@ -44,51 +33,22 @@ impl DentryMeta {
         let super_block = Arc::downgrade(&super_block);
         let inode = Mutex::new(None);
         if let Some(parent) = parent {
-            let mut ahasher = AHasher::default();
-            name.hash(&mut ahasher);
-            let hash_key = HashKey {
-                parent_ino: parent.inode().unwrap().ino(),
-                name_hash: ahasher.finish(),
-            };
             Self {
                 name: name.to_string(),
                 super_block,
                 inode,
                 parent: Some(Arc::downgrade(&parent)),
                 children: Mutex::new(BTreeMap::new()),
-                hash_key,
             }
         } else {
-            let hash_key = HashKey {
-                parent_ino: 0,
-                name_hash: 0,
-            };
             Self {
                 name: name.to_string(),
                 super_block,
                 inode,
                 parent: None,
                 children: Mutex::new(BTreeMap::new()),
-                hash_key,
             }
         }
-    }
-}
-
-#[derive(Copy, Eq, Hash, PartialEq, Clone, Debug)]
-pub struct HashKey {
-    pub parent_ino: usize,
-    pub name_hash: u64,
-}
-
-impl HashKey {
-    pub fn new(parent: &Arc<dyn Dentry>, name: &str) -> SysResult<Self> {
-        let mut ahasher = AHasher::default();
-        name.hash(&mut ahasher);
-        Ok(Self {
-            parent_ino: parent.inode()?.ino(),
-            name_hash: ahasher.finish(),
-        })
     }
 }
 
@@ -121,7 +81,7 @@ pub trait Dentry: Send + Sync {
     fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult;
 
     /// Create a negetive child dentry with `name`.
-    fn base_new_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+    fn base_new_child(self: Arc<Self>, _name: &str) -> Arc<dyn Dentry> {
         todo!()
     }
 
@@ -210,10 +170,6 @@ impl dyn Dentry {
         *self.meta().inode.lock() = None;
     }
 
-    pub fn hash(&self) -> HashKey {
-        self.meta().hash_key
-    }
-
     /// Remove a child from this dentry and return the child.
     pub fn remove(&self, name: &str) -> Option<Arc<dyn Dentry>> {
         self.meta().children.lock().remove(name)
@@ -259,7 +215,7 @@ impl dyn Dentry {
     /// Create a negetive child dentry with `name`.
     pub fn new_child(self: &Arc<Self>, name: &str) -> Arc<dyn Dentry> {
         let child = self.clone().base_new_child(name);
-        dcache().insert(child.clone());
+        // dcache().insert(child.clone());
         child
     }
 
@@ -281,19 +237,23 @@ impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
         todo!()
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SyscallResult {
         todo!()
     }
 
-    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_rmdir(self: Arc<Self>, _name: &str) -> SyscallResult {
         todo!()
+    }
+
+    fn path(&self) -> String {
+        "no path".to_string()
     }
 }

@@ -3,9 +3,8 @@
 #![feature(format_args_nl)]
 
 use alloc::sync::Arc;
-use core::mem::size_of;
 
-use driver::{println, BlockDevice};
+use driver::BlockDevice;
 use fatfs::{DefaultTimeProvider, Dir, DirIter, Error, File, FileSystem, LossyOemCpConverter};
 use sync::mutex::SpinNoIrqLock;
 use systype::SysError;

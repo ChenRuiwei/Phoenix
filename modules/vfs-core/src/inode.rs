@@ -1,23 +1,10 @@
-use alloc::{
-    string::String,
-    sync::{Arc, Weak},
-    vec::Vec,
-};
-use core::{mem::MaybeUninit, sync::atomic::AtomicUsize};
+use alloc::sync::{Arc, Weak};
+use core::mem::MaybeUninit;
 
-use bitflags::Flags;
 use downcast_rs::{impl_downcast, DowncastSync};
-use spin::Once;
-use systype::{SysError, SysResult};
+use systype::SysResult;
 
-use crate::{
-    address_space::AddressSpace,
-    alloc_ino,
-    file::File,
-    super_block,
-    utils::{RenameFlag, Stat, Time, TimeSpec},
-    Dentry, Mutex, SuperBlock,
-};
+use crate::{address_space::AddressSpace, alloc_ino, Mutex, Stat, SuperBlock, TimeSpec};
 
 pub struct InodeMeta {
     /// Inode number.

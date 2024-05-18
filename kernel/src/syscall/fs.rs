@@ -1,8 +1,6 @@
-use alloc::{collections::BTreeMap, ffi::CString, sync::Arc, vec, vec::Vec};
+use alloc::{ffi::CString, sync::Arc, vec, vec::Vec};
 use core::{
-    future::{self, Future},
-    mem::size_of,
-    ops::DerefMut,
+    future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -10,23 +8,22 @@ use core::{
 use async_utils::{dyn_future, Async};
 use driver::BLOCK_DEVICE;
 use memory::VirtAddr;
+use strum::FromRepr;
 use systype::{SysError, SysResult, SyscallResult};
 use time::timespec::TimeSpec;
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
-use vfs::{pipe::new_pipe, sys_root_dentry, FS_MANAGER};
+use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    is_absolute_path, Dentry, Inode, InodeMode, InodeType, MountFlags, OpenFlags, Path, PollEvents,
-    SeekFrom, AT_FDCWD, AT_REMOVEDIR,
+    is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, MountFlags, OpenFlags,
+    Path, PollEvents, SeekFrom, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use crate::{
     mm::{UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr},
-    processor::{
-        env::within_sum,
-        hart::{current_task, local_hart},
-    },
+    processor::{env::within_sum, hart::current_task},
 };
 
+// Defined in <bits/struct_stat.h>
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Kstat {
@@ -95,7 +92,7 @@ impl Kstat {
 // TODO:
 pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallResult {
     let task = current_task();
-    let file = task.with_fd_table(|table| table.get(fd))?;
+    let file = task.with_fd_table(|table| table.get_file(fd))?;
     let buf = buf.into_slice(&task, len)?;
     let ret = file.write(&buf).await?;
     Ok(ret)
@@ -108,7 +105,7 @@ pub async fn sys_write(fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallRe
 /// file), and the file position is advanced by this number.
 pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallResult {
     let task = current_task();
-    let file = task.with_fd_table(|table| table.get(fd))?;
+    let file = task.with_fd_table(|table| table.get_file(fd))?;
     log::info!("[sys_read] reading file {}", file.dentry().path());
     let mut buf = buf.into_mut_slice(&task, len)?;
     let ret = file.read(&mut buf).await?;
@@ -133,12 +130,14 @@ pub async fn sys_read(fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallRe
 /// flags; if it is not supplied, some arbitrary bytes from the stack will be
 /// applied as the file mode.
 // TODO:
-pub fn sys_openat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32, mode: u32) -> SyscallResult {
+pub fn sys_openat(dirfd: AtFd, pathname: UserReadPtr<u8>, flags: i32, mode: u32) -> SyscallResult {
     let task = current_task();
     let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     let mode = InodeMode::from_bits_truncate(mode);
     let pathname = pathname.read_cstr(&task)?;
-    log::debug!("[sys_openat] {flags:?}, {mode:?}");
+    log::info!(
+        "[sys_openat] dirfd: {dirfd}, pathname: {pathname}, flags: {flags:?}, mode: {mode:?}"
+    );
     let dentry = at_helper(dirfd, &pathname, mode)?;
     if flags.contains(OpenFlags::O_CREAT) {
         // If pathname does not exist, create it as a regular file.
@@ -172,7 +171,7 @@ pub fn sys_close(fd: usize) -> SyscallResult {
 ///
 /// mkdir() and mkdirat() return zero on success.  On error, -1 is returned and
 /// errno is set to indicate the error.
-pub fn sys_mkdirat(dirfd: isize, pathname: UserReadPtr<u8>, mode: u32) -> SyscallResult {
+pub fn sys_mkdirat(dirfd: AtFd, pathname: UserReadPtr<u8>, mode: u32) -> SyscallResult {
     let task = current_task();
     let mode = InodeMode::from_bits_truncate(mode);
     let pathname = pathname.read_cstr(&task)?;
@@ -262,6 +261,7 @@ pub fn sys_chdir(path: UserReadPtr<u8>) -> SyscallResult {
 /// On success, these system calls return the new file descriptor.  On error, -1
 /// is returned, and errno is set to indicate the error.
 pub fn sys_dup(oldfd: usize) -> SyscallResult {
+    log::info!("[sys_dup] oldfd: {oldfd}");
     let task = current_task();
     task.with_mut_fd_table(|table| table.dup(oldfd))
 }
@@ -290,28 +290,28 @@ pub fn sys_dup(oldfd: usize) -> SyscallResult {
 ///   descriptor by specifying O_CLOEXEC in flags. See the description of the
 ///   same flag in open(2) for reasons why this may be useful.
 /// + If oldfd equals newfd, then dup3() fails with the error EINVAL.
-// TODO: flags support
 pub fn sys_dup3(oldfd: usize, newfd: usize, flags: i32) -> SyscallResult {
+    let task = current_task();
+    let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+    log::info!("[sys_dup3] oldfd: {oldfd}, new_fd: {newfd}, flags: {flags:?}");
     if oldfd == newfd {
         return Err(SysError::EINVAL);
     }
-    let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
-    let task = current_task();
-    task.with_mut_fd_table(|table| table.dup3(oldfd, newfd))
+    task.with_mut_fd_table(|table| table.dup3(oldfd, newfd, flags))
 }
 
 pub fn sys_fstat(fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
     let task = current_task();
-    let file = task.with_fd_table(|table| table.get(fd))?;
+    let file = task.with_fd_table(|table| table.get_file(fd))?;
     stat_buf.write(&task, Kstat::from_vfs_file(file.inode())?)?;
     Ok(0)
 }
 
 pub fn sys_fstatat(
-    dirfd: isize,
+    dirfd: AtFd,
     pathname: UserReadPtr<u8>,
     stat_buf: UserWritePtr<Kstat>,
-    flags: i32,
+    _flags: i32,
 ) -> SyscallResult {
     let task = current_task();
     let path = pathname.read_cstr(&task)?;
@@ -329,7 +329,7 @@ pub async fn sys_mount(
 ) -> SyscallResult {
     let task = current_task();
     let source = source.read_cstr(&task)?;
-    let target = target.read_cstr(&task)?; // must absolute? not mentioned in man
+    let target = target.read_cstr(&task)?;
     let fstype = fstype.read_cstr(&task)?;
     let flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     log::debug!(
@@ -344,8 +344,8 @@ pub async fn sys_mount(
         .get(&fstype)
         .unwrap_or(&fat32_type.clone())
         .clone();
-    let fs_root = match fs_type.name() {
-        name @ ("fat32") => {
+    let _fs_root = match fs_type.name() {
+        name @ "fat32" => {
             let dev = if name.eq("fat32") {
                 // here should be getting device according to inode
                 // it seems that device hasn't been associated with inode yet.
@@ -360,9 +360,11 @@ pub async fn sys_mount(
             } else {
                 None
             };
+            let (parent, name) = split_parent_and_name(&target);
 
-            let abs_target = resolve_path(&target)?.path();
-            fs_type.mount(&abs_target, flags, dev)?
+            let parent = resolve_path(parent)?;
+            // let dentry = resolve_path(&target)?;
+            fs_type.mount(name.unwrap(), Some(parent), flags, dev)?
         }
         _ => return Err(SysError::EINVAL),
     };
@@ -373,7 +375,7 @@ pub async fn sys_mount(
 pub async fn sys_umount2(target: UserReadPtr<u8>, flags: u32) -> SyscallResult {
     let task = current_task();
     let mount_path = target.read_cstr(&task)?;
-    let flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+    let _flags = MountFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
     log::info!("[sys_umount2] umount path:{mount_path:?}");
     Ok(0)
 }
@@ -394,7 +396,7 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
     // `size_of::<LinuxDirent64>` equals 24, which is not what we want.
     const LEN_BEFORE_NAME: usize = 19;
     let task = current_task();
-    let file = task.with_fd_table(|table| table.get(fd))?;
+    let file = task.with_fd_table(|table| table.get_file(fd))?;
     let mut writen_len = 0;
     let _ = UserWritePtr::<u8>::from(buf).into_mut_slice(&task, len)?;
     while let Some(dirent) = file.read_dir()? {
@@ -436,7 +438,7 @@ pub fn sys_getdents64(fd: usize, buf: usize, len: usize) -> SyscallResult {
 /// requirement standardizing this behavior was added in POSIX.1-2008 TC2. The
 /// Linux-specific pipe2() system call likewise does not modify pipefd on
 /// failure.
-pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
+pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, _flags: i32) -> SyscallResult {
     let task = current_task();
     let (pipe_read, pipe_write) = new_pipe();
     let pipe = task.with_mut_fd_table(|table| {
@@ -468,7 +470,7 @@ pub fn sys_pipe2(pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
 ///   on pathname. If the AT_REMOVEDIR flag is specified, it performs the
 ///   equivalent of rmdir(2) on pathname.
 // FIXME: removal is not delayed, could be done in vfs layer
-pub fn sys_unlinkat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32) -> SyscallResult {
+pub fn sys_unlinkat(dirfd: AtFd, pathname: UserReadPtr<u8>, flags: i32) -> SyscallResult {
     let task = current_task();
     let path = pathname.read_cstr(&task)?;
     let dentry = at_helper(dirfd, &path, InodeMode::empty())?;
@@ -482,40 +484,62 @@ pub fn sys_unlinkat(dirfd: isize, pathname: UserReadPtr<u8>, flags: i32) -> Sysc
 
 pub fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> SyscallResult {
     let task = current_task();
-    let file = task.with_fd_table(|table| table.get(fd))?;
+    let file = task.with_fd_table(|table| table.get_file(fd))?;
     within_sum(|| file.ioctl(cmd, arg))
 }
 
-const F_DUPFD: i32 = 0;
-const F_DUPFD_CLOEXEC: i32 = 1030;
-const F_GETFD: i32 = 1;
-const F_SETFD: i32 = 2;
-const F_GETFL: i32 = 3;
-const F_SETFL: i32 = 4;
+// Defined in <bits/fcntl-linux.h>
+#[derive(FromRepr, Debug, Eq, PartialEq, Clone, Copy)]
+#[allow(non_camel_case_types)]
+#[repr(isize)]
+pub enum FcntlOp {
+    F_DUPFD = 0,
+    F_DUPFD_CLOEXEC = 1030,
+    F_GETFD = 1,
+    F_SETFD = 2,
+    F_GETFL = 3,
+    F_SETFL = 4,
+}
 
 // TODO:
-pub fn sys_fcntl(fd: usize, op: i32, arg: usize) -> SyscallResult {
+pub fn sys_fcntl(fd: usize, op: isize, arg: usize) -> SyscallResult {
     let task = current_task();
+    let op = FcntlOp::from_repr(op).ok_or_else(|| {
+        log::warn!("[sys_fcntl]: op {op} not implemented");
+        todo!()
+    })?;
+    log::info!("[sys_fcntl] fd: {fd}, op: {op:?}, arg: {arg}");
     match op {
-        F_DUPFD_CLOEXEC => {
-            let new_fd = task.with_mut_fd_table(|table| table.dup_with_bound(fd, arg));
-            new_fd
+        FcntlOp::F_DUPFD => {
+            task.with_mut_fd_table(|table| table.dup_with_bound(fd, arg, OpenFlags::empty()))
         }
-        F_SETFD => {
-            const FD_CLOEXEC: usize = 1;
-            let file = task.with_fd_table(|table| table.get(fd))?;
-            let flags = file.flags();
-            if arg & FD_CLOEXEC == 0 {
-                // do not close on execve
-                file.set_flags(flags & !OpenFlags::O_CLOEXEC);
-            } else {
-                // do close on execve
-                file.set_flags(flags | OpenFlags::O_CLOEXEC);
-            }
+        FcntlOp::F_DUPFD_CLOEXEC => {
+            task.with_mut_fd_table(|table| table.dup_with_bound(fd, arg, OpenFlags::O_CLOEXEC))
+        }
+        FcntlOp::F_GETFD => task.with_fd_table(|table| {
+            let fd_info = table.get(fd)?;
+            Ok(fd_info.flags().bits() as usize)
+        }),
+        FcntlOp::F_SETFD => {
+            let fd_flags = FdFlags::from_bits_truncate(arg as isize);
+            task.with_mut_fd_table(|table| {
+                let fd_info = table.get_mut(fd)?;
+                fd_info.set_flags(fd_flags);
+                Ok(0)
+            })
+        }
+        FcntlOp::F_GETFL => {
+            let file = task.with_fd_table(|table| table.get_file(fd))?;
+            Ok(file.flags().bits() as _)
+        }
+        FcntlOp::F_SETFL => {
+            let flags = OpenFlags::from_bits_truncate(arg as _);
+            let file = task.with_fd_table(|table| table.get_file(fd))?;
+            file.set_flags(flags.status());
             Ok(0)
         }
         _ => {
-            log::warn!("fcntl cmd: {} not implemented, returning 0 as default", op);
+            log::warn!("fcntl cmd: {op:?} not implemented");
             Ok(0)
         }
     }
@@ -532,7 +556,7 @@ pub struct IoVec {
 /// the file associated with the file descriptor fd ("gather output").
 pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> SyscallResult {
     let task = current_task();
-    let file = task.with_fd_table(|f| f.get(fd))?;
+    let file = task.with_fd_table(|f| f.get_file(fd))?;
     let mut offset = file.pos();
     let mut total_len = 0;
     let iovs = iov.read_array(&task, iovcnt)?;
@@ -555,7 +579,7 @@ pub async fn sys_writev(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> Sy
 /// the file descriptor fd into the buffers described by iov ("scatter input").
 pub async fn sys_readv(fd: usize, iov: UserReadPtr<IoVec>, iovcnt: usize) -> SyscallResult {
     let task = current_task();
-    let file = task.with_fd_table(|f| f.get(fd))?;
+    let file = task.with_fd_table(|f| f.get_file(fd))?;
     let mut offset = file.pos();
     let mut total_len = 0;
     let iovs = iov.read_array(&task, iovcnt)?;
@@ -586,7 +610,7 @@ pub async fn sys_ppoll(
     fds: UserRdWrPtr<PollFd>,
     nfds: usize,
     timeout_ts: UserReadPtr<TimeSpec>,
-    sigmask: usize,
+    _sigmask: usize,
 ) -> SyscallResult {
     let task = current_task();
     let fds_va: VirtAddr = fds.as_usize().into();
@@ -627,7 +651,7 @@ pub async fn sys_ppoll(
     for poll_fd in poll_fds.iter() {
         let fd = poll_fd.fd as usize;
         let events = PollEvents::from_bits(poll_fd.events).unwrap();
-        let file = task.with_fd_table(|table| table.get(fd))?;
+        let file = task.with_fd_table(|table| table.get_file(fd))?;
         let future = dyn_future(async move { file.poll(events).await });
         futures.push(future);
     }
@@ -698,9 +722,10 @@ pub async fn sys_sendfile(
     offset: UserRdWrPtr<usize>,
     count: usize,
 ) -> SyscallResult {
+    log::info!("[sys_sendfile] out_fd: {out_fd}, in_fd: {in_fd}, offset: {offset}, count: {count}");
     let task = current_task();
     let (in_file, out_file) =
-        task.with_fd_table(|table| Ok((table.get(in_fd)?, table.get(out_fd)?)))?;
+        task.with_fd_table(|table| Ok((table.get_file(in_fd)?, table.get_file(out_fd)?)))?;
     if !in_file.flags().readable() || !out_file.flags().writable() {
         return Err(SysError::EBADF);
     }
@@ -710,14 +735,68 @@ pub async fn sys_sendfile(
     } else {
         let mut offset = offset.into_mut(&task)?;
         let len = in_file.read_at(*offset, &mut buf).await?;
-        *offset.deref_mut() = *offset + len;
+        *offset = *offset + len;
     }
     let ret = out_file.write(&buf).await?;
     Ok(ret)
 }
 
-pub fn sys_umask() -> SyscallResult {
-    Ok(0o777)
+/// access() checks whether the calling process can access the file pathname.
+/// If pathname is a symbolic link, it is dereferenced.
+// TODO:
+pub fn sys_faccessat(
+    dirfd: AtFd,
+    pathname: UserReadPtr<u8>,
+    _mode: usize,
+    _flags: usize,
+) -> SyscallResult {
+    let task = current_task();
+    let pathname = pathname.read_cstr(&task)?;
+    let dentry = at_helper(dirfd, &pathname, InodeMode::empty())?;
+    dentry.open()?;
+    Ok(0)
+}
+
+/// lseek() repositions the file offset of the open file description associated
+/// with the file descriptor fd to the argument offset according to the
+/// directive whence as follows:
+/// + SEEK_SET: The file offset is set to offset bytes.
+/// + SEEK_CUR: The file offset is set to its current location plus offset
+///   bytes.
+/// + SEEK_END: The file offset is set to the size of the file plus offset
+///   bytes.
+///
+/// lseek() allows the file offset to be set beyond the end of the file (but
+/// this does not change the size of the file). If data is later written at this
+/// point, subsequent reads of the data in the gap (a "hole") return null bytes
+/// ('\0') until data is actually written into the gap.
+pub fn sys_lseek(fd: usize, offset: isize, whence: usize) -> SyscallResult {
+    #[derive(FromRepr)]
+    #[repr(usize)]
+    enum Whence {
+        SeekSet = 0,
+        SeekCur = 1,
+        SeekEnd = 2,
+        SeekData = 3,
+        SeekHold = 4,
+    }
+    let task = current_task();
+    let file = task.with_fd_table(|table| table.get_file(fd))?;
+    let whence = Whence::from_repr(whence).ok_or(SysError::EINVAL)?;
+    match whence {
+        Whence::SeekSet => file.seek(SeekFrom::Start(offset as u64)),
+        Whence::SeekCur => file.seek(SeekFrom::Current(offset as i64)),
+        Whence::SeekEnd => file.seek(SeekFrom::End(offset as i64)),
+        _ => todo!(),
+    }
+}
+
+/// umask() sets the calling process's file mode creation mask (umask) to mask &
+/// 0777 (i.e., only the file permission bits of mask are used), and returns the
+/// previous value of the mask.
+// TODO:
+pub fn sys_umask(_mask: i32) -> SyscallResult {
+    Ok(0x777)
 }
 
 /// The dirfd argument is used in conjunction with the pathname argument as
@@ -731,22 +810,24 @@ pub fn sys_umask() -> SyscallResult {
 ///   than relative to the current working directory of the calling process, as
 ///   is done by open() for a relative pathname).  In this case, dirfd must be a
 ///   directory that was opened for reading (O_RDONLY) or using the O_PATH flag.
-pub fn at_helper(fd: isize, path: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+pub fn at_helper(fd: AtFd, path: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
     log::info!("[at_helper] fd: {fd}, path: {path}");
     let task = current_task();
     let path = if is_absolute_path(path) {
         Path::new(sys_root_dentry(), sys_root_dentry(), path)
-    } else if fd as i32 == AT_FDCWD {
-        Path::new(sys_root_dentry(), task.cwd(), path)
     } else {
-        let fd = fd as usize;
-        let file = task.with_fd_table(|table| table.get(fd))?;
-        Path::new(sys_root_dentry(), file.dentry(), path)
+        match fd {
+            AtFd::FdCwd => Path::new(sys_root_dentry(), task.cwd(), path),
+            AtFd::Normal(fd) => {
+                let file = task.with_fd_table(|table| table.get_file(fd))?;
+                Path::new(sys_root_dentry(), file.dentry(), path)
+            }
+        }
     };
-    path.walk(mode)
+    path.walk()
 }
 
 /// Given a path, absolute or relative, will find.
 pub fn resolve_path(path: &str) -> SysResult<Arc<dyn Dentry>> {
-    at_helper(AT_FDCWD as isize, path, InodeMode::empty())
+    at_helper(AtFd::FdCwd, path, InodeMode::empty())
 }

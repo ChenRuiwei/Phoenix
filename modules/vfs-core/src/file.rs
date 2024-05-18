@@ -1,19 +1,18 @@
-use alloc::{boxed::Box, string::ToString, sync::Arc, vec, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
 use core::{
-    cmp, ops,
+    cmp,
     sync::atomic::{AtomicUsize, Ordering},
     usize,
 };
 
 use async_trait::async_trait;
 use config::mm::{PAGE_MASK, PAGE_SIZE};
-use memory::{address, page::Page};
+use memory::page::Page;
 use spin::Mutex;
-use systype::{ASyscallResult, SysError, SysResult, SyscallResult};
+use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{
-    address_space, Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom,
-    SuperBlock,
+    Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom, SuperBlock,
 };
 
 pub struct FileMeta {
@@ -36,51 +35,38 @@ impl FileMeta {
             flags: Mutex::new(OpenFlags::empty()),
         }
     }
-
-    pub fn new_with_flags(
-        dentry: Arc<dyn Dentry>,
-        inode: Arc<dyn Inode>,
-        flags: OpenFlags,
-    ) -> Self {
-        Self {
-            dentry,
-            inode,
-            pos: 0.into(),
-            flags: Mutex::new(flags),
-        }
-    }
 }
 
 #[async_trait]
 pub trait File: Send + Sync {
     fn meta(&self) -> &FileMeta;
 
-    /// Called by read(2) and related system calls.
-    ///
-    /// On success, the number of bytes read is returned (zero indicates end of
-    /// file), and the file position is advanced by this number.
-    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult;
+    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+        todo!()
+    }
 
-    /// Called by write(2) and related system calls.
-    ///
-    /// On success, the number of bytes written is returned, and the file offset
-    /// is incremented by the number of bytes actually written.
-    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult;
+    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+        todo!()
+    }
 
     /// Read directory entries. This is called by the getdents(2) system call.
     ///
     /// For every call, this function will return an valid entry, or an error.
     /// If it read to the end of directory, it will return an empty entry.
-    fn base_read_dir(&self) -> SysResult<Option<DirEntry>>;
+    fn base_read_dir(&self) -> SysResult<Option<DirEntry>> {
+        todo!()
+    }
 
     /// Load all dentry and inodes in a directory. Will not advance dir offset.
     fn base_load_dir(&self) -> SysResult<()> {
         todo!()
     }
 
-    fn flush(&self) -> SysResult<usize>;
+    fn flush(&self) -> SysResult<usize> {
+        todo!()
+    }
 
-    fn ioctl(&self, cmd: usize, arg: usize) -> SyscallResult {
+    fn ioctl(&self, _cmd: usize, _arg: usize) -> SyscallResult {
         Err(SysError::ENOTTY)
     }
 
@@ -106,7 +92,7 @@ pub trait File: Send + Sync {
     /// Called when the VFS needs to move the file position index.
     ///
     /// Return the result offset.
-    fn seek(&self, pos: SeekFrom) -> SysResult<usize> {
+    fn seek(&self, pos: SeekFrom) -> SyscallResult {
         let mut res_pos = self.pos();
         match pos {
             SeekFrom::Current(off) => {
@@ -178,7 +164,7 @@ impl dyn File {
         let inode = self.inode();
         let Some(address_space) = inode.address_space() else {
             log::debug!("[File::read] read without address_space");
-            let count = self.base_read(offset, buf).await?;
+            let count = self.base_read_at(offset, buf).await?;
             return Ok(count);
         };
         log::debug!("[File::read] read with address_space");
@@ -194,7 +180,9 @@ impl dyn File {
             } else {
                 log::trace!("[File::read] offset {offset_aligned} not cached in address space");
                 let page = Page::new();
-                let len = self.base_read(offset_aligned, page.bytes_array()).await?;
+                let len = self
+                    .base_read_at(offset_aligned, page.bytes_array())
+                    .await?;
                 if len == 0 {
                     log::warn!("[File::read] reach file end");
                     break;
@@ -219,7 +207,7 @@ impl dyn File {
     /// On success, the number of bytes written is returned, and the file offset
     /// is incremented by the number of bytes actually written.
     pub async fn write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
-        self.base_write(offset, buf).await
+        self.base_write_at(offset, buf).await
     }
 
     /// Read from offset in self, and will fill `buf` until `buf` is full or eof
@@ -272,9 +260,9 @@ impl dyn File {
 
     /// Read all data from this file synchronously.
     pub async fn read_all(&self) -> SysResult<Vec<u8>> {
-        log::info!("[File::read_all_from_start] file size {}", self.size());
+        log::info!("[File::read_all] file size {}", self.size());
         let mut buf = vec![0; self.size()];
-        self.read_at(0, &mut buf).await;
+        self.read_at(0, &mut buf).await?;
         Ok(buf)
     }
 }

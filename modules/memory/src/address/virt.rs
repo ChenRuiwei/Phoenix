@@ -3,7 +3,10 @@ use core::fmt::{self};
 
 use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM};
 
-use super::{impl_arithmetic_with_usize, impl_fmt, impl_step, offset::OffsetAddr};
+use super::{
+    impl_arithmetic_with_usize, impl_fmt, impl_step,
+    offset::{OffsetAddr, OffsetPageNum},
+};
 use crate::address::{VA_WIDTH_SV39, VPN_WIDTH_SV39};
 
 /// Virtual address
@@ -135,9 +138,15 @@ impl VirtPageNum {
     pub fn to_va(&self) -> VirtAddr {
         (*self).into()
     }
+
+    pub fn to_offset(&self) -> OffsetPageNum {
+        (*self).into()
+    }
+
     pub fn next(&self) -> Self {
         *self + 1
     }
+
     /// Return VPN 3 level indices
     pub fn indices(&self) -> [usize; PAGE_TABLE_LEVEL_NUM] {
         let mut vpn = self.0;

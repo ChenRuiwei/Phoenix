@@ -1,7 +1,6 @@
 use core::isize;
 
 use arch::time::get_time_duration;
-use async_utils::dyn_future;
 use config::mm::{PAGE_MASK, PAGE_SIZE};
 use memory::VirtAddr;
 use systype::{SysError, SyscallResult};
@@ -135,7 +134,7 @@ pub fn sys_mmap(
                 // pointing to the same addr region by parent and child process
                 todo!()
             } else {
-                let file = task.with_fd_table(|table| table.get(fd))?;
+                let file = task.with_fd_table(|table| table.get_file(fd))?;
                 // PERF: lazy alloc for mmap
                 let start_va = task.with_mut_memory_space(|m| {
                     m.alloc_mmap_area(length, perm, flags, file, offset)
@@ -149,7 +148,7 @@ pub fn sys_mmap(
                     task.with_mut_memory_space(|m| m.alloc_mmap_private_anon(perm, length))?;
                 return Ok(start_va.bits());
             }
-            let file = task.with_fd_table(|table| table.get(fd))?;
+            let file = task.with_fd_table(|table| table.get_file(fd))?;
             let start_va = task
                 .with_mut_memory_space(|m| m.alloc_mmap_area(length, perm, flags, file, offset))?;
             Ok(start_va.bits())
@@ -172,7 +171,7 @@ pub fn sys_mmap(
 /// On success, munmap() returns 0. On failure, it returns -1, and errno is
 /// set to indicate the error (probably to EINVAL).
 // TODO:
-pub fn sys_munmap(addr: VirtAddr, length: usize) -> SyscallResult {
+pub fn sys_munmap(_addr: VirtAddr, _length: usize) -> SyscallResult {
     // if !addr.is_aligned() {
     //     return Err(SysError::EINVAL);
     // }

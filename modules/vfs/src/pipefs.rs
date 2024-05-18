@@ -5,8 +5,8 @@ use async_utils::yield_now;
 use config::fs::PIPE_BUF_CAPACITY;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sync::mutex::SpinNoIrqLock;
-use systype::SysError;
-use vfs_core::{arc_zero, File, FileMeta, Inode, InodeMeta, InodeMode};
+use systype::{SysError, SysResult};
+use vfs_core::{arc_zero, File, FileMeta, FileSystemType, Inode, InodeMeta, InodeMode, Stat};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
@@ -37,8 +37,26 @@ impl Inode for PipeInode {
         &self.meta
     }
 
-    fn get_attr(&self) -> systype::SysResult<vfs_core::Stat> {
-        todo!()
+    fn get_attr(&self) -> SysResult<Stat> {
+        let inner = self.meta.inner.lock();
+        Ok(Stat {
+            st_dev: 0,
+            st_ino: self.meta.ino as u64,
+            st_mode: self.meta.mode.bits(),
+            st_nlink: 1,
+            st_uid: 0,
+            st_gid: 0,
+            st_rdev: 0,
+            __pad: 0,
+            st_size: inner.size as u64,
+            st_blksize: 0,
+            __pad2: 0,
+            st_blocks: 0 as u64,
+            st_atime: inner.atime,
+            st_mtime: inner.mtime,
+            st_ctime: inner.ctime,
+            unused: 0,
+        })
     }
 }
 
@@ -81,11 +99,11 @@ impl File for PipeWriteFile {
         &self.meta
     }
 
-    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SysResult<usize> {
         todo!()
     }
 
-    async fn base_write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
+    async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SysResult<usize> {
         let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()
@@ -100,14 +118,6 @@ impl File for PipeWriteFile {
         log::trace!("[Pipe::write] already write buf {buf:?} with data len {len:?}");
         Ok(len)
     }
-
-    fn base_read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
-        todo!()
-    }
-
-    fn flush(&self) -> systype::SysResult<usize> {
-        todo!()
-    }
 }
 
 #[async_trait]
@@ -116,7 +126,7 @@ impl File for PipeReadFile {
         &self.meta
     }
 
-    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
         let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()
@@ -139,15 +149,7 @@ impl File for PipeReadFile {
         Ok(len)
     }
 
-    async fn base_write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
-        todo!()
-    }
-
-    fn base_read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
-        todo!()
-    }
-
-    fn flush(&self) -> systype::SysResult<usize> {
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> systype::SysResult<usize> {
         todo!()
     }
 }

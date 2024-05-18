@@ -6,7 +6,4 @@
 
 extern crate alloc;
 
-#[macro_use]
-extern crate bitflags;
-
 pub mod mutex;

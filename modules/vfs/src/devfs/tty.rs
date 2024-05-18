@@ -1,20 +1,15 @@
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use core::{
-    future::Future,
-    mem::MaybeUninit,
-    pin::Pin,
-    task::{Poll, Waker},
-};
 
 use async_trait::async_trait;
-use async_utils::{suspend_now, take_waker, yield_now};
-use config::process::INIT_PROC_PID;
+use async_utils::{take_waker, yield_now};
 use driver::{getchar, print, CHAR_DEVICE};
 use spin::Once;
 use strum::FromRepr;
 use sync::mutex::{SleepLock, SpinNoIrqLock};
 use systype::{SysResult, SyscallResult};
-use vfs_core::{Dentry, DentryMeta, File, FileMeta, Inode, InodeMeta, InodeMode, Path, SuperBlock};
+use vfs_core::{
+    Dentry, DentryMeta, File, FileMeta, Inode, InodeMeta, InodeMode, Path, Stat, SuperBlock,
+};
 
 use crate::sys_root_dentry;
 
@@ -43,19 +38,19 @@ impl Dentry for TtyDentry {
         Ok(TtyFile::new(self.clone(), self.inode()?))
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SyscallResult {
         todo!()
     }
 
-    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_rmdir(self: Arc<Self>, _name: &str) -> SyscallResult {
         todo!()
     }
 }
@@ -76,8 +71,26 @@ impl Inode for TtyInode {
         &self.meta
     }
 
-    fn get_attr(&self) -> systype::SysResult<vfs_core::Stat> {
-        todo!()
+    fn get_attr(&self) -> SysResult<Stat> {
+        let inner = self.meta.inner.lock();
+        Ok(Stat {
+            st_dev: 0,
+            st_ino: self.meta.ino as u64,
+            st_mode: self.meta.mode.bits(),
+            st_nlink: 1,
+            st_uid: 0,
+            st_gid: 0,
+            st_rdev: 0,
+            __pad: 0,
+            st_size: inner.size as u64,
+            st_blksize: 0,
+            __pad2: 0,
+            st_blocks: 0 as u64,
+            st_atime: inner.atime,
+            st_mtime: inner.mtime,
+            st_ctime: inner.ctime,
+            unused: 0,
+        })
     }
 }
 
@@ -154,7 +167,7 @@ impl WinSize {
 pub fn init() -> SysResult<()> {
     let path = "/dev/tty";
     let path = Path::new(sys_root_dentry(), sys_root_dentry(), path);
-    let tty_dentry = path.walk(InodeMode::empty())?;
+    let tty_dentry = path.walk()?;
     let parent = tty_dentry.parent().unwrap();
     let tty_dentry = TtyDentry::new("tty", parent.super_block(), Some(parent.clone()));
     parent.insert(tty_dentry.clone());
@@ -236,7 +249,7 @@ impl TtyFile {
         })
     }
 
-    pub fn handle_irq(&self, ch: u8) {
+    pub fn handle_irq(&self, _ch: u8) {
         todo!()
         // log::debug!("[TtyFile::handle_irq] handle irq, ch {}", ch);
         // self.buf.lock().push(ch);
@@ -263,7 +276,7 @@ impl TtyFile {
 
 #[async_trait]
 impl File for TtyFile {
-    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
         let mut cnt = 0;
         loop {
             let ch: u8;
@@ -299,7 +312,7 @@ impl File for TtyFile {
         }
     }
 
-    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
         let utf8_buf: Vec<u8> = buf.iter().filter(|c| c.is_ascii()).map(|c| *c).collect();
         if PRINT_LOCKED {
             let _locked = PRINT_MUTEX.lock().await;

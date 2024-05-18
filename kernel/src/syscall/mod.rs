@@ -11,9 +11,7 @@ mod sched;
 mod signal;
 mod time;
 
-use ::futex::RobustListHead;
 pub use consts::SyscallNo;
-use consts::*;
 pub use fs::resolve_path;
 use fs::*;
 use misc::*;
@@ -23,21 +21,18 @@ pub use process::CloneFlags;
 use process::*;
 use resource::*;
 use signal::*;
-use systype::SyscallResult;
 use time::*;
 
-use crate::{
-    mm::{FutexWord, UserReadPtr, UserWritePtr},
-    syscall::{
-        futex::{sys_futex, sys_get_robust_list, sys_set_robust_list},
-        sched::*,
-    },
+use crate::syscall::{
+    futex::{sys_futex, sys_get_robust_list, sys_set_robust_list},
+    sched::*,
 };
 
 #[cfg(feature = "strace")]
 pub const STRACE_COLOR_CODE: u8 = 35; // Purple
 
 /// Syscall trace.
+// TODO: syscall trace with exact args and return value
 #[cfg(feature = "strace")]
 #[macro_export]
 macro_rules! strace {
@@ -64,9 +59,8 @@ macro_rules! strace {
 /// Handle syscall exception with `syscall_id` and other arguments.
 pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
     use SyscallNo::*;
-
     let Some(syscall_no) = SyscallNo::from_repr(syscall_no) else {
-        log::error!("Syscall number not included: {}", syscall_no);
+        log::error!("Syscall number not included: {syscall_no}");
         unimplemented!()
     };
     log::info!("[syscall] handle {syscall_no}");
@@ -106,17 +100,17 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         // File system
         READ => sys_read(args[0], args[1].into(), args[2]).await,
         WRITE => sys_write(args[0], args[1].into(), args[2]).await,
-        OPENAT => sys_openat(args[0] as _, args[1].into(), args[2] as _, args[3] as _),
+        OPENAT => sys_openat(args[0].into(), args[1].into(), args[2] as _, args[3] as _),
         CLOSE => sys_close(args[0]),
-        MKDIR => sys_mkdirat(args[0] as _, args[1].into(), args[2] as _),
+        MKDIR => sys_mkdirat(args[0].into(), args[1].into(), args[2] as _),
         GETCWD => sys_getcwd(args[0].into(), args[1]),
         CHDIR => sys_chdir(args[0].into()),
         DUP => sys_dup(args[0]),
         DUP3 => sys_dup3(args[0], args[1], args[2] as _),
         FSTAT => sys_fstat(args[0], args[1].into()),
-        FSTATAT => sys_fstatat(args[0] as _, args[1].into(), args[2].into(), args[3] as _),
+        FSTATAT => sys_fstatat(args[0].into(), args[1].into(), args[2].into(), args[3] as _),
         GETDENTS64 => sys_getdents64(args[0], args[1], args[2]),
-        UNLINKAT => sys_unlinkat(args[0] as _, args[1].into(), args[2] as _),
+        UNLINKAT => sys_unlinkat(args[0].into(), args[1].into(), args[2] as _),
         MOUNT => {
             sys_mount(
                 args[0].into(),
@@ -135,6 +129,9 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         READV => sys_readv(args[0], args[1].into(), args[2]).await,
         PPOLL => sys_ppoll(args[0].into(), args[1], args[2].into(), args[3]).await,
         SENDFILE => sys_sendfile(args[0], args[1], args[2].into(), args[3]).await,
+        FACCESSAT => sys_faccessat(args[0].into(), args[1].into(), args[2], args[3]),
+        LSEEK => sys_lseek(args[0], args[1] as _, args[2]),
+        UMASK => sys_umask(args[0] as _),
         // Signal
         RT_SIGPROCMASK => sys_rt_sigprocmask(args[0], args[1].into(), args[2].into()),
         RT_SIGACTION => sys_rt_sigaction(args[0] as _, args[1].into(), args[2].into()),
@@ -175,7 +172,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         // Miscellaneous
         UNAME => sys_uname(args[0].into()),
         GETRUSAGE => sys_getrusage(args[0] as _, args[1].into()),
-        UMASK => sys_umask(),
+        SYSLOG => sys_syslog(args[0], args[1].into(), args[2]),
         _ => {
             log::error!("Unsupported syscall: {}", syscall_no);
             Ok(0)
@@ -187,7 +184,7 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
             ret
         }
         Err(e) => {
-            log::warn!("[syscall] {syscall_no} return err {e:?}",);
+            log::warn!("[syscall] {syscall_no} return err {e:?}");
             -(e as isize) as usize
         }
     }

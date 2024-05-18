@@ -273,7 +273,7 @@ pub fn sys_clone(
     _tls_ptr: usize,
     chilren_tid_ptr: usize,
 ) -> SyscallResult {
-    let exit_signal = flags & 0xff;
+    let _exit_signal = flags & 0xff;
     let flags = CloneFlags::from_bits(flags as u64 & !0xff).ok_or(SysError::EINVAL)?;
     log::info!("[sys_clone] flags {flags:?}");
     // if flags.contains(CloneFlags::THREAD) {
@@ -343,7 +343,7 @@ pub fn sys_getpgid(pid: usize) -> SyscallResult {
 /// In this case, the pgid specifies an existing process group to be joined and
 /// the session ID of that group must match the session ID of the joining
 /// process.
-pub fn sys_setpgid(pid: usize, pgid: usize) -> SyscallResult {
+pub fn sys_setpgid(pid: usize, _pgid: usize) -> SyscallResult {
     let target_task = if pid == 0 {
         current_task()
     } else {

@@ -4,7 +4,7 @@
 
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
-    fmt::{self, Debug, Display, Formatter},
+    fmt::{self, Debug},
     intrinsics::{atomic_load_acquire, size_of},
     marker::PhantomData,
     ops::{self, ControlFlow},
@@ -12,10 +12,10 @@ use core::{
 
 use memory::VirtAddr;
 use riscv::register::scause;
-use systype::{SysError, SysResult, SyscallResult};
+use systype::{SysError, SysResult};
 
 use crate::{
-    processor::{env::SumGuard, hart::current_task},
+    processor::env::SumGuard,
     task::Task,
     trap::{
         kernel_trap::{set_kernel_user_rw_trap, will_read_fail, will_write_fail},
@@ -23,10 +23,10 @@ use crate::{
     },
 };
 
-trait Policy: Clone + Copy + 'static {}
+pub trait Policy: Clone + Copy + 'static {}
 
-trait Read: Policy {}
-trait Write: Policy {}
+pub trait Read: Policy {}
+pub trait Write: Policy {}
 
 #[derive(Clone, Copy)]
 pub struct In;
@@ -263,7 +263,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     }
 
     pub fn into_slice(self, task: &Arc<Task>, n: usize) -> SysResult<UserSlice<T>> {
-        debug_assert!(n == 0 || self.not_null());
+        debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
@@ -288,7 +288,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     }
 
     pub fn read_array(self, task: &Arc<Task>, n: usize) -> SysResult<Vec<T>> {
-        debug_assert!(n == 0 || self.not_null());
+        debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
@@ -371,12 +371,14 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
     }
 
     pub fn into_mut_slice(self, task: &Arc<Task>, n: usize) -> SysResult<UserSlice<T>> {
-        debug_assert!(n == 0 || self.not_null());
+        debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
             PageFaultAccessType::RW,
         )?;
+        // WARN: `core::slice::from_raw_parts_mut` does not accept null pointer even for
+        // zero length slice, hidden bug may be caused when doing so.
         let slice = unsafe { core::slice::from_raw_parts_mut(self.ptr, n) };
         Ok(UserSlice::new(slice))
     }
@@ -392,7 +394,7 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
         Ok(())
     }
 
-    pub fn write_unchecked(self, task: &Arc<Task>, val: T) -> SysResult<()> {
+    pub fn write_unchecked(self, _task: &Arc<Task>, val: T) -> SysResult<()> {
         debug_assert!(self.not_null());
         unsafe { core::ptr::write(self.ptr, val) };
         Ok(())
@@ -417,28 +419,6 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
 }
 
 impl<P: Write> UserPtr<u8, P> {
-    /// should only be used at syscall getdent with dynamic-len structure
-    pub unsafe fn write_as_bytes<U>(self, task: &Arc<Task>, val: &U) -> SysResult<()> {
-        debug_assert!(self.not_null());
-
-        let len = size_of::<U>();
-        task.just_ensure_user_area(
-            VirtAddr::from(self.as_usize()),
-            len,
-            PageFaultAccessType::RW,
-        )?;
-
-        unsafe {
-            let view = core::slice::from_raw_parts(val as *const U as *const u8, len);
-            let mut ptr = self.ptr;
-            for &c in view {
-                ptr.write(c);
-                ptr = ptr.offset(1);
-            }
-        }
-        Ok(())
-    }
-
     pub fn write_cstr(self, task: &Arc<Task>, val: &str) -> SysResult<()> {
         debug_assert!(self.not_null());
 
@@ -473,9 +453,9 @@ impl<P: Write> UserPtr<u8, P> {
         }
     }
 
-    pub fn write_cstr_unchecked(self, task: &Arc<Task>, val: &str) -> SysResult<()> {
+    pub fn write_cstr_unchecked(self, _task: &Arc<Task>, val: &str) -> SysResult<()> {
         debug_assert!(self.not_null());
-        let mut bytes = val.as_bytes();
+        let bytes = val.as_bytes();
         let mut ptr = self.as_mut_ptr();
         for byte in bytes {
             unsafe {

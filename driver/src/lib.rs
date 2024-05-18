@@ -10,7 +10,7 @@ use core::{
 };
 
 use qemu::{uart::UartDevice, virtio_blk::VirtIOBlkDev};
-use spin::{Lazy, Once};
+use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 
 use self::sbi::console_putchar;

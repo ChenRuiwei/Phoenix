@@ -16,8 +16,7 @@ use timer::timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
 use crate::{
-    strace,
-    syscall::{syscall, SyscallNo},
+    syscall::syscall,
     task::{signal::do_signal, Task},
     trap::set_user_trap,
 };
@@ -49,7 +48,7 @@ pub async fn trap_handler(task: &Arc<Task>) {
         Trap::Exception(Exception::StorePageFault)
         | Trap::Exception(Exception::InstructionPageFault)
         | Trap::Exception(Exception::LoadPageFault) => {
-            log::debug!(
+            log::info!(
                 "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
             );
             // There are serveral kinds of page faults:

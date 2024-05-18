@@ -1,10 +1,8 @@
-use alloc::{collections::BTreeMap, sync::Arc};
+use alloc::sync::Arc;
 
-use vfs_core::{
-    DentryMeta, FileSystemType, FileSystemTypeMeta, InodeType, StatFs, SuperBlock, SuperBlockMeta,
-};
+use vfs_core::{Dentry, FileSystemType, FileSystemTypeMeta, StatFs, SuperBlock, SuperBlockMeta};
 
-use crate::{as_sys_err, dentry::FatDentry, inode::dir::FatDirInode, DiskCursor, FatFs, Mutex};
+use crate::{as_sys_err, dentry::FatDentry, inode::dir::FatDirInode, DiskCursor, FatFs};
 
 pub struct FatFsType {
     meta: FileSystemTypeMeta,
@@ -23,25 +21,27 @@ impl FileSystemType for FatFsType {
         &self.meta
     }
 
-    fn arc_mount(
+    fn base_mount(
         self: Arc<Self>,
-        abs_mnt_path: &str,
-        flags: vfs_core::MountFlags,
+        name: &str,
+        parent: Option<Arc<dyn Dentry>>,
+        _flags: vfs_core::MountFlags,
         dev: Option<Arc<dyn driver::BlockDevice>>,
     ) -> systype::SysResult<Arc<dyn vfs_core::Dentry>> {
         debug_assert!(dev.is_some());
         let sb = FatSuperBlock::new(SuperBlockMeta::new(dev, self.clone()));
         let root_inode = FatDirInode::new(sb.clone(), sb.fs.root_dir());
-        // FIXME: abs_mnt_path should not passed into dentry.
-        // FIXME: parent dentry should be inserted if this is not "/"
-        let root_dentry = FatDentry::new(abs_mnt_path, sb.clone(), None).into_dyn();
+        let root_dentry = FatDentry::new(name, sb.clone(), parent.clone()).into_dyn();
         root_dentry.set_inode(root_inode);
+        if let Some(parent) = parent {
+            parent.insert(root_dentry.clone());
+        }
         sb.set_root_dentry(root_dentry.clone());
-        self.insert_sb(abs_mnt_path, sb);
+        self.insert_sb(&root_dentry.path(), sb);
         Ok(root_dentry)
     }
 
-    fn kill_sb(&self, sb: Arc<dyn vfs_core::SuperBlock>) -> systype::SysResult<()> {
+    fn kill_sb(&self, _sb: Arc<dyn vfs_core::SuperBlock>) -> systype::SysResult<()> {
         todo!()
     }
 }
@@ -100,7 +100,7 @@ impl SuperBlock for FatSuperBlock {
         })
     }
 
-    fn sync_fs(&self, wait: isize) -> systype::SysResult<()> {
+    fn sync_fs(&self, _wait: isize) -> systype::SysResult<()> {
         todo!()
     }
 }

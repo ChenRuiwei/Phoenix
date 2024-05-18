@@ -1,20 +1,11 @@
-use alloc::{
-    boxed::Box,
-    string::{String, ToString},
-    sync::Arc,
-};
+use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
 use fatfs::{Read, Seek, Write};
-use systype::{ASyscallResult, SysError, SyscallResult};
-use vfs_core::{Dentry, DirEntry, File, FileMeta, Inode, InodeMode, InodeType, SeekFrom};
+use systype::{SysError, SyscallResult};
+use vfs_core::{File, FileMeta, InodeType};
 
-use crate::{
-    as_sys_err,
-    dentry::{self, FatDentry},
-    inode::{self, dir::FatDirInode, file::FatFileInode},
-    FatFile, Shared,
-};
+use crate::{as_sys_err, dentry::FatDentry, inode::file::FatFileInode, FatFile, Shared};
 
 pub struct FatFileFile {
     meta: FileMeta,
@@ -36,7 +27,7 @@ impl File for FatFileFile {
         &self.meta
     }
 
-    async fn base_read(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         match self.itype() {
             InodeType::File => {
                 let mut file = self.file.lock();
@@ -54,7 +45,7 @@ impl File for FatFileFile {
         }
     }
 
-    async fn base_write(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         if buf.is_empty() {
             return Ok(0);
         }

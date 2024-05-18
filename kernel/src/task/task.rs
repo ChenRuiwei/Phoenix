@@ -32,7 +32,7 @@ use super::{
 };
 use crate::{
     mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
-    processor::env::{within_sum, SumGuard},
+    processor::env::within_sum,
     syscall,
     task::{
         manager::TASK_MANAGER,
@@ -348,7 +348,6 @@ impl Task {
         let thread_group;
         let cwd;
         let itimers;
-        let fd_table;
         let futexes;
         let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
             self.sig_handlers.clone()
@@ -363,8 +362,6 @@ impl Task {
             thread_group = self.thread_group.clone();
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
-            // TODO: close on exec flag support
-            fd_table = self.fd_table.clone();
             futexes = self.futexes.clone();
         } else {
             is_leader = true;
@@ -378,7 +375,6 @@ impl Task {
                 ITimer::new_prof(),
             ]);
             cwd = new_shared(self.cwd());
-            fd_table = new_shared(self.fd_table.lock().clone());
             futexes = new_shared(Futexes::new());
         }
 
@@ -390,6 +386,13 @@ impl Task {
                 new_shared(self.with_mut_memory_space(|m| MemorySpace::from_user_lazily(m)));
             // TODO: avoid flushing global entries like kernel mappings
             unsafe { sfence_vma_all() };
+        }
+
+        let fd_table;
+        if flags.contains(CloneFlags::FILES) {
+            fd_table = self.fd_table.clone();
+        } else {
+            fd_table = new_shared(self.fd_table.lock().clone());
         }
 
         if let Some(sp) = stack {
@@ -482,7 +485,7 @@ impl Task {
         self.with_mut_memory_space(|m| m.alloc_heap_lazily());
 
         // close fd on exec
-        self.with_mut_fd_table(|table| table.close_on_exec());
+        self.with_mut_fd_table(|table| table.do_close_on_exec());
 
         // init trap context
         self.trap_context_mut()

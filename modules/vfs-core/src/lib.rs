@@ -30,7 +30,6 @@ pub use inode::*;
 pub use path::*;
 pub use super_block::*;
 use sync::mutex::SpinNoIrqLock;
-use systype::SysResult;
 pub use utils::*;
 
 type Mutex<T> = SpinNoIrqLock<T>;
