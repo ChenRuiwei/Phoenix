@@ -32,7 +32,7 @@ pub fn init() {
         fn _app_names();
     }
     let mut start = _app_names as usize as *const u8;
-    let mut v = Vec::new();
+    let mut v = Vec::with_capacity(num_app);
     unsafe {
         for _ in 0..num_app {
             let mut end = start;

@@ -11,7 +11,7 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     task::{
-        signal::{SigAction, WaitExpectSignals, SIG_DFL, SIG_IGN},
+        signal::{SigAction, WaitExpectSigSet, SIG_DFL, SIG_IGN},
         TASK_MANAGER,
     },
 };
@@ -31,7 +31,7 @@ pub fn sys_rt_sigaction(
         return Err(SysError::EINVAL);
     }
     log::info!(
-        "[sys_rt_sigaction] sig:{signum:?}, new_ptr:{action}, old_ptr:{old_action}, old_sa_type:{:?}",
+        "[sys_rt_sigaction] {signum:?}, new_ptr:{action}, old_ptr:{old_action}, old_sa_type:{:?}",
         task.with_sig_handlers(|handlers| { handlers.get(signum).atype })
     );
     if action.is_null() {
@@ -52,9 +52,8 @@ pub fn sys_rt_sigaction(
         flags: action.sa_flags,
         mask: action.sa_mask,
     };
-    log::info!("[sys_rt_sigaction] new_action:{:?}", new);
+    log::info!("[sys_sigaction] new:{:?}", new);
     task.with_mut_sig_handlers(|handlers| handlers.update(signum, new));
-    // TODO: 这里删掉了UMI的一点东西？不知道会不会影响
     if !old_action.is_null() {
         let old = task.with_sig_handlers(|handlers| handlers.get(signum));
         old_action.write(&task, old.into())?;
@@ -280,7 +279,7 @@ pub async fn sys_rt_sigsuspend(mask: UserReadPtr<SigSet>) -> SyscallResult {
     let task = current_task();
     let mut mask = mask.read(&task)?;
     let oldmask = task.sig_mask_replace(&mut mask);
-    WaitExpectSignals::new(&task, *task.sig_mask()).await;
+    WaitExpectSigSet::new(&task, *task.sig_mask()).await;
     // TODO: 根据Linux这里理论上应该等到signal
     // handler返回时sys_sigsuspend再返回，但是貌似其他队都没有这样做
     *task.sig_mask() = oldmask;

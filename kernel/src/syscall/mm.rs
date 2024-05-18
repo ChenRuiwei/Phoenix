@@ -1,7 +1,18 @@
+use alloc::sync::Arc;
+use core::isize;
+
+use arch::time::get_time_duration;
+use config::mm::{PAGE_MASK, PAGE_SIZE};
 use memory::VirtAddr;
 use systype::{SysError, SyscallResult};
 
-use crate::{mm::memory_space::vm_area::MapPerm, processor::hart::current_task};
+use crate::{
+    ipc::shm::{
+        SharedMemory, ShmAtFlags, ShmGetFlags, SHARED_MEMORY_KEY_ALLOCATOR, SHARED_MEMORY_MANAGER,
+    },
+    mm::memory_space::vm_area::{MapPerm, VmArea},
+    processor::hart::current_task,
+};
 
 bitflags! {
     // See in "bits/mman-linux.h"
@@ -169,5 +180,134 @@ pub fn sys_munmap(_addr: VirtAddr, _length: usize) -> SyscallResult {
     // let task = current_task();
     // let range = VirtAddr::from(addr)..VirtAddr::from(addr + length);
     // task.with_mut_memory_space(|m| m.unmap(range));
+    Ok(0)
+}
+
+/// allocates a System V shared memory segment
+///
+/// shmget() returns the identifier of the System V shared memory segment
+/// associated with the value of the argument key. It may be used either to
+/// obtain the identifier of a previously created shared memory segment (when
+/// shmflg is zero and key does not have the value IPC_PRIVATE), or to
+/// create a new set.
+///
+/// - `key`: Key values for shared memory
+/// - `size`: The size of the shared memory to be created. A new shared memory
+///   segment has a size equal to the value of size rounded up to a multiple of
+///   PAGE_SIZE
+/// - `shmflg`: Together with `key`, determine the function of shmget
+///
+/// On success, a valid shared memory identifier is returned.
+pub fn sys_shmget(key: usize, size: usize, shmflg: ShmGetFlags) -> SyscallResult {
+    log::warn!("[sys_shmget] {key} {size} {:?}", shmflg);
+    // Create a new shared memory. When it is specified, the shmflg is invalid
+    const IPC_PRIVATE: usize = 0;
+    let rounded_up_sz = (size + PAGE_MASK) & !PAGE_MASK;
+    if key == IPC_PRIVATE {
+        let new_key = SHARED_MEMORY_KEY_ALLOCATOR.lock().alloc();
+        let new_shm = SharedMemory::new(rounded_up_sz, current_task().pid());
+        SHARED_MEMORY_MANAGER.0.lock().insert(new_key, new_shm);
+        return Ok(new_key);
+    }
+    let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
+    let shm = shm_manager.get(&key);
+    if let Some(shm) = shm {
+        // IPC_CREAT and IPC_EXCL were specified in shmflg, but a shared memory segment
+        // already exists for key.
+        if shmflg.contains(ShmGetFlags::IPC_CREAT | ShmGetFlags::IPC_EXCL) {
+            return Err(SysError::EEXIST);
+        }
+        // A segment for the given key exists, but size is greater than the size of that
+        // segment.
+        if shm.size() < size {
+            return Err(SysError::EINVAL);
+        }
+        return Ok(key);
+    }
+    if shmflg.contains(ShmGetFlags::IPC_CREAT) {
+        let new_shm = SharedMemory::new(rounded_up_sz, current_task().pid());
+        shm_manager.insert(key, new_shm);
+        return Ok(key);
+    } else {
+        // No segment exists for the given key, and IPC_CREAT was not specified.
+        return Err(SysError::ENOENT);
+    }
+}
+
+/// After creating a shared memory, if a process wants to use it, it needs to
+/// attach this memory area to its own process space
+///
+/// - `shmid`: the return value of `sys_shmget`
+/// - `shmaddr`: Shared memory mapping address (if NULL, automatically specified
+///   by the system)
+///
+/// On success, sys_shmat() returns an address pointer to the shared memory
+/// segment
+pub fn sys_shmat(shmid: usize, shmaddr: usize, shmflg: ShmAtFlags) -> SyscallResult {
+    log::warn!("[sys_shmat] {shmid} {shmaddr} {:?}", shmflg);
+    // unaligned (i.e., not page-aligned and SHM_RND was not specified) shmaddr
+    // value
+    if shmaddr & PAGE_MASK != 0 && !shmflg.contains(ShmAtFlags::SHM_RND) {
+        return Err(SysError::EINVAL);
+    }
+    let shm_va = VirtAddr::from_usize(shmaddr).rounded_down();
+    let mut map_perm = MapPerm::RW;
+    if shmflg.contains(ShmAtFlags::SHM_EXEC) {
+        map_perm.insert(MapPerm::X);
+    }
+    if shmflg.contains(ShmAtFlags::SHM_RDONLY) {
+        map_perm.remove(MapPerm::W);
+    }
+    let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
+    let shm = shm_manager.get_mut(&shmid);
+    if let Some(shm) = shm {
+        let task = current_task();
+        let ret_addr = shm.attach(&task, shm_va, shmid, map_perm);
+        return Ok(ret_addr.into());
+    } else {
+        // Invalid shmid value
+        return Err(SysError::EINVAL);
+    }
+}
+
+/// When a process no longer uses a shared memory block, it should detach from
+/// the shared memory block by calling the shmdt (Shared Memory Detach)
+/// function.
+///
+/// The to-be-detached segment must be currently attached with shmaddr equal to
+/// the value returned by the attaching shmat() call
+///
+/// If the process that releases this memory block is the last process
+/// to use it, then this memory block will be deleted. Calling exit or any exec
+/// family function will automatically cause the process to detach from the
+/// shared memory block.
+///
+/// On success, shmdt() returns 0;
+pub fn sys_shmdt(shmaddr: usize) -> SyscallResult {
+    log::warn!("[sys_shmdt] {:?}", shmaddr);
+    let task = current_task();
+    let shm_va = VirtAddr::from_usize(shmaddr);
+    if !shm_va.is_aligned() {
+        // shmaddr is not aligned on a page boundary
+        return Err(SysError::EINVAL);
+    }
+    let shm_id = task.with_mut_shm_ids(|ids| ids.remove(&shm_va));
+    if let Some(shm_id) = shm_id {
+        let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
+        let shm = shm_manager.get_mut(&shm_id).unwrap();
+        task.with_mut_memory_space(|m| m.detach_shm(shm_va));
+        if shm.shmid_ds.detach(task.pid()) {
+            shm_manager.remove(&shm_id);
+        }
+    } else {
+        // There is no shared memory segment attached at shmaddr;
+        return Err(SysError::EINVAL);
+    }
+    Ok(0)
+}
+
+/// sys_shmctl performs the control operation specified by cmd on the System V
+/// shared memory segment whose identifier is given in shmid.
+pub fn sys_shmctl(shmid: i32, cmd: i32, _buf: usize) -> SyscallResult {
     Ok(0)
 }

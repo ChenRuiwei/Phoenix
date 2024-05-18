@@ -6,6 +6,7 @@ use core::{
 
 use buddy_system_allocator::Heap as BuddyHeap;
 use config::mm::KERNEL_HEAP_SIZE;
+#[cfg(all(feature = "linked", not(feature = "buddy")))]
 use linked_list_allocator::Heap as LinkedHeap;
 use sync::mutex::SpinNoIrqLock;
 
@@ -55,8 +56,10 @@ unsafe impl GlobalAlloc for LockedBuddyHeap {
     }
 }
 
+#[cfg(all(feature = "linked", not(feature = "buddy")))]
 struct LockedLinkedHeap(SpinNoIrqLock<LinkedHeap>);
 
+#[cfg(all(feature = "linked", not(feature = "buddy")))]
 impl LockedLinkedHeap {
     const fn empty() -> Self {
         Self(SpinNoIrqLock::new(LinkedHeap::empty()))
@@ -67,6 +70,7 @@ impl LockedLinkedHeap {
     }
 }
 
+#[cfg(all(feature = "linked", not(feature = "buddy")))]
 unsafe impl GlobalAlloc for LockedLinkedHeap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         self.0

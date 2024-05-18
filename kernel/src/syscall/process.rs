@@ -13,7 +13,7 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     syscall::resolve_path,
-    task::{signal::WaitExpectSignal, spawn_user_task, PGid, Pid, TASK_MANAGER},
+    task::{signal::WaitOneSignal, spawn_user_task, PGid, Pid, TASK_MANAGER},
 };
 
 bitflags! {
@@ -64,7 +64,7 @@ pub fn sys_exit(exit_code: i32) -> SyscallResult {
     task.set_zombie();
     // non-leader thread are detached (see CLONE_THREAD flag in manual page clone.2)
     if task.is_leader() {
-        task.set_exit_code(exit_code);
+        task.set_exit_code((exit_code & 0xFF) << 8);
     }
     Ok(0)
 }
@@ -78,7 +78,7 @@ pub fn sys_exit_group(exit_code: i32) -> SyscallResult {
             t.set_zombie();
         }
     });
-    task.set_exit_code(exit_code);
+    task.set_exit_code((exit_code & 0xFF) << 8);
     Ok(0)
 }
 
@@ -140,8 +140,6 @@ pub async fn sys_wait4(
         WaitFor::Pid(pid) => {
             if let Some(child) = children.get(&pid) {
                 if child.is_zombie() {
-                    task.time_stat()
-                        .update_child_time(child.time_stat().user_system_time());
                     Some(child)
                 } else {
                     None
@@ -155,40 +153,39 @@ pub async fn sys_wait4(
         WaitFor::AnyChildInGroup => unimplemented!(),
     };
     if let Some(res_task) = res_task {
+        task.time_stat()
+            .update_child_time(res_task.time_stat().user_system_time());
         if wstatus.not_null() {
             // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
             // wstatus macros can be found in "bits/waitstatus.h"
-            let status = (res_task.exit_code() & 0xff) << 8;
-            log::debug!(
-                "[sys_wait4] exit_code: {}, wstatus: {status:#x}",
-                res_task.exit_code()
-            );
-            wstatus.write(&task, status)?;
+            let exit_code = res_task.exit_code();
+            log::debug!("[sys_wait4] wstatus: {exit_code:#x}");
+            wstatus.write(&task, exit_code)?;
         }
         let tid = res_task.tid();
         task.remove_child(tid);
         TASK_MANAGER.remove(tid);
-        return Ok(res_task.pid());
+        return Ok(tid);
     } else if option.contains(WaitOptions::WNOHANG) {
         return Ok(0);
     } else {
         // 如果等待的进程还不是zombie，那么本进程进行await，
         // 直到等待的进程do_exit然后发送SIGCHLD信号唤醒自己
-        let (child_pid, exit_code, utime, stime, _signum) = match target {
+        let (child_pid, exit_code, utime, stime) = match target {
             WaitFor::AnyChild => {
-                let si = WaitExpectSignal::new(&task, Sig::SIGCHLD).await;
+                let si = WaitOneSignal::new(&task, Sig::SIGCHLD).await;
                 match si.details {
                     SigDetails::CHLD {
                         pid,
                         status,
                         utime,
                         stime,
-                    } => (pid, status, utime, stime, si.sig.raw()),
+                    } => (pid, status, utime, stime),
                     _ => unreachable!(),
                 }
             }
             WaitFor::Pid(pid) => loop {
-                let si = WaitExpectSignal::new(&task, Sig::SIGCHLD).await;
+                let si = WaitOneSignal::new(&task, Sig::SIGCHLD).await;
                 match si.details {
                     SigDetails::CHLD {
                         pid: child_pid,
@@ -197,7 +194,7 @@ pub async fn sys_wait4(
                         stime,
                     } => {
                         if child_pid == pid {
-                            break (pid, status, utime, stime, si.sig.raw());
+                            break (pid, status, utime, stime);
                         }
                     }
                     _ => unreachable!(),
@@ -210,9 +207,8 @@ pub async fn sys_wait4(
         if wstatus.not_null() {
             // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
             // wstatus macros can be found in <bits/waitstatus.h>
-            let status = (exit_code & 0xff) << 8;
-            log::trace!("[sys_wait4] wstatus: {:#x}", status);
-            wstatus.write(&task, status)?;
+            log::trace!("[sys_wait4] wstatus: {:#x}", exit_code);
+            wstatus.write(&task, exit_code)?;
         }
         task.remove_child(child_pid);
         TASK_MANAGER.remove(child_pid);

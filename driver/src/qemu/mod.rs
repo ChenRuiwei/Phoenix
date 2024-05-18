@@ -21,7 +21,7 @@ unsafe impl virtio_drivers::Hal for VirtioHalImpl {
         // We lock the queue in advance to ensure that we can get a contiguous area
         let mut queue_frames_locked = QUEUE_FRAMES.lock();
         // TODO: what does align_log2 mean
-        let mut frames = alloc_frames(pages, 1);
+        let mut frames = alloc_frames(pages);
         for i in 0..pages {
             let frame = frames.pop().unwrap();
             if i == pages - 1 {

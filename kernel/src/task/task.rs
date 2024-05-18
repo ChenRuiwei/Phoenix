@@ -31,6 +31,7 @@ use super::{
     tid::{Pid, Tid, TidHandle},
 };
 use crate::{
+    ipc::shm::{SharedMemory, ShmIdDs},
     mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
     processor::env::within_sum,
     syscall,
@@ -67,6 +68,8 @@ pub struct Task {
     state: SpinNoIrqLock<TaskState>,
     /// The process's address space
     memory_space: Shared<MemorySpace>,
+    ///
+    shm_ids: Shared<BTreeMap<VirtAddr, usize>>,
     /// Parent process
     parent: Shared<Option<Weak<Task>>>,
     /// Children processes
@@ -125,6 +128,7 @@ impl Drop for Task {
 pub enum TaskState {
     Running,
     Zombie,
+    Stopped,
 }
 
 macro_rules! with_ {
@@ -177,6 +181,7 @@ impl Task {
             futexes: new_shared(Futexes::new()),
             tid_address: SyncUnsafeCell::new(TidAddress::new()),
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
+            shm_ids: new_shared(BTreeMap::new()),
         });
         task.thread_group.lock().push(task.clone());
 
@@ -257,6 +262,10 @@ impl Task {
         unsafe {
             (*self.waker.get()) = Some(waker);
         }
+    }
+
+    pub fn get_waker(&self) -> &Waker {
+        unsafe { (*self.waker.get()).as_ref().unwrap() }
     }
 
     pub fn set_zombie(&self) {
@@ -342,6 +351,7 @@ impl Task {
         let cwd;
         let itimers;
         let futexes;
+        let shared_memory_ids;
         let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
             self.sig_handlers.clone()
         } else {
@@ -356,6 +366,7 @@ impl Task {
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
             futexes = self.futexes.clone();
+            shared_memory_ids = self.shm_ids.clone();
         } else {
             is_leader = true;
             leader = None;
@@ -369,6 +380,7 @@ impl Task {
             ]);
             cwd = new_shared(self.cwd());
             futexes = new_shared(Futexes::new());
+            shared_memory_ids = new_shared(BTreeMap::new());
         }
 
         let memory_space;
@@ -425,6 +437,7 @@ impl Task {
             futexes,
             tid_address,
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
+            shm_ids: shared_memory_ids,
         });
 
         if !flags.contains(CloneFlags::THREAD) {
@@ -561,6 +574,9 @@ impl Task {
     with_!(itimers, [ITimer; 3]);
     with_!(futexes, Futexes);
     with_!(sig_handlers, SigHandlers);
+    with_!(state, TaskState);
+    with_!(shm_ids, BTreeMap<VirtAddr, usize>);
+    // TODO: get宏 可以get mut or not mut
 }
 
 /// Hold a group of threads which belongs to the same process.

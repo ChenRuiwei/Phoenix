@@ -2,8 +2,8 @@
 
 use alloc::{string::String, vec, vec::Vec};
 
+use arch::memory::switch_page_table;
 use config::mm::VIRT_RAM_OFFSET;
-use riscv::register::satp;
 
 use crate::{
     address::{PhysPageNum, VirtAddr, VirtPageNum},
@@ -11,12 +11,6 @@ use crate::{
     pte::PTEFlags,
     PageTableEntry,
 };
-
-/// Write `page_table_token` into satp and sfence.vma
-pub unsafe fn switch_page_table(page_table_token: usize) {
-    satp::write(page_table_token);
-    core::arch::riscv64::sfence_vma_all();
-}
 
 /// # Safety
 ///
@@ -116,32 +110,30 @@ impl PageTable {
     pub fn find_pte(&self, vpn: VirtPageNum) -> Option<&mut PageTableEntry> {
         let idxs = vpn.indices();
         let mut ppn = self.root_ppn;
-        let mut result: Option<&mut PageTableEntry> = None;
         for (i, idx) in idxs.into_iter().enumerate() {
             let pte = ppn.pte(idx);
             if !pte.is_valid() {
                 return None;
             }
             if i == 2 {
-                result = Some(pte);
-                break;
+                return Some(pte);
             }
             ppn = pte.ppn();
         }
-        result
+        return None;
     }
 
     /// Map `VirtPageNum` to `PhysPageNum` with `PTEFlags`.
     pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
         let pte = self.find_pte_create(vpn);
-        assert!(!pte.is_valid(), "vpn {vpn:?} is mapped before mapping");
+        debug_assert!(!pte.is_valid(), "vpn {vpn:?} is mapped before mapping");
         *pte = PageTableEntry::new(ppn, flags | PTEFlags::V | PTEFlags::D | PTEFlags::A);
     }
 
     /// Unmap a `VirtPageNum`.
     pub fn unmap(&mut self, vpn: VirtPageNum) {
         let pte = self.find_pte(vpn).expect("leaf pte is not valid");
-        assert!(pte.is_valid(), "vpn {vpn:?} is invalid before unmapping",);
+        debug_assert!(pte.is_valid(), "vpn {vpn:?} is invalid before unmapping",);
         *pte = PageTableEntry::empty();
     }
 
@@ -161,6 +153,7 @@ impl PageTable {
     }
 
     /// Only for debug
+    #[allow(unused)]
     pub fn print_page(&self, vpn: VirtPageNum) {
         use alloc::format;
 

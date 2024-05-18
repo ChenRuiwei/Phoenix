@@ -5,9 +5,12 @@ use core::{
     task::{Context, Poll},
 };
 
+use async_utils::{suspend_now, yield_now};
+
 use super::Task;
 use crate::{
     processor::{env::EnvContext, hart},
+    task::task::TaskState::*,
     trap,
 };
 
@@ -78,14 +81,20 @@ pub async fn task_loop(task: Arc<Task>) {
 
         // task may be set to zombie by other task, e.g. execve will kill other tasks in
         // the same thread group
-        if task.is_zombie() {
-            break;
+        let state = task.with_state(|s| *s);
+        match state {
+            Zombie => break,
+            Stopped => suspend_now().await,
+            _ => {}
         }
 
         trap::user_trap::trap_handler(&task).await;
 
-        if task.is_zombie() {
-            break;
+        let state = task.with_state(|s| *s);
+        match state {
+            Zombie => break,
+            Stopped => suspend_now().await,
+            _ => {}
         }
 
         task.update_itimers();

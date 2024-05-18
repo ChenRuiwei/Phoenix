@@ -2,14 +2,14 @@ use core::time::Duration;
 
 use crate::sigset::Sig;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct SigInfo {
     pub sig: Sig,
     pub code: i32,
     pub details: SigDetails,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum SigDetails {
     None,
     Kill {

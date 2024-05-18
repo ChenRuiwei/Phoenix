@@ -1,6 +1,6 @@
 extern crate alloc;
 use alloc::collections::VecDeque;
-use core::task::Waker;
+use core::{panic, task::Waker};
 
 use bitflags::*;
 
@@ -96,13 +96,28 @@ impl SigPending {
         }
     }
 
-    pub fn pop(&mut self) -> Option<SigInfo> {
-        if let Some(si) = self.queue.pop_front() {
-            self.bitmap.remove_signal(si.sig);
-            Some(si)
-        } else {
-            None
+    /// Dequeue a signal and return the SigInfo to the caller
+    pub fn dequeue_signal(&mut self, mask: &SigSet) -> Option<SigInfo> {
+        let mut x = self.bitmap & (!*mask);
+        let mut sig = Sig::from_i32(0);
+        if !x.is_empty() {
+            if !(x & SigSet::SYNCHRONOUS_MASK).is_empty() {
+                x &= SigSet::SYNCHRONOUS_MASK;
+            }
+            sig = Sig::from_i32((x.bits().trailing_zeros() + 1) as _);
         }
+        if sig.raw() == 0 {
+            return None;
+        }
+        for i in 0..self.queue.len() {
+            if self.queue[i].sig == sig {
+                self.bitmap.remove_signal(sig);
+                return self.queue.remove(i);
+            }
+        }
+        // if it isn't in self.queue, it must be wrong
+        log::error!("[dequeue_signal] I suppose it won't go here");
+        return None;
     }
 
     #[inline]
