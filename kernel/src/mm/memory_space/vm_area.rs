@@ -219,6 +219,13 @@ impl VmArea {
         }
     }
 
+    pub fn unmap(&mut self, page_table: &mut PageTable, range_vpn: Range<VirtPageNum>) {
+        for vpn in range_vpn {
+            page_table.unmap(vpn);
+            self.pages.remove(&vpn);
+        }
+    }
+
     /// Copy the data to start_va + offset.
     ///
     /// # Safety

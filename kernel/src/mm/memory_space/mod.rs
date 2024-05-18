@@ -381,13 +381,19 @@ impl MemorySpace {
         log::debug!("[MemorySpace::reset_heap_break] heap range: {range:?}, new_brk: {new_brk:?}");
         let result = if new_brk > range.end {
             let ret = self.areas.extend_back(range.start..new_brk);
-            let (range_va, vm_area) = self.areas.get_key_value_mut(range.start).unwrap();
-            vm_area.set_range_va(range_va);
+            if ret.is_ok() {
+                let (range_va, vm_area) = self.areas.get_key_value_mut(range.start).unwrap();
+                vm_area.set_range_va(range_va);
+            }
             ret
         } else if new_brk < range.end {
             let ret = self.areas.reduce_back(range.start, new_brk);
-            let (range_va, vm_area) = self.areas.get_key_value_mut(range.start).unwrap();
-            vm_area.set_range_va(range_va);
+            if ret.is_ok() {
+                let (range_va, vm_area) = self.areas.get_key_value_mut(range.start).unwrap();
+                vm_area.set_range_va(range_va);
+                let range_vpn: Range<VirtPageNum> = new_brk.ceil()..range.end.ceil();
+                vm_area.unmap(&mut self.page_table, range_vpn);
+            }
             ret
         } else {
             Ok(())
@@ -396,10 +402,6 @@ impl MemorySpace {
             Ok(_) => new_brk,
             Err(_) => range.end,
         }
-    }
-
-    pub fn unmap(_range: Range<VirtAddr>) {
-        todo!()
     }
 
     /// Clone a same `MemorySpace` from another user space, including datas in
