@@ -1,3 +1,4 @@
+use alloc::sync::Arc;
 use core::isize;
 
 use arch::time::get_time_duration;
@@ -218,7 +219,7 @@ pub fn sys_shmget(key: usize, size: usize, shmflg: ShmGetFlags) -> SyscallResult
         }
         // A segment for the given key exists, but size is greater than the size of that
         // segment.
-        if shm.shmid_ds.shm_segsz < size {
+        if shm.size() < size {
             return Err(SysError::EINVAL);
         }
         return Ok(key);
@@ -261,15 +262,7 @@ pub fn sys_shmat(shmid: usize, shmaddr: usize, shmflg: ShmAtFlags) -> SyscallRes
     let shm = shm_manager.get_mut(&shmid);
     if let Some(shm) = shm {
         let task = current_task();
-        let ret_addr = task.with_mut_memory_space(|m| {
-            m.attach_shm(shm.shmid_ds.shm_segsz, shm_va, map_perm, &mut shm.pages)
-        });
-        // shm_atime is set to the current time.
-        shm.shmid_ds.shm_atime = get_time_duration();
-        // shm_lpid is set to the process-ID of the calling process.
-        shm.shmid_ds.shm_lpid = task.pid();
-        // shm_nattch is incremented by one.
-        shm.shmid_ds.shm_nattch += 1;
+        let ret_addr = shm.attach(&task, shm_va, shmid, map_perm);
         return Ok(ret_addr.into());
     } else {
         // Invalid shmid value
@@ -279,13 +272,37 @@ pub fn sys_shmat(shmid: usize, shmaddr: usize, shmflg: ShmAtFlags) -> SyscallRes
 
 /// When a process no longer uses a shared memory block, it should detach from
 /// the shared memory block by calling the shmdt (Shared Memory Detach)
-/// function. If the process that releases this memory block is the last process
+/// function.
+///
+/// The to-be-detached segment must be currently attached with shmaddr equal to
+/// the value returned by the attaching shmat() call
+///
+/// If the process that releases this memory block is the last process
 /// to use it, then this memory block will be deleted. Calling exit or any exec
 /// family function will automatically cause the process to detach from the
 /// shared memory block.
+///
+/// On success, shmdt() returns 0;
 pub fn sys_shmdt(shmaddr: usize) -> SyscallResult {
-    let mut shm = SHARED_MEMORY_MANAGER.0.lock().get(&shmaddr);
-
+    log::warn!("[sys_shmdt] {:?}", shmaddr);
+    let task = current_task();
+    let shm_va = VirtAddr::from_usize(shmaddr);
+    if !shm_va.is_aligned() {
+        // shmaddr is not aligned on a page boundary
+        return Err(SysError::EINVAL);
+    }
+    let shm_id = task.with_mut_shm_ids(|ids| ids.remove(&shm_va));
+    if let Some(shm_id) = shm_id {
+        let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
+        let shm = shm_manager.get_mut(&shm_id).unwrap();
+        task.with_mut_memory_space(|m| m.detach_shm(shm_va));
+        if shm.shmid_ds.detach(task.pid()) {
+            shm_manager.remove(&shm_id);
+        }
+    } else {
+        // There is no shared memory segment attached at shmaddr;
+        return Err(SysError::EINVAL);
+    }
     Ok(0)
 }
 

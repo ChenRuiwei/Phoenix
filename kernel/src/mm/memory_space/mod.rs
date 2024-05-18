@@ -35,23 +35,6 @@ use crate::{
 mod range_map;
 pub mod vm_area;
 
-extern "C" {
-    fn _stext();
-    fn _strampoline();
-    fn sigreturn_trampoline();
-    fn _etrampoline();
-    fn _etext();
-    fn _srodata();
-    fn _erodata();
-    fn _sdata();
-    fn _edata();
-    fn _sstack();
-    fn _estack();
-    fn _sbss();
-    fn _ebss();
-    fn _ekernel();
-}
-
 /// Kernel space for all processes.
 ///
 /// There is no need to lock `KERNEL_SPACE` since it won't be changed.
@@ -86,6 +69,23 @@ impl MemorySpace {
 
     /// Create a kernel space.
     pub fn new_kernel() -> Self {
+        extern "C" {
+            fn _stext();
+            fn _strampoline();
+            fn sigreturn_trampoline();
+            fn _etrampoline();
+            fn _etext();
+            fn _srodata();
+            fn _erodata();
+            fn _sdata();
+            fn _edata();
+            fn _sstack();
+            fn _estack();
+            fn _sbss();
+            fn _ebss();
+            fn _ekernel();
+        }
+
         log::debug!("[kernel] trampoline {:#x}", sigreturn_trampoline as usize);
         log::debug!(
             "[kernel] .text [{:#x}, {:#x}) [{:#x}, {:#x})",
@@ -331,7 +331,7 @@ impl MemorySpace {
 
     /// Attach given `pages` to the MemorySpace. If pages is not given, it will
     /// create pages according to the `size` and map them to the MemorySpace.
-    /// if `shmaddr` is set to `0`, it will find chooses a suitable page-aligned
+    /// if `shmaddr` is set to `0`, it will chooses a suitable page-aligned
     /// address to attach.
     ///
     /// `size` and `shmaddr` need to be page-aligned
@@ -371,10 +371,36 @@ impl MemorySpace {
             for vpn in vm_area.range_vpn() {
                 let page = pages.next().unwrap().upgrade().unwrap();
                 self.page_table.map(vpn, page.ppn(), map_perm.into());
-                vm_area.pages.insert(vpn, page);
+                vm_area.pages.insert(vpn, page.clone());
             }
         }
+        self.push_vma(vm_area);
         return ret_addr;
+    }
+
+    /// `shmaddr` must be the return value of shmget (i.e. `shmaddr` is page
+    /// aligned and in the beginning of the vm_area with type Shm). The
+    /// check should be done at the caller who call `detach_shm`
+    pub fn detach_shm(&mut self, shmaddr: VirtAddr) {
+        let mut range_to_remove = None;
+        if let Some((range, vm_area)) = self.areas.iter().find(|(range, _)| range.start == shmaddr)
+        {
+            if vm_area.vma_type != VmAreaType::Shm {
+                panic!("[detach_shm] 'vm_area.vma_type != VmAreaType::Shm' this won't happen");
+            }
+            log::warn!("[detach_shm] try to remove {:?}", range);
+            range_to_remove = Some(range);
+            for vpn in vm_area.range_vpn() {
+                self.page_table.unmap(vpn);
+            }
+        } else {
+            panic!("[detach_shm] this won't happen");
+        }
+        if let Some(range) = range_to_remove {
+            self.areas.force_remove_one(range);
+        } else {
+            panic!("[detach_shm] range_to_remove is None! This should never happen");
+        }
     }
 
     /// Alloc stack and map it in the page table.
