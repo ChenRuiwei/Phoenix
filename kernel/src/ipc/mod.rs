@@ -1,6 +1,6 @@
 pub mod shm;
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct IpcPerm {
     key: i32,
     uid: u32,

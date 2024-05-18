@@ -1,16 +1,10 @@
-use alloc::sync::Arc;
-use core::isize;
-
-use arch::time::get_time_duration;
-use config::mm::{PAGE_MASK, PAGE_SIZE};
+use config::mm::PAGE_MASK;
 use memory::VirtAddr;
 use systype::{SysError, SyscallResult};
 
 use crate::{
-    ipc::shm::{
-        SharedMemory, ShmAtFlags, ShmGetFlags, SHARED_MEMORY_KEY_ALLOCATOR, SHARED_MEMORY_MANAGER,
-    },
-    mm::memory_space::vm_area::{MapPerm, VmArea},
+    ipc::shm::{SharedMemory, ShmIdDs, SHARED_MEMORY_KEY_ALLOCATOR, SHARED_MEMORY_MANAGER},
+    mm::{memory_space::vm_area::MapPerm, UserWritePtr},
     processor::hart::current_task,
 };
 
@@ -198,7 +192,17 @@ pub fn sys_munmap(_addr: VirtAddr, _length: usize) -> SyscallResult {
 /// - `shmflg`: Together with `key`, determine the function of shmget
 ///
 /// On success, a valid shared memory identifier is returned.
-pub fn sys_shmget(key: usize, size: usize, shmflg: ShmGetFlags) -> SyscallResult {
+pub fn sys_shmget(key: usize, size: usize, shmflg: i32) -> SyscallResult {
+    bitflags! {
+        #[derive(Debug)]
+        struct ShmGetFlags: i32 {
+            /// Create a new segment. If this flag is not used, then shmget() will find the segment associated with key and check to see if the user has permission to access the segment.
+            const IPC_CREAT = 0o1000;
+            /// This flag is used with IPC_CREAT to ensure that this call creates the segment.  If the segment already exists, the call fails.
+            const IPC_EXCL = 0o2000;
+        }
+    }
+    let shmflg = ShmGetFlags::from_bits_truncate(shmflg);
     log::warn!("[sys_shmget] {key} {size} {:?}", shmflg);
     // Create a new shared memory. When it is specified, the shmflg is invalid
     const IPC_PRIVATE: usize = 0;
@@ -243,7 +247,21 @@ pub fn sys_shmget(key: usize, size: usize, shmflg: ShmGetFlags) -> SyscallResult
 ///
 /// On success, sys_shmat() returns an address pointer to the shared memory
 /// segment
-pub fn sys_shmat(shmid: usize, shmaddr: usize, shmflg: ShmAtFlags) -> SyscallResult {
+pub fn sys_shmat(shmid: usize, shmaddr: usize, shmflg: i32) -> SyscallResult {
+    bitflags! {
+        #[derive(Debug)]
+        struct ShmAtFlags: i32 {
+            /// Attach the segment for read-only access.If this flag is not specified, the segment is attached for read and write access, and the process must have read and write permission for  the  segment.
+            const SHM_RDONLY = 0o10000;
+            /// round attach address to SHMLBA boundary
+            const SHM_RND = 0o20000;
+            /// take-over region on attach
+            const SHM_REMAP = 0o40000;
+            /// Allow the contents of the segment to be executed.  The caller must have execute permission on the segment.
+            const SHM_EXEC = 0o100000;
+        }
+    }
+    let shmflg = ShmAtFlags::from_bits_truncate(shmflg as i32);
     log::warn!("[sys_shmat] {shmid} {shmaddr} {:?}", shmflg);
     // unaligned (i.e., not page-aligned and SHM_RND was not specified) shmaddr
     // value
@@ -308,6 +326,27 @@ pub fn sys_shmdt(shmaddr: usize) -> SyscallResult {
 
 /// sys_shmctl performs the control operation specified by cmd on the System V
 /// shared memory segment whose identifier is given in shmid.
-pub fn sys_shmctl(shmid: i32, cmd: i32, _buf: usize) -> SyscallResult {
+pub fn sys_shmctl(shmid: usize, cmd: i32, buf: usize) -> SyscallResult {
+    // Copy information from the kernel data structure associated with `shmid`
+    // into the shmid_ds structure pointed to by buf.
+    const IPC_STAT: i32 = 2;
+    match cmd {
+        IPC_STAT => {
+            let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
+            let shm = shm_manager.get(&shmid);
+            if let Some(shm) = shm {
+                let buf = UserWritePtr::from_usize(buf);
+                buf.write(&current_task(), shm.shmid_ds);
+            } else {
+                // shmid is not a valid identifier
+                return Err(SysError::EINVAL);
+            }
+        }
+        cmd => {
+            log::error!("[sys_shmctl] unimplemented cmd {cmd}");
+            // cmd is not a valid command
+            return Err(SysError::EINVAL);
+        }
+    }
     Ok(0)
 }

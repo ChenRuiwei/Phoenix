@@ -68,7 +68,9 @@ pub struct Task {
     state: SpinNoIrqLock<TaskState>,
     /// The process's address space
     memory_space: Shared<MemorySpace>,
-    ///
+    /// `VirtAddr` is the start of Shared Memory Area(vma). `usize` is the key
+    /// of SharedMemory struct in SHARED_MEMORY_MANAGER
+    /// shm_ids stores the map: start VirtAddr -> key
     shm_ids: Shared<BTreeMap<VirtAddr, usize>>,
     /// Parent process
     parent: Shared<Option<Weak<Task>>>,
@@ -351,7 +353,7 @@ impl Task {
         let cwd;
         let itimers;
         let futexes;
-        let shared_memory_ids;
+        let shm_ids;
         let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
             self.sig_handlers.clone()
         } else {
@@ -366,7 +368,7 @@ impl Task {
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
             futexes = self.futexes.clone();
-            shared_memory_ids = self.shm_ids.clone();
+            shm_ids = self.shm_ids.clone();
         } else {
             is_leader = true;
             leader = None;
@@ -380,7 +382,7 @@ impl Task {
             ]);
             cwd = new_shared(self.cwd());
             futexes = new_shared(Futexes::new());
-            shared_memory_ids = new_shared(BTreeMap::new());
+            shm_ids = new_shared(BTreeMap::new());
         }
 
         let memory_space;
@@ -437,7 +439,7 @@ impl Task {
             futexes,
             tid_address,
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
-            shm_ids: shared_memory_ids,
+            shm_ids,
         });
 
         if !flags.contains(CloneFlags::THREAD) {

@@ -20,6 +20,7 @@ pub struct SharedMemory {
 }
 
 #[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct ShmIdDs {
     // Ownership and permissions
     pub shm_perm: IpcPerm,
@@ -117,38 +118,3 @@ impl SharedMemoryManager {
 pub static SHARED_MEMORY_MANAGER: Lazy<SharedMemoryManager> = Lazy::new(SharedMemoryManager::init);
 pub static SHARED_MEMORY_KEY_ALLOCATOR: SpinNoIrqLock<RecycleAllocator> =
     SpinNoIrqLock::new(RecycleAllocator::new(2));
-bitflags! {
-    #[derive(Debug)]
-    pub struct ShmGetFlags: i32 {
-        /// Create a new segment. If this flag is not used, then shmget() will find the segment associated with key and check to see if the user has permission to access the segment.
-        const IPC_CREAT = 0o1000;
-        /// This flag is used with IPC_CREAT to ensure that this call creates the segment.  If the segment already exists, the call fails.
-        const IPC_EXCL = 0o2000;
-    }
-}
-
-impl From<usize> for ShmGetFlags {
-    fn from(value: usize) -> Self {
-        ShmGetFlags::from_bits_truncate(value as i32)
-    }
-}
-
-bitflags! {
-    #[derive(Debug)]
-    pub struct ShmAtFlags: i32 {
-        /// Attach the segment for read-only access.If this flag is not specified, the segment is attached for read and write access, and the process must have read and write permission for  the  segment.
-        const SHM_RDONLY = 0o10000;
-        /// round attach address to SHMLBA boundary
-        const SHM_RND = 0o20000;
-        /// take-over region on attach
-        const SHM_REMAP = 0o40000;
-        /// Allow the contents of the segment to be executed.  The caller must have execute permission on the segment.
-        const SHM_EXEC = 0o100000;
-    }
-}
-
-impl From<usize> for ShmAtFlags {
-    fn from(value: usize) -> Self {
-        ShmAtFlags::from_bits_truncate(value as i32)
-    }
-}
