@@ -1,4 +1,8 @@
-use alloc::{string::String, sync::Arc, vec::Vec};
+use alloc::{
+    string::String,
+    sync::{Arc, Weak},
+    vec::Vec,
+};
 use core::ops::Range;
 
 use async_utils::block_on;
@@ -6,11 +10,11 @@ use config::{
     board::MEMORY_END,
     mm::{
         PAGE_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END,
-        U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
+        U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
     },
 };
 use log::info;
-use memory::{pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
+use memory::{page::Page, pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
 use spin::Lazy;
 use systype::{SysError, SysResult};
 use vfs_core::File;
@@ -325,6 +329,54 @@ impl MemorySpace {
         (entry, auxv)
     }
 
+    /// Attach given `pages` to the MemorySpace. If pages is not given, it will
+    /// create pages according to the `size` and map them to the MemorySpace.
+    /// if `shmaddr` is set to `0`, it will find chooses a suitable page-aligned
+    /// address to attach.
+    ///
+    /// `size` and `shmaddr` need to be page-aligned
+    pub fn attach_shm(
+        &mut self,
+        size: usize,
+        shmaddr: VirtAddr,
+        map_perm: MapPerm,
+        pages: &mut Vec<Weak<Page>>,
+    ) -> VirtAddr {
+        let mut ret_addr = shmaddr;
+        let mut vm_area = if shmaddr == 0.into() {
+            const SHARED_RANGE: Range<VirtAddr> =
+                VirtAddr::from_usize_range(U_SEG_SHARE_BEG..U_SEG_SHARE_END);
+            let range = self
+                .areas
+                .find_free_range(SHARED_RANGE, size)
+                .expect("no free shared area");
+            ret_addr = range.start;
+            VmArea::new(range, map_perm, VmAreaType::Shm)
+        } else {
+            log::warn!("[attach_shm] user defined addr");
+            let shm_end = shmaddr + size;
+            VmArea::new(shmaddr..shm_end, map_perm, VmAreaType::Shm)
+        };
+        if pages.is_empty() {
+            for vpn in vm_area.range_vpn() {
+                let page = Page::new();
+                self.page_table.map(vpn, page.ppn(), map_perm.into());
+                let page = Arc::new(page);
+                pages.push(Arc::downgrade(&page));
+                vm_area.pages.insert(vpn, page);
+            }
+        } else {
+            debug_assert!(pages.len() == vm_area.range_vpn().end - vm_area.range_vpn().start);
+            let mut pages = pages.iter();
+            for vpn in vm_area.range_vpn() {
+                let page = pages.next().unwrap().upgrade().unwrap();
+                self.page_table.map(vpn, page.ppn(), map_perm.into());
+                vm_area.pages.insert(vpn, page);
+            }
+        }
+        return ret_addr;
+    }
+
     /// Alloc stack and map it in the page table.
     ///
     /// Return the address of the stack top, which is aligned to 16 bytes.
@@ -524,6 +576,7 @@ impl MemorySpace {
     }
 
     /// only for debug
+    #[allow(unused)]
     pub fn print_all(&self) {
         use crate::{
             trap::{

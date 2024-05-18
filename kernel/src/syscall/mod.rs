@@ -98,6 +98,11 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
             args[5],
         ),
         MUNMAP => sys_munmap(args[0].into(), args[1]),
+        // Shared Memory
+        SHMGET => sys_shmget(args[0], args[1], args[2].into()),
+        SHMAT => sys_shmat(args[0], args[1], args[2].into()),
+        SHMDT => sys_shmdt(args[0]),
+        SHMCTL => sys_shmctl(args[0] as _, args[1] as _, args[2].into()),
         // File system
         READ => sys_read(args[0], args[1].into(), args[2]).await,
         WRITE => sys_write(args[0], args[1].into(), args[2]).await,

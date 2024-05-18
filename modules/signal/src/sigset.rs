@@ -117,9 +117,9 @@ bitflags! {
         // SIGSEGV）、硬件异常（可能导致
         // SIGBUS）等。同步信号的处理通常需要立即响应，
         // 因为它们指示了程序运行中的严重问题
-        //  const SYNCHRONOUS_MASK: SigSet::SIGSEGV | SigSet::SIGBUS
-        // | SigSet::SIGILL | SigSet::SIGTRAP | SigSet::SIGFPE | SigSet::SIGSYS;
-        const SYNCHRONOUS_MASK = (1<<3) | (1<<4) | (1<<6) | (1<<7) | (1<<10) | (1<<30) ;
+        const SYNCHRONOUS_MASK = SigSet::SIGSEGV.bits() | SigSet::SIGBUS.bits()
+        | SigSet::SIGILL.bits() | SigSet::SIGTRAP.bits() | SigSet::SIGFPE.bits() | SigSet::SIGSYS.bits();
+        // const SYNCHRONOUS_MASK = (1<<3) | (1<<4) | (1<<6) | (1<<7) | (1<<10) | (1<<30) ;
     }
 }
 

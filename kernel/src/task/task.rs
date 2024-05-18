@@ -67,6 +67,8 @@ pub struct Task {
     state: SpinNoIrqLock<TaskState>,
     /// The process's address space
     memory_space: Shared<MemorySpace>,
+    ///
+    // shared_memory: SyncUnsafeCell<SharedMemory>,
     /// Parent process
     parent: Shared<Option<Weak<Task>>>,
     /// Children processes

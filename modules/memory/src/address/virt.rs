@@ -77,9 +77,19 @@ impl VirtAddr {
         VirtPageNum(self.0 / PAGE_SIZE)
     }
 
+    /// `VirtAddr` -> rounded down to a multiple of PAGE_SIZE
+    pub fn rounded_down(&self) -> Self {
+        Self(self.0 & !PAGE_MASK)
+    }
+
     /// `VirtAddr`->`VirtPageNum`
     pub fn ceil(&self) -> VirtPageNum {
         VirtPageNum((self.0 + PAGE_SIZE - 1) / PAGE_SIZE)
+    }
+
+    /// `VirtAddr` -> rounded up to a multiple of PAGE_SIZE
+    pub fn rounded_up(&self) -> Self {
+        Self((self.0 + PAGE_MASK) & !PAGE_MASK)
     }
 
     pub fn page_offset(&self) -> usize {
