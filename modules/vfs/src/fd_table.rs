@@ -7,9 +7,13 @@ use crate::devfs::tty::TTY;
 
 pub type Fd = usize;
 
+const MAX_FD_NUM_DEFAULT: usize = 1024;
+
 #[derive(Clone)]
 pub struct FdTable {
     table: Vec<Option<FdInfo>>,
+    // TODO: add code for making sure tha FdTable length is less than `limit`
+    limit: usize,
 }
 
 bitflags::bitflags! {
@@ -70,7 +74,10 @@ impl FdTable {
         vec.push(Some(FdInfo::new(TTY.get().unwrap().clone())));
         vec.push(Some(FdInfo::new(TTY.get().unwrap().clone())));
         vec.push(Some(FdInfo::new(TTY.get().unwrap().clone())));
-        Self { table: vec }
+        Self {
+            table: vec,
+            limit: MAX_FD_NUM_DEFAULT,
+        }
     }
 
     fn find_free_slot(&self) -> Option<usize> {
@@ -192,5 +199,13 @@ impl FdTable {
 
     pub fn len(&self) -> usize {
         self.table.len()
+    }
+
+    pub fn limit(&self) -> usize {
+        self.limit
+    }
+
+    pub fn set_limit(&mut self, limit: usize) {
+        self.limit = limit;
     }
 }

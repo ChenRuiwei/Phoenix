@@ -169,9 +169,11 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         SCHED_GETPARAM => sys_sched_getparam(),
         SCHED_SETAFFINITY => sys_sched_setaffinity(args[0], args[1], args[2].into()),
         SCHED_GETAFFINITY => sys_sched_getaffinity(args[0], args[1], args[2].into()),
+        // Resource
+        GETRUSAGE => sys_getrusage(args[0] as _, args[1].into()),
+        PRLIMIT64 => sys_prlimit64(args[0], args[1] as _, args[2].into(), args[3].into()),
         // Miscellaneous
         UNAME => sys_uname(args[0].into()),
-        GETRUSAGE => sys_getrusage(args[0] as _, args[1].into()),
         SYSLOG => sys_syslog(args[0], args[1].into(), args[2]),
         _ => {
             log::error!("Unsupported syscall: {}", syscall_no);

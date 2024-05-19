@@ -73,10 +73,10 @@ pub fn sys_rt_sigprocmask(
     const SIGUNBLOCK: usize = 1;
     const SIGSETMASK: usize = 2;
     let task = current_task();
-    if !old_set.is_null() {
+    if old_set.not_null() {
         old_set.write(&task, *task.sig_mask())?;
     }
-    if !set.is_null() {
+    if set.not_null() {
         let mut set = set.read(&task)?;
         // It is not possible to block SIGKILL or SIGSTOP.  Attempts to do so are
         // silently ignored.

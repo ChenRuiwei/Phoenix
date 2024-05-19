@@ -6,13 +6,12 @@ use alloc::{
 use arch::time::get_time_sec;
 use config::mm::PAGE_SIZE;
 use hashbrown::HashMap;
-use memory::{page::Page, VirtAddr};
+use memory::page::Page;
 use recycle_allocator::RecycleAllocator;
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 
 use super::IpcPerm;
-use crate::{mm::memory_space::vm_area::MapPerm, task::Task};
 
 pub struct SharedMemory {
     pub shmid_ds: ShmIdDs,
