@@ -359,9 +359,8 @@ impl MemorySpace {
         };
         if pages.is_empty() {
             for vpn in vm_area.range_vpn() {
-                let page = Page::new();
+                let page = Arc::new(Page::new());
                 self.page_table.map(vpn, page.ppn(), map_perm.into());
-                let page = Arc::new(page);
                 pages.push(Arc::downgrade(&page));
                 vm_area.pages.insert(vpn, page);
             }
@@ -505,7 +504,7 @@ impl MemorySpace {
         let mut memory_space = Self::new_user();
         for (range, area) in user_space.areas.iter() {
             log::debug!("[MemorySpace::from_user_lazily] cloning {area:?}");
-            let new_area = area.clone();
+            let mut new_area = area.clone();
             debug_assert_eq!(range, new_area.range_va());
             for vpn in area.range_vpn() {
                 if let Some(page) = area.pages.get(&vpn) {
@@ -515,7 +514,9 @@ impl MemorySpace {
                             // If shared memory,
                             // then we don't need to modify the pte flags,
                             // i.e. no copy-on-write.
-                            todo!()
+                            info!("[from_user_lazily] clone Shared Memory");
+                            new_area.pages.insert(vpn, page.clone());
+                            (pte.flags(), page.ppn())
                         }
                         _ => {
                             // copy on write

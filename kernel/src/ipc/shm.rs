@@ -24,7 +24,7 @@ pub struct SharedMemory {
 pub struct ShmIdDs {
     // Ownership and permissions
     pub shm_perm: IpcPerm,
-    // Size of segment (bytes)
+    // Size of segment (bytes). In our system, this must be aligned
     pub shm_segsz: usize,
     // Last attach time
     pub shm_atime: usize,
@@ -86,23 +86,6 @@ impl SharedMemory {
             pages: Vec::with_capacity(sz / PAGE_SIZE + 1),
         }
     }
-    /// attach aligned `shm_va` to `task` with permission `map_perm`.
-    pub fn attach(
-        &mut self,
-        task: &Arc<Task>,
-        shm_va: VirtAddr,
-        shm_id: usize,
-        map_perm: MapPerm,
-    ) -> VirtAddr {
-        let ret_addr = task.with_mut_memory_space(|m| {
-            m.attach_shm(self.size(), shm_va, map_perm, &mut self.pages)
-        });
-        task.with_mut_shm_ids(|ids| {
-            ids.insert(ret_addr.clone(), shm_id);
-        });
-        self.shmid_ds.attach(task.pid());
-        ret_addr
-    }
     pub fn size(&self) -> usize {
         self.shmid_ds.shm_segsz
     }
@@ -112,6 +95,14 @@ pub struct SharedMemoryManager(pub SpinNoIrqLock<HashMap<usize, SharedMemory>>);
 impl SharedMemoryManager {
     pub fn init() -> Self {
         Self(SpinNoIrqLock::new(HashMap::new()))
+    }
+    pub fn detach(&self, shm_id: usize, lpid: usize) {
+        let mut shm_manager = self.0.lock();
+        let shm = shm_manager.get_mut(&shm_id).unwrap();
+        if shm.shmid_ds.detach(lpid) {
+            shm_manager.remove(&shm_id);
+            SHARED_MEMORY_KEY_ALLOCATOR.lock().dealloc(shm_id);
+        }
     }
 }
 

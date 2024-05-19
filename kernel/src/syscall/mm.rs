@@ -204,6 +204,7 @@ pub fn sys_shmget(key: usize, size: usize, shmflg: i32) -> SyscallResult {
     }
     let shmflg = ShmGetFlags::from_bits_truncate(shmflg);
     log::warn!("[sys_shmget] {key} {size} {:?}", shmflg);
+
     // Create a new shared memory. When it is specified, the shmflg is invalid
     const IPC_PRIVATE: usize = 0;
     let rounded_up_sz = (size + PAGE_MASK) & !PAGE_MASK;
@@ -214,8 +215,7 @@ pub fn sys_shmget(key: usize, size: usize, shmflg: i32) -> SyscallResult {
         return Ok(new_key);
     }
     let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
-    let shm = shm_manager.get(&key);
-    if let Some(shm) = shm {
+    if let Some(shm) = shm_manager.get(&key) {
         // IPC_CREAT and IPC_EXCL were specified in shmflg, but a shared memory segment
         // already exists for key.
         if shmflg.contains(ShmGetFlags::IPC_CREAT | ShmGetFlags::IPC_EXCL) {
@@ -251,24 +251,28 @@ pub fn sys_shmat(shmid: usize, shmaddr: usize, shmflg: i32) -> SyscallResult {
     bitflags! {
         #[derive(Debug)]
         struct ShmAtFlags: i32 {
-            /// Attach the segment for read-only access.If this flag is not specified, the segment is attached for read and write access, and the process must have read and write permission for  the  segment.
+            /// Attach the segment for read-only access.If this flag is not specified,
+            /// the segment is attached for read and write access, and the process
+            /// must have read and write permission for  the  segment.
             const SHM_RDONLY = 0o10000;
             /// round attach address to SHMLBA boundary
             const SHM_RND = 0o20000;
-            /// take-over region on attach
+            /// take-over region on attach (unimplemented)
             const SHM_REMAP = 0o40000;
-            /// Allow the contents of the segment to be executed.  The caller must have execute permission on the segment.
+            /// Allow the contents of the segment to be executed.
             const SHM_EXEC = 0o100000;
         }
     }
     let shmflg = ShmAtFlags::from_bits_truncate(shmflg as i32);
     log::warn!("[sys_shmat] {shmid} {shmaddr} {:?}", shmflg);
-    // unaligned (i.e., not page-aligned and SHM_RND was not specified) shmaddr
-    // value
-    if shmaddr & PAGE_MASK != 0 && !shmflg.contains(ShmAtFlags::SHM_RND) {
+
+    let mut shm_va: VirtAddr = shmaddr.into();
+    if !shm_va.is_aligned() && !shmflg.contains(ShmAtFlags::SHM_RND) {
+        // unaligned (i.e., not page-aligned and SHM_RND was not specified) shmaddr
+        // value
         return Err(SysError::EINVAL);
     }
-    let shm_va = VirtAddr::from_usize(shmaddr).rounded_down();
+    shm_va = shm_va.rounded_down();
     let mut map_perm = MapPerm::RW;
     if shmflg.contains(ShmAtFlags::SHM_EXEC) {
         map_perm.insert(MapPerm::X);
@@ -277,10 +281,13 @@ pub fn sys_shmat(shmid: usize, shmaddr: usize, shmflg: i32) -> SyscallResult {
         map_perm.remove(MapPerm::W);
     }
     let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
-    let shm = shm_manager.get_mut(&shmid);
-    if let Some(shm) = shm {
+    if let Some(shm) = shm_manager.get_mut(&shmid) {
         let task = current_task();
-        let ret_addr = shm.attach(&task, shm_va, shmid, map_perm);
+        let ret_addr = task
+            .with_mut_memory_space(|m| m.attach_shm(shm.size(), shm_va, map_perm, &mut shm.pages));
+        task.with_mut_shm_ids(|ids| {
+            ids.insert(ret_addr.clone(), shmid);
+        });
         return Ok(ret_addr.into());
     } else {
         // Invalid shmid value
@@ -304,19 +311,15 @@ pub fn sys_shmat(shmid: usize, shmaddr: usize, shmflg: i32) -> SyscallResult {
 pub fn sys_shmdt(shmaddr: usize) -> SyscallResult {
     log::warn!("[sys_shmdt] {:?}", shmaddr);
     let task = current_task();
-    let shm_va = VirtAddr::from_usize(shmaddr);
+    let shm_va: VirtAddr = shmaddr.into();
     if !shm_va.is_aligned() {
         // shmaddr is not aligned on a page boundary
         return Err(SysError::EINVAL);
     }
     let shm_id = task.with_mut_shm_ids(|ids| ids.remove(&shm_va));
     if let Some(shm_id) = shm_id {
-        let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
-        let shm = shm_manager.get_mut(&shm_id).unwrap();
         task.with_mut_memory_space(|m| m.detach_shm(shm_va));
-        if shm.shmid_ds.detach(task.pid()) {
-            shm_manager.remove(&shm_id);
-        }
+        SHARED_MEMORY_MANAGER.detach(shm_id, task.pid());
     } else {
         // There is no shared memory segment attached at shmaddr;
         return Err(SysError::EINVAL);
@@ -333,8 +336,7 @@ pub fn sys_shmctl(shmid: usize, cmd: i32, buf: usize) -> SyscallResult {
     match cmd {
         IPC_STAT => {
             let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
-            let shm = shm_manager.get(&shmid);
-            if let Some(shm) = shm {
+            if let Some(shm) = shm_manager.get(&shmid) {
                 let buf = UserWritePtr::from_usize(buf);
                 buf.write(&current_task(), shm.shmid_ds);
             } else {

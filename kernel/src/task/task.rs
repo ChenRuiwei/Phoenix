@@ -31,7 +31,7 @@ use super::{
     tid::{Pid, Tid, TidHandle},
 };
 use crate::{
-    ipc::shm::{SharedMemory, ShmIdDs},
+    ipc::shm::{SharedMemory, ShmIdDs, SHARED_MEMORY_MANAGER},
     mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
     processor::env::within_sum,
     syscall,
@@ -353,7 +353,6 @@ impl Task {
         let cwd;
         let itimers;
         let futexes;
-        let shm_ids;
         let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
             self.sig_handlers.clone()
         } else {
@@ -368,7 +367,6 @@ impl Task {
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
             futexes = self.futexes.clone();
-            shm_ids = self.shm_ids.clone();
         } else {
             is_leader = true;
             leader = None;
@@ -382,7 +380,6 @@ impl Task {
             ]);
             cwd = new_shared(self.cwd());
             futexes = new_shared(Futexes::new());
-            shm_ids = new_shared(BTreeMap::new());
         }
 
         let memory_space;
@@ -439,7 +436,8 @@ impl Task {
             futexes,
             tid_address,
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
-            shm_ids,
+            // After a fork(2), the child inherits the attached shared memory segments.
+            shm_ids: self.shm_ids.clone(),
         });
 
         if !flags.contains(CloneFlags::THREAD) {
@@ -468,12 +466,16 @@ impl Task {
         // NOTE: should do termination before switching page table, so that other
         // threads will trap in by page fault and be handled by `do_exit`
         log::debug!("[Task::do_execve] terminating all threads except the leader");
-        self.with_thread_group(|tg| {
+        let pid = self.with_thread_group(|tg| {
+            let mut pid = 0;
             for t in tg.iter() {
                 if !t.is_leader() {
                     t.set_zombie();
+                } else {
+                    pid = t.tid.0;
                 }
             }
+            pid
         });
 
         log::debug!("[Task::do_execve] changing memory space");
@@ -505,6 +507,15 @@ impl Task {
         // During an execve, the dispositions of handled signals are reset
         // to the default; the dispositions of ignored signals are left unchanged
         self.with_mut_sig_handlers(|handlers| handlers.reset_user_defined());
+
+        // After an execve(2), all attached shared memory segments are detached from the
+        // process.
+        self.with_mut_shm_ids(|ids| {
+            for (_, shm_id) in ids.iter() {
+                SHARED_MEMORY_MANAGER.detach(*shm_id, pid);
+            }
+            *ids = BTreeMap::new();
+        });
     }
 
     // NOTE: After all of the threads in a thread group is terminated, the parent
@@ -565,6 +576,13 @@ impl Task {
                     false,
                 );
             }
+            // Upon _exit(2), all attached shared memory segments are detached from the
+            // process.
+            self.with_shm_ids(|ids| {
+                for (_, shm_id) in ids.iter() {
+                    SHARED_MEMORY_MANAGER.detach(*shm_id, self.pid());
+                }
+            });
         }
     }
 
