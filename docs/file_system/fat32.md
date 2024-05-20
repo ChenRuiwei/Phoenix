@@ -96,29 +96,29 @@ impl SuperBlock for FatSuperBlock {
 
 ```rust
 pub struct StatFs {
-    /// 是个 magic number，每个知名的 fs 都各有定义，但显然我们没有
+    /// magic number for indicating a file system
     pub f_type: i64,
-    /// 最优传输块大小
+    /// best size of a transporting block
     pub f_bsize: i64,
-    /// 总的块数
+    /// number of blocks
     pub f_blocks: u64,
-    /// 还剩多少块未分配
+    /// number of free blocks
     pub f_bfree: u64,
-    /// 对用户来说，还有多少块可用
+    /// number of available blocks for users
     pub f_bavail: u64,
-    /// 总的 inode 数
+    /// total number of inodes
     pub f_files: u64,
-    /// 空闲的 inode 数
+    /// number of free inodes
     pub f_ffree: u64,
-    /// 文件系统编号，但实际上对于不同的OS差异很大，所以不会特地去用
+    /// file system id
     pub f_fsid: [i32; 2],
-    /// 文件名长度限制，这个OS默认FAT已经使用了加长命名
+    /// max length of file name
     pub f_namelen: isize,
-    /// 片大小
+    /// size of fregment
     pub f_frsize: isize,
-    /// 一些选项，但其实也没用到
+    /// some options
     pub f_flags: isize,
-    /// 空余 padding
+    /// padding
     pub f_spare: [isize; 4],
 }
 ```
@@ -210,7 +210,7 @@ pub struct Stat {
     pub st_uid: u32,
     /// group id
     pub st_gid: u32,
-    /// device number for real device, like char device. 
+    /// device number for real device, like char device.
     /// For regular files that are restored on HDD or SSD, st_rdev is usually defined as 0.
     pub st_rdev: u64,
     /// padding
