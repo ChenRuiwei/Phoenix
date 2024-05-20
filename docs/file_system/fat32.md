@@ -198,17 +198,30 @@ impl Inode for FatFileInode {
 
 ```rust
 pub struct Stat {
+    /// device that the file system is mounted to
     pub st_dev: u64,
+    /// inode number
     pub st_ino: u64,
+    /// file type
     pub st_mode: u32,
+    /// number of hard link
     pub st_nlink: u32,
+    /// user id
     pub st_uid: u32,
+    /// group id
     pub st_gid: u32,
+    /// device number for real device, like char device. 
+    /// For regular files that are restored on HDD or SSD, st_rdev is usually defined as 0.
     pub st_rdev: u64,
+    /// padding
     pub __pad: u64,
+    /// file size
     pub st_size: u64,
+    /// block size
     pub st_blksize: u32,
+    /// padding
     pub __pad2: u32,
+    /// number of blocks that are assigned to the file
     pub st_blocks: u64,
     pub st_atime: TimeSpec,
     pub st_mtime: TimeSpec,
