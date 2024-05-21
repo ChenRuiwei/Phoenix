@@ -2,7 +2,7 @@ mod meminfo;
 
 use alloc::sync::Arc;
 
-use driver::BlockDevice;
+use device_core::BlockDevice;
 use systype::{SysResult, SyscallResult};
 use vfs_core::{
     Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, MountFlags, SuperBlock, SuperBlockMeta,

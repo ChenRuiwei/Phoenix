@@ -4,7 +4,7 @@ use alloc::{
 };
 use core::mem::MaybeUninit;
 
-use driver::BlockDevice;
+use device_core::BlockDevice;
 use spin::Once;
 use systype::SysResult;
 

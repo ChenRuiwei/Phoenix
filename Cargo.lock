@@ -132,6 +132,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7059fff8937831a9ae6f0fe4d658ffabf58f2ca96aa9dec1c889f936f705f216"
 
 [[package]]
+name = "device-core"
+version = "0.1.0"
+
+[[package]]
 name = "downcast-rs"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -143,7 +147,9 @@ version = "0.1.0"
 dependencies = [
  "arch",
  "config",
+ "device-core",
  "log",
+ "lru",
  "memory",
  "spin",
  "sync",
@@ -172,8 +178,8 @@ version = "0.1.0"
 dependencies = [
  "arch",
  "async-trait",
+ "device-core",
  "downcast-rs",
- "driver",
  "fatfs",
  "log",
  "sync",
@@ -281,6 +287,15 @@ version = "0.1.0"
 dependencies = [
  "crate_interface",
  "log",
+]
+
+[[package]]
+name = "lru"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3262e75e648fce39813cb56ac41f3c3e3f65217ebf3844d818d1f9398cfb0dc"
+dependencies = [
+ "hashbrown",
 ]
 
 [[package]]
@@ -515,6 +530,7 @@ dependencies = [
  "async_utils",
  "bitflags 2.5.0",
  "config",
+ "device-core",
  "driver",
  "fat32",
  "log",
@@ -534,8 +550,8 @@ dependencies = [
  "async-trait",
  "bitflags 2.5.0",
  "config",
+ "device-core",
  "downcast-rs",
- "driver",
  "hashbrown",
  "log",
  "memory",

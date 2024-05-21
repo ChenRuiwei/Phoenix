@@ -115,7 +115,7 @@ impl File for PipeWriteFile {
         for i in 0..len {
             pipe_buf.push(buf[i]);
         }
-        log::trace!("[Pipe::write] already write buf {buf:?} with data len {len:?}");
+        log::debug!("[PipeWriteFile::base_write_at] write buf {buf:?} with len {len:?}");
         Ok(len)
     }
 }
@@ -146,6 +146,7 @@ impl File for PipeReadFile {
                 .dequeue()
                 .expect("Just checked for len, should not fail");
         }
+        log::debug!("[PipeReadFile::base_read_at] read in buf {buf:?} with len {len}");
         Ok(len)
     }
 

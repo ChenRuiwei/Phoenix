@@ -1,3 +1,5 @@
+use crate::board::BLOCK_SIZE;
+
 pub const RAM_START: usize = 0x8000_0000;
 pub const VIRT_START: usize = 0xffff_ffc0_8000_0000;
 pub const RAM_SIZE: usize = 128 * 1024 * 1024;
@@ -43,3 +45,8 @@ pub const U_SEG_FILE_END: usize = 0x0000_0006_0000_0000;
 /// User share segment
 pub const U_SEG_SHARE_BEG: usize = 0x0000_0006_0000_0000;
 pub const U_SEG_SHARE_END: usize = 0x0000_0008_0000_0000;
+
+pub const BUFFER_CACHE_MAX: usize = 0x100;
+pub const BUFFER_PAGES_MAX: usize = BUFFER_CACHE_MAX / BUFFERS_IN_PAGE;
+pub const BUFFERS_IN_PAGE: usize = PAGE_SIZE / BLOCK_SIZE;
+pub const BUFFER_NEED_CACHE_CNT: usize = 8;

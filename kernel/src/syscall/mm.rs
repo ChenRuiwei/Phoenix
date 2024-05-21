@@ -116,7 +116,9 @@ pub fn sys_mmap(
     let prot = MmapProt::from_bits_truncate(prot);
     let perm = MapPerm::from(prot);
 
-    log::info!("[sys_mmap] prot:{prot:?}, flags:{flags:?}, perm:{perm:?}");
+    log::info!(
+        "[sys_mmap] addr:{addr:?}, length:{length:#x}, prot:{prot:?}, flags:{flags:?}, fd:{fd}, offset:{offset}, perm:{perm:?}"
+    );
 
     if addr.is_null() && flags.contains(MmapFlags::MAP_FIXED) {
         return Err(SysError::EINVAL);

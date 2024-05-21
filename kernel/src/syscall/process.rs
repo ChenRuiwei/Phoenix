@@ -101,6 +101,8 @@ pub fn sys_getppid() -> SyscallResult {
 
 /// NOTE: A thread can, and by default will, wait on children of other threads
 /// in the same thread group.
+// TODO: wait for child state change, only terminate child when it is zombie
+// state but not stop state
 // TODO: More options and process group support.
 // PERF: use event bus to notify this task when child exits
 pub async fn sys_wait4(

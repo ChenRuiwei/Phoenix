@@ -796,6 +796,7 @@ pub fn sys_lseek(fd: usize, offset: isize, whence: usize) -> SyscallResult {
 /// previous value of the mask.
 // TODO:
 pub fn sys_umask(_mask: i32) -> SyscallResult {
+    log::warn!("[sys_umask] not implemented");
     Ok(0x777)
 }
 

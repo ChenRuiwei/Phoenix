@@ -9,7 +9,7 @@ arch = { path = "../arch/" }
 config = { path = "../config/" }
 sync = { path = "../modules/sync/" }
 signal = { path = "../modules/signal/" }
-driver = { path = "../driver/" }
+driver = { path = "../modules/driver/" }
 logging = { path = "../modules/logging/" }
 executor = { path = "../modules/executor/" }
 systype = { path = "../modules/systype/" }

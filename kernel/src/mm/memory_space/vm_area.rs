@@ -192,6 +192,10 @@ impl VmArea {
         self.range_va = range_va
     }
 
+    pub fn area_len(&self) -> usize {
+        self.range_va.end - self.range_va.start
+    }
+
     pub fn perm(&self) -> MapPerm {
         self.map_perm
     }
@@ -223,6 +227,13 @@ impl VmArea {
         for vpn in range_vpn {
             page_table.unmap(vpn);
             self.pages.remove(&vpn);
+        }
+    }
+
+    pub fn clear_area(&self, page_table: &PageTable) {
+        let _sum_guard = SumGuard::new();
+        for vpn in self.range_vpn() {
+            page_table.find_pte(vpn).unwrap().ppn().empty_the_page();
         }
     }
 

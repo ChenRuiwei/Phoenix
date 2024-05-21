@@ -567,9 +567,7 @@ impl MemorySpace {
         let start = range.start;
         let mut vma = VmArea::new(range, perm, VmAreaType::Mmap);
         vma.map(&mut self.page_table);
-        let mut buf = Vec::with_capacity(length);
-        buf.fill(0);
-        vma.copy_data_with_offset(&self.page_table, 0, &buf);
+        vma.clear_area(&self.page_table);
         self.areas.try_insert(vma.range_va(), vma).unwrap();
         Ok(start)
     }

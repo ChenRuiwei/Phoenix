@@ -4,7 +4,7 @@ use alloc::{
     sync::Arc,
 };
 
-use driver::BlockDevice;
+use device_core::BlockDevice;
 use systype::{SysError, SysResult};
 
 use crate::{Dentry, MountFlags, Mutex, SuperBlock};

@@ -1,11 +1,3 @@
 [workspace]
-members = [
-    "kernel",
-    "arch",
-    "config",
-    "modules/*",
-    "driver",
-    "user",
-    "crates/*",
-]
+members = ["kernel", "arch", "config", "modules/*", "user", "crates/*"]
 resolver = "2"

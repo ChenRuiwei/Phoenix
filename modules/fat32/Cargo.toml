@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-driver = { path = "../../driver/" }
 vfs-core = { path = "../vfs-core/" }
+device-core = { path = "../device-core/" }
 sync = { path = "../sync/" }
 arch = { path = "../../arch/" }
 systype = { path = "../systype/" }

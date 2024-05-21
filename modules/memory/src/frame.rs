@@ -18,7 +18,6 @@ impl FrameTracker {
     /// Create an empty `FrameTracker`
     pub fn new(ppn: PhysPageNum) -> Self {
         // page cleaning
-        // TODO:实现延迟清零？即
         ppn.empty_the_page();
         Self { ppn }
     }

@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use driver::BlockDevice;
+use device_core::BlockDevice;
 use vfs_core::{Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, SuperBlock, SuperBlockMeta};
 
 use crate::{
@@ -33,7 +33,7 @@ impl FileSystemType for DevFsType {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         _flags: vfs_core::MountFlags,
-        dev: Option<alloc::sync::Arc<dyn driver::BlockDevice>>,
+        dev: Option<alloc::sync::Arc<dyn BlockDevice>>,
     ) -> systype::SysResult<alloc::sync::Arc<dyn vfs_core::Dentry>> {
         let sb = DevSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
