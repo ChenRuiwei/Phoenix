@@ -12,7 +12,6 @@ use config::{
     mm::{BUFFER_CACHE_MAX, BUFFER_PAGES_MAX, VIRT_RAM_OFFSET},
 };
 use lru::LruCache;
-use memory::page::Page;
 use sync::mutex::{SpinLock, SpinNoIrqLock};
 use virtio_drivers::{
     device::blk::VirtIOBlk,

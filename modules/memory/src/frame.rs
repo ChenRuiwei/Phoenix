@@ -18,6 +18,8 @@ impl FrameTracker {
     /// Create an empty `FrameTracker`
     pub fn new(ppn: PhysPageNum) -> Self {
         // page cleaning
+        // TODO: do not provide page cleaning. It is caller's duty to make sure page is
+        // cleaned, e.g. page table init.
         ppn.empty_the_page();
         Self { ppn }
     }

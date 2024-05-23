@@ -11,7 +11,7 @@ pub struct FatDirInode {
 
 impl FatDirInode {
     pub fn new(super_block: Arc<dyn SuperBlock>, dir: FatDir) -> Arc<Self> {
-        // TODO: Dir size is zero?
+        // TODO: is dir's size zero?
         let inode = Arc::new(Self {
             meta: InodeMeta::new(InodeMode::from_type(InodeType::Dir), super_block.clone(), 0),
             dir: new_shared(dir),
