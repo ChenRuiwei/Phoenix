@@ -1,12 +1,12 @@
 # 虚拟文件系统
 
-虚拟文件系统(Virtual File System，简称VFS)是内核中负责与各种字符流(如磁盘文件，IO设备等等)对接，并对外提供操作接口的子系统。它为用户程序提供了一个统一的文件和文件系统操作接口，屏蔽了不同文件系统之间的差异和操作细节。这意味着，用户程序可以使用标准的系统调用，如 `open()`、`read()`、`write()` 来操作文件，而无需关心文件实际存储在哪种类型的文件系统或存储介质上。
+虚拟文件系统(Virtual File System，简称 VFS)是内核中负责与各种字符流（如磁盘文件，IO 设备等等）对接，并对外提供操作接口的子系统。它为用户程序提供了一个统一的文件和文件系统操作接口，屏蔽了不同文件系统之间的差异和操作细节。这意味着，用户程序可以使用标准的系统调用，如 `open()`、`read()`、`write()` 来操作文件，而无需关心文件实际存储在哪种类型的文件系统或存储介质上。
 
-Phoenix OS的虚拟文件系统设计以Linux为师，并利用Rust语言的特性，从面向对象的角度出发对虚拟文件系统进行了设计和优化。目前可以支持包括 `sys_dup`, `sys_read` 在内的所有文件相关的系统调用
+Phoenix OS 的虚拟文件系统设计以 Linux 为师，并利用 Rust 语言的特性，从面向对象的角度出发对虚拟文件系统进行了设计和优化。目前可以支持包括 `sys_dup`, `sys_read` 在内的所有文件相关的系统调用
 
 ## 虚拟文件系统结构
 
-目前虚拟文件系统包含 `SuperBlock`, `Inode`, `Dentry`, `File`等核心数据结构, 也包含 `FdTable`, `Pipe`等用于实现系统调用的辅助数据结构。
+目前虚拟文件系统包含 `SuperBlock`, `Inode`, `Dentry`, `File`等核心数据结构，也包含 `FdTable`, `Pipe`等用于实现系统调用的辅助数据结构。
 
 ## 核心数据结构及其操作
 
@@ -374,8 +374,8 @@ pub trait File: Send + Sync {
         Err(SysError::ENOTTY)
     }
 
-    /// called when a process wants to check if there is activity on this file and (optionally) 
-    /// go to sleep until there is activity. 
+    /// called when a process wants to check if there is activity on this file and (optionally)
+    /// go to sleep until there is activity.
     /// Called by the select(2) and poll(2) system calls
     async fn poll(&self, events: PollEvents) -> SysResult<PollEvents> {
         let mut res = PollEvents::empty();
@@ -393,7 +393,7 @@ pub trait File: Send + Sync {
         self.meta().inode.clone()
     }
 
-    
+
     /// Get the count of strong reference on inode
     fn i_cnt(&self) -> usize {
         Arc::strong_count(&self.meta().inode)
@@ -770,7 +770,7 @@ impl FdTable {
         }
     }
 
-    /// Called by the dup(2) system call. Allocates a new file descriptor that refers 
+    /// Called by the dup(2) system call. Allocates a new file descriptor that refers
     /// to the same open file description as the descriptor old_fd.
     pub fn dup(&mut self, old_fd: Fd) -> SysResult<Fd> {
         let file = self.get(old_fd)?;
@@ -785,7 +785,7 @@ impl FdTable {
         Ok(new_fd)
     }
 
-    /// Allocates a new file descriptor that refers 
+    /// Allocates a new file descriptor that refers
     /// to the same open file description as the descriptor old_fd.
     /// new file descriptor is no less than lower_bound
     pub fn dup_with_bound(&mut self, old_fd: Fd, lower_bound: usize) -> SysResult<Fd> {
@@ -796,8 +796,8 @@ impl FdTable {
     }
 
     /// Called by execve(2) system call. When a new program is executed by current process,
-    /// check all the files that were opened by the current process. If the file contains 
-    /// close_on_exec flag, remove it from the fd table and disable its file descriptor. 
+    /// check all the files that were opened by the current process. If the file contains
+    /// close_on_exec flag, remove it from the fd table and disable its file descriptor.
     /// Otherwise, keep the file descriptor valid and the new process can still access to
     /// the file with the file descriptor.
     pub fn close_on_exec(&mut self) {
@@ -837,7 +837,7 @@ pub struct FdTable {
 
 ### Pipe
 
-管道Pipe是一种基本的进程间通信机制。它允许一个进程将数据流输出到另一个进程。文件系统来实现管道通信，实现方式就是创建一个FIFO类型的管道文件，文件内容就是一个缓冲区，同时创建两个文件对象和对应的两个文件描述符。两个文件对象都指向这个管道文件，一个文件负责向管道的缓冲区中写入内容，一个负责从管道的缓冲区中读出内容。
+管道 Pipe 是一种基本的进程间通信机制。它允许一个进程将数据流输出到另一个进程。文件系统来实现管道通信，实现方式就是创建一个 FIFO 类型的管道文件，文件内容就是一个缓冲区，同时创建两个文件对象和对应的两个文件描述符。两个文件对象都指向这个管道文件，一个文件负责向管道的缓冲区中写入内容，一个负责从管道的缓冲区中读出内容。
 
 管道文件的数据结构由 `PipeInode` 描述：
 
@@ -871,7 +871,7 @@ impl Inode for PipeInode {
 }
 ```
 
-`PipeInode` 是对VFS中 `Inode` 数据结构的一个实现，包含元数据、缓冲区和管道是否关闭的信息。`PipeInode` 的关闭则采用了Rust语言原生支持的RAII原则，在 `Drop` 中实现管道的关闭。
+`PipeInode` 是对 VFS 中 `Inode` 数据结构的一个实现，包含元数据、缓冲区和管道是否关闭的信息。`PipeInode` 的关闭则采用了 Rust 语言原生支持的 RAII 原则，在 `Drop` 中实现管道的关闭。
 
 ```rust
 impl Drop for PipeWriteFile {
@@ -886,7 +886,7 @@ impl Drop for PipeWriteFile {
 }
 ```
 
-对管道进行读写的两个文件对象，`PipeReadFile` 和 `PipeWriteFile` ，则是对VFS中 `File` 的实现：
+对管道进行读写的两个文件对象，`PipeReadFile` 和 `PipeWriteFile` ，则是对 VFS 中 `File` 的实现：
 
 ```rust
 pub struct PipeWriteFile {
@@ -945,7 +945,7 @@ impl File for PipeReadFile {
 }
 ```
 
-调用`read` 方法，当缓冲区没有数据时，读进程会主动让出CPU资源，等待异步调度器调度到本进程时再次查看缓冲区是否有数据。上述步骤会一直重复，知道写进程将数据写入缓冲区，之后读进程将数据从缓冲区读出。
+调用`read` 方法，当缓冲区没有数据时，读进程会主动让出 CPU 资源，等待异步调度器调度到本进程时再次查看缓冲区是否有数据。上述步骤会一直重复，知道写进程将数据写入缓冲区，之后读进程将数据从缓冲区读出。
 
 `PipeWriteFile` 负责向管道文件写入数据，在实现 `File` 的时候，只实现 `write` 方法：
 
