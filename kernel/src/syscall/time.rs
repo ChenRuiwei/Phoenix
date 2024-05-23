@@ -74,19 +74,6 @@ pub async fn sys_nanosleep(
         }
         Err(SysError::EINTR)
     }
-    // let wait_signal_future = WaitExpectSigSet::new(&task, !*task.sig_mask());
-    // match Select2Futures::new(wait_signal_future, ksleep_ms(sleep_ms)).await
-    // {     SelectOutput::Output1(_) => {
-    //         log::info!("[sys_nanosleep] interrupt by signal");
-    //         let break_ms = get_time_ms();
-    //         if !rem.is_null() {
-    //             let remain_ms = sleep_ms - (break_ms - current_ms);
-    //             rem.write(&task, TimeSpec::from_ms(remain_ms))?;
-    //         }
-    //         Err(SysError::EINTR)
-    //     }
-    //     SelectOutput::Output2(_) => Ok(0),
-    // }
 }
 
 /// retrieve the time of the specified clock clockid

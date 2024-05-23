@@ -31,7 +31,8 @@ use super::{
     tid::{Pid, Tid, TidHandle},
 };
 use crate::{
-    ipc::shm::{SharedMemory, ShmIdDs, SHARED_MEMORY_MANAGER},
+    generate_accessors, generate_atomic_accessors, generate_state_methods, generate_with_methods,
+    ipc::shm::SHARED_MEMORY_MANAGER,
     mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
     processor::env::within_sum,
     syscall,
@@ -146,44 +147,24 @@ pub enum TaskState {
     /// 以保证数据的一致性和操作的原子性。
     UnInterruptable,
 }
-macro_rules! state_methods {
-    ($($state:ident),+) => {
-        $(
-            paste::paste! {
-                #[allow(unused)]
-                pub fn [<is_ $state:lower>](&self) -> bool {
-                    *self.state.lock() == TaskState::$state
-                }
-                #[allow(unused)]
-                pub fn [<set_ $state:lower>](&self) {
-                    *self.state.lock() = TaskState::$state
-                }
-            }
-        )+
-    };
-}
-
-macro_rules! with_ {
-    ($name:ident, $ty:ty) => {
-        paste::paste! {
-            #[allow(unused)]
-            pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
-                // TODO: let logging more specific
-                log::trace!("with_something");
-                f(& self.$name.lock())
-            }
-            #[allow(unused)]
-            pub fn [<with_mut_ $name>]<T>(&self, f: impl FnOnce(&mut $ty) -> T) -> T {
-                log::trace!("with_mut_something");
-                f(&mut self.$name.lock())
-            }
-        }
-    };
-}
 
 impl Task {
     // you can use is_running() / set_running()、 is_zombie() / set_zombie()
-    state_methods!(Running, Zombie, Stopped, Interruptable, UnInterruptable);
+    generate_state_methods!(Running, Zombie, Stopped, Interruptable, UnInterruptable);
+    generate_accessors!(tid_address: TidAddress, sig_mask: SigSet, sig_stack: Option<SignalStack>, time_stat: TaskTimeStat, cpus_allowed: CpuMask);
+    generate_atomic_accessors!(exit_code: i32, sig_ucontext_ptr: usize);
+    generate_with_methods!(
+        fd_table: FdTable,
+        children: BTreeMap<Tid, Arc<Task>>,
+        memory_space: MemorySpace,
+        thread_group: ThreadGroup,
+        sig_pending: SigPending,
+        itimers: [ITimer; 3],
+        futexes: Futexes,
+        sig_handlers: SigHandlers,
+        state: TaskState,
+        shm_ids: BTreeMap<VirtAddr, usize>
+    );
     // TODO: this function is not clear, may be replaced with exec
     pub fn spawn_from_elf(elf_data: &[u8]) {
         let (memory_space, user_sp_top, entry_point, _auxv) = MemorySpace::from_elf(elf_data);
@@ -279,14 +260,6 @@ impl Task {
             .pid()
     }
 
-    pub fn exit_code(&self) -> i32 {
-        self.exit_code.load(Ordering::Relaxed)
-    }
-
-    pub fn set_exit_code(&self, exit_code: i32) {
-        self.exit_code.store(exit_code, Ordering::Relaxed);
-    }
-
     /// Get the mutable ref of `TrapContext`.
     pub fn trap_context_mut(&self) -> &mut TrapContext {
         unsafe { &mut *self.trap_context.get() }
@@ -308,40 +281,6 @@ impl Task {
 
     pub fn set_cwd(&self, dentry: Arc<dyn Dentry>) {
         *self.cwd.lock() = dentry;
-    }
-
-    pub fn sig_mask(&self) -> &mut SigSet {
-        unsafe { &mut *self.sig_mask.get() }
-    }
-
-    pub fn sig_stack(&self) -> &mut Option<SignalStack> {
-        unsafe { &mut *self.sig_stack.get() }
-    }
-
-    #[inline]
-    pub fn sig_ucontext_ptr(&self) -> usize {
-        self.sig_ucontext_ptr.load(Ordering::Relaxed)
-    }
-
-    #[inline]
-    pub fn set_sig_ucontext_ptr(&self, ptr: usize) {
-        self.sig_ucontext_ptr.store(ptr, Ordering::Relaxed)
-    }
-
-    pub fn time_stat(&self) -> &mut TaskTimeStat {
-        unsafe { &mut *self.time_stat.get() }
-    }
-
-    pub fn tid_address_mut(&self) -> &mut TidAddress {
-        unsafe { &mut *self.tid_address.get() }
-    }
-
-    pub fn tid_address(&self) -> &TidAddress {
-        unsafe { &*self.tid_address.get() }
-    }
-
-    pub fn cpus_allowed(&self) -> &mut CpuMask {
-        unsafe { &mut *self.cpus_allowed.get() }
     }
 
     pub unsafe fn switch_page_table(&self) {
@@ -561,7 +500,7 @@ impl Task {
             init_proc.children.lock().extend(children.clone());
         });
 
-        if let Some(address) = self.tid_address().clear_child_tid {
+        if let Some(address) = self.tid_address_ref().clear_child_tid {
             log::info!("[do_exit] clear_child_tid: {}", address);
             UserWritePtr::from(address)
                 .write(self, 0)
@@ -600,18 +539,6 @@ impl Task {
             });
         }
     }
-
-    with_!(fd_table, FdTable);
-    with_!(children, BTreeMap<Tid, Arc<Task>>);
-    with_!(memory_space, MemorySpace);
-    with_!(thread_group, ThreadGroup);
-    with_!(sig_pending, SigPending);
-    with_!(itimers, [ITimer; 3]);
-    with_!(futexes, Futexes);
-    with_!(sig_handlers, SigHandlers);
-    with_!(state, TaskState);
-    with_!(shm_ids, BTreeMap<VirtAddr, usize>);
-    // TODO: get宏 可以get mut or not mut
 }
 
 /// Hold a group of threads which belongs to the same process.

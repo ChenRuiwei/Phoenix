@@ -316,7 +316,7 @@ pub async fn sys_sched_yield() -> SyscallResult {
 // TODO: do the futex wake up at the address when task terminates
 pub fn sys_set_tid_address(tidptr: usize) -> SyscallResult {
     let task = current_task();
-    task.tid_address_mut().clear_child_tid = Some(tidptr);
+    task.tid_address().clear_child_tid = Some(tidptr);
     Ok(task.tid())
 }
 
