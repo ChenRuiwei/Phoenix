@@ -15,7 +15,6 @@ use timer::timelimited_task::ksleep_ms;
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
-    task::signal::WaitExpectSigSet,
 };
 
 /// Retrieves the current time of day.
@@ -66,21 +65,28 @@ pub async fn sys_nanosleep(
         return Ok(0);
     }
     let req = req.read(&task)?;
-    let sleep_ms = req.into_ms();
-    let current_ms = get_time_ms();
-    let wait_signal_future = WaitExpectSigSet::new(&task, !*task.sig_mask());
-    match Select2Futures::new(wait_signal_future, ksleep_ms(sleep_ms)).await {
-        SelectOutput::Output1(_) => {
-            log::info!("[sys_nanosleep] interrupt by signal");
-            let break_ms = get_time_ms();
-            if !rem.is_null() {
-                let remain_ms = sleep_ms - (break_ms - current_ms);
-                rem.write(&task, TimeSpec::from_ms(remain_ms))?;
-            }
-            Err(SysError::EINTR)
+    let remain = task.suspend_timeout(req.into()).await;
+    if remain.is_zero() {
+        Ok(0)
+    } else {
+        if rem.not_null() {
+            rem.write(&task, remain.into())?;
         }
-        SelectOutput::Output2(_) => Ok(0),
+        Err(SysError::EINTR)
     }
+    // let wait_signal_future = WaitExpectSigSet::new(&task, !*task.sig_mask());
+    // match Select2Futures::new(wait_signal_future, ksleep_ms(sleep_ms)).await
+    // {     SelectOutput::Output1(_) => {
+    //         log::info!("[sys_nanosleep] interrupt by signal");
+    //         let break_ms = get_time_ms();
+    //         if !rem.is_null() {
+    //             let remain_ms = sleep_ms - (break_ms - current_ms);
+    //             rem.write(&task, TimeSpec::from_ms(remain_ms))?;
+    //         }
+    //         Err(SysError::EINTR)
+    //     }
+    //     SelectOutput::Output2(_) => Ok(0),
+    // }
 }
 
 /// retrieve the time of the specified clock clockid

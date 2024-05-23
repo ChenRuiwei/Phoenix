@@ -5,15 +5,18 @@ use alloc::{
     vec::Vec,
 };
 
-use async_utils::yield_now;
-use signal::{siginfo::*, sigset::Sig};
+use async_utils::{suspend_now, yield_now};
+use signal::{
+    siginfo::*,
+    sigset::{Sig, SigSet},
+};
 use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     syscall::resolve_path,
-    task::{signal::WaitOneSignal, spawn_user_task, PGid, Pid, TASK_MANAGER},
+    task::{spawn_user_task, PGid, Pid, TASK_MANAGER},
 };
 
 bitflags! {
@@ -171,39 +174,36 @@ pub async fn sys_wait4(
     } else {
         // 如果等待的进程还不是zombie，那么本进程进行await，
         // 直到等待的进程do_exit然后发送SIGCHLD信号唤醒自己
-        let (child_pid, exit_code, utime, stime) = match target {
-            WaitFor::AnyChild => {
-                let si = WaitOneSignal::new(&task, Sig::SIGCHLD).await;
-                match si.details {
-                    SigDetails::CHLD {
-                        pid,
-                        status,
-                        utime,
-                        stime,
-                    } => (pid, status, utime, stime),
-                    _ => unreachable!(),
-                }
-            }
-            WaitFor::Pid(pid) => loop {
-                let si = WaitOneSignal::new(&task, Sig::SIGCHLD).await;
-                match si.details {
-                    SigDetails::CHLD {
-                        pid: child_pid,
-                        status,
-                        utime,
-                        stime,
-                    } => {
-                        if child_pid == pid {
-                            break (pid, status, utime, stime);
+        let (child_pid, exit_code, child_utime, child_stime) = loop {
+            task.set_interruptable();
+            task.set_wake_up_signal(!*task.sig_mask() | SigSet::SIGCHLD);
+            suspend_now().await;
+            let si = task.with_mut_sig_pending(|pending| pending.dequeue_except(SigSet::SIGCHLD));
+            if let Some(info) = si {
+                if let SigDetails::CHLD {
+                    pid,
+                    status,
+                    utime,
+                    stime,
+                } = info.details
+                {
+                    match target {
+                        WaitFor::AnyChild => break (pid, status, utime, stime),
+                        WaitFor::Pid(target_pid) => {
+                            if target_pid == pid {
+                                break (pid, status, utime, stime);
+                            }
                         }
+                        WaitFor::PGid(_) => unimplemented!(),
+                        WaitFor::AnyChildInGroup => unimplemented!(),
                     }
-                    _ => unreachable!(),
                 }
-            },
-            WaitFor::AnyChildInGroup => unimplemented!(),
-            WaitFor::PGid(_) => unimplemented!(),
+            } else {
+                return Err(SysError::EINTR);
+            }
         };
-        task.time_stat().update_child_time((utime, stime));
+        task.time_stat()
+            .update_child_time((child_utime, child_stime));
         if wstatus.not_null() {
             // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
             // wstatus macros can be found in <bits/waitstatus.h>

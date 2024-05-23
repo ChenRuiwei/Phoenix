@@ -77,7 +77,7 @@ pub fn sys_prlimit64(
             RLIMIT_CPU => 8,
             RLIMIT_STACK => USER_STACK_SIZE,
             RLIMIT_NOFILE => task.with_fd_table(|table| table.limit()),
-            _ => unimplemented!(),
+            r => panic!("[sys_prlimit64] get old_limit : unimplemented {r}"),
         };
         old_limit.write(&task, RLimit::new(limit));
     }
@@ -87,7 +87,8 @@ pub fn sys_prlimit64(
             RLIMIT_NOFILE => {
                 task.with_mut_fd_table(|table| table.set_limit(limit.rlim_cur));
             }
-            _ => unimplemented!(),
+            RLIMIT_STACK => {}
+            r => panic!("[sys_prlimit64] set new_limit : unimplemented {r}"),
         }
     }
 

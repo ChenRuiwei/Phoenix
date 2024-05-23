@@ -1,6 +1,5 @@
-use alloc::{sync::Arc, task};
+use alloc::sync::Arc;
 use core::{
-    alloc::Layout,
     future::Future,
     intrinsics::size_of,
     pin::Pin,
@@ -8,10 +7,9 @@ use core::{
     time::Duration,
 };
 
-use arch::time::{get_time_duration, get_time_ms};
-use async_utils::take_waker;
+use arch::time::get_time_duration;
 use signal::{
-    action::{self, Action, ActionType, SigActionFlag},
+    action::{Action, ActionType, SigActionFlag},
     siginfo::{SigDetails, SigInfo},
     signal_stack::{MContext, UContext},
     sigset::{Sig, SigSet},
@@ -65,6 +63,15 @@ impl Task {
     /// A thread-directed signal is targeted at
     /// (i.e., delivered to) a specific thread.
     pub fn receive_siginfo(&self, si: SigInfo, thread_directed: bool) {
+        #[inline]
+        fn recv(task: &Arc<Task>, si: SigInfo) {
+            task.with_mut_sig_pending(|pending| {
+                pending.add(si);
+                if pending.should_wake.contain_signal(si.sig) && task.is_interruptable() {
+                    task.wake();
+                }
+            });
+        }
         match thread_directed {
             false => {
                 debug_assert!(self.is_leader());
@@ -77,26 +84,30 @@ impl Task {
                         if task.sig_mask().contain_signal(si.sig) {
                             continue;
                         }
-                        task.with_mut_sig_pending(|pending| {
-                            pending.recv(si);
-                        });
+                        recv(&task, si);
                         signal_delivered = true;
                         break;
                     }
                     if !signal_delivered {
                         let task = tg.iter().next().unwrap();
-                        task.with_mut_sig_pending(|pending| {
-                            pending.recv(si);
-                        });
+                        recv(&task, si);
                     }
                 })
             }
             true => {
                 self.with_mut_sig_pending(|pending| {
-                    pending.recv(si);
+                    pending.add(si);
+                    if pending.should_wake.contain_signal(si.sig) && self.is_interruptable() {
+                        self.wake();
+                    }
                 });
             }
         }
+    }
+
+    pub fn set_wake_up_signal(&self, except: SigSet) {
+        debug_assert!(self.is_interruptable());
+        self.with_mut_sig_pending(|pending| pending.should_wake = except)
     }
 }
 
@@ -238,117 +249,117 @@ fn stop(sig: Sig, task: &Arc<Task>) {
 }
 /// continue the process if it is currently stopped
 fn cont(sig: Sig, task: &Arc<Task>) {
-    log::warn!("[do_signal] task continue");
-    task.with_mut_thread_group(|tg| {
-        for t in tg.iter() {
-            t.with_mut_state(|state| match state {
-                TaskState::Stopped => {
-                    *state = TaskState::Running;
-                    t.get_waker().wake_by_ref();
-                }
-                _ => {}
-            });
-            t.set_exit_code(0);
-        }
-    });
-    let parent = task.parent().unwrap().upgrade().unwrap();
-    if !parent
-        .with_sig_handlers(|handlers| handlers.get(Sig::SIGCHLD))
-        .flags
-        .contains(SigActionFlag::SA_NOCLDSTOP)
-    {
-        parent.receive_siginfo(
-            SigInfo {
-                sig: Sig::SIGCHLD,
-                code: SigInfo::CLD_CONTINUED,
-                details: SigDetails::CHLD {
-                    pid: task.pid(),
-                    status: sig.raw() as i32 & 0x7F,
-                    utime: task.time_stat().user_time(),
-                    stime: task.time_stat().sys_time(),
-                },
-            },
-            false,
-        );
-    }
+    // log::warn!("[do_signal] task continue");
+    // task.with_mut_thread_group(|tg| {
+    //     for t in tg.iter() {
+    //         t.with_mut_state(|state| match state {
+    //             TaskState::Stopped => {
+    //                 *state = TaskState::Running;
+    //                 t.get_waker().wake_by_ref();
+    //             }
+    //             _ => {}
+    //         });
+    //         t.set_exit_code(0);
+    //     }
+    // });
+    // let parent = task.parent().unwrap().upgrade().unwrap();
+    // if !parent
+    //     .with_sig_handlers(|handlers| handlers.get(Sig::SIGCHLD))
+    //     .flags
+    //     .contains(SigActionFlag::SA_NOCLDSTOP)
+    // {
+    //     parent.receive_siginfo(
+    //         SigInfo {
+    //             sig: Sig::SIGCHLD,
+    //             code: SigInfo::CLD_CONTINUED,
+    //             details: SigDetails::CHLD {
+    //                 pid: task.pid(),
+    //                 status: sig.raw() as i32 & 0x7F,
+    //                 utime: task.time_stat().user_time(),
+    //                 stime: task.time_stat().sys_time(),
+    //             },
+    //         },
+    //         false,
+    //     );
+    // }
 }
 
 /// wait for more than one signal and don't need siginfo as return value
-pub struct WaitExpectSigSet<'a> {
-    task: &'a Arc<Task>,
-    expect: SigSet,
-    set_waker: bool,
-}
+// pub struct WaitExpectSigSet<'a> {
+//     task: &'a Arc<Task>,
+//     expect: SigSet,
+//     prepared: bool,
+// }
 
-impl<'a> WaitExpectSigSet<'a> {
-    pub fn new(task: &'a Arc<Task>, expect: SigSet) -> Self {
-        Self {
-            task,
-            expect,
-            set_waker: false,
-        }
-    }
-}
+// impl<'a> WaitExpectSigSet<'a> {
+//     pub fn new(task: &'a Arc<Task>, expect: SigSet) -> Self {
+//         Self {
+//             task,
+//             expect,
+//             prepared: false,
+//         }
+//     }
+// }
 
-impl<'a> Future for WaitExpectSigSet<'a> {
-    type Output = ();
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        if !self.set_waker {
-            self.task.with_mut_sig_pending(|pending| {
-                pending.set_waker(Some(cx.waker().clone()));
-            });
-        };
-        self.task
-            .with_mut_sig_pending(|pending| -> Poll<Self::Output> {
-                match pending.has_expect_signals(self.expect) {
-                    true => {
-                        pending.set_waker(None);
-                        Poll::Ready(())
-                    }
-                    false => Poll::Pending,
-                }
-            })
-    }
-}
+// impl<'a> Future for WaitExpectSigSet<'a> {
+//     type Output = ();
+//     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+//         if !self.prepared {
+//             self.task.set_waker(Some(cx.waker().clone()));
+
+//             self.prepared = true;
+//             return Poll::Pending;
+//         };
+//         self.task
+//             .with_mut_sig_pending(|pending| -> Poll<Self::Output> {
+//                 match pending.has_expect_signals(self.expect) {
+//                     true => {
+//                         pending.set_waker(None);
+//                         Poll::Ready(())
+//                     }
+//                     false => Poll::Pending,
+//                 }
+//             })
+//     }
+// }
 
 /// wait for a signal and need the siginfo of the expected signal
-pub struct WaitOneSignal<'a> {
-    task: &'a Arc<Task>,
-    expect: Sig,
-    set_waker: bool,
-}
+// pub struct WaitOneSignal<'a> {
+//     task: &'a Arc<Task>,
+//     blocked: SigSet,
+//     expect: Sig,
+//     prepared: bool,
+// }
 
-impl<'a> WaitOneSignal<'a> {
-    pub fn new(task: &'a Arc<Task>, expect: Sig) -> Self {
-        Self {
-            task,
-            expect,
-            set_waker: false,
-        }
-    }
-}
+// impl<'a> WaitOneSignal<'a> {
+//     pub fn new(task: &'a Arc<Task>, expect: Sig, blocked: SigSet) -> Self {
+//         Self {
+//             task,
+//             blocked,
+//             expect,
+//             prepared: false,
+//         }
+//     }
+// }
 
-impl<'a> Future for WaitOneSignal<'a> {
-    type Output = SigInfo;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        if !self.set_waker {
-            self.task.with_mut_sig_pending(|pending| {
-                pending.set_waker(Some(cx.waker().clone()));
-            });
-            self.set_waker = true;
-            return Poll::Pending;
-        };
-        self.task
-            .with_mut_sig_pending(|pending| -> Poll<Self::Output> {
-                if let Some(si) = pending.has_expect_signal(self.expect) {
-                    pending.set_waker(None);
-                    Poll::Ready(si)
-                } else {
-                    Poll::Pending
-                }
-            })
-    }
-}
+// impl<'a> Future for WaitOneSignal<'a> {
+//     type Output = SysResult<SigInfo>;
+//     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+//         if !self.prepared {
+//             *self.task.waker() = Some(cx.waker().clone());
+//             self.prepared = true;
+//             return Poll::Pending;
+//         }
+//         self.task
+//             .with_mut_sig_pending(|pending| -> Poll<Self::Output> {
+//                 if let Some(si) = pending.has_expect_sigset(self.expect.into()) {
+//                     Poll::Ready(Ok(si))
+//                 } else {
+//                     Poll::Ready(Err(systype::SysError::EINTR))
+//                 }
+//             })
+//     }
+// }
 
 /// A process has only one of each of the three types of timers.
 pub struct ITimer {

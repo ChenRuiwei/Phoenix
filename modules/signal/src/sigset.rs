@@ -137,6 +137,12 @@ impl SigSet {
     }
 }
 
+impl From<Sig> for SigSet {
+    fn from(sig: Sig) -> Self {
+        Self::from_bits(1 << sig.index()).unwrap()
+    }
+}
+
 impl fmt::Debug for SigSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:#018X}", self.bits())

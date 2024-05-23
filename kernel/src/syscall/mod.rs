@@ -140,7 +140,10 @@ pub async fn syscall(syscall_no: usize, args: [usize; 6]) -> usize {
         TGKILL => sys_tgkill(args[0] as _, args[1] as _, args[2] as _),
         RT_SIGRETURN => sys_rt_sigreturn(),
         RT_SIGSUSPEND => sys_rt_sigsuspend(args[0].into()).await,
-        // times
+        RT_SIGTIMEDWAIT => {
+            sys_rt_sigtimedwait(args[0].into(), args[1].into(), args[2].into()).await
+        }
+        // Times
         GETTIMEOFDAY => sys_gettimeofday(args[0].into(), args[1]),
         TIMES => sys_times(args[0].into()),
         NANOSLEEP => sys_nanosleep(args[0].into(), args[1].into()).await,

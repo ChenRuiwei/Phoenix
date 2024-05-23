@@ -83,7 +83,10 @@ pub struct Task {
     exit_code: AtomicI32,
     ///
     trap_context: SyncUnsafeCell<TrapContext>,
-    ///
+    /// If `waker` is None, it means that Task is in the scheduling queue. If
+    /// `waker` is Some(Waker), it means that Task is not in the scheduling
+    /// queue and needs another task to wake it up(i.e. use the following code:
+    /// `task.waker.take().unwrap().wake())`
     waker: SyncUnsafeCell<Option<Waker>>,
     ///
     thread_group: Shared<ThreadGroup>,
@@ -131,16 +134,45 @@ pub enum TaskState {
     Running,
     Zombie,
     Stopped,
+    /// 当进程处于TASK_INTERRUPTIBLE状态时，它正在等待某个事件的发生，比如等待I/
+    /// O操作的完成或者等待某个资源的释放。在这个状态下，进程可以被信号中断。
+    /// 如果有信号发送给这个进程，它会从睡眠状态被唤醒并处理信号。这种状态下，
+    /// 进程的调度更灵活，因为它可以响应信号。
+    Interruptable,
+    /// 当进程处于TASK_UNINTERRUPTIBLE状态时，它也是在等待某个事件的发生，
+    /// 但是在这个状态下，进程不会被信号中断。即使有信号发送给这个进程，
+    /// 它也不会立刻响应，而是要等到它正在等待的事件发生后才会被唤醒。
+    /// 这种状态通常用于确保某些关键操作不会被中断，
+    /// 以保证数据的一致性和操作的原子性。
+    UnInterruptable,
+}
+macro_rules! state_methods {
+    ($($state:ident),+) => {
+        $(
+            paste::paste! {
+                #[allow(unused)]
+                pub fn [<is_ $state:lower>](&self) -> bool {
+                    *self.state.lock() == TaskState::$state
+                }
+                #[allow(unused)]
+                pub fn [<set_ $state:lower>](&self) {
+                    *self.state.lock() = TaskState::$state
+                }
+            }
+        )+
+    };
 }
 
 macro_rules! with_ {
     ($name:ident, $ty:ty) => {
         paste::paste! {
+            #[allow(unused)]
             pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
                 // TODO: let logging more specific
                 log::trace!("with_something");
                 f(& self.$name.lock())
             }
+            #[allow(unused)]
             pub fn [<with_mut_ $name>]<T>(&self, f: impl FnOnce(&mut $ty) -> T) -> T {
                 log::trace!("with_mut_something");
                 f(&mut self.$name.lock())
@@ -150,10 +182,11 @@ macro_rules! with_ {
 }
 
 impl Task {
+    // you can use is_running() / set_running()、 is_zombie() / set_zombie()
+    state_methods!(Running, Zombie, Stopped, Interruptable, UnInterruptable);
     // TODO: this function is not clear, may be replaced with exec
     pub fn spawn_from_elf(elf_data: &[u8]) {
         let (memory_space, user_sp_top, entry_point, _auxv) = MemorySpace::from_elf(elf_data);
-
         let trap_context = TrapContext::new(entry_point, user_sp_top);
         let task = Arc::new(Self {
             tid: alloc_tid(),
@@ -259,23 +292,14 @@ impl Task {
         unsafe { &mut *self.trap_context.get() }
     }
 
-    /// Set waker for this thread
-    pub fn set_waker(&self, waker: Waker) {
-        unsafe {
-            (*self.waker.get()) = Some(waker);
-        }
+    pub fn waker(&self) -> &mut Option<Waker> {
+        unsafe { &mut *self.waker.get() }
     }
 
-    pub fn get_waker(&self) -> &Waker {
-        unsafe { (*self.waker.get()).as_ref().unwrap() }
-    }
-
-    pub fn set_zombie(&self) {
-        *self.state.lock() = TaskState::Zombie
-    }
-
-    pub fn is_zombie(&self) -> bool {
-        *self.state.lock() == TaskState::Zombie
+    pub fn wake(&self) {
+        let waker = unsafe { &*self.waker.get() };
+        debug_assert!(!(self.is_running() || self.is_zombie()));
+        waker.as_ref().unwrap().wake_by_ref();
     }
 
     pub fn cwd(&self) -> Arc<dyn Dentry> {
@@ -288,14 +312,6 @@ impl Task {
 
     pub fn sig_mask(&self) -> &mut SigSet {
         unsafe { &mut *self.sig_mask.get() }
-    }
-
-    /// important: new mask can't block SIGKILL or SIGSTOP
-    pub fn sig_mask_replace(&self, new: &mut SigSet) -> SigSet {
-        new.remove(SigSet::SIGSTOP | SigSet::SIGKILL);
-        let old = unsafe { *self.sig_mask.get() };
-        unsafe { *self.sig_mask.get() = *new };
-        old
     }
 
     pub fn sig_stack(&self) -> &mut Option<SignalStack> {
@@ -341,7 +357,6 @@ impl Task {
     ) -> Arc<Self> {
         use syscall::CloneFlags;
         let tid = alloc_tid();
-
         let mut trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
 
@@ -392,12 +407,11 @@ impl Task {
             unsafe { sfence_vma_all() };
         }
 
-        let fd_table;
-        if flags.contains(CloneFlags::FILES) {
-            fd_table = self.fd_table.clone();
+        let fd_table = if flags.contains(CloneFlags::FILES) {
+            self.fd_table.clone()
         } else {
-            fd_table = new_shared(self.fd_table.lock().clone());
-        }
+            new_shared(self.fd_table.lock().clone())
+        };
 
         if let Some(sp) = stack {
             trap_context.get_mut().set_user_sp(sp.bits());
@@ -427,7 +441,8 @@ impl Task {
             thread_group,
             fd_table,
             sig_pending: SpinNoIrqLock::new(SigPending::new()),
-            sig_mask: SyncUnsafeCell::new(SigSet::empty()),
+            // A child created via fork(2) inherits a copy of its parent's signal mask;
+            sig_mask: SyncUnsafeCell::new(self.sig_mask().clone()),
             sig_handlers,
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),

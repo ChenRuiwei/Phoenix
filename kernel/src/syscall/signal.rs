@@ -1,3 +1,6 @@
+use core::mem;
+
+use async_utils::suspend_now;
 use config::process::INIT_PROC_PID;
 use signal::{
     action::{Action, ActionType},
@@ -6,12 +9,13 @@ use signal::{
     sigset::{Sig, SigSet},
 };
 use systype::{SysError, SyscallResult};
+use time::timespec::TimeSpec;
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
     task::{
-        signal::{SigAction, WaitExpectSigSet, SIG_DFL, SIG_IGN},
+        signal::{SigAction, SIG_DFL, SIG_IGN},
         TASK_MANAGER,
     },
 };
@@ -27,6 +31,7 @@ pub fn sys_rt_sigaction(
 ) -> SyscallResult {
     let task = current_task();
     let signum = Sig::from_i32(signum);
+    // 不能为SIGKILL或者SIGSTOP绑定处理函数
     if !signum.is_valid() || signum.is_kill_or_stop() {
         return Err(SysError::EINVAL);
     }
@@ -34,27 +39,23 @@ pub fn sys_rt_sigaction(
         "[sys_rt_sigaction] {signum:?}, new_ptr:{action}, old_ptr:{old_action}, old_sa_type:{:?}",
         task.with_sig_handlers(|handlers| { handlers.get(signum).atype })
     );
-    if action.is_null() {
-        if old_action.is_null() {
-            return Ok(0);
-        }
-        let old = task.with_sig_handlers(|handlers| handlers.get(signum));
-        old_action.write(&task, old.into())?;
-        return Ok(0);
+    if action.not_null() {
+        let mut action = action.read(&task)?;
+        // 无法在一个信号处理函数执行的时候屏蔽调SIGKILL和SIGSTOP信号
+        action.sa_mask.remove(SigSet::SIGKILL | SigSet::SIGSTOP);
+        let new = Action {
+            atype: match action.sa_handler {
+                SIG_DFL => ActionType::default(signum),
+                SIG_IGN => ActionType::Ignore,
+                entry => ActionType::User { entry },
+            },
+            flags: action.sa_flags,
+            mask: action.sa_mask,
+        };
+        log::info!("[sys_sigaction] new:{:?}", new);
+        task.with_mut_sig_handlers(|handlers| handlers.update(signum, new));
     }
-    let action = action.read(&task)?;
-    let new = Action {
-        atype: match action.sa_handler {
-            SIG_DFL => ActionType::default(signum),
-            SIG_IGN => ActionType::Ignore,
-            entry => ActionType::User { entry },
-        },
-        flags: action.sa_flags,
-        mask: action.sa_mask,
-    };
-    log::info!("[sys_sigaction] new:{:?}", new);
-    task.with_mut_sig_handlers(|handlers| handlers.update(signum, new));
-    if !old_action.is_null() {
+    if old_action.not_null() {
         let old = task.with_sig_handlers(|handlers| handlers.get(signum));
         old_action.write(&task, old.into())?;
     }
@@ -278,10 +279,36 @@ pub fn sys_tkill(tid: isize, signum: i32) -> SyscallResult {
 pub async fn sys_rt_sigsuspend(mask: UserReadPtr<SigSet>) -> SyscallResult {
     let task = current_task();
     let mut mask = mask.read(&task)?;
-    let oldmask = task.sig_mask_replace(&mut mask);
-    WaitExpectSigSet::new(&task, *task.sig_mask()).await;
+    mask.remove(SigSet::SIGKILL | SigSet::SIGSTOP);
+    let oldmask = mem::replace(task.sig_mask(), mask);
+    let invoke_signal = task.with_sig_handlers(|handlers| handlers.bitmap());
+    task.set_interruptable();
+    suspend_now().await;
+    task.set_wake_up_signal(mask | invoke_signal);
     // TODO: 根据Linux这里理论上应该等到signal
-    // handler返回时sys_sigsuspend再返回，但是貌似其他队都没有这样做
+    // handler返回时sys_sigsuspend再返回
     *task.sig_mask() = oldmask;
     Err(SysError::EINTR)
+}
+
+/// Suspends execution of the calling thread until one of the
+/// signals in set is pending (If one of the signals in set is already pending
+/// for the calling thread, sigwaitinfo() will return immediately.). It removes
+/// the signal from the set of pending signals and returns the signal number as
+/// its function result.
+///
+/// - `set`: Suspend the execution of the process until a signal in `set` that
+///   arrives
+/// - `info`: If it is not NULL, the buffer that it points to is used to return
+///   a structure of type siginfo_t containing information about the signal.
+/// - `timeout`: specifies the interval for which the thread is suspended
+///   waiting for a signal.
+///
+/// On success, sigtimedwait() returns a signal number
+pub async fn sys_rt_sigtimedwait(
+    set: UserReadPtr<SigSet>,
+    info: UserWritePtr<SigInfo>,
+    timeout: UserReadPtr<TimeSpec>,
+) -> SyscallResult {
+    Ok(0)
 }
