@@ -56,22 +56,21 @@ fn new_shared<T>(data: T) -> Shared<T> {
 /// adopted by Linux. A process is a task that is the leader of a `ThreadGroup`.
 pub struct Task {
     // Immutable
-    /// Tid of the task.
+    /// Task identifier handle.
     tid: TidHandle,
-    /// A weak reference to the leader. `None` if self is leader.
+    /// Weak reference to the leader task. `None` if this task is the leader.
     leader: Option<Weak<Task>>,
-    /// Whether the task is the leader.
+    /// Indicates if the task is the leader of its thread group.
     is_leader: bool,
 
     // Mutable
-    /// Whether this task is a zombie. Locked because of other task may operate
-    /// this state, e.g. execve will kill other tasks.
+    /// Indicates if the task is a zombie. Protected by a spin lock due to
+    /// potential access by other tasks.
     state: SpinNoIrqLock<TaskState>,
-    /// The process's address space
+    /// The address space of the process.
     memory_space: Shared<MemorySpace>,
-    /// `VirtAddr` is the start of Shared Memory Area(vma). `usize` is the key
-    /// of SharedMemory struct in SHARED_MEMORY_MANAGER
-    /// shm_ids stores the map: start VirtAddr -> key
+    /// Map of start address of shared memory areas to their keys in the shared
+    /// memory manager.
     shm_ids: Shared<BTreeMap<VirtAddr, usize>>,
     /// Parent process
     parent: Shared<Option<Weak<Task>>>,
@@ -82,36 +81,31 @@ pub struct Task {
     children: Shared<BTreeMap<Tid, Arc<Task>>>,
     /// Exit code of the current process
     exit_code: AtomicI32,
-    ///
+    /// Trap context for the task.
     trap_context: SyncUnsafeCell<TrapContext>,
-    /// If `waker` is None, it means that Task is in the scheduling queue. If
-    /// `waker` is Some(Waker), it means that Task is not in the scheduling
-    /// queue and needs another task to wake it up(i.e. use the following code:
-    /// `task.waker.take().unwrap().wake())`
+    /// Waker to add the task back to the scheduler.
     waker: SyncUnsafeCell<Option<Waker>>,
-    ///
+    /// Thread group containing this task.
     thread_group: Shared<ThreadGroup>,
-    /// Fd table
+    /// File descriptor table.
     fd_table: Shared<FdTable>,
     /// Current working directory dentry.
     cwd: Shared<Arc<dyn Dentry>>,
-    /// received signals
+    /// Pending signals for the task.
     sig_pending: SpinNoIrqLock<SigPending>,
-    /// It is set to shared because SYS_CLONE has CLONE_SIGHAND flag which can
-    /// share the same handler table with child process.
-    /// And also because all threads in the same thread group share the same
-    /// handlers
+    /// Signal handlers
     sig_handlers: Shared<SigHandlers>,
-    /// 信号掩码用于标识哪些信号被阻塞，不应该被该进程处理。
-    /// 这是进程级别的持续性设置，通常用于防止进程在关键操作期间被中断.
-    /// 注意与信号处理时期的临时掩码做区别
-    /// Each of the threads in a process has its own signal mask.
+    /// Optional signal stack for the task, settable via `sys_signalstack`.
     sig_mask: SyncUnsafeCell<SigSet>,
-    /// User can set `sig_stack` by `sys_signalstack`.
+    /// Optional signal stack for the task, settable via `sys_signalstack`.
     sig_stack: SyncUnsafeCell<Option<SignalStack>>,
+    /// Pointer to the user context for signal handling.
     sig_ucontext_ptr: AtomicUsize,
+    /// Statistics for task execution times.
     time_stat: SyncUnsafeCell<TaskTimeStat>,
+    /// Interval timers for the task.
     itimers: Shared<[ITimer; 3]>,
+    /// Futexes used by the task.
     futexes: Shared<Futexes>,
     ///
     tid_address: SyncUnsafeCell<TidAddress>,
@@ -381,7 +375,7 @@ impl Task {
             fd_table,
             sig_pending: SpinNoIrqLock::new(SigPending::new()),
             // A child created via fork(2) inherits a copy of its parent's signal mask;
-            sig_mask: SyncUnsafeCell::new(self.sig_mask().clone()),
+            sig_mask: SyncUnsafeCell::new(self.sig_mask_ref().clone()),
             sig_handlers,
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
