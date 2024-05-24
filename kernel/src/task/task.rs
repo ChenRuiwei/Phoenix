@@ -126,19 +126,27 @@ impl Drop for Task {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TaskState {
+    /// The task is currently running or ready to run, occupying the CPU and
+    /// executing its code.
     Running,
+    /// The task has terminated, but its process control block (PCB) still
+    /// exists for the parent process to read its exit status.
     Zombie,
+    /// The task has been stopped, usually due to receiving a stop signal (e.g.,
+    /// SIGSTOP). It can be resumed with a continue signal (e.g., SIGCONT).
     Stopped,
-    /// 当进程处于TASK_INTERRUPTIBLE状态时，它正在等待某个事件的发生，比如等待I/
-    /// O操作的完成或者等待某个资源的释放。在这个状态下，进程可以被信号中断。
-    /// 如果有信号发送给这个进程，它会从睡眠状态被唤醒并处理信号。这种状态下，
-    /// 进程的调度更灵活，因为它可以响应信号。
+    /// The task is waiting for an event, such as the completion of an I/O
+    /// operation or the release of a resource. In this state, the task can
+    /// be interrupted by signals. If a signal is sent to the task, it will be
+    /// awakened from sleep to handle the signal. This state allows for more
+    /// flexible scheduling since the task can respond to signals.
     Interruptable,
-    /// 当进程处于TASK_UNINTERRUPTIBLE状态时，它也是在等待某个事件的发生，
-    /// 但是在这个状态下，进程不会被信号中断。即使有信号发送给这个进程，
-    /// 它也不会立刻响应，而是要等到它正在等待的事件发生后才会被唤醒。
-    /// 这种状态通常用于确保某些关键操作不会被中断，
-    /// 以保证数据的一致性和操作的原子性。
+    /// The task is also waiting for an event, but it cannot be interrupted by
+    /// signals in this state. Even if a signal is sent to the task, it will
+    /// not respond immediately and will only be awakened when the awaited event
+    /// occurs. This state is typically used to ensure that critical
+    /// operations are not interrupted, maintaining data consistency and
+    /// operation atomicity.
     UnInterruptable,
 }
 
