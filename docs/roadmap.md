@@ -3,4 +3,7 @@
 ## TODO List
 
 - [x] Userptr
-- [] Asid
+- [x] vfs
+- [x] smp
+- [x] fat32
+- [ ] Asid

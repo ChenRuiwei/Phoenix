@@ -8,11 +8,11 @@ Phoenix OS 的虚拟文件系统以 Linux 为师，并充分结合 Rust 语言�
 
 目前虚拟文件系统包含 `SuperBlock`, `Inode`, `Dentry`, `File`等核心数据结构，也包含 `FdTable`, `Pipe`等用于实现系统调用的辅助数据结构。
 
-## 核心数据结构及其操作
+## 核心数据结构
 
 ### SuperBlock
 
-超级块对象用于存储和管理特定文件系统的信息，一个文件系统实例对应一个超级块。每当一个文件系统挂载到操作系统，内核需要调用相应函数创建该文件系统的超级块。当文件系统卸载时，也需要删除相应超级块。
+超级块对象用于存储特定文件系统的信息，通常对应于存放在磁盘特定扇区中的文件系统超级块。超级块是对文件系统的具象，换句话说，一个超级块对应一个文件系统的实例。对于基于磁盘上的文件系统，当文件系统被挂载内核时，内核需要读取文件系统位于磁盘上的超级块，并在内存中构造超级块对象；当文件系统卸载时，需要将超级块对象释放，并将内存中的被修改的数据写回到磁盘。对于并非基于磁盘上的文件系统（如基于内存的文件系统，比如 sysfs），就只需要在内存构造独立的超级块。
 
 超级块由 `SuperBlock` trait 定义，如下：
 
@@ -30,7 +30,7 @@ pub trait SuperBlock: Send + Sync {
 }
 ```
 
-与传统的面向对象编程语言（如 Java 或 C++）不同，Rust 鼓励使用组合和 trait 来实现代码复用和抽象，而不是使用继承。如果要实现继承特性，就需要设计 Meta 结构体来表示对基类的抽象，为了使用继承来简化设计，减少冗余代码，超级块对象的设计由 `SuperBlockMeta` 结构体表示，下面给出它的结构和描述：
+与传统的面向对象编程语言（如 Java 或 C++）不同，Rust 鼓励使用组合和 trait 来实现代码复用和抽象，而不是使用继承。如果要实现继承特性，就需要设计 Meta 结构体来表示对基类的抽象，为了使用继承来简化设计，减少冗余代码，超级块基类对象的设计由 `SuperBlockMeta` 结构体表示。
 
 ```rust
 pub struct SuperBlockMeta {
@@ -44,6 +44,15 @@ pub struct SuperBlockMeta {
     pub inodes: Mutex<Vec<Arc<dyn Inode>>>,
     /// All dirty inodes.
     pub dirty: Mutex<Vec<Arc<dyn Inode>>>,
+}
+```
+
+对于具体的文件系统，只需要实现自己的超级块对象，其中包含 `SuperBlockMeta` 的字段，就能完成继承对超级块基类的继承。 比如对 FAT32 文件系统，我们只需要构造这样一个 `FatSuperBlock` 对象就能完成对 VFS `SuperBlockMeta` 的继承，同时，只需要为 `FatSuperBlock` 实现 `SuperBlock` trait 就能实现对接口方法的多态行为。这样就能在 Rust 语言中使用面向对象的设计来大大简化具体文件系统对 VFS 的对接代码量。
+
+```rust
+pub struct FatSuperBlock {
+    meta: SuperBlockMeta,
+    fs: Arc<FatFs>,
 }
 ```
 
@@ -181,52 +190,17 @@ pub trait File: Send + Sync {
     fn flush(&self) -> SysResult<usize>;
 
     /// called by the ioctl(2) system call.
-    fn ioctl(&self, cmd: usize, arg: usize) -> SyscallResult {
-        Err(SysError::ENOTTY)
-    }
+    fn ioctl(&self, cmd: usize, arg: usize) -> SyscallResult;
 
     /// called when a process wants to check if there is activity on this file and (optionally)
     /// go to sleep until there is activity.
     /// Called by the select(2) and poll(2) system calls
-    async fn poll(&self, events: PollEvents) -> SysResult<PollEvents> {
-        let mut res = PollEvents::empty();
-        if events.contains(PollEvents::POLLIN) {
-            res |= PollEvents::POLLIN;
-        }
-        if events.contains(PollEvents::POLLOUT) {
-            res |= PollEvents::POLLOUT;
-        }
-        Ok(res)
-    }
+    async fn poll(&self, events: PollEvents) -> SysResult<PollEvents>;
 
     /// Called when the VFS needs to move the file position index.
     ///
     /// Return the result offset.
-    fn seek(&self, pos: SeekFrom) -> SysResult<usize> {
-        let mut res_pos = self.pos();
-        match pos {
-            SeekFrom::Current(off) => {
-                if off < 0 {
-                    res_pos -= off.abs() as usize;
-                } else {
-                    res_pos += off as usize;
-                }
-            }
-            SeekFrom::Start(off) => {
-                res_pos = off as usize;
-            }
-            SeekFrom::End(off) => {
-                let size = self.size();
-                if off < 0 {
-                    res_pos = size - off.abs() as usize;
-                } else {
-                    res_pos = size + off as usize;
-                }
-            }
-        }
-        self.set_pos(res_pos);
-        Ok(res_pos)
-    }
+    fn seek(&self, pos: SeekFrom) -> SysResult<usize>;
 }
 ```
 
@@ -282,7 +256,7 @@ pub struct FileSystemTypeMeta {
 
 ### Path
 
-`Path` 结构体的主要功能是路径解析。
+`Path` 结构体的主要用来实现路径解析，由于我们在 `DentryMeta` 中使用 `BTreeMap` 来对缓存一个文件夹下的所有子目录项，因此我们能够在内存中快速进行路径解析，而无需重复访问磁盘进行耗时的 IO 操作。
 
 ```rust
 pub struct Path {
@@ -295,19 +269,10 @@ pub struct Path {
 }
 ```
 
-`Path`的操作形式如下：
+由于我们已经通过 Dentry 实现了对目录树的抽象，路径解析的实现非常简单。
 
 ```rust
 impl Path {
-    /// Create a new path struct
-    pub fn new(root: Arc<dyn Dentry>, start: Arc<dyn Dentry>, path: &str) -> Self {
-        Self {
-            root,
-            start,
-            path: path.to_string(),
-        }
-    }
-
     /// Walk until path has been resolved.
     pub fn walk(&self) -> SysResult<Arc<dyn Dentry>> {
         let path = self.path.as_str();
@@ -336,161 +301,13 @@ impl Path {
 }
 ```
 
-## 辅助数据结构及其操作
+## 其他数据结构
 
 ### FdTable
 
+Unix 设计哲学将文件本身抽象成 Inode，其保存了文件的元数据；将内核打开的文件抽象成 File，其保存了当前读写文件的偏移量以及文件打开的标志；进程只能看见文件描述符，文件描述符由进程结构体中的文件描述符表进行处理。
+
 当一个进程调用 `open()` 系统调用，内核会创建一个文件对象来维护被进程打开的文件的信息，但是内核并不会将这个文件对象返回给进程，而是将一个非负整数返回，即 `open()` 系统调用的返回值是一个非负整数，这个整数称作文件描述符。文件描述符和文件对象一一对应，而维护二者对应关系的数据结构，就是文件描述符表。在实现细节中，文件描述符表本质是一个数组，数组中每一个元素就是文件对象，而元素下标就是文件对象对应的文件描述符。
-
-文件描述符表的操作由 `FdTable` 描述，其形式为：
-
-```rust
-impl FdTable {
-    /// Create a new file descriptor table and create three file descriptors for
-    /// 1. stdin
-    /// 2. stdout
-    /// 3. stderr
-    pub fn new() -> Self {
-        let mut vec: Vec<Option<Arc<dyn File>>> = Vec::new();
-        vec.push(Some(TTY.get().unwrap().clone()));
-        vec.push(Some(TTY.get().unwrap().clone()));
-        vec.push(Some(TTY.get().unwrap().clone()));
-        Self { table: vec }
-    }
-
-    /// Find the minimium released fd
-    fn find_free_slot(&self) -> Option<usize> {
-        (0..self.table.len()).find(|fd| self.table[*fd].is_none())
-    }
-
-    /// Find fd that is no less than lower_bound
-    fn find_free_slot_and_create(&mut self, lower_bound: usize) -> usize {
-        if lower_bound > self.table.len() {
-            for _ in self.table.len()..lower_bound {
-                self.table.push(None)
-            }
-            lower_bound
-        } else {
-            for idx in lower_bound..self.table.len() {
-                if self.table[idx].is_none() {
-                    return idx;
-                }
-            }
-            self.table.push(None);
-            self.table.len()
-        }
-    }
-
-    /// Find the minimium released fd, will alloc a fd if necessary, and insert
-    /// the `file` into the table.
-    pub fn alloc(&mut self, file: Arc<dyn File>) -> SysResult<Fd> {
-        if let Some(fd) = self.find_free_slot() {
-            self.table[fd] = Some(file);
-            Ok(fd)
-        } else {
-            self.table.push(Some(file));
-            Ok(self.table.len() - 1)
-        }
-    }
-
-    /// Get file according to file descriptor
-    pub fn get(&self, fd: Fd) -> SysResult<Arc<dyn File>> {
-        if fd >= self.table.len() {
-            Err(SysError::EBADF)
-        } else {
-            let file = self.table[fd].clone().ok_or(SysError::EBADF)?;
-            Ok(file)
-        }
-    }
-
-    /// Remove file from fd table according to fd
-    pub fn remove(&mut self, fd: Fd) -> SysResult<()> {
-        if fd >= self.table.len() {
-            Err(SysError::EBADF)
-        } else {
-            self.table[fd] = None;
-            Ok(())
-        }
-    }
-
-    /// Insert file into fd table at the position of fd
-    pub fn insert(&mut self, fd: Fd, file: Arc<dyn File>) -> SysResult<()> {
-        if fd >= self.table.len() {
-            for _ in self.table.len()..fd {
-                self.table.push(None)
-            }
-            self.table.push(Some(file));
-            Ok(())
-        } else {
-            self.table[fd] = Some(file);
-            Ok(())
-        }
-    }
-
-    /// Called by the dup(2) system call. Allocates a new file descriptor that refers
-    /// to the same open file description as the descriptor old_fd.
-    pub fn dup(&mut self, old_fd: Fd) -> SysResult<Fd> {
-        let file = self.get(old_fd)?;
-        self.alloc(file)
-    }
-
-    /// Called by the dup2(2) system call. Allocates a new file descriptor new_fd
-    /// that refers to the same open file description as the descriptor old_fd.
-    pub fn dup3(&mut self, old_fd: Fd, new_fd: Fd) -> SysResult<Fd> {
-        let file = self.get(old_fd)?;
-        self.insert(new_fd, file)?;
-        Ok(new_fd)
-    }
-
-    /// Allocates a new file descriptor that refers
-    /// to the same open file description as the descriptor old_fd.
-    /// new file descriptor is no less than lower_bound
-    pub fn dup_with_bound(&mut self, old_fd: Fd, lower_bound: usize) -> SysResult<Fd> {
-        let file = self.get(old_fd)?;
-        let new_fd = self.find_free_slot_and_create(lower_bound);
-        self.insert(new_fd, file);
-        Ok(new_fd)
-    }
-
-    /// Called by execve(2) system call. When a new program is executed by current process,
-    /// check all the files that were opened by the current process. If the file contains
-    /// close_on_exec flag, remove it from the fd table and disable its file descriptor.
-    /// Otherwise, keep the file descriptor valid and the new process can still access to
-    /// the file with the file descriptor.
-    pub fn close_on_exec(&mut self) {
-        for (_, slot) in self.table.iter_mut().enumerate() {
-            if let Some(file) = slot {
-                if file.flags().contains(OpenFlags::O_CLOEXEC) {
-                    *slot = None;
-                }
-            }
-        }
-    }
-
-    /// Take the ownership of the given fd.
-    pub fn take(&mut self, fd: Fd) -> Option<Arc<dyn File>> {
-        if fd >= self.table.len() {
-            None
-        } else {
-            self.table[fd].take()
-        }
-    }
-
-    /// Get the length of file descriptor table
-    pub fn len(&self) -> usize {
-        self.table.len()
-    }
-}
-```
-
-文件描述符表对象由 `FdTable` 结构体描述：
-
-```rust
-pub struct FdTable {
-    /// File descriptor table is actually a Vector
-    table: Vec<Option<Arc<dyn File>>>,
-}
-```
 
 ### Pipe
 
@@ -504,44 +321,9 @@ pub struct PipeInode {
     is_closed: Mutex<bool>,
     buf: Mutex<AllocRingBuffer<u8>>,
 }
-
-impl PipeInode {
-    pub fn new() -> Arc<Self> {
-        let meta = InodeMeta::new(
-            InodeMode::FIFO,
-            Arc::<usize>::new_uninit(),
-            PIPE_BUF_CAPACITY,
-        );
-        let buf = Mutex::new(AllocRingBuffer::new(PIPE_BUF_CAPACITY));
-        Arc::new(Self {
-            meta,
-            is_closed: Mutex::new(false),
-            buf,
-        })
-    }
-}
-
-impl Inode for PipeInode {
-    fn meta(&self) -> &InodeMeta {
-        &self.meta
-    }
-}
 ```
 
-`PipeInode` 是对 VFS 中 `Inode` 数据结构的一个实现，包含元数据、缓冲区和管道是否关闭的信息。`PipeInode` 的关闭则采用了 Rust 语言原生支持的 RAII 原则，在 `Drop` 中实现管道的关闭。
-
-```rust
-impl Drop for PipeWriteFile {
-    fn drop(&mut self) {
-        let pipe = self
-            .inode()
-            .downcast_arc::<PipeInode>()
-            .map_err(|_| SysError::EIO)
-            .unwrap();
-        *pipe.is_closed.lock() = true;
-    }
-}
-```
+`PipeInode` 是对 VFS 中 `Inode` 数据结构的一个实现，包含元数据、缓冲区和管道是否关闭的信息。
 
 对管道进行读写的两个文件对象，`PipeReadFile` 和 `PipeWriteFile` ，则是对 VFS 中 `File` 的实现：
 
@@ -550,22 +332,8 @@ pub struct PipeWriteFile {
     meta: FileMeta,
 }
 
-impl PipeWriteFile {
-    pub fn new(inode: Arc<PipeInode>) -> Arc<Self> {
-        let meta = FileMeta::new(arc_zero(), inode);
-        Arc::new(Self { meta })
-    }
-}
-
 pub struct PipeReadFile {
     meta: FileMeta,
-}
-
-impl PipeReadFile {
-    pub fn new(inode: Arc<PipeInode>) -> Arc<Self> {
-        let meta = FileMeta::new(arc_zero(), inode);
-        Arc::new(Self { meta })
-    }
 }
 ```
 
@@ -573,10 +341,6 @@ impl PipeReadFile {
 
 ```rust
 impl File for PipeReadFile {
-    fn meta(&self) -> &FileMeta {
-        &self.meta
-    }
-
     async fn read(&self, offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
         let pipe = self
             .inode()
@@ -608,10 +372,6 @@ impl File for PipeReadFile {
 
 ```rust
 impl File for PipeWriteFile {
-    fn meta(&self) -> &FileMeta {
-        &self.meta
-    }
-
     async fn write(&self, offset: usize, buf: &[u8]) -> systype::SysResult<usize> {
         let pipe = self
             .inode()
