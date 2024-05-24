@@ -176,7 +176,7 @@ pub async fn sys_wait4(
         // 直到等待的进程do_exit然后发送SIGCHLD信号唤醒自己
         let (child_pid, exit_code, child_utime, child_stime) = loop {
             task.set_interruptable();
-            task.set_wake_up_signal(!*task.sig_mask() | SigSet::SIGCHLD);
+            task.set_wake_up_signal(!*task.sig_mask_ref() | SigSet::SIGCHLD);
             suspend_now().await;
             let si = task.with_mut_sig_pending(|pending| pending.dequeue_except(SigSet::SIGCHLD));
             if let Some(info) = si {

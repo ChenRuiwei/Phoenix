@@ -285,8 +285,6 @@ pub async fn sys_rt_sigsuspend(mask: UserReadPtr<SigSet>) -> SyscallResult {
     task.set_interruptable();
     suspend_now().await;
     task.set_wake_up_signal(mask | invoke_signal);
-    // TODO: 根据Linux这里理论上应该等到signal
-    // handler返回时sys_sigsuspend再返回
     *task.sig_mask() = oldmask;
     Err(SysError::EINTR)
 }
@@ -310,5 +308,17 @@ pub async fn sys_rt_sigtimedwait(
     info: UserWritePtr<SigInfo>,
     timeout: UserReadPtr<TimeSpec>,
 ) -> SyscallResult {
+    let task = current_task();
+    let mut set = set.read(&task)?;
+    set.remove(SigSet::SIGKILL | SigSet::SIGSTOP);
+
+    task.set_interruptable();
+    task.set_wake_up_signal(set);
+    if timeout.not_null() {
+        let timeout = timeout.read(&task)?;
+        task.suspend_timeout(timeout.into()).await;
+    }
+    suspend_now().await;
+
     Ok(0)
 }
