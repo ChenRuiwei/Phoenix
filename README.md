@@ -1,10 +1,10 @@
-# Phoenix OS
+# Phoenix
 
 ![哈工大深圳](docs/assets/哈工大深圳.jpg)
 
 ## 项目描述
 
-使用 Rust 编写、基于 RISCV-64 硬件平台、支持多核的模块化宏内核操作系统。
+Phoenix 是使用 Rust 编写、基于 RISCV-64 硬件平台、支持多核、采用异步无栈协程架构的模块化宏内核操作系统。
 
 ## 完成情况
 
@@ -16,21 +16,26 @@ VisionFive 2 赛道，初赛功能测试满分：
 
 ### Phoenix 内核介绍
 
+- 无栈协程：结合 Rust 异步机制的全局无栈协程调度器。
 - 进程管理：实现基本的进程与线程管理功能，支持多核运行。
 - 内存管理：实现基本的内存管理功能。使用懒分配和 Copy-on-Write 优化策略。
 - 文件系统：基于 Linux 设计的虚拟文件系统。实现页缓存加速文件读写，实现 Dentry 缓存加速路径查找。使用开源 `rust-fatfs`库提供对 fat32 文件系统的支持。
 - 信号机制：完成基础的信号机制，支持用户自定义处理函数。
 
+### 文档
+
+docs 文件夹下 [README.md](./docs/README.md)
+
 ### 项目结构
 
 ```
 .
-├── arch/                   # 与平台相关的包装函数
+├── arch/                   # 平台相关的包装函数与启动函数
 ├── config/                 # 配置常量
 ├── crates/                 # 自己编写的功能单一的库
 │   ├── async_utils/
 │   └── recycle_allocator/
-├── docs/
+├── docs/                   # 文档
 ├── driver/                 # 驱动模块
 ├── kernel/                 # 内核
 │   ├── src/
@@ -41,7 +46,7 @@ VisionFive 2 赛道，初赛功能测试满分：
 │   │   ├── task/           # 进程管理
 │   │   ├── trap/           # 异常处理
 │   │   ├── utils/          # 工具
-│   │   ├── boot.rs         # 内核启动
+│   │   ├── boot.rs         # 内核启动通用函数
 │   │   ├── impls.rs        # 模块接口实现
 │   │   ├── link_app.asm
 │   │   ├── loader.rs
@@ -88,13 +93,13 @@ VisionFive 2 赛道，初赛功能测试满分：
 make build_docker
 ```
 
-2. 使用下列命令运行容器，进入容器终端
+2. 运行容器，进入容器终端
 
 ```sh
 make docker
 ```
 
-3. 第一次运行内核，需要下载依赖库并缓存在 `third-party/vendor` 文件夹下
+3. 下载依赖库并缓存在 `third-party/vendor` 文件夹下
 
 ```sh
 make env
@@ -105,3 +110,18 @@ make env
 ```sh
 make all
 ```
+
+## 项目人员
+
+哈尔滨工业大学（深圳）:
+
+- 陈睿玮 (<1982833213@qq.com>)
+- 石全 (<749990226@qq.com>)
+- 王华杰 (<1070001239@qq.com>)
+- 指导老师：夏文，仇洁婷
+
+## 参考
+
+- [Titanix](https://gitlab.eduxiji.net/202318123101314/oskernel2023-Titanix)
+- [MankorOS](https://gitlab.eduxiji.net/MankorOS/OSKernel2023-MankorOS)
+- [FTL OS](https://gitlab.eduxiji.net/DarkAngelEX/oskernel2022-ftlos)
