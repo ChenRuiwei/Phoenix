@@ -7,8 +7,8 @@ use riscv::register::sstatus::{self, FS};
 
 use super::env::EnvContext;
 use crate::{
-    mm::{self},
-    task::Task,
+    mm,
+    task::{Pid, Task},
 };
 
 const HART_EACH: Hart = Hart::new();
@@ -19,6 +19,7 @@ pub struct Hart {
     hart_id: usize,
     task: Option<Arc<Task>>,
     env: EnvContext,
+    pub last_task_pid: Pid,
 }
 
 impl Hart {
@@ -27,6 +28,7 @@ impl Hart {
             hart_id: 0,
             task: None,
             env: EnvContext::new(),
+            last_task_pid: 0,
         }
     }
 
@@ -79,6 +81,11 @@ impl Hart {
         core::mem::swap(self.env_mut(), env);
         // PERF: do not switch page table if it belongs to the same user
         // PERF: support ASID for page table
+        if task.pid() != self.last_task_pid {
+            unsafe { task.switch_page_table() };
+        } else {
+            // log::warn!("优化了，此时不需要切换页表");
+        }
         unsafe { task.switch_page_table() };
         unsafe { enable_interrupt() };
         log::trace!("[enter_user_task_switch] enter user task");
@@ -92,6 +99,7 @@ impl Hart {
         unsafe { mm::switch_kernel_page_table() };
         core::mem::swap(self.env_mut(), env);
         self.task().time_stat().record_switch_out();
+        self.last_task_pid = self.task().pid();
         self.clear_task();
         unsafe { enable_interrupt() };
     }

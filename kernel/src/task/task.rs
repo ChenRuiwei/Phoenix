@@ -153,7 +153,7 @@ pub enum TaskState {
 impl Task {
     // you can use is_running() / set_running()、 is_zombie() / set_zombie()
     generate_state_methods!(Running, Zombie, Stopped, Interruptable, UnInterruptable);
-    generate_accessors!(tid_address: TidAddress, sig_mask: SigSet, sig_stack: Option<SignalStack>, time_stat: TaskTimeStat, cpus_allowed: CpuMask);
+    generate_accessors!(waker: Option<Waker>, tid_address: TidAddress, sig_mask: SigSet, sig_stack: Option<SignalStack>, time_stat: TaskTimeStat, cpus_allowed: CpuMask);
     generate_atomic_accessors!(exit_code: i32, sig_ucontext_ptr: usize);
     generate_with_methods!(
         fd_table: FdTable,
@@ -216,7 +216,7 @@ impl Task {
         self.children.lock().clone()
     }
 
-    fn state(&self) -> TaskState {
+    pub fn state(&self) -> TaskState {
         *self.state.lock()
     }
 
@@ -267,13 +267,9 @@ impl Task {
         unsafe { &mut *self.trap_context.get() }
     }
 
-    pub fn waker(&self) -> &mut Option<Waker> {
-        unsafe { &mut *self.waker.get() }
-    }
-
     pub fn wake(&self) {
-        let waker = unsafe { &*self.waker.get() };
         debug_assert!(!(self.is_running() || self.is_zombie()));
+        let waker = self.waker_ref();
         waker.as_ref().unwrap().wake_by_ref();
     }
 

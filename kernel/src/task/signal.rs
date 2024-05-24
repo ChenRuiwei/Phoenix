@@ -362,6 +362,7 @@ impl Task {
     /// this function must be calld by the task which wants to modify itself
     /// because of the `current_task()`.(i.e. it can't be called when a process
     /// wants to modify other process's itimers)
+    /// TODO: 加入到全局的TIMER_MANAGER中去管理
     pub fn update_itimers(&self) {
         self.with_mut_itimers(|itimers| itimers.iter_mut().for_each(|itimer| itimer.update()))
     }
