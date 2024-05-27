@@ -123,7 +123,7 @@ pub struct StatFs {
 }
 ```
 
-### Fat Inode
+### FAT Inode
 
 FAT32 文件系统将磁盘上存储数据的区域划分为簇，使用文件分配表记录文件的簇链信息，将文件名等信息存储在目录项中，没有显式地定义索引节点结构。基于上述特性，fatfs 对 FAT32 下的文件和文件夹分别进行了设计，因此 Phoenix 也分别实现了文件索引节点和文件夹索引节点两个结构体
 
@@ -223,9 +223,388 @@ pub struct Stat {
     pub __pad2: u32,
     /// number of blocks that are assigned to the file
     pub st_blocks: u64,
+    /// last access time
     pub st_atime: TimeSpec,
+    /// last modification time
     pub st_mtime: TimeSpec,
+    /// last change of file's meta data time
     pub st_ctime: TimeSpec,
     pub unused: u64,
+}
+```
+
+#### FatDirInode
+
+`FatDirInode` 结构体定义如下：
+
+```rust
+pub struct FatDirInode {
+    meta: InodeMeta,
+    pub dir: Shared<FatDir>,
+}
+```
+
+`FatDirInode` 实现 `Inode` 情况如下：
+
+```rust
+impl Inode for FatDirInode {
+    fn meta(&self) -> &InodeMeta {
+        &self.meta
+    }
+
+    fn get_attr(&self) -> systype::SysResult<vfs_core::Stat> {
+        let inner = self.meta.inner.lock();
+        let mode = self.meta.mode.bits();
+        let len = inner.size;
+        Ok(Stat {
+            st_dev: 0,
+            st_ino: self.meta.ino as u64,
+            st_mode: mode,
+            st_nlink: 1,
+            st_uid: 0,
+            st_gid: 0,
+            st_rdev: 0,
+            __pad: 0,
+            st_size: len as u64,
+            st_blksize: 512,
+            __pad2: 0,
+            st_blocks: (len / 512) as u64,
+            st_atime: inner.atime,
+            st_mtime: inner.mtime,
+            st_ctime: inner.ctime,
+            unused: 0,
+        })
+    }
+}
+```
+
+与 `FatFileInode` 相同，`FatDirInode` 实现了 `get_attr` 方法，用于 `fstat` 系统调用中。
+
+### FatDentry
+
+`FatDentry` 结构体定义如下：
+
+```rust
+pub struct FatDentry {
+    meta: DentryMeta,
+}
+```
+
+里面包含 `FatDentry` 的元数据
+
+`FatDentry` 对 `Dentry` 的实现情况如下：
+
+```rust
+impl Dentry for FatDentry {
+    fn meta(&self) -> &DentryMeta {
+        &self.meta
+    }
+
+    fn base_open(self: Arc<Self>) -> systype::SysResult<Arc<dyn vfs_core::File>> {
+        let inode = self.inode()?;
+        match inode.itype() {
+            InodeType::File => {
+                let inode = inode
+                    .downcast_arc::<FatFileInode>()
+                    .map_err(|_| SysError::EIO)?;
+                Ok(FatFileFile::new(self.clone(), inode))
+            }
+            InodeType::Dir => {
+                let inode = inode
+                    .downcast_arc::<FatDirInode>()
+                    .map_err(|_| SysError::EIO)?;
+                Ok(FatDirFile::new(self.clone(), inode))
+            }
+            _ => Err(SysError::EPERM),
+        }
+    }
+
+    fn base_lookup(self: Arc<Self>, name: &str) -> systype::SysResult<Arc<dyn Dentry>> {
+        let sb = self.super_block();
+        let inode = self
+            .inode()?
+            .downcast_arc::<FatDirInode>()
+            .map_err(|_| SysError::ENOTDIR)?;
+        let find = inode.dir.lock().iter().find(|e| {
+            let entry = e.as_ref().unwrap();
+            let e_name = entry.file_name();
+            name == e_name
+        });
+        let sub_dentry = self.into_dyn().get_child_or_create(name);
+        if let Some(find) = find {
+            log::debug!("[FatDentry::base_lookup] find name {name}");
+            let entry = find.map_err(as_sys_err)?;
+            let new_inode: Arc<dyn Inode> = if entry.is_dir() {
+                let new_dir = entry.to_dir();
+                FatDirInode::new(sb, new_dir)
+            } else {
+                let new_file = entry.to_file();
+                FatFileInode::new(sb, new_file)
+            };
+            sub_dentry.set_inode(new_inode);
+        } else {
+            log::warn!("[FatDentry::base_lookup] name {name} does not exist");
+        }
+        Ok(sub_dentry)
+    }
+
+    fn base_create(
+        self: Arc<Self>,
+        name: &str,
+        mode: vfs_core::InodeMode,
+    ) -> systype::SysResult<Arc<dyn Dentry>> {
+        log::trace!("[FatDentry::base_create] create name {name}, mode {mode:?}");
+        let sb = self.super_block();
+        let inode = self
+            .inode()?
+            .downcast_arc::<FatDirInode>()
+            .map_err(|_| SysError::ENOTDIR)?;
+        let sub_dentry = self.into_dyn().get_child_or_create(name);
+        match mode.to_type() {
+            InodeType::Dir => {
+                let new_dir = inode.dir.lock().create_dir(name).map_err(as_sys_err)?;
+                let new_inode = FatDirInode::new(sb.clone(), new_dir);
+                sub_dentry.set_inode(new_inode);
+                Ok(sub_dentry)
+            }
+            InodeType::File => {
+                let new_file = inode.dir.lock().create_file(name).map_err(as_sys_err)?;
+                let new_inode = FatFileInode::new(sb.clone(), new_file);
+                sub_dentry.set_inode(new_inode);
+                Ok(sub_dentry)
+            }
+            _ => {
+                log::warn!("[FatDentry::base_create] not supported mode {mode:?}");
+                Err(SysError::EIO)
+            }
+        }
+    }
+
+    fn base_unlink(self: Arc<Self>, name: &str) -> systype::SyscallResult {
+        let inode = self
+            .inode()?
+            .downcast_arc::<FatDirInode>()
+            .map_err(|_| SysError::ENOTDIR)?;
+        let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
+        if sub_dentry.inode()?.itype().is_dir() {
+            return Err(SysError::EISDIR);
+        }
+        sub_dentry.clear_inode();
+        inode.dir.lock().remove(name).map_err(as_sys_err)?;
+        Ok(0)
+    }
+
+    fn base_rmdir(self: Arc<Self>, name: &str) -> systype::SyscallResult {
+        let inode = self
+            .inode()?
+            .downcast_arc::<FatDirInode>()
+            .map_err(|_| SysError::ENOTDIR)?;
+        let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
+        if !sub_dentry.inode()?.itype().is_dir() {
+            return Err(SysError::ENOTDIR);
+        }
+        sub_dentry.clear_inode();
+        inode.dir.lock().remove(name).map_err(as_sys_err)?;
+        Ok(0)
+    }
+
+    fn base_new_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+        Self::new(name, self.super_block(), Some(self))
+    }
+}
+```
+
+从 `Dentry` 的实现中可见，`Dentry` 负责向外开放了大部分文件操作的接口，而接口的具体实现又是以 `Inode` 为核心。
+
+### FAT File
+
+#### FatFileFile
+
+`FatFileFile` 的结构体定义如下：
+
+```rust
+pub struct FatFileFile {
+    meta: FileMeta,
+    file: Shared<FatFile>,
+}
+```
+
+`FatFileFile` 对 `File` 的实现情况如下：
+
+```rust
+impl File for FatFileFile {
+    fn meta(&self) -> &FileMeta {
+        &self.meta
+    }
+
+    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+        match self.itype() {
+            InodeType::File => {
+                let mut file = self.file.lock();
+                let fat_offset = file.offset() as usize;
+                if offset != fat_offset {
+                    file.seek(fatfs::SeekFrom::Start(offset as u64))
+                        .map_err(as_sys_err)?;
+                }
+                let count = file.read(buf).map_err(as_sys_err)?;
+                log::trace!("[FatFileFile::base_read] count {count}");
+                Ok(count)
+            }
+            InodeType::Dir => Err(SysError::EISDIR),
+            _ => unreachable!(),
+        }
+    }
+
+    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        match self.itype() {
+            InodeType::File => {
+                let mut file = self.file.lock();
+                let size = self.inode().size();
+                if offset > size {
+                    // write empty data to fill area [size, offset)
+                    let empty = vec![0; offset - size];
+                    file.seek(fatfs::SeekFrom::Start(size as u64))
+                        .map_err(as_sys_err)?;
+                    file.write_all(&empty).map_err(as_sys_err)?;
+                }
+
+                let fat_offset = file.offset() as usize;
+                if offset != fat_offset {
+                    file.seek(fatfs::SeekFrom::Start(offset as u64))
+                        .map_err(as_sys_err)?;
+                }
+                file.write_all(buf).map_err(as_sys_err)?;
+                if offset + buf.len() > size {
+                    let new_size = offset + buf.len();
+                    self.inode().set_size(new_size);
+                }
+                Ok(buf.len())
+            }
+            InodeType::Dir => Err(SysError::EISDIR),
+            _ => unreachable!(),
+        }
+    }
+}
+```
+
+#### FatDirFile
+
+`FatDirFile` 的结构体定义如下：
+
+```rust
+pub struct FatDirFile {
+    meta: FileMeta,
+    dir: Shared<FatDir>,
+    iter_cache: Shared<FatDirIter>,
+}
+```
+
+`FatDirFile` 对 `File` 的实现情况如下：
+
+```rust
+impl File for FatDirFile {
+    fn meta(&self) -> &FileMeta {
+        &self.meta
+    }
+
+    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SyscallResult {
+        Err(SysError::EISDIR)
+    }
+
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
+        Err(SysError::EISDIR)
+    }
+
+    fn base_read_dir(&self) -> systype::SysResult<Option<vfs_core::DirEntry>> {
+        let entry = self.iter_cache.lock().next();
+        let Some(entry) = entry else {
+            return Ok(None);
+        };
+        let Ok(entry) = entry else {
+            return Err(SysError::EIO);
+        };
+        let name = entry.file_name();
+        self.seek(SeekFrom::Current(1))?;
+        let sub_dentry = self.dentry().get_child_or_create(&name);
+        let new_inode: Arc<dyn Inode> = if entry.is_dir() {
+            let new_dir = entry.to_dir();
+            FatDirInode::new(self.super_block(), new_dir)
+        } else {
+            let new_file = entry.to_file();
+            FatFileInode::new(self.super_block(), new_file)
+        };
+        let itype = new_inode.itype();
+        sub_dentry.set_inode(new_inode);
+        let entry = DirEntry {
+            ino: 1,                 // Fat32 does not support ino on disk
+            off: self.pos() as u64, // off should not be used
+            itype,
+            name,
+        };
+        Ok(Some(entry))
+    }
+
+    fn base_load_dir(&self) -> SysResult<()> {
+        let mut iter = self.dir.lock().iter();
+        while let Some(entry) = iter.next() {
+            let Ok(entry) = entry else {
+                return Err(SysError::EIO);
+            };
+            let name = entry.file_name();
+            let sub_dentry = self.dentry().get_child_or_create(&name);
+            let new_inode: Arc<dyn Inode> = if entry.is_dir() {
+                let new_dir = entry.to_dir();
+                FatDirInode::new(self.super_block(), new_dir)
+            } else {
+                let new_file = entry.to_file();
+                FatFileInode::new(self.super_block(), new_file)
+            };
+            sub_dentry.set_inode(new_inode);
+        }
+        Ok(())
+    }
+}
+```
+
+### FatFsType
+
+`FatFsType` 的结构体定义如下：
+
+```rust
+pub struct FatFsType {
+    meta: FileSystemTypeMeta,
+}
+```
+
+`FatFsType` 对 `FileSystemType` 的实现情况如下：
+
+```rust
+impl FileSystemType for FatFsType {
+    fn meta(&self) -> &FileSystemTypeMeta {
+        &self.meta
+    }
+
+    fn base_mount(
+        self: Arc<Self>,
+        name: &str,
+        parent: Option<Arc<dyn Dentry>>,
+        _flags: vfs_core::MountFlags,
+        dev: Option<Arc<dyn driver::BlockDevice>>,
+    ) -> systype::SysResult<Arc<dyn vfs_core::Dentry>> {
+        debug_assert!(dev.is_some());
+        let sb = FatSuperBlock::new(SuperBlockMeta::new(dev, self.clone()));
+        let root_inode = FatDirInode::new(sb.clone(), sb.fs.root_dir());
+        let root_dentry = FatDentry::new(name, sb.clone(), parent.clone()).into_dyn();
+        root_dentry.set_inode(root_inode);
+        if let Some(parent) = parent {
+            parent.insert(root_dentry.clone());
+        }
+        sb.set_root_dentry(root_dentry.clone());
+        self.insert_sb(&root_dentry.path(), sb);
+        Ok(root_dentry)
+    }
 }
 ```

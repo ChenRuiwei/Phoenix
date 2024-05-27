@@ -16,32 +16,37 @@
     .align 2
 
 
-# user -> kernel
+# __trap_from_user: This label marks the entry point for traps originating from user mode
 __trap_from_user:
+    # Swap the user stack pointer (sscratch) with the kernel stack pointer (sp)
     csrrw sp, sscratch, sp
-    # now sp->*TrapContext in kernel space, sscratch->user stack
-    # save other general purpose registers
+    # Now, sp points to *TrapContext in kernel space, sscratch holds the user stack pointer
+    
+    # Save other general-purpose registers
     sd x1, 1*8(sp)
-    # skip sp(x2), we will save it later
-    # save x3~x31 (x4 is tp)
+    # Skip sp (x2), it will be saved later
+    
+    # Save x3~x31 (x4 is tp, thread pointer, hence it's skipped)
     .set n, 3
     .rept 29
         SAVE_GP %n
         .set n, n+1
     .endr
-    # we can use t0/t1/t2 freely, because they have been saved in TrapContext
-    csrr t0, sstatus
-    csrr t1, sepc
-    sd t0, 32*8(sp)
-    sd t1, 33*8(sp)
-    # read user stack from sscratch and save it in TrapContext
-    csrr t2, sscratch
-    sd t2, 2*8(sp)
 
-    # # move to kernel_sp
-    # load kernel ra
-    ld ra, 35*8(sp)
-    # load callee-saved regs
+    # t0, t1, t2 registers are temporary and can be used freely here since they've been saved in TrapContext
+    csrr t0, sstatus    # Read the supervisor status register into t0
+    csrr t1, sepc       # Read the exception program counter into t1
+    sd t0, 32*8(sp)     # Save sstatus into the TrapContext
+    sd t1, 33*8(sp)     # Save sepc into the TrapContext
+
+    # Read user stack pointer from sscratch and save it into the TrapContext
+    csrr t2, sscratch   # Read the user stack pointer into t2
+    sd t2, 2*8(sp)      # Save user stack pointer into the TrapContext
+
+    # Move to kernel stack pointer (kernel_sp)
+    # Load the kernel return address
+    ld ra, 35*8(sp)     # Load the return address from the TrapContext
+    # Load callee-saved registers (s0-s11)
     ld s0, 36*8(sp)
     ld s1, 37*8(sp)
     ld s2, 38*8(sp)
@@ -54,38 +59,42 @@ __trap_from_user:
     ld s9, 45*8(sp)
     ld s10, 46*8(sp)
     ld s11, 47*8(sp)
-    # load kernel fp
+
+    # Load kernel frame pointer (fp) and thread pointer (tp)
     ld fp, 48*8(sp)
     ld tp, 49*8(sp)
+
+    # Finally, load the kernel stack pointer from the TrapContext
     ld sp, 34*8(sp)
-    # return to kernel ra
+    
+    # Return to the kernel return address (ra)
     ret
 
-# kernel -> user
+# __return_to_user: This label marks the entry point for returning from kernel mode to user mode.
+# a0: Pointer to TrapContext in user space (constant)
 __return_to_user:
-    # a0: *TrapContext in user space(Constant); a1: user space token
-    # switch to user space
-
-    # let sscratch store the trap context's address
+    # Set sscratch to store the TrapContext's address
     csrw sscratch, a0
-    # save kernel callee-saved regs
-    sd sp, 34*8(a0)
-    sd ra, 35*8(a0)
-    sd s0, 36*8(a0)
-    sd s1, 37*8(a0)
-    sd s2, 38*8(a0)
-    sd s3, 39*8(a0)
-    sd s4, 40*8(a0)
-    sd s5, 41*8(a0)
-    sd s6, 42*8(a0)
-    sd s7, 43*8(a0)
-    sd s8, 44*8(a0)
-    sd s9, 45*8(a0)
-    sd s10, 46*8(a0)
-    sd s11, 47*8(a0)
-    sd fp, 48*8(a0)
-    sd tp, 49*8(a0)
 
+    # Save kernel callee-saved registers into TrapContext
+    sd sp, 34*8(a0)    # Save stack pointer
+    sd ra, 35*8(a0)    # Save return address
+    sd s0, 36*8(a0)    # Save callee-saved register s0
+    sd s1, 37*8(a0)    # Save callee-saved register s1
+    sd s2, 38*8(a0)    # Save callee-saved register s2
+    sd s3, 39*8(a0)    # Save callee-saved register s3
+    sd s4, 40*8(a0)    # Save callee-saved register s4
+    sd s5, 41*8(a0)    # Save callee-saved register s5
+    sd s6, 42*8(a0)    # Save callee-saved register s6
+    sd s7, 43*8(a0)    # Save callee-saved register s7
+    sd s8, 44*8(a0)    # Save callee-saved register s8
+    sd s9, 45*8(a0)    # Save callee-saved register s9
+    sd s10, 46*8(a0)   # Save callee-saved register s10
+    sd s11, 47*8(a0)   # Save callee-saved register s11
+    sd fp, 48*8(a0)    # Save frame pointer
+    sd tp, 49*8(a0)    # Save thread pointer
+
+    # Move sp to point to TrapContext in kernel space
     mv sp, a0
     # now sp points to TrapContext in kernel space, start restoring based on it
     # restore sstatus/sepc

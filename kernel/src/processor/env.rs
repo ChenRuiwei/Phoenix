@@ -56,14 +56,18 @@ impl EnvContext {
     }
 
     pub fn inc_sum(&mut self) {
+        if self.sum_cnt == 0 {
+            unsafe { riscv::register::sstatus::set_sum() };
+        }
         self.sum_cnt += 1;
-        unsafe { self.auto_sum() };
     }
 
     pub fn dec_sum(&mut self) {
         debug_assert!(self.sum_cnt > 0);
         self.sum_cnt -= 1;
-        unsafe { self.auto_sum() };
+        if self.sum_cnt == 0 {
+            unsafe { riscv::register::sstatus::clear_sum() };
+        }
     }
 
     pub fn change_env(&self, new: &Self) {

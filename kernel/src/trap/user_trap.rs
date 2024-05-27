@@ -15,11 +15,7 @@ use riscv::register::{
 use timer::timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
-use crate::{
-    syscall::syscall,
-    task::{signal::do_signal, Task},
-    trap::set_user_trap,
-};
+use crate::{syscall::syscall, task::Task, trap::set_user_trap};
 
 /// handle an interrupt, exception, or system call from user space
 #[no_mangle]
@@ -86,15 +82,13 @@ pub async fn trap_handler(task: &Arc<Task>) {
     }
 }
 
+extern "C" {
+    fn __return_to_user(cx: *mut TrapContext);
+}
+
 /// Trap return to user mode.
 #[no_mangle]
 pub fn trap_return(task: &Arc<Task>) {
-    extern "C" {
-        fn __return_to_user(cx: *mut TrapContext);
-    }
-
-    do_signal().expect("do signal error");
-
     log::info!("[kernel] trap return to user...");
     unsafe {
         disable_interrupt();

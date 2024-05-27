@@ -13,7 +13,7 @@ use timer::timer::{Timer, TIMER_MANAGER};
 use super::Task;
 use crate::{
     processor::{env::EnvContext, hart},
-    task::task::TaskState::*,
+    task::{signal::do_signal, task::TaskState::*},
     trap,
 };
 
@@ -83,8 +83,7 @@ pub async fn task_loop(task: Arc<Task>) {
 
         // task may be set to zombie by other task, e.g. execve will kill other tasks in
         // the same thread group
-        let state = task.with_state(|s| *s);
-        match state {
+        match task.state() {
             Zombie => break,
             Stopped => suspend_now().await,
             _ => {}
@@ -92,14 +91,15 @@ pub async fn task_loop(task: Arc<Task>) {
 
         trap::user_trap::trap_handler(&task).await;
 
-        let state = task.with_state(|s| *s);
-        match state {
+        match task.state() {
             Zombie => break,
             Stopped => suspend_now().await,
             _ => {}
         }
 
         task.update_itimers();
+
+        do_signal().expect("do signal error");
     }
 
     log::debug!("thread {} terminated", task.tid());
