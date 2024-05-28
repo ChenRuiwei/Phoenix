@@ -134,6 +134,10 @@ pub async fn sys_wait4(
     log::info!("[sys_wait4] target: {target:?}, option: {option:?}");
     // 首先检查一遍等待的进程是否已经是zombie了
     let children = task.children();
+    if children.is_empty() {
+        log::info!("[sys_wait4] fail: no child");
+        return Err(SysError::ECHILD);
+    }
     let res_task = match target {
         WaitFor::AnyChild => children.values().find(|c| c.is_zombie()),
         WaitFor::Pid(pid) => {
