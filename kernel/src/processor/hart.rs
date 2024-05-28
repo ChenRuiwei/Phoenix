@@ -102,6 +102,7 @@ impl Hart {
         self.last_task_pid = self.task().pid();
         self.clear_task();
         unsafe { enable_interrupt() };
+        log::trace!("[leave_user_task_switch] fuck user task");
     }
 
     pub fn kernel_task_switch(&mut self, env: &mut EnvContext) {

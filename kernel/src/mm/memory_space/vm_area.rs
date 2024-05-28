@@ -82,14 +82,20 @@ impl From<MapPerm> for PTEFlags {
     }
 }
 
+/// A contiguous virtual memory area.
 #[derive(Clone)]
 pub struct VmArea {
     /// Aligned `VirtAddr` range for the `VmArea`.
     range_va: Range<VirtAddr>,
+    /// Hold pages with RAII.
     pub pages: BTreeMap<VirtPageNum, Arc<Page>>,
+    /// Map permission of this area.
     pub map_perm: MapPerm,
+    /// Type of this area.
     pub vma_type: VmAreaType,
-    // For mmap
+
+    // For mmap.
+    /// Mmap flags.
     pub mmap_flags: MmapFlags,
     /// The underlying file being mapped.
     pub backed_file: Option<Arc<dyn File>>,
@@ -254,6 +260,8 @@ impl VmArea {
         }
     }
 
+    // FIXME: should kill user program if it deref a invalid pointer, e.g. try to
+    // write at a read only area?
     pub fn handle_page_fault(
         &mut self,
         page_table: &mut PageTable,

@@ -5,7 +5,7 @@ use core::{
     ops::Range,
 };
 
-use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PTE_NUM_ONE_PAGE, PTE_SIZE};
+use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PTE_NUM_IN_ONE_PAGE, PTE_SIZE};
 
 use super::{
     impl_arithmetic_with_usize, impl_fmt, impl_step,
@@ -128,7 +128,7 @@ impl PhysPageNum {
     /// Get `PageTableEntry` array.
     pub fn pte_array(&self) -> &'static mut [PageTableEntry] {
         let va: VirtAddr = self.to_offset().to_vpn().into();
-        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut PageTableEntry, PTE_NUM_ONE_PAGE) }
+        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut PageTableEntry, PTE_NUM_IN_ONE_PAGE) }
     }
 
     /// Get bytes array of a physical page
