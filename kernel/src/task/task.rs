@@ -32,8 +32,10 @@ use super::{
     tid::{Pid, Tid, TidHandle},
 };
 use crate::{
+    generate_accessors, generate_atomic_accessors, generate_state_methods, generate_with_methods,
+    ipc::shm::SHARED_MEMORY_MANAGER,
     mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
-    processor::env::{within_sum, SumGuard},
+    processor::env::within_sum,
     syscall,
     task::{
         manager::TASK_MANAGER,
@@ -55,19 +57,22 @@ fn new_shared<T>(data: T) -> Shared<T> {
 /// adopted by Linux. A process is a task that is the leader of a `ThreadGroup`.
 pub struct Task {
     // Immutable
-    /// Tid of the task.
+    /// Task identifier handle.
     tid: TidHandle,
-    /// A weak reference to the leader. `None` if self is leader.
+    /// Weak reference to the leader task. `None` if this task is the leader.
     leader: Option<Weak<Task>>,
-    /// Whether the task is the leader.
+    /// Indicates if the task is the leader of its thread group.
     is_leader: bool,
 
     // Mutable
-    /// Whether this task is a zombie. Locked because of other task may operate
-    /// this state, e.g. execve will kill other tasks.
+    /// Indicates if the task is a zombie. Protected by a spin lock due to
+    /// potential access by other tasks.
     state: SpinNoIrqLock<TaskState>,
-    /// The process's address space
+    /// The address space of the process.
     memory_space: Shared<MemorySpace>,
+    /// Map of start address of shared memory areas to their keys in the shared
+    /// memory manager.
+    shm_ids: Shared<BTreeMap<VirtAddr, usize>>,
     /// Parent process
     parent: Shared<Option<Weak<Task>>>,
     /// Children processes
@@ -77,29 +82,31 @@ pub struct Task {
     children: Shared<BTreeMap<Tid, Arc<Task>>>,
     /// Exit code of the current process
     exit_code: AtomicI32,
-    ///
+    /// Trap context for the task.
     trap_context: SyncUnsafeCell<TrapContext>,
-    ///
+    /// Waker to add the task back to the scheduler.
     waker: SyncUnsafeCell<Option<Waker>>,
-    ///
+    /// Thread group containing this task.
     thread_group: Shared<ThreadGroup>,
-    /// Fd table
+    /// File descriptor table.
     fd_table: Shared<FdTable>,
     /// Current working directory dentry.
     cwd: Shared<Arc<dyn Dentry>>,
-    /// received signals
+    /// Pending signals for the task.
     sig_pending: SpinNoIrqLock<SigPending>,
-    /// 存储了对每个信号的处理方法。
-    sig_handlers: SyncUnsafeCell<SigHandlers>,
-    /// 信号掩码用于标识哪些信号被阻塞，不应该被该进程处理。
-    /// 这是进程级别的持续性设置，通常用于防止进程在关键操作期间被中断.
-    /// 注意与信号处理时期的临时掩码做区别
+    /// Signal handlers
+    sig_handlers: Shared<SigHandlers>,
+    /// Optional signal stack for the task, settable via `sys_signalstack`.
     sig_mask: SyncUnsafeCell<SigSet>,
-    /// User can set `sig_stack` by `sys_signalstack`.
+    /// Optional signal stack for the task, settable via `sys_signalstack`.
     sig_stack: SyncUnsafeCell<Option<SignalStack>>,
+    /// Pointer to the user context for signal handling.
     sig_ucontext_ptr: AtomicUsize,
+    /// Statistics for task execution times.
     time_stat: SyncUnsafeCell<TaskTimeStat>,
+    /// Interval timers for the task.
     itimers: Shared<[ITimer; 3]>,
+    /// Futexes used by the task.
     futexes: Shared<Futexes>,
     ///
     tid_address: SyncUnsafeCell<TidAddress>,
@@ -120,31 +127,50 @@ impl Drop for Task {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TaskState {
+    /// The task is currently running or ready to run, occupying the CPU and
+    /// executing its code.
     Running,
+    /// The task has terminated, but its process control block (PCB) still
+    /// exists for the parent process to read its exit status.
     Zombie,
-}
-
-macro_rules! with_ {
-    ($name:ident, $ty:ty) => {
-        paste::paste! {
-            pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
-                // TODO: let logging more specific
-                log::trace!("with_something");
-                f(& self.$name.lock())
-            }
-            pub fn [<with_mut_ $name>]<T>(&self, f: impl FnOnce(&mut $ty) -> T) -> T {
-                log::trace!("with_mut_something");
-                f(&mut self.$name.lock())
-            }
-        }
-    };
+    /// The task has been stopped, usually due to receiving a stop signal (e.g.,
+    /// SIGSTOP). It can be resumed with a continue signal (e.g., SIGCONT).
+    Stopped,
+    /// The task is waiting for an event, such as the completion of an I/O
+    /// operation or the release of a resource. In this state, the task can
+    /// be interrupted by signals. If a signal is sent to the task, it will be
+    /// awakened from sleep to handle the signal. This state allows for more
+    /// flexible scheduling since the task can respond to signals.
+    Interruptable,
+    /// The task is also waiting for an event, but it cannot be interrupted by
+    /// signals in this state. Even if a signal is sent to the task, it will
+    /// not respond immediately and will only be awakened when the awaited event
+    /// occurs. This state is typically used to ensure that critical
+    /// operations are not interrupted, maintaining data consistency and
+    /// operation atomicity.
+    UnInterruptable,
 }
 
 impl Task {
+    // you can use is_running() / set_running()、 is_zombie() / set_zombie()
+    generate_state_methods!(Running, Zombie, Stopped, Interruptable, UnInterruptable);
+    generate_accessors!(waker: Option<Waker>, tid_address: TidAddress, sig_mask: SigSet, sig_stack: Option<SignalStack>, time_stat: TaskTimeStat, cpus_allowed: CpuMask);
+    generate_atomic_accessors!(exit_code: i32, sig_ucontext_ptr: usize);
+    generate_with_methods!(
+        fd_table: FdTable,
+        children: BTreeMap<Tid, Arc<Task>>,
+        memory_space: MemorySpace,
+        thread_group: ThreadGroup,
+        sig_pending: SigPending,
+        itimers: [ITimer; 3],
+        futexes: Futexes,
+        sig_handlers: SigHandlers,
+        state: TaskState,
+        shm_ids: BTreeMap<VirtAddr, usize>
+    );
     // TODO: this function is not clear, may be replaced with exec
     pub fn spawn_from_elf(elf_data: &[u8]) {
         let (memory_space, user_sp_top, entry_point, _auxv) = MemorySpace::from_elf(elf_data);
-
         let trap_context = TrapContext::new(entry_point, user_sp_top);
         let task = Arc::new(Self {
             tid: alloc_tid(),
@@ -162,7 +188,7 @@ impl Task {
             cwd: new_shared(sys_root_dentry()),
             sig_pending: SpinNoIrqLock::new(SigPending::new()),
             sig_mask: SyncUnsafeCell::new(SigSet::empty()),
-            sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
+            sig_handlers: new_shared(SigHandlers::new()),
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
@@ -174,6 +200,7 @@ impl Task {
             futexes: new_shared(Futexes::new()),
             tid_address: SyncUnsafeCell::new(TidAddress::new()),
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
+            shm_ids: new_shared(BTreeMap::new()),
         });
         task.thread_group.lock().push(task.clone());
 
@@ -190,7 +217,7 @@ impl Task {
         self.children.lock().clone()
     }
 
-    fn state(&self) -> TaskState {
+    pub fn state(&self) -> TaskState {
         *self.state.lock()
     }
 
@@ -236,32 +263,15 @@ impl Task {
             .pid()
     }
 
-    pub fn exit_code(&self) -> i32 {
-        self.exit_code.load(Ordering::Relaxed)
-    }
-
-    pub fn set_exit_code(&self, exit_code: i32) {
-        self.exit_code.store(exit_code, Ordering::Relaxed);
-    }
-
     /// Get the mutable ref of `TrapContext`.
     pub fn trap_context_mut(&self) -> &mut TrapContext {
         unsafe { &mut *self.trap_context.get() }
     }
 
-    /// Set waker for this thread
-    pub fn set_waker(&self, waker: Waker) {
-        unsafe {
-            (*self.waker.get()) = Some(waker);
-        }
-    }
-
-    pub fn set_zombie(&self) {
-        *self.state.lock() = TaskState::Zombie
-    }
-
-    pub fn is_zombie(&self) -> bool {
-        *self.state.lock() == TaskState::Zombie
+    pub fn wake(&self) {
+        debug_assert!(!(self.is_running() || self.is_zombie()));
+        let waker = self.waker_ref();
+        waker.as_ref().unwrap().wake_by_ref();
     }
 
     pub fn cwd(&self) -> Arc<dyn Dentry> {
@@ -270,52 +280,6 @@ impl Task {
 
     pub fn set_cwd(&self, dentry: Arc<dyn Dentry>) {
         *self.cwd.lock() = dentry;
-    }
-
-    pub fn sig_handlers(&self) -> &mut SigHandlers {
-        unsafe { &mut *self.sig_handlers.get() }
-    }
-
-    pub fn sig_mask(&self) -> &mut SigSet {
-        unsafe { &mut *self.sig_mask.get() }
-    }
-
-    /// important: new mask can't block SIGKILL or SIGSTOP
-    pub fn sig_mask_replace(&self, new: &mut SigSet) -> SigSet {
-        new.remove(SigSet::SIGSTOP | SigSet::SIGKILL);
-        let old = unsafe { *self.sig_mask.get() };
-        unsafe { *self.sig_mask.get() = *new };
-        old
-    }
-
-    pub fn signal_stack(&self) -> &mut Option<SignalStack> {
-        unsafe { &mut *self.sig_stack.get() }
-    }
-
-    #[inline]
-    pub fn sig_ucontext_ptr(&self) -> usize {
-        self.sig_ucontext_ptr.load(Ordering::Relaxed)
-    }
-
-    #[inline]
-    pub fn set_sig_ucontext_ptr(&self, ptr: usize) {
-        self.sig_ucontext_ptr.store(ptr, Ordering::Relaxed)
-    }
-
-    pub fn time_stat(&self) -> &mut TaskTimeStat {
-        unsafe { &mut *self.time_stat.get() }
-    }
-
-    pub fn tid_address_mut(&self) -> &mut TidAddress {
-        unsafe { &mut *self.tid_address.get() }
-    }
-
-    pub fn tid_address(&self) -> &TidAddress {
-        unsafe { &*self.tid_address.get() }
-    }
-
-    pub fn cpus_allowed(&self) -> &mut CpuMask {
-        unsafe { &mut *self.cpus_allowed.get() }
     }
 
     pub unsafe fn switch_page_table(&self) {
@@ -331,7 +295,6 @@ impl Task {
     ) -> Arc<Self> {
         use syscall::CloneFlags;
         let tid = alloc_tid();
-
         let mut trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
 
@@ -342,8 +305,12 @@ impl Task {
         let thread_group;
         let cwd;
         let itimers;
-        let fd_table;
         let futexes;
+        let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
+            self.sig_handlers.clone()
+        } else {
+            new_shared(self.with_sig_handlers(|handlers| handlers.clone()))
+        };
         if flags.contains(CloneFlags::THREAD) {
             is_leader = false;
             leader = Some(Arc::downgrade(self));
@@ -352,8 +319,6 @@ impl Task {
             thread_group = self.thread_group.clone();
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
-            // TODO: close on exec flag support
-            fd_table = self.fd_table.clone();
             futexes = self.futexes.clone();
         } else {
             is_leader = true;
@@ -367,7 +332,6 @@ impl Task {
                 ITimer::new_prof(),
             ]);
             cwd = new_shared(self.cwd());
-            fd_table = new_shared(self.fd_table.lock().clone());
             futexes = new_shared(Futexes::new());
         }
 
@@ -380,6 +344,12 @@ impl Task {
             // TODO: avoid flushing global entries like kernel mappings
             unsafe { sfence_vma_all() };
         }
+
+        let fd_table = if flags.contains(CloneFlags::FILES) {
+            self.fd_table.clone()
+        } else {
+            new_shared(self.fd_table.lock().clone())
+        };
 
         if let Some(sp) = stack {
             trap_context.get_mut().set_user_sp(sp.bits());
@@ -409,8 +379,9 @@ impl Task {
             thread_group,
             fd_table,
             sig_pending: SpinNoIrqLock::new(SigPending::new()),
-            sig_mask: SyncUnsafeCell::new(SigSet::empty()),
-            sig_handlers: SyncUnsafeCell::new(SigHandlers::new()),
+            // A child created via fork(2) inherits a copy of its parent's signal mask;
+            sig_mask: SyncUnsafeCell::new(self.sig_mask_ref().clone()),
+            sig_handlers,
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
@@ -418,6 +389,8 @@ impl Task {
             futexes,
             tid_address,
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
+            // After a fork(2), the child inherits the attached shared memory segments.
+            shm_ids: self.shm_ids.clone(),
         });
 
         if !flags.contains(CloneFlags::THREAD) {
@@ -446,12 +419,16 @@ impl Task {
         // NOTE: should do termination before switching page table, so that other
         // threads will trap in by page fault and be handled by `do_exit`
         log::debug!("[Task::do_execve] terminating all threads except the leader");
-        self.with_thread_group(|tg| {
+        let pid = self.with_thread_group(|tg| {
+            let mut pid = 0;
             for t in tg.iter() {
                 if !t.is_leader() {
                     t.set_zombie();
+                } else {
+                    pid = t.tid.0;
                 }
             }
+            pid
         });
 
         log::debug!("[Task::do_execve] changing memory space");
@@ -471,11 +448,27 @@ impl Task {
         self.with_mut_memory_space(|m| m.alloc_heap_lazily());
 
         // close fd on exec
-        self.with_mut_fd_table(|table| table.close_on_exec());
+        self.with_mut_fd_table(|table| table.do_close_on_exec());
 
         // init trap context
         self.trap_context_mut()
             .init_user(sp, entry, argc, argv, envp);
+
+        // Any alternate signal stack is not preserved
+        *self.sig_stack() = None;
+
+        // During an execve, the dispositions of handled signals are reset
+        // to the default; the dispositions of ignored signals are left unchanged
+        self.with_mut_sig_handlers(|handlers| handlers.reset_user_defined());
+
+        // After an execve(2), all attached shared memory segments are detached from the
+        // process.
+        self.with_mut_shm_ids(|ids| {
+            for (_, shm_id) in ids.iter() {
+                SHARED_MEMORY_MANAGER.detach(*shm_id, pid);
+            }
+            *ids = BTreeMap::new();
+        });
     }
 
     // NOTE: After all of the threads in a thread group is terminated, the parent
@@ -502,9 +495,9 @@ impl Task {
             init_proc.children.lock().extend(children.clone());
         });
 
-        if let Some(address) = self.tid_address().clear_child_tid {
+        if let Some(address) = self.tid_address_ref().clear_child_tid {
             log::info!("[do_exit] clear_child_tid: {}", address);
-            UserWritePtr::from_usize(address)
+            UserWritePtr::from(address)
                 .write(self, 0)
                 .expect("tid address write error");
             self.with_mut_futexes(|futexes| futexes.wake(address as u32, 1));
@@ -515,6 +508,7 @@ impl Task {
             self.with_mut_thread_group(|tg| tg.remove(self));
             TASK_MANAGER.remove(self.tid())
         } else {
+            // TODO: drop most of resource
             if let Some(parent) = self.parent() {
                 let parent = parent.upgrade().unwrap();
                 parent.receive_siginfo(
@@ -531,16 +525,15 @@ impl Task {
                     false,
                 );
             }
+            // Upon _exit(2), all attached shared memory segments are detached from the
+            // process.
+            self.with_shm_ids(|ids| {
+                for (_, shm_id) in ids.iter() {
+                    SHARED_MEMORY_MANAGER.detach(*shm_id, self.pid());
+                }
+            });
         }
     }
-
-    with_!(fd_table, FdTable);
-    with_!(children, BTreeMap<Tid, Arc<Task>>);
-    with_!(memory_space, MemorySpace);
-    with_!(thread_group, ThreadGroup);
-    with_!(sig_pending, SigPending);
-    with_!(itimers, [ITimer; 3]);
-    with_!(futexes, Futexes);
 }
 
 /// Hold a group of threads which belongs to the same process.

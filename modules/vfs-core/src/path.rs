@@ -3,11 +3,10 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
-use core::fmt::Error;
 
-use systype::{SysError, SysResult, SyscallResult};
+use systype::{SysError, SysResult};
 
-use crate::{dentry, Dentry, InodeMode, OpenFlags};
+use crate::{Dentry, InodeMode};
 
 #[derive(Clone)]
 pub struct Path {
@@ -37,7 +36,7 @@ impl Path {
     }
 
     /// Walk until path has been resolved.
-    pub fn walk(&self, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    pub fn walk(&self) -> SysResult<Arc<dyn Dentry>> {
         let path = self.path.as_str();
         let mut dentry = if is_absolute_path(path) {
             self.root.clone()
@@ -57,7 +56,7 @@ impl Path {
                         dentry = sub_dentry
                     }
                     Err(e) => {
-                        log::error!("[Path::walk] {e:?} when walking in path {path}");
+                        log::warn!("[Path::walk] {e:?} when walking in path {path}");
                         return Err(e);
                     }
                 },
@@ -79,6 +78,13 @@ pub fn split_path(path: &str) -> Vec<&str> {
     path.split('/')
         .filter(|name| !name.is_empty() && *name != ".")
         .collect()
+}
+
+pub fn split_parent_and_name(path: &str) -> (&str, Option<&str>) {
+    let trimmed_path = path.trim_start_matches('/');
+    trimmed_path.find('/').map_or((trimmed_path, None), |n| {
+        (&trimmed_path[..n], Some(&trimmed_path[n + 1..]))
+    })
 }
 
 /// # Example

@@ -1,10 +1,7 @@
 use alloc::sync::Arc;
 
 use driver::BlockDevice;
-use vfs_core::{
-    Dentry, FileSystemType, FileSystemTypeMeta, Inode, InodeMeta, InodeMode, Path, SuperBlock,
-    SuperBlockMeta,
-};
+use vfs_core::{Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, SuperBlock, SuperBlockMeta};
 
 use crate::{
     simplefs::{dentry::SimpleDentry, inode::SimpleInode},
@@ -31,24 +28,25 @@ impl FileSystemType for DevFsType {
         &self.meta
     }
 
-    fn arc_mount(
+    fn base_mount(
         self: alloc::sync::Arc<Self>,
-        abs_mount_path: &str,
-        flags: vfs_core::MountFlags,
+        name: &str,
+        parent: Option<Arc<dyn Dentry>>,
+        _flags: vfs_core::MountFlags,
         dev: Option<alloc::sync::Arc<dyn driver::BlockDevice>>,
     ) -> systype::SysResult<alloc::sync::Arc<dyn vfs_core::Dentry>> {
-        // TODO: parent path resolve
-        let root = sys_root_dentry();
         let sb = DevSuperBlock::new(dev, self.clone());
-        let mount_dentry = SimpleDentry::new("dev", sb.clone(), Some(root.clone()));
+        let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
         let mount_inode = SimpleInode::new(InodeMode::DIR, sb.clone(), 0);
         mount_dentry.set_inode(mount_inode.clone());
-        root.insert(mount_dentry.clone());
-        self.insert_sb(abs_mount_path, sb);
+        if let Some(parent) = parent {
+            parent.insert(mount_dentry.clone());
+        }
+        self.insert_sb(&mount_dentry.path(), sb);
         Ok(mount_dentry)
     }
 
-    fn kill_sb(&self, sb: alloc::sync::Arc<dyn vfs_core::SuperBlock>) -> systype::SysResult<()> {
+    fn kill_sb(&self, _sb: alloc::sync::Arc<dyn vfs_core::SuperBlock>) -> systype::SysResult<()> {
         todo!()
     }
 }
@@ -77,7 +75,7 @@ impl SuperBlock for DevSuperBlock {
         todo!()
     }
 
-    fn sync_fs(&self, wait: isize) -> systype::SysResult<()> {
+    fn sync_fs(&self, _wait: isize) -> systype::SysResult<()> {
         todo!()
     }
 }

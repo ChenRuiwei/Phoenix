@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 hashbrown = "0.14"
+log = "0.4"

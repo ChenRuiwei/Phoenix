@@ -8,6 +8,7 @@ SECTIONS
         _stext = .;
         *(.text.entry)
         . = ALIGN(4K);
+        /* the reason why sigreturn trampoline need a Page is that this Page has U flag but .text Page doesn't */
         _strampoline = .;
         *(.text.trampoline)
         . = ALIGN(4K);

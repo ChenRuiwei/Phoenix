@@ -20,8 +20,18 @@ pub fn clear_bss() {
         fn _ebss();
     }
     unsafe {
-        core::slice::from_raw_parts_mut(_sbss as usize as *mut u8, _ebss as usize - _sbss as usize)
-            .fill(0);
+        let start = _sbss as usize as *mut u64;
+        let end = _ebss as usize as *mut u64;
+        let len = end.offset_from(start) as usize;
+        core::slice::from_raw_parts_mut(start, len).fill(0);
+
+        // Handle any remaining bytes if the length is not a multiple of u64
+        let start_byte = start as *mut u8;
+        let len_bytes = _ebss as usize - _sbss as usize;
+        if len_bytes % 8 != 0 {
+            let offset = len * 8;
+            core::slice::from_raw_parts_mut(start_byte.add(offset), len_bytes - offset).fill(0);
+        }
     }
 }
 

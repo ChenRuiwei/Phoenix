@@ -31,9 +31,10 @@ pub trait FileSystemType: Send + Sync {
     /// Call when a new instance of this filesystem should be mounted.
     // NOTE: `self` cannot be `&Arc<Self>` for object safety
     // https://doc.rust-lang.org/reference/items/traits.html#object-safety
-    fn arc_mount(
+    fn base_mount(
         self: Arc<Self>,
-        abs_mount_path: &str,
+        name: &str,
+        parent: Option<Arc<dyn Dentry>>,
         flags: MountFlags,
         dev: Option<Arc<dyn BlockDevice>>,
     ) -> SysResult<Arc<dyn Dentry>>;
@@ -60,11 +61,12 @@ pub trait FileSystemType: Send + Sync {
 impl dyn FileSystemType {
     pub fn mount(
         self: &Arc<Self>,
-        abs_mount_path: &str,
+        name: &str,
+        parent: Option<Arc<dyn Dentry>>,
         flags: MountFlags,
         dev: Option<Arc<dyn BlockDevice>>,
     ) -> SysResult<Arc<dyn Dentry>> {
-        self.clone().arc_mount(abs_mount_path, flags, dev)
+        self.clone().base_mount(name, parent, flags, dev)
     }
 
     pub fn get_sb(&self, abs_mount_path: &str) -> SysResult<Arc<dyn SuperBlock>> {

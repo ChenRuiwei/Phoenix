@@ -3,12 +3,11 @@ use alloc::{
     string::{String, ToString},
     sync::{Arc, Weak},
 };
-use core::mem::MaybeUninit;
+use core::{mem::MaybeUninit, str::FromStr};
 
-use spin::Once;
 use systype::{SysError, SysResult, SyscallResult};
 
-use crate::{inode::Inode, super_block, File, InodeMode, InodeType, Mutex, SuperBlock};
+use crate::{inode::Inode, File, InodeMode, Mutex, SuperBlock};
 
 pub struct DentryMeta {
     /// Name of this file or directory.
@@ -31,28 +30,24 @@ impl DentryMeta {
         parent: Option<Arc<dyn Dentry>>,
     ) -> Self {
         log::debug!("[Dentry::new] new dentry with name {name}");
-        Self {
-            name: name.to_string(),
-            super_block: Arc::downgrade(&super_block),
-            inode: Mutex::new(None),
-            parent: parent.map(|p| Arc::downgrade(&p)),
-            children: Mutex::new(BTreeMap::new()),
-        }
-    }
-
-    pub fn new_with_inode(
-        name: &str,
-        super_block: Arc<dyn SuperBlock>,
-        inode: Arc<dyn Inode>,
-        parent: Option<Weak<dyn Dentry>>,
-    ) -> Self {
-        log::debug!("[Dentry::new_with_inode] new dentry with name {name}");
-        Self {
-            name: name.to_string(),
-            super_block: Arc::downgrade(&super_block),
-            parent,
-            inode: Mutex::new(Some(inode)),
-            children: Mutex::new(BTreeMap::new()),
+        let super_block = Arc::downgrade(&super_block);
+        let inode = Mutex::new(None);
+        if let Some(parent) = parent {
+            Self {
+                name: name.to_string(),
+                super_block,
+                inode,
+                parent: Some(Arc::downgrade(&parent)),
+                children: Mutex::new(BTreeMap::new()),
+            }
+        } else {
+            Self {
+                name: name.to_string(),
+                super_block,
+                inode,
+                parent: None,
+                children: Mutex::new(BTreeMap::new()),
+            }
         }
     }
 }
@@ -85,16 +80,9 @@ pub trait Dentry: Send + Sync {
     /// inode.
     fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult;
 
-    fn base_new_negative_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+    /// Create a negetive child dentry with `name`.
+    fn base_new_child(self: Arc<Self>, _name: &str) -> Arc<dyn Dentry> {
         todo!()
-    }
-
-    fn get_child_or_create(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
-        self.get_child(name).unwrap_or_else(|| {
-            let new_dentry = self.clone().base_new_negative_child(name);
-            self.insert(new_dentry.clone());
-            new_dentry
-        })
     }
 
     fn inode(&self) -> SysResult<Arc<dyn Inode>> {
@@ -182,11 +170,6 @@ impl dyn Dentry {
         *self.meta().inode.lock() = None;
     }
 
-    // TODO:
-    pub fn hash(&self) -> usize {
-        todo!()
-    }
-
     /// Remove a child from this dentry and return the child.
     pub fn remove(&self, name: &str) -> Option<Arc<dyn Dentry>> {
         self.meta().children.lock().remove(name)
@@ -196,13 +179,24 @@ impl dyn Dentry {
         self.clone().base_open()
     }
 
-    // PERF: lookup in fat32 in slow since there is no cache, we iter the dir every
-    // time to lookup for only a single file
     pub fn lookup(self: &Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+        // let hash_key = HashKey::new(self, name)?;
+        // if let Some(child) = dcache().get(hash_key) {
+        //     log::warn!("[Dentry::lookup] find child in hash");
+        //     return Ok(child);
+        // }
         let child = self.get_child(name);
         if child.is_some() {
+            log::trace!(
+                "[Dentry::lookup] lookup {name} in cache in path {}",
+                self.path()
+            );
             return Ok(child.unwrap());
         }
+        log::trace!(
+            "[Dentry::lookup] lookup {name} not in cache in path {}",
+            self.path()
+        );
         self.clone().base_lookup(name)
     }
 
@@ -217,6 +211,21 @@ impl dyn Dentry {
     pub fn rmdir(self: &Arc<Self>, name: &str) -> SyscallResult {
         self.clone().base_rmdir(name)
     }
+
+    /// Create a negetive child dentry with `name`.
+    pub fn new_child(self: &Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+        let child = self.clone().base_new_child(name);
+        // dcache().insert(child.clone());
+        child
+    }
+
+    pub fn get_child_or_create(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+        self.get_child(name).unwrap_or_else(|| {
+            let new_dentry = self.clone().new_child(name);
+            self.insert(new_dentry.clone());
+            new_dentry
+        })
+    }
 }
 
 impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
@@ -228,19 +237,23 @@ impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
         todo!()
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         todo!()
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SyscallResult {
         todo!()
     }
 
-    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_rmdir(self: Arc<Self>, _name: &str) -> SyscallResult {
         todo!()
+    }
+
+    fn path(&self) -> String {
+        "no path".to_string()
     }
 }

@@ -3,16 +3,14 @@
 #![feature(const_binary_heap_constructor)]
 
 extern crate alloc;
-use alloc::collections::BinaryHeap;
-use core::cmp::Reverse;
-
+use alloc::vec::Vec;
 /// Used for allocating pid & tid
 // TODO: add maximium resource limit
 pub struct RecycleAllocator {
     /// Current max id allocated
     current: usize,
     /// Hold deallocated id, will be recycled first when alloc happen
-    recycled: BinaryHeap<Reverse<usize>>,
+    recycled: Vec<usize>,
 }
 
 impl RecycleAllocator {
@@ -20,13 +18,13 @@ impl RecycleAllocator {
     pub const fn new(init_val: usize) -> Self {
         RecycleAllocator {
             current: init_val,
-            recycled: BinaryHeap::new(),
+            recycled: Vec::new(),
         }
     }
 
     /// Allocate an id
     pub fn alloc(&mut self) -> usize {
-        if let Some(Reverse(id)) = self.recycled.pop() {
+        if let Some(id) = self.recycled.pop() {
             id
         } else {
             self.current += 1;
@@ -36,12 +34,12 @@ impl RecycleAllocator {
 
     /// Recycle an id
     pub fn dealloc(&mut self, id: usize) {
-        assert!(id < self.current);
-        assert!(
-            !self.recycled.iter().any(|iid| iid.0 == id),
+        debug_assert!(id < self.current);
+        debug_assert!(
+            !self.recycled.iter().any(|iid| *iid == id),
             "id {} has been deallocated!",
             id
         );
-        self.recycled.push(Reverse(id));
+        self.recycled.push(id);
     }
 }

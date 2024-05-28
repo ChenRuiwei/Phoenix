@@ -1,6 +1,6 @@
 //! # Syscall numbers
 //!
-//! Syscall numbers from "asm-generic/unistd.h".
+//! Syscall numbers from <asm-generic/unistd.h>.
 
 #![allow(unused)]
 
@@ -92,6 +92,7 @@ pub enum SyscallNo {
     SHMGET = 194,
     SHMCTL = 195,
     SHMAT = 196,
+    SHMDT = 197,
     SOCKET = 198,
     SOCKETPAIR = 199,
     BIND = 200,
@@ -213,6 +214,7 @@ impl SyscallNo {
             SHMGET => "shmget",
             SHMCTL => "shmctl",
             SHMAT => "shmat",
+            SHMDT => "shmdt",
             SOCKET => "socket",
             SOCKETPAIR => "socketpair",
             BIND => "bind",

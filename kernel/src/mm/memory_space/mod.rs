@@ -1,4 +1,8 @@
-use alloc::{string::String, sync::Arc, vec::Vec};
+use alloc::{
+    string::String,
+    sync::{Arc, Weak},
+    vec::Vec,
+};
 use core::ops::Range;
 
 use async_utils::block_on;
@@ -6,11 +10,11 @@ use config::{
     board::MEMORY_END,
     mm::{
         PAGE_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END,
-        U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
+        U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
     },
 };
 use log::info;
-use memory::{pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
+use memory::{page::Page, pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
 use spin::Lazy;
 use systype::{SysError, SysResult};
 use vfs_core::File;
@@ -24,28 +28,12 @@ use crate::{
         MMIO,
     },
     processor::env::SumGuard,
+    syscall::MmapFlags,
     task::aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR},
 };
 
 mod range_map;
 pub mod vm_area;
-
-extern "C" {
-    fn _stext();
-    fn _strampoline();
-    fn sigreturn_trampoline();
-    fn _etrampoline();
-    fn _etext();
-    fn _srodata();
-    fn _erodata();
-    fn _sdata();
-    fn _edata();
-    fn _sstack();
-    fn _estack();
-    fn _sbss();
-    fn _ebss();
-    fn _ekernel();
-}
 
 /// Kernel space for all processes.
 ///
@@ -56,8 +44,11 @@ pub unsafe fn switch_kernel_page_table() {
     KERNEL_SPACE.switch_page_table();
 }
 
+/// Virtual memory space for kernel and user.
 pub struct MemorySpace {
+    /// Page table of this memory space.
     page_table: PageTable,
+    /// Map of `VmArea`s in this memory space.
     /// NOTE: stores range that is lazy allocated
     areas: RangeMap<VirtAddr, VmArea>,
 }
@@ -81,50 +72,73 @@ impl MemorySpace {
 
     /// Create a kernel space.
     pub fn new_kernel() -> Self {
-        log::info!("[kernel] trampoline {:#x}", sigreturn_trampoline as usize);
-        log::info!(
+        extern "C" {
+            fn _stext();
+            fn _strampoline();
+            fn sigreturn_trampoline();
+            fn _etrampoline();
+            fn _etext();
+            fn _srodata();
+            fn _erodata();
+            fn _sdata();
+            fn _edata();
+            fn _sstack();
+            fn _estack();
+            fn _sbss();
+            fn _ebss();
+            fn _ekernel();
+        }
+
+        log::debug!("[kernel] trampoline {:#x}", sigreturn_trampoline as usize);
+        log::debug!(
             "[kernel] .text [{:#x}, {:#x}) [{:#x}, {:#x})",
             _stext as usize,
             _strampoline as usize,
             _etrampoline as usize,
             _etext as usize
         );
-        log::info!(
+        log::debug!(
             "[kernel] .text.trampoline [{:#x}, {:#x})",
             _strampoline as usize,
             _etrampoline as usize,
         );
-        log::info!(
+        log::debug!(
             "[kernel] .rodata [{:#x}, {:#x})",
             _srodata as usize,
             _erodata as usize
         );
-        log::info!(
+        log::debug!(
             "[kernel] .data [{:#x}, {:#x})",
             _sdata as usize,
             _edata as usize
         );
-        log::info!(
+        log::debug!(
             "[kernel] .stack [{:#x}, {:#x})",
             _sstack as usize,
             _estack as usize
         );
-        log::info!(
+        log::debug!(
             "[kernel] .bss [{:#x}, {:#x})",
             _sbss as usize,
             _ebss as usize
         );
-        log::info!(
+        log::debug!(
             "[kernel] physical mem [{:#x}, {:#x})",
             _ekernel as usize,
             MEMORY_END
         );
 
         let mut memory_space = Self::new();
-        log::info!("[kernel] mapping .text section");
+        log::debug!("[kernel] mapping .text section");
         memory_space.push_vma(VmArea::new(
             (_stext as usize).into()..(_strampoline as usize).into(),
             MapPerm::RX,
+            VmAreaType::Physical,
+        ));
+        log::debug!("[kernel] mapping signal-return trampoline");
+        memory_space.push_vma(VmArea::new(
+            (_strampoline as usize).into()..(_etrampoline as usize).into(),
+            MapPerm::URX,
             VmAreaType::Physical,
         ));
         memory_space.push_vma(VmArea::new(
@@ -132,43 +146,37 @@ impl MemorySpace {
             MapPerm::RX,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping .rodata section");
+        log::debug!("[kernel] mapping .rodata section");
         memory_space.push_vma(VmArea::new(
             (_srodata as usize).into()..(_erodata as usize).into(),
             MapPerm::R,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping .data section");
+        log::debug!("[kernel] mapping .data section");
         memory_space.push_vma(VmArea::new(
             (_sdata as usize).into()..(_edata as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping .stack section");
+        log::debug!("[kernel] mapping .stack section");
         memory_space.push_vma(VmArea::new(
             (_sstack as usize).into()..(_estack as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping .bss section");
+        log::debug!("[kernel] mapping .bss section");
         memory_space.push_vma(VmArea::new(
             (_sbss as usize).into()..(_ebss as usize).into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping signal-return trampoline");
-        memory_space.push_vma(VmArea::new(
-            (_strampoline as usize).into()..(_etrampoline as usize).into(),
-            MapPerm::URX,
-            VmAreaType::Physical,
-        ));
-        log::info!("[kernel] mapping physical memory");
+        log::debug!("[kernel] mapping physical memory");
         memory_space.push_vma(VmArea::new(
             (_ekernel as usize).into()..MEMORY_END.into(),
             MapPerm::RW,
             VmAreaType::Physical,
         ));
-        log::info!("[kernel] mapping mmio registers");
+        log::debug!("[kernel] mapping mmio registers");
         for pair in MMIO {
             memory_space.push_vma(VmArea::new(
                 (pair.0 + VIRT_RAM_OFFSET).into()..(pair.0 + pair.1 + VIRT_RAM_OFFSET).into(),
@@ -176,7 +184,7 @@ impl MemorySpace {
                 VmAreaType::Mmio,
             ));
         }
-        log::info!("[kernel] KERNEL SPACE init finished");
+        log::debug!("[kernel] KERNEL SPACE init finished");
         memory_space
     }
 
@@ -324,6 +332,79 @@ impl MemorySpace {
         (entry, auxv)
     }
 
+    /// Attach given `pages` to the MemorySpace. If pages is not given, it will
+    /// create pages according to the `size` and map them to the MemorySpace.
+    /// if `shmaddr` is set to `0`, it will chooses a suitable page-aligned
+    /// address to attach.
+    ///
+    /// `size` and `shmaddr` need to be page-aligned
+    pub fn attach_shm(
+        &mut self,
+        size: usize,
+        shmaddr: VirtAddr,
+        map_perm: MapPerm,
+        pages: &mut Vec<Weak<Page>>,
+    ) -> VirtAddr {
+        let mut ret_addr = shmaddr;
+        let mut vm_area = if shmaddr == 0.into() {
+            const SHARED_RANGE: Range<VirtAddr> =
+                VirtAddr::from_usize_range(U_SEG_SHARE_BEG..U_SEG_SHARE_END);
+            let range = self
+                .areas
+                .find_free_range(SHARED_RANGE, size)
+                .expect("no free shared area");
+            ret_addr = range.start;
+            VmArea::new(range, map_perm, VmAreaType::Shm)
+        } else {
+            log::warn!("[attach_shm] user defined addr");
+            let shm_end = shmaddr + size;
+            VmArea::new(shmaddr..shm_end, map_perm, VmAreaType::Shm)
+        };
+        if pages.is_empty() {
+            for vpn in vm_area.range_vpn() {
+                let page = Arc::new(Page::new());
+                self.page_table.map(vpn, page.ppn(), map_perm.into());
+                pages.push(Arc::downgrade(&page));
+                vm_area.pages.insert(vpn, page);
+            }
+        } else {
+            debug_assert!(pages.len() == vm_area.range_vpn().end - vm_area.range_vpn().start);
+            let mut pages = pages.iter();
+            for vpn in vm_area.range_vpn() {
+                let page = pages.next().unwrap().upgrade().unwrap();
+                self.page_table.map(vpn, page.ppn(), map_perm.into());
+                vm_area.pages.insert(vpn, page.clone());
+            }
+        }
+        self.push_vma(vm_area);
+        return ret_addr;
+    }
+
+    /// `shmaddr` must be the return value of shmget (i.e. `shmaddr` is page
+    /// aligned and in the beginning of the vm_area with type Shm). The
+    /// check should be done at the caller who call `detach_shm`
+    pub fn detach_shm(&mut self, shmaddr: VirtAddr) {
+        let mut range_to_remove = None;
+        if let Some((range, vm_area)) = self.areas.iter().find(|(range, _)| range.start == shmaddr)
+        {
+            if vm_area.vma_type != VmAreaType::Shm {
+                panic!("[detach_shm] 'vm_area.vma_type != VmAreaType::Shm' this won't happen");
+            }
+            log::warn!("[detach_shm] try to remove {:?}", range);
+            range_to_remove = Some(range);
+            for vpn in vm_area.range_vpn() {
+                self.page_table.unmap(vpn);
+            }
+        } else {
+            panic!("[detach_shm] this won't happen");
+        }
+        if let Some(range) = range_to_remove {
+            self.areas.force_remove_one(range);
+        } else {
+            panic!("[detach_shm] range_to_remove is None! This should never happen");
+        }
+    }
+
     /// Alloc stack and map it in the page table.
     ///
     /// Return the address of the stack top, which is aligned to 16 bytes.
@@ -379,9 +460,21 @@ impl MemorySpace {
             .unwrap();
         log::debug!("[MemorySpace::reset_heap_break] heap range: {range:?}, new_brk: {new_brk:?}");
         let result = if new_brk > range.end {
-            self.areas.extend_back(range.start..new_brk)
+            let ret = self.areas.extend_back(range.start..new_brk);
+            if ret.is_ok() {
+                let (range_va, vm_area) = self.areas.get_key_value_mut(range.start).unwrap();
+                vm_area.set_range_va(range_va);
+            }
+            ret
         } else if new_brk < range.end {
-            self.areas.reduce_back(range.start, new_brk)
+            let ret = self.areas.reduce_back(range.start, new_brk);
+            if ret.is_ok() {
+                let (range_va, vm_area) = self.areas.get_key_value_mut(range.start).unwrap();
+                vm_area.set_range_va(range_va);
+                let range_vpn: Range<VirtPageNum> = new_brk.ceil()..range.end.ceil();
+                vm_area.unmap(&mut self.page_table, range_vpn);
+            }
+            ret
         } else {
             Ok(())
         };
@@ -391,16 +484,13 @@ impl MemorySpace {
         }
     }
 
-    pub fn unmap(range: Range<VirtAddr>) {
-        todo!()
-    }
-
     /// Clone a same `MemorySpace` from another user space, including datas in
     /// memory.
     pub fn from_user(user_space: &Self) -> Self {
         let mut memory_space = Self::new_user();
-        for (_, area) in user_space.areas.iter() {
+        for (range, area) in user_space.areas.iter() {
             let new_area = VmArea::from_another(area);
+            debug_assert_eq!(range, new_area.range_va());
             memory_space.push_vma(new_area);
             // copy data from another space
             for vpn in area.range_vpn() {
@@ -417,9 +507,10 @@ impl MemorySpace {
     /// Clone a same `MemorySpace` lazily.
     pub fn from_user_lazily(user_space: &mut Self) -> Self {
         let mut memory_space = Self::new_user();
-        for (_, area) in user_space.areas.iter() {
+        for (range, area) in user_space.areas.iter() {
             log::debug!("[MemorySpace::from_user_lazily] cloning {area:?}");
-            let new_area = area.clone();
+            let mut new_area = area.clone();
+            debug_assert_eq!(range, new_area.range_va());
             for vpn in area.range_vpn() {
                 if let Some(page) = area.pages.get(&vpn) {
                     let pte = user_space.page_table.find_pte(vpn).unwrap();
@@ -428,7 +519,9 @@ impl MemorySpace {
                             // If shared memory,
                             // then we don't need to modify the pte flags,
                             // i.e. no copy-on-write.
-                            todo!()
+                            info!("[from_user_lazily] clone Shared Memory");
+                            new_area.pages.insert(vpn, page.clone());
+                            (pte.flags(), page.ppn())
                         }
                         _ => {
                             // copy on write
@@ -467,10 +560,28 @@ impl MemorySpace {
         self.areas.try_insert(vma.range_va(), vma).unwrap();
     }
 
+    pub fn alloc_mmap_private_anon(&mut self, perm: MapPerm, length: usize) -> SysResult<VirtAddr> {
+        const MMAP_RANGE: Range<VirtAddr> =
+            VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
+        let range = self
+            .areas
+            .find_free_range(MMAP_RANGE, length)
+            .expect("mmap range is full");
+        let start = range.start;
+        let mut vma = VmArea::new(range, perm, VmAreaType::Mmap);
+        vma.map(&mut self.page_table);
+        let mut buf = Vec::with_capacity(length);
+        buf.fill(0);
+        vma.copy_data_with_offset(&self.page_table, 0, &buf);
+        self.areas.try_insert(vma.range_va(), vma).unwrap();
+        Ok(start)
+    }
+
     pub fn alloc_mmap_area(
         &mut self,
-        perm: MapPerm,
         length: usize,
+        perm: MapPerm,
+        flags: MmapFlags,
         file: Arc<dyn File>,
         offset: usize,
     ) -> SysResult<VirtAddr> {
@@ -481,10 +592,10 @@ impl MemorySpace {
             .find_free_range(MMAP_RANGE, length)
             .expect("mmap range is full");
         let start = range.start;
-        let mut vma = VmArea::new_mmap(range, perm, file.clone());
+        let mut vma = VmArea::new_mmap(range, perm, flags, Some(file.clone()), offset);
         vma.map(&mut self.page_table);
         let mut buf = unsafe { UserSlice::new_unchecked(vma.start_va(), length) };
-        block_on(async { file.read(offset, &mut buf).await })?;
+        block_on(async { file.read_at(offset, &mut buf).await })?;
         vma.copy_data_with_offset(&self.page_table, 0, &buf);
         self.areas.try_insert(vma.range_va(), vma).unwrap();
         Ok(start)
@@ -496,7 +607,7 @@ impl MemorySpace {
             log::error!("[handle_page_fault] no area containing {va:?}");
             SysError::EFAULT
         })?;
-        vm_area.handle_page_fault(&mut self.page_table, va.floor());
+        vm_area.handle_page_fault(&mut self.page_table, va.floor())?;
         Ok(())
     }
 
@@ -505,6 +616,7 @@ impl MemorySpace {
     }
 
     /// only for debug
+    #[allow(unused)]
     pub fn print_all(&self) {
         use crate::{
             trap::{

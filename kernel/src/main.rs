@@ -16,6 +16,7 @@
 
 mod boot;
 mod impls;
+mod ipc;
 mod loader;
 mod mm;
 mod panic;

@@ -4,10 +4,10 @@
 
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
-    fmt::{Debug, Display, Formatter},
+    fmt::{self, Debug},
     intrinsics::{atomic_load_acquire, size_of},
     marker::PhantomData,
-    ops::ControlFlow,
+    ops::{self, ControlFlow},
 };
 
 use memory::VirtAddr;
@@ -56,32 +56,116 @@ pub type UserReadPtr<T> = UserPtr<T, In>;
 pub type UserWritePtr<T> = UserPtr<T, Out>;
 pub type UserRdWrPtr<T> = UserPtr<T, InOut>;
 
-impl<T: Clone + Copy + 'static> Debug for UserReadPtr<T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("UserReadPtr")
-            .field("ptr", &self.ptr)
-            .finish()
-    }
-}
-
-impl<T: Clone + Copy + 'static> Debug for UserWritePtr<T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("UserWritePtr")
-            .field("ptr", &self.ptr)
-            .finish()
-    }
-}
-
-impl<T: Clone + Copy + 'static> Debug for UserRdWrPtr<T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("UserRdWrPtr")
-            .field("ptr", &self.ptr)
-            .finish()
-    }
-}
-
 unsafe impl<T: Clone + Copy + 'static, P: Policy> Send for UserPtr<T, P> {}
 unsafe impl<T: Clone + Copy + 'static, P: Policy> Sync for UserPtr<T, P> {}
+
+macro_rules! impl_fmt {
+    ($name:ident) => {
+        impl<T: Clone + Copy + 'static> fmt::Display for $name<T> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "{}({})", stringify!($name), self.as_usize())
+            }
+        }
+
+        impl<T: Clone + Copy + 'static> fmt::Debug for $name<T> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.debug_struct(stringify!($name))
+                    .field("ptr", &self.ptr)
+                    .finish()
+            }
+        }
+    };
+}
+
+impl_fmt!(UserReadPtr);
+impl_fmt!(UserWritePtr);
+impl_fmt!(UserRdWrPtr);
+
+pub struct UserRef<'a, T> {
+    i_ref: &'a mut T,
+    _guard: SumGuard,
+}
+
+impl<'a, T> UserRef<'a, T> {
+    pub fn new(i_ref: &'a mut T) -> Self {
+        Self {
+            i_ref,
+            _guard: SumGuard::new(),
+        }
+    }
+
+    pub unsafe fn new_unchecked(ptr: *mut T) -> Self {
+        let i_ref = unsafe { &mut *ptr };
+        Self::new(i_ref)
+    }
+
+    pub fn ptr(&self) -> *const T {
+        self.i_ref as _
+    }
+
+    pub fn ptr_mut(&mut self) -> *mut T {
+        self.i_ref as _
+    }
+}
+
+impl<'a, T> ops::Deref for UserRef<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.i_ref
+    }
+}
+
+impl<T: Clone + Copy + 'static + Debug> Debug for UserRef<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result {
+        f.debug_struct("UserRef").field("ref", &self.i_ref).finish()
+    }
+}
+
+pub struct UserMut<'a, T> {
+    i_ref: &'a mut T,
+    _guard: SumGuard,
+}
+
+impl<'a, T> UserMut<'a, T> {
+    pub fn new(i_ref: &'a mut T) -> Self {
+        Self {
+            i_ref,
+            _guard: SumGuard::new(),
+        }
+    }
+
+    pub unsafe fn new_unchecked(ptr: *mut T) -> Self {
+        let i_ref = unsafe { &mut *ptr };
+        Self::new(i_ref)
+    }
+
+    pub fn as_ptr(&self) -> *const T {
+        self.i_ref as _
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.i_ref as _
+    }
+}
+
+impl<'a, T> core::ops::Deref for UserMut<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        self.i_ref
+    }
+}
+
+impl<'a, T> ops::DerefMut for UserMut<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.i_ref
+    }
+}
+
+impl<T: Clone + Copy + 'static + Debug> Debug for UserMut<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result {
+        f.debug_struct("UserMut").field("mut", &self.i_ref).finish()
+    }
+}
 
 /// User slice. Hold slice from `UserPtr` and a `SumGuard` to provide user
 /// space access.
@@ -118,7 +202,7 @@ impl<'a, T> core::ops::DerefMut for UserSlice<'a, T> {
 }
 
 impl<T: Clone + Copy + 'static + Debug> Debug for UserSlice<'_, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result {
         f.debug_struct("UserSlice")
             .field("slice", &self.slice.iter())
             .finish()
@@ -153,24 +237,33 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
     pub fn as_usize(&self) -> usize {
         self.ptr as usize
     }
+
+    pub fn as_ptr(&self) -> *const T {
+        self.ptr
+    }
+
+    pub fn as_mut_ptr(&self) -> *mut T {
+        self.ptr
+    }
 }
 
 // TODO: consider return EFAULT when self is null.
-// TODO: ref or slice should hold `SumGuard`
 impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
-    pub fn into_ref(self, task: &Arc<Task>) -> SysResult<&T> {
-        debug_assert!(self.not_null());
+    pub fn into_ref(self, task: &Arc<Task>) -> SysResult<UserRef<T>> {
+        if self.is_null() {
+            return Err(SysError::EFAULT);
+        }
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>(),
             PageFaultAccessType::RO,
         )?;
-        let res = unsafe { &*self.ptr };
-        Ok(res)
+        let res = unsafe { &mut *self.ptr };
+        Ok(UserRef::new(res))
     }
 
     pub fn into_slice(self, task: &Arc<Task>, n: usize) -> SysResult<UserSlice<T>> {
-        debug_assert!(n == 0 || self.not_null());
+        debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
@@ -182,9 +275,9 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
 
     pub fn read(self, task: &Arc<Task>) -> SysResult<T> {
         if self.is_null() {
+            log::warn!("[UserReadPtr] null ptr");
             return Err(SysError::EFAULT);
         }
-        // debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>(),
@@ -195,13 +288,12 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     }
 
     pub fn read_array(self, task: &Arc<Task>, n: usize) -> SysResult<Vec<T>> {
-        debug_assert!(n == 0 || self.not_null());
+        debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
             PageFaultAccessType::RO,
         )?;
-
         let mut res = Vec::with_capacity(n);
         unsafe {
             let ptr = self.ptr;
@@ -209,7 +301,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
                 res.push(ptr.add(i).read());
             }
         }
-
         Ok(res)
     }
 
@@ -218,8 +309,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
     pub fn read_cvec(self, task: &Arc<Task>) -> SysResult<Vec<usize>> {
         debug_assert!(self.not_null());
         let mut vec = Vec::with_capacity(32);
-        let mut has_ended = false;
-
         task.ensure_user_area(
             VirtAddr::from(self.as_usize()),
             usize::MAX,
@@ -229,7 +318,6 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
                 for _ in 0..len {
                     let c = ptr.read();
                     if c == 0 {
-                        has_ended = true;
                         return ControlFlow::Break(None);
                     }
                     vec.push(c);
@@ -238,14 +326,7 @@ impl<T: Clone + Copy + 'static, P: Read> UserPtr<T, P> {
                 ControlFlow::Continue(())
             },
         )?;
-
-        if has_ended {
-            Ok(vec)
-        } else {
-            // FIXME: I doubt that this condition will never happen.
-            panic!("This will not happen");
-            Err(SysError::EINVAL)
-        }
+        Ok(vec)
     }
 }
 
@@ -254,7 +335,6 @@ impl<P: Read> UserPtr<u8, P> {
     pub fn read_cstr(self, task: &Arc<Task>) -> SysResult<String> {
         debug_assert!(self.not_null());
         let mut str = String::with_capacity(32);
-        let mut has_ended = false;
 
         task.ensure_user_area(
             VirtAddr::from(self.as_usize()),
@@ -265,7 +345,6 @@ impl<P: Read> UserPtr<u8, P> {
                 for _ in 0..len {
                     let c = ptr.read();
                     if c == 0 {
-                        has_ended = true;
                         return ControlFlow::Break(None);
                     }
                     str.push(c as char);
@@ -274,20 +353,13 @@ impl<P: Read> UserPtr<u8, P> {
                 ControlFlow::Continue(())
             },
         )?;
-
-        if has_ended {
-            Ok(str)
-        } else {
-            // FIXME: I doubt that this condition will never happen.
-            panic!("This will not happen");
-            Err(SysError::EINVAL)
-        }
+        Ok(str)
     }
 }
 
-// TODO: ref or slice should hold `SumGuard`
+// TODO: should ref hold SumGuard?
 impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
-    pub fn into_mut(self, task: &Arc<Task>) -> SysResult<&mut T> {
+    pub fn into_mut(self, task: &Arc<Task>) -> SysResult<UserMut<T>> {
         debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
@@ -295,16 +367,18 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
             PageFaultAccessType::RW,
         )?;
         let res = unsafe { &mut *self.ptr };
-        Ok(res)
+        Ok(UserMut::new(res))
     }
 
     pub fn into_mut_slice(self, task: &Arc<Task>, n: usize) -> SysResult<UserSlice<T>> {
-        debug_assert!(n == 0 || self.not_null());
+        debug_assert!(self.not_null());
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>() * n,
             PageFaultAccessType::RW,
         )?;
+        // WARN: `core::slice::from_raw_parts_mut` does not accept null pointer even for
+        // zero length slice, hidden bug may be caused when doing so.
         let slice = unsafe { core::slice::from_raw_parts_mut(self.ptr, n) };
         Ok(UserSlice::new(slice))
     }
@@ -316,6 +390,12 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
             size_of::<T>(),
             PageFaultAccessType::RW,
         )?;
+        unsafe { core::ptr::write(self.ptr, val) };
+        Ok(())
+    }
+
+    pub fn write_unchecked(self, _task: &Arc<Task>, val: T) -> SysResult<()> {
+        debug_assert!(self.not_null());
         unsafe { core::ptr::write(self.ptr, val) };
         Ok(())
     }
@@ -339,28 +419,6 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
 }
 
 impl<P: Write> UserPtr<u8, P> {
-    /// should only be used at syscall getdent with dynamic-len structure
-    pub unsafe fn write_as_bytes<U>(self, task: &Arc<Task>, val: &U) -> SysResult<()> {
-        debug_assert!(self.not_null());
-
-        let len = size_of::<U>();
-        task.just_ensure_user_area(
-            VirtAddr::from(self.as_usize()),
-            len,
-            PageFaultAccessType::RW,
-        )?;
-
-        unsafe {
-            let view = core::slice::from_raw_parts(val as *const U as *const u8, len);
-            let mut ptr = self.ptr;
-            for &c in view {
-                ptr.write(c);
-                ptr = ptr.offset(1);
-            }
-        }
-        Ok(())
-    }
-
     pub fn write_cstr(self, task: &Arc<Task>, val: &str) -> SysResult<()> {
         debug_assert!(self.not_null());
 
@@ -394,17 +452,25 @@ impl<P: Write> UserPtr<u8, P> {
             Err(SysError::EINVAL)
         }
     }
+
+    pub fn write_cstr_unchecked(self, _task: &Arc<Task>, val: &str) -> SysResult<()> {
+        debug_assert!(self.not_null());
+        let bytes = val.as_bytes();
+        let mut ptr = self.as_mut_ptr();
+        for byte in bytes {
+            unsafe {
+                ptr.write(*byte);
+                ptr = ptr.offset(1)
+            };
+        }
+        unsafe { ptr.write(0) };
+        Ok(())
+    }
 }
 
 impl<T: Clone + Copy + 'static, P: Policy> From<usize> for UserPtr<T, P> {
     fn from(a: usize) -> Self {
         Self::from_usize(a)
-    }
-}
-
-impl<T: Clone + Copy + 'static, P: Policy> Display for UserPtr<T, P> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "UserPtr({:#x})", self.as_usize())
     }
 }
 
@@ -442,8 +508,7 @@ impl Task {
         let mut readable_len = 0;
         while readable_len < len {
             if test_fn(curr_vaddr.0) {
-                self.with_mut_memory_space(|m| m.handle_page_fault(curr_vaddr))
-                    .map_err(|_| SysError::EFAULT)?;
+                self.with_mut_memory_space(|m| m.handle_page_fault(curr_vaddr))?
             }
 
             let next_page_beg: VirtAddr = VirtAddr::from(curr_vaddr.floor().next());
@@ -473,14 +538,13 @@ impl Task {
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct PageFaultAccessType: u8 {
-        const READ = 1 << 1;
-        const WRITE = 1 << 2;
-        const EXECUTE = 1 << 3;
+        const READ = 1 << 0;
+        const WRITE = 1 << 1;
+        const EXECUTE = 1 << 2;
     }
 }
 
 impl PageFaultAccessType {
-    // no write & no execute == read only
     pub const RO: Self = Self::READ;
     // can't use | (bits or) here
     // see https://github.com/bitflags/bitflags/issues/180
@@ -498,6 +562,7 @@ impl PageFaultAccessType {
 }
 
 pub struct FutexWord(u32);
+
 impl FutexWord {
     pub fn from(a: usize) -> Self {
         Self(a as u32)
@@ -514,5 +579,10 @@ impl FutexWord {
     }
     pub fn read(&self) -> u32 {
         unsafe { atomic_load_acquire(self.0 as *const u32) }
+    }
+}
+impl From<usize> for FutexWord {
+    fn from(a: usize) -> Self {
+        Self(a as u32)
     }
 }

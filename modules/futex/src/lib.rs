@@ -20,6 +20,7 @@ pub struct RobustListHead {
     pub list_op_pending: usize,
 }
 
+/// Randomly pop a member from a HasmMap and return the member
 fn pop_waiter(waiters: &mut HashMap<Tid, Waker>) -> Option<(Tid, Waker)> {
     let mut key = None;
     if let Some((tid, _)) = waiters.iter().next() {
@@ -74,6 +75,12 @@ impl Futexes {
                     break;
                 }
             }
+            log::info!(
+                "[futex] wake {} waiters in uaddr {}, expect to wake {} waiters",
+                count,
+                uaddr,
+                n,
+            );
         }
         count as usize
     }

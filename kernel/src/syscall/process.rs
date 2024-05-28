@@ -5,21 +5,18 @@ use alloc::{
     vec::Vec,
 };
 
-use async_utils::yield_now;
-use memory::VirtAddr;
+use async_utils::{suspend_now, yield_now};
 use signal::{
     siginfo::*,
     sigset::{Sig, SigSet},
 };
 use systype::{SysError, SysResult, SyscallResult};
-use vfs::{sys_root_dentry, DISK_FS_NAME, FS_MANAGER};
-use vfs_core::{InodeMode, OpenFlags, AT_FDCWD};
 
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
-    syscall::{at_helper, resolve_path},
-    task::{signal::WaitExpectSignal, spawn_user_task, PGid, Pid, TASK_MANAGER},
+    syscall::resolve_path,
+    task::{spawn_user_task, PGid, Pid, TASK_MANAGER},
 };
 
 bitflags! {
@@ -70,7 +67,7 @@ pub fn sys_exit(exit_code: i32) -> SyscallResult {
     task.set_zombie();
     // non-leader thread are detached (see CLONE_THREAD flag in manual page clone.2)
     if task.is_leader() {
-        task.set_exit_code(exit_code);
+        task.set_exit_code((exit_code & 0xFF) << 8);
     }
     Ok(0)
 }
@@ -84,7 +81,7 @@ pub fn sys_exit_group(exit_code: i32) -> SyscallResult {
             t.set_zombie();
         }
     });
-    task.set_exit_code(exit_code);
+    task.set_exit_code((exit_code & 0xFF) << 8);
     Ok(0)
 }
 
@@ -134,10 +131,11 @@ pub async fn sys_wait4(
         p if p > 0 => WaitFor::Pid(p as Pid),
         p => WaitFor::PGid(p as PGid),
     };
+    log::info!("[sys_wait4] target: {target:?}, option: {option:?}");
     // 首先检查一遍等待的进程是否已经是zombie了
     let children = task.children();
     if children.is_empty() {
-        log::warn!("[sys_wait4] fail: no child");
+        log::info!("[sys_wait4] fail: no child");
         return Err(SysError::ECHILD);
     }
     let res_task = match target {
@@ -145,14 +143,12 @@ pub async fn sys_wait4(
         WaitFor::Pid(pid) => {
             if let Some(child) = children.get(&pid) {
                 if child.is_zombie() {
-                    task.time_stat()
-                        .update_child_time(child.time_stat().user_system_time());
                     Some(child)
                 } else {
                     None
                 }
             } else {
-                log::warn!("[sys_wait4] fail: no child with pid {pid}");
+                log::info!("[sys_wait4] fail: no child with pid {pid}");
                 return Err(SysError::ECHILD);
             }
         }
@@ -160,61 +156,59 @@ pub async fn sys_wait4(
         WaitFor::AnyChildInGroup => unimplemented!(),
     };
     if let Some(res_task) = res_task {
+        task.time_stat()
+            .update_child_time(res_task.time_stat().user_system_time());
         if wstatus.not_null() {
             // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
             // wstatus macros can be found in "bits/waitstatus.h"
-            let status = (res_task.exit_code() & 0xff) << 8;
-            log::trace!("[sys_wait4] wstatus: {:#x}", status);
-            wstatus.write(&task, status)?;
+            let exit_code = res_task.exit_code();
+            log::debug!("[sys_wait4] wstatus: {exit_code:#x}");
+            wstatus.write(&task, exit_code)?;
         }
         let tid = res_task.tid();
         task.remove_child(tid);
         TASK_MANAGER.remove(tid);
-        return Ok(res_task.pid());
+        return Ok(tid);
     } else if option.contains(WaitOptions::WNOHANG) {
         return Ok(0);
     } else {
         // 如果等待的进程还不是zombie，那么本进程进行await，
         // 直到等待的进程do_exit然后发送SIGCHLD信号唤醒自己
-        let (child_pid, exit_code, utime, stime) = match target {
-            WaitFor::AnyChild => {
-                let si = WaitExpectSignal::new(&task, Sig::SIGCHLD).await;
-                match si.details {
-                    SigDetails::CHLD {
-                        pid,
-                        status,
-                        utime,
-                        stime,
-                    } => (pid, status, utime, stime),
-                    _ => unreachable!(),
-                }
-            }
-            WaitFor::Pid(pid) => loop {
-                let si = WaitExpectSignal::new(&task, Sig::SIGCHLD).await;
-                match si.details {
-                    SigDetails::CHLD {
-                        pid: child_pid,
-                        status,
-                        utime,
-                        stime,
-                    } => {
-                        if child_pid == pid {
-                            break (pid, status, utime, stime);
+        let (child_pid, exit_code, child_utime, child_stime) = loop {
+            task.set_interruptable();
+            task.set_wake_up_signal(!*task.sig_mask_ref() | SigSet::SIGCHLD);
+            suspend_now().await;
+            let si = task.with_mut_sig_pending(|pending| pending.dequeue_except(SigSet::SIGCHLD));
+            if let Some(info) = si {
+                if let SigDetails::CHLD {
+                    pid,
+                    status,
+                    utime,
+                    stime,
+                } = info.details
+                {
+                    match target {
+                        WaitFor::AnyChild => break (pid, status, utime, stime),
+                        WaitFor::Pid(target_pid) => {
+                            if target_pid == pid {
+                                break (pid, status, utime, stime);
+                            }
                         }
+                        WaitFor::PGid(_) => unimplemented!(),
+                        WaitFor::AnyChildInGroup => unimplemented!(),
                     }
-                    _ => unreachable!(),
                 }
-            },
-            WaitFor::AnyChildInGroup => unimplemented!(),
-            WaitFor::PGid(_) => unimplemented!(),
+            } else {
+                return Err(SysError::EINTR);
+            }
         };
-        task.time_stat().update_child_time((utime, stime));
+        task.time_stat()
+            .update_child_time((child_utime, child_stime));
         if wstatus.not_null() {
             // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
-            // wstatus macros can be found in "bits/waitstatus.h"
-            let status = (exit_code & 0xff) << 8;
-            log::trace!("[sys_wait4] wstatus: {:#x}", status);
-            wstatus.write(&task, status)?;
+            // wstatus macros can be found in <bits/waitstatus.h>
+            log::trace!("[sys_wait4] wstatus: {:#x}", exit_code);
+            wstatus.write(&task, exit_code)?;
         }
         task.remove_child(child_pid);
         TASK_MANAGER.remove(child_pid);
@@ -265,9 +259,8 @@ pub async fn sys_execve(
         argv.insert(1, "sh".to_string());
     }
 
-    let mut elf_data = Vec::new();
     let file = resolve_path(&path)?.open()?;
-    file.read_all_from_start(&mut elf_data).await?;
+    let elf_data = file.read_all().await?;
     task.do_execve(&elf_data, argv, envp);
     Ok(0)
 }
@@ -280,10 +273,17 @@ pub fn sys_clone(
     _tls_ptr: usize,
     chilren_tid_ptr: usize,
 ) -> SyscallResult {
-    let exit_signal = flags & 0xff;
+    let _exit_signal = flags & 0xff;
     let flags = CloneFlags::from_bits(flags as u64 & !0xff).ok_or(SysError::EINVAL)?;
-
     log::info!("[sys_clone] flags {flags:?}");
+    // if flags.contains(CloneFlags::THREAD) {
+    // // EINVAL:
+    // // CLONE_SIGHAND was specified in the flags mask, but CLONE_VM was not.
+    // // CLONE_THREAD was specified in the flags mask, but CLONE_SIGHAND was not.
+    // if !flags.contains(CloneFlags::SIGHAND) || !flags.contains(CloneFlags::VM) {
+    //     return Err(SysError::EINVAL);
+    // }
+    // }
     let stack = if stack != 0 { Some(stack.into()) } else { None };
     let new_task = current_task().do_clone(flags, stack, chilren_tid_ptr);
     new_task.trap_context_mut().set_user_a0(0);
@@ -316,7 +316,7 @@ pub async fn sys_sched_yield() -> SyscallResult {
 // TODO: do the futex wake up at the address when task terminates
 pub fn sys_set_tid_address(tidptr: usize) -> SyscallResult {
     let task = current_task();
-    task.tid_address_mut().clear_child_tid = Some(tidptr);
+    task.tid_address().clear_child_tid = Some(tidptr);
     Ok(task.tid())
 }
 
@@ -343,7 +343,7 @@ pub fn sys_getpgid(pid: usize) -> SyscallResult {
 /// In this case, the pgid specifies an existing process group to be joined and
 /// the session ID of that group must match the session ID of the joining
 /// process.
-pub fn sys_setpgid(pid: usize, pgid: usize) -> SyscallResult {
+pub fn sys_setpgid(pid: usize, _pgid: usize) -> SyscallResult {
     let target_task = if pid == 0 {
         current_task()
     } else {

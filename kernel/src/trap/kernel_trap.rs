@@ -1,25 +1,16 @@
 //! Trap from kernel.
 
 use arch::{
-    interrupts::{disable_interrupt, enable_interrupt, set_trap_handler_vector},
-    memory::sfence_vma_all,
-    register::sp,
-    sstatus,
-    time::{get_time_duration, set_next_timer_irq, set_timer_irq},
+    interrupts::set_trap_handler_vector,
+    time::{get_time_duration, set_next_timer_irq},
 };
-use memory::page_table;
 use riscv::register::{
-    satp,
     scause::{self, Exception, Interrupt, Scause, Trap},
     sepc, stval, stvec,
 };
 use timer::timer::TIMER_MANAGER;
 
-use crate::{
-    mm,
-    processor::hart::{local_hart, Hart},
-    trap, when_debug,
-};
+use crate::when_debug;
 
 /// Kernel trap handler
 #[no_mangle]

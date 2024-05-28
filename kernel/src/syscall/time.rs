@@ -15,7 +15,6 @@ use timer::timelimited_task::ksleep_ms;
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
     processor::hart::current_task,
-    task::signal::WaitExpectSignals,
 };
 
 /// Retrieves the current time of day.
@@ -66,20 +65,14 @@ pub async fn sys_nanosleep(
         return Ok(0);
     }
     let req = req.read(&task)?;
-    let sleep_ms = req.into_ms();
-    let current_ms = get_time_ms();
-    let wait_signal_future = WaitExpectSignals::new(&task, !*task.sig_mask());
-    match Select2Futures::new(wait_signal_future, ksleep_ms(sleep_ms)).await {
-        SelectOutput::Output1(_) => {
-            log::info!("[sys_nanosleep] interrupt by signal");
-            let break_ms = get_time_ms();
-            if !rem.is_null() {
-                let remain_ms = sleep_ms - (break_ms - current_ms);
-                rem.write(&task, TimeSpec::from_ms(remain_ms))?;
-            }
-            Err(SysError::EINTR)
+    let remain = task.suspend_timeout(req.into()).await;
+    if remain.is_zero() {
+        Ok(0)
+    } else {
+        if rem.not_null() {
+            rem.write(&task, remain.into())?;
         }
-        SelectOutput::Output2(_) => Ok(0),
+        Err(SysError::EINTR)
     }
 }
 
@@ -160,7 +153,7 @@ pub fn sys_clock_getres(_clockid: usize, res: UserWritePtr<TimeSpec>) -> Syscall
 /// Three  types  of  timers—specified via the which argument—are provided, each
 /// of which counts against a different clock and generates a different signal
 /// on timer expiration:
-pub fn sys_setitier(
+pub fn sys_setitimer(
     which: i32,
     new_value: UserReadPtr<ITimerVal>,
     old_value: UserWritePtr<ITimerVal>,
@@ -180,7 +173,7 @@ pub fn sys_setitier(
     Ok(0)
 }
 
-pub fn sys_getitier(which: i32, curr_value: UserWritePtr<ITimerVal>) -> SyscallResult {
+pub fn sys_getitimer(which: i32, curr_value: UserWritePtr<ITimerVal>) -> SyscallResult {
     if which < 0 || which > 2 {
         return Err(SysError::EINVAL);
     }

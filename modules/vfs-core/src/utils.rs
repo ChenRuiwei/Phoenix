@@ -1,15 +1,19 @@
-use alloc::{
-    ffi::CString,
-    string::String,
-    sync::{Arc, Weak},
-};
+use alloc::string::String;
+use core::fmt::Display;
 
-use crate::{FileSystemType, InodeMode, InodeType, PERMISSION_LEN};
+use bitflags::Flags;
+
+use crate::InodeType;
 
 bitflags::bitflags! {
-    #[derive(Debug, Clone)]
+    // Defined in <bits/fcntl-linux.h>.
+    // File access mode (O_RDONLY, O_WRONLY, O_RDWR).
+    // The file creation flags are O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL,
+    // O_NOCTTY, O_NOFOLLOW, O_TMPFILE, and O_TRUNC.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct OpenFlags: i32 {
         // reserve 3 bits for the access mode
+        // NOTE: bitflags do not encourage zero bit flag, we should not directly check `O_RDONLY`
         const O_RDONLY      = 0;
         const O_WRONLY      = 1;
         const O_RDWR        = 2;
@@ -34,6 +38,35 @@ bitflags::bitflags! {
         const O_NOATIME     = 0o1000000;
         const O_PATH        = 0o10000000;
         const O_TMPFILE     = 0o20200000;
+    }
+}
+
+impl OpenFlags {
+    pub const CREATION_FLAGS: Self = Self::O_CLOEXEC
+        .union(Self::O_CREAT)
+        .union(Self::O_DIRECTORY)
+        .union(Self::O_EXCL)
+        .union(Self::O_NOCTTY)
+        .union(Self::O_NOFOLLOW)
+        .union(Self::O_TMPFILE)
+        .union(Self::O_TRUNC);
+
+    pub fn readable(&self) -> bool {
+        !self.contains(Self::O_WRONLY) || self.contains(Self::O_RDWR)
+    }
+
+    pub fn writable(&self) -> bool {
+        self.contains(Self::O_WRONLY) || self.contains(Self::O_RDWR)
+    }
+
+    pub fn access_mode(&self) -> Self {
+        self.intersection(Self::O_ACCMODE)
+    }
+
+    pub fn status(&self) -> Self {
+        let mut ret = self.difference(Self::O_ACCMODE);
+        ret.remove(Self::CREATION_FLAGS);
+        ret
     }
 }
 
@@ -231,9 +264,43 @@ pub enum SeekFrom {
     Current(i64),
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(isize)]
+pub enum AtFd {
+    /// Special value used to indicate the *at functions should use the current
+    /// working directory.
+    FdCwd = -100,
+    /// Normal file descriptor
+    Normal(usize),
+}
+
+impl Display for AtFd {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            AtFd::FdCwd => write!(f, "AT_FDCWD"),
+            AtFd::Normal(fd) => write!(f, "{}", fd),
+        }
+    }
+}
+
+impl From<isize> for AtFd {
+    fn from(value: isize) -> Self {
+        match value {
+            AT_FDCWD => AtFd::FdCwd,
+            _ => AtFd::Normal(value as usize),
+        }
+    }
+}
+
+impl From<usize> for AtFd {
+    fn from(value: usize) -> Self {
+        (value as isize).into()
+    }
+}
+
 /// Special value used to indicate the *at functions should use the current
 /// working directory.
-pub const AT_FDCWD: i32 = -100;
+pub const AT_FDCWD: isize = -100;
 /// Do not follow symbolic links.
 pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
 /// Remove directory instead of unlinking file.

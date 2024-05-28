@@ -4,13 +4,13 @@ use alloc::{
     vec::Vec,
 };
 
-use config::process::{self, INIT_PROC_PID};
+use config::process::INIT_PROC_PID;
 use hashbrown::HashMap;
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
 
-use super::{task::Task, PGid, Pid, Tid};
+use super::{task::Task, PGid, Tid};
 
 pub static TASK_MANAGER: Lazy<TaskManager> = Lazy::new(TaskManager::new);
 
@@ -51,9 +51,9 @@ impl TaskManager {
         Ok(())
     }
 
-    pub fn total_num(&self) -> usize {
-        self.0.lock().len()
-    }
+    // pub fn total_num(&self) -> usize {
+    //     self.0.lock().len()
+    // }
 }
 
 /// PGid -> Process group
@@ -79,7 +79,7 @@ impl ProcessGroupManager {
             return;
         }
         let mut inner = self.0.lock();
-        let mut vec = inner.get_mut(&pgid).unwrap();
+        let vec = inner.get_mut(&pgid).unwrap();
         vec.push(Arc::downgrade(process));
     }
 

@@ -2,13 +2,16 @@ use alloc::{collections::BTreeMap, sync::Arc};
 use core::ops::Range;
 
 use arch::memory::sfence_vma_vaddr;
+use async_utils::block_on;
 use config::mm::PAGE_SIZE;
-use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
+use memory::{page::Page, pte::PTEFlags, VirtAddr, VirtPageNum};
+use systype::SysResult;
 use vfs_core::File;
 
 use crate::{
-    mm::{Page, PageTable},
+    mm::{PageTable, UserSlice},
     processor::env::SumGuard,
+    syscall::MmapFlags,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,23 +82,31 @@ impl From<MapPerm> for PTEFlags {
     }
 }
 
+/// A contiguous virtual memory area.
 #[derive(Clone)]
 pub struct VmArea {
-    /// VPN range for the `VmArea`.
-    // FIXME: if truly allocated is not contiguous
-    /// NOTE: stores range that is truly allocated for lazy allocated areas.
-    range_vpn: Range<VirtPageNum>,
+    /// Aligned `VirtAddr` range for the `VmArea`.
+    range_va: Range<VirtAddr>,
+    /// Hold pages with RAII.
     pub pages: BTreeMap<VirtPageNum, Arc<Page>>,
+    /// Map permission of this area.
     pub map_perm: MapPerm,
+    /// Type of this area.
     pub vma_type: VmAreaType,
-    // For mmap
-    pub backup_file: Option<Arc<dyn File>>,
+
+    // For mmap.
+    /// Mmap flags.
+    pub mmap_flags: MmapFlags,
+    /// The underlying file being mapped.
+    pub backed_file: Option<Arc<dyn File>>,
+    /// Start offset in the file.
+    pub offset: usize,
 }
 
 impl core::fmt::Debug for VmArea {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("VmArea")
-            .field("range_vpn", &self.range_vpn)
+            .field("range_va", &self.range_va)
             .field("map_perm", &self.map_perm)
             .field("vma_type", &self.vma_type)
             .finish()
@@ -111,66 +122,80 @@ impl Drop for VmArea {
 impl VmArea {
     /// Construct a new vma.
     pub fn new(range_va: Range<VirtAddr>, map_perm: MapPerm, vma_type: VmAreaType) -> Self {
-        let start_vpn: VirtPageNum = range_va.start.floor();
-        let end_vpn: VirtPageNum = range_va.end.ceil();
+        let range_va = range_va.start.floor().into()..range_va.end.ceil().into();
         let new = Self {
-            range_vpn: start_vpn..end_vpn,
+            range_va,
             pages: BTreeMap::new(),
             vma_type,
             map_perm,
-            backup_file: None,
+            backed_file: None,
+            mmap_flags: MmapFlags::default(),
+            offset: 0,
         };
-        log::trace!("[VmArea::new] {new:?}");
+        log::debug!("[VmArea::new] {new:?}");
         new
     }
 
-    pub fn new_mmap(range_va: Range<VirtAddr>, map_perm: MapPerm, file: Arc<dyn File>) -> Self {
-        let start_vpn: VirtPageNum = range_va.start.floor();
-        let end_vpn: VirtPageNum = range_va.end.ceil();
+    pub fn new_mmap(
+        range_va: Range<VirtAddr>,
+        map_perm: MapPerm,
+        mmap_flags: MmapFlags,
+        file: Option<Arc<dyn File>>,
+        offset: usize,
+    ) -> Self {
+        let range_va = range_va.start.floor().into()..range_va.end.ceil().into();
         let new = Self {
-            range_vpn: start_vpn..end_vpn,
+            range_va,
             pages: BTreeMap::new(),
             vma_type: VmAreaType::Mmap,
             map_perm,
-            backup_file: Some(file),
+            backed_file: file,
+            mmap_flags,
+            offset,
         };
-        log::trace!("[VmArea::new_mmap] {new:?}");
+        log::debug!("[VmArea::new_mmap] {new:?}");
         new
     }
 
     pub fn from_another(another: &Self) -> Self {
-        log::trace!("[VmArea::from_another] {another:?}");
+        log::debug!("[VmArea::from_another] {another:?}");
         Self {
-            range_vpn: another.range_vpn(),
+            range_va: another.range_va(),
             pages: BTreeMap::new(),
             vma_type: another.vma_type,
             map_perm: another.map_perm,
-            backup_file: another.backup_file.clone(),
+            backed_file: another.backed_file.clone(),
+            mmap_flags: another.mmap_flags,
+            offset: another.offset,
         }
     }
 
     pub fn start_va(&self) -> VirtAddr {
-        self.start_vpn().into()
+        self.range_va().start
     }
 
     pub fn end_va(&self) -> VirtAddr {
-        self.end_vpn().into()
+        self.range_va().end
     }
 
     pub fn start_vpn(&self) -> VirtPageNum {
-        self.range_vpn.start
+        self.start_va().into()
     }
 
     pub fn end_vpn(&self) -> VirtPageNum {
-        self.range_vpn.end
+        self.end_va().into()
     }
 
     pub fn range_va(&self) -> Range<VirtAddr> {
-        self.start_va()..self.end_va()
+        self.range_va.clone()
     }
 
     pub fn range_vpn(&self) -> Range<VirtPageNum> {
-        self.range_vpn.clone()
+        self.start_vpn()..self.end_vpn()
+    }
+
+    pub fn set_range_va(&mut self, range_va: Range<VirtAddr>) {
+        self.range_va = range_va
     }
 
     pub fn perm(&self) -> MapPerm {
@@ -189,11 +214,7 @@ impl VmArea {
         let pte_flags: PTEFlags = self.map_perm.into();
         if self.vma_type == VmAreaType::Physical || self.vma_type == VmAreaType::Mmio {
             for vpn in self.range_vpn() {
-                page_table.map(
-                    vpn,
-                    VirtAddr::from(vpn).to_offset().to_pa().into(),
-                    pte_flags,
-                )
+                page_table.map(vpn, vpn.to_offset().to_ppn(), pte_flags)
             }
         } else {
             for vpn in self.range_vpn() {
@@ -201,6 +222,13 @@ impl VmArea {
                 page_table.map(vpn, page.ppn(), pte_flags);
                 self.pages.insert(vpn, Arc::new(page));
             }
+        }
+    }
+
+    pub fn unmap(&mut self, page_table: &mut PageTable, range_vpn: Range<VirtPageNum>) {
+        for vpn in range_vpn {
+            page_table.unmap(vpn);
+            self.pages.remove(&vpn);
         }
     }
 
@@ -232,7 +260,13 @@ impl VmArea {
         }
     }
 
-    pub fn handle_page_fault(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
+    // FIXME: should kill user program if it deref a invalid pointer, e.g. try to
+    // write at a read only area?
+    pub fn handle_page_fault(
+        &mut self,
+        page_table: &mut PageTable,
+        vpn: VirtPageNum,
+    ) -> SysResult<()> {
         log::debug!(
             "[VmArea::handle_page_fault] {self:?}, {vpn:?} at page table {:?}",
             page_table.root_ppn
@@ -289,12 +323,21 @@ impl VmArea {
                     page = Page::new();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, Arc::new(page));
-                    // FIXME: if lazy alloc is not contiguous
-                    self.range_vpn.end = vpn + 1;
                     unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                }
+                VmAreaType::Mmap => {
+                    if !self.mmap_flags.contains(MmapFlags::MAP_ANONYMOUS) {
+                        let file = self.backed_file.as_ref().unwrap();
+                        let offset = self.offset + (vpn - self.start_vpn()) * PAGE_SIZE;
+                        let mut buf = unsafe { UserSlice::new_unchecked(vpn.to_va(), PAGE_SIZE) };
+                        block_on(async { file.read_at(offset, &mut buf).await })?;
+                        unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                    } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
+                    }
                 }
                 _ => {}
             }
         }
+        Ok(())
     }
 }

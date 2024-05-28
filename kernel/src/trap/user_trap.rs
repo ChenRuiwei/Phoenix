@@ -15,12 +15,7 @@ use riscv::register::{
 use timer::timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
-use crate::{
-    strace,
-    syscall::{syscall, SyscallNo},
-    task::{signal::do_signal, Task},
-    trap::set_user_trap,
-};
+use crate::{syscall::syscall, task::Task, trap::set_user_trap};
 
 /// handle an interrupt, exception, or system call from user space
 #[no_mangle]
@@ -39,26 +34,17 @@ pub async fn trap_handler(task: &Arc<Task>) {
     match cause {
         Trap::Exception(Exception::UserEnvCall) => {
             let syscall_no = cx.syscall_no();
-            log::info!("[trap_handler] handle syscall no {syscall_no}");
             cx.set_user_pc_to_next();
             // get system call return value
-            let result = syscall(syscall_no, cx.syscall_args()).await;
+            let ret = syscall(syscall_no, cx.syscall_args()).await;
             // cx is changed during sys_exec, so we have to call it again
             cx = task.trap_context_mut();
-            let ret = match result {
-                Ok(ret) => ret,
-                Err(e) => {
-                    log::warn!("[trap_handler] syscall no {syscall_no} return, err {e:?}",);
-                    -(e as isize) as usize
-                }
-            };
-            log::info!("[trap_handler] handle syscall no {syscall_no} return val {ret:#x}");
             cx.set_user_a0(ret);
         }
         Trap::Exception(Exception::StorePageFault)
         | Trap::Exception(Exception::InstructionPageFault)
         | Trap::Exception(Exception::LoadPageFault) => {
-            log::debug!(
+            log::info!(
                 "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
             );
             // There are serveral kinds of page faults:
@@ -96,15 +82,13 @@ pub async fn trap_handler(task: &Arc<Task>) {
     }
 }
 
+extern "C" {
+    fn __return_to_user(cx: *mut TrapContext);
+}
+
 /// Trap return to user mode.
 #[no_mangle]
 pub fn trap_return(task: &Arc<Task>) {
-    extern "C" {
-        fn __return_to_user(cx: *mut TrapContext);
-    }
-
-    do_signal().expect("do signal error");
-
     log::info!("[kernel] trap return to user...");
     unsafe {
         disable_interrupt();

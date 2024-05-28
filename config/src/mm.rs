@@ -21,7 +21,7 @@ pub const PAGE_MASK: usize = PAGE_SIZE - 1;
 pub const PAGE_SIZE_BITS: usize = 12;
 
 pub const PTE_SIZE: usize = 8;
-pub const PTE_NUM_ONE_PAGE: usize = PAGE_SIZE / PTE_SIZE;
+pub const PTE_NUM_IN_ONE_PAGE: usize = PAGE_SIZE / PTE_SIZE;
 
 /// 3 level for sv39 page table
 pub const PAGE_TABLE_LEVEL_NUM: usize = 3;
@@ -33,8 +33,8 @@ pub const U_SEG_STACK_END: usize = 0x0000_0002_0000_0000;
 /// User heap segment
 // pub const U_SEG_HEAP_BEG: usize = 0x0000_0002_0000_0000;
 // pub const U_SEG_HEAP_END: usize = 0x0000_0004_0000_0000;
-pub const U_SEG_HEAP_BEG: usize = 0x0000_0000_2000_0000;
-pub const U_SEG_HEAP_END: usize = 0x0000_0000_4000_0000;
+pub const U_SEG_HEAP_BEG: usize = 0x0000_0000_4000_0000;
+pub const U_SEG_HEAP_END: usize = 0x0000_0000_8000_0000;
 
 /// User mmap segment
 pub const U_SEG_FILE_BEG: usize = 0x0000_0004_0000_0000;

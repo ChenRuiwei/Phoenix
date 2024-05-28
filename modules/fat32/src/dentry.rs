@@ -1,4 +1,4 @@
-use alloc::sync::{Arc, Weak};
+use alloc::sync::Arc;
 
 use systype::SysError;
 use vfs_core::{Dentry, DentryMeta, Inode, InodeType, SuperBlock};
@@ -6,7 +6,7 @@ use vfs_core::{Dentry, DentryMeta, Inode, InodeType, SuperBlock};
 use crate::{
     as_sys_err,
     file::{FatDirFile, FatFileFile},
-    inode::{self, dir::FatDirInode, file::FatFileInode},
+    inode::{dir::FatDirInode, file::FatFileInode},
 };
 
 pub struct FatDentry {
@@ -19,20 +19,10 @@ impl FatDentry {
         super_block: Arc<dyn SuperBlock>,
         parent: Option<Arc<dyn Dentry>>,
     ) -> Arc<Self> {
-        Arc::new(Self {
+        let dentry = Arc::new(Self {
             meta: DentryMeta::new(name, super_block, parent),
-        })
-    }
-
-    pub fn new_with_inode(
-        name: &str,
-        super_block: Arc<dyn SuperBlock>,
-        inode: Arc<dyn Inode>,
-        parent: Option<Weak<dyn Dentry>>,
-    ) -> Arc<Self> {
-        Arc::new(Self {
-            meta: DentryMeta::new_with_inode(name, super_block, inode, parent),
-        })
+        });
+        dentry
     }
 
     pub fn into_dyn(self: Arc<Self>) -> Arc<dyn Dentry> {
@@ -66,7 +56,6 @@ impl Dentry for FatDentry {
 
     fn base_lookup(self: Arc<Self>, name: &str) -> systype::SysResult<Arc<dyn Dentry>> {
         let sb = self.super_block();
-        let self_clone = self.clone();
         let inode = self
             .inode()?
             .downcast_arc::<FatDirInode>()
@@ -76,7 +65,7 @@ impl Dentry for FatDentry {
             let e_name = entry.file_name();
             name == e_name
         });
-        let sub_dentry = self.get_child_or_create(name);
+        let sub_dentry = self.into_dyn().get_child_or_create(name);
         if let Some(find) = find {
             log::debug!("[FatDentry::base_lookup] find name {name}");
             let entry = find.map_err(as_sys_err)?;
@@ -105,7 +94,7 @@ impl Dentry for FatDentry {
             .inode()?
             .downcast_arc::<FatDirInode>()
             .map_err(|_| SysError::ENOTDIR)?;
-        let sub_dentry = self.get_child_or_create(name);
+        let sub_dentry = self.into_dyn().get_child_or_create(name);
         match mode.to_type() {
             InodeType::Dir => {
                 let new_dir = inode.dir.lock().create_dir(name).map_err(as_sys_err)?;
@@ -154,7 +143,7 @@ impl Dentry for FatDentry {
         Ok(0)
     }
 
-    fn base_new_negative_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+    fn base_new_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
         Self::new(name, self.super_block(), Some(self))
     }
 }

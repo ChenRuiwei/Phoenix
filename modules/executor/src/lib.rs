@@ -57,14 +57,10 @@ where
     async_task::spawn(future, WithInfo(schedule))
 }
 
-/// Return the number of the tasks executed
-pub fn run_until_idle() -> usize {
-    let mut n = 0;
+pub fn run_until_idle() {
     while let Some(task) = TASK_QUEUE.fetch() {
         task.run();
-        n += 1;
     }
-    n
 }
 
 pub fn has_task() -> bool {
