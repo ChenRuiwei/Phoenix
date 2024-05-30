@@ -1,6 +1,6 @@
-# Phoenix
+![哈工大深圳](./docs/assets/hitsz-logo.jpg)
 
-![哈工大深圳](docs/assets/哈工大深圳.jpg)
+# Phoenix
 
 ## 项目描述
 
@@ -12,19 +12,19 @@ Phoenix 是使用 Rust 编写、基于 RISCV-64 硬件平台、支持多核、�
 
 VisionFive 2 赛道，初赛功能测试满分：
 
-![preliminary_contest_result](docs/assets/preliminary_contest_rank.png)
+![初赛排行榜](./docs/assets/leaderboard-pre.png)
 
 ### Phoenix 内核介绍
 
 - 无栈协程：结合 Rust 异步机制的全局无栈协程调度器。
 - 进程管理：实现基本的进程与线程管理功能，支持多核运行。
 - 内存管理：实现基本的内存管理功能。使用懒分配和 Copy-on-Write 优化策略。
-- 文件系统：基于 Linux 设计的虚拟文件系统。实现页缓存加速文件读写，实现 Dentry 缓存加速路径查找。使用开源 `rust-fatfs`库提供对 fat32 文件系统的支持。
+- 文件系统：基于 Linux 设计的虚拟文件系统。实现页缓存加速文件读写，实现 Dentry 缓存加速路径查找。使用开源 `rust-fatfs`库提供对 FAT32 文件系统的支持。
 - 信号机制：完成基础的信号机制，支持用户自定义处理函数。
 
 ### 文档
 
-docs 文件夹下 [README.md](./docs/README.md)
+[Phoenix-初赛文档](./docs/Phoenix-初赛文档.pdf)
 
 ### 项目结构
 
@@ -33,8 +33,8 @@ docs 文件夹下 [README.md](./docs/README.md)
 ├── arch/                   # 平台相关的包装函数与启动函数
 ├── config/                 # 配置常量
 ├── crates/                 # 自己编写的功能单一的库
-│   ├── async_utils/
-│   └── recycle_allocator/
+│   ├── async_utils/        # 异步工具
+│   └── recycle_allocator/  # ID分配器
 ├── docs/                   # 文档
 ├── driver/                 # 驱动模块
 ├── kernel/                 # 内核
@@ -50,18 +50,17 @@ docs 文件夹下 [README.md](./docs/README.md)
 │   │   ├── impls.rs        # 模块接口实现
 │   │   ├── link_app.asm
 │   │   ├── loader.rs
-│   │   ├── main.rs         # 入口函数
+│   │   ├── main.rs         # 主函数
 │   │   ├── panic.rs
-│   │   └── trampoline.asm
+│   │   └── trampoline.asm  # 信号跳板代码
 │   ├── build.rs
 │   ├── Cargo.toml
-│   ├── linker.ld
+│   ├── linker.ld           # 链接脚本
 │   └── Makefile
-
 ├── modules/                # 内核各个模块
 │   ├── executor/           # 异步调度器
-│   ├── fat32/              # fat32 文件系统支持
-│   ├── futex/              # futex 机制
+│   ├── fat32/              # FAT32文件系统支持
+│   ├── futex/              # futex机制
 │   ├── logging/            # 日志系统
 │   ├── memory/             # 基础内存模块
 │   ├── signal/             # 基础信号模块
@@ -72,8 +71,8 @@ docs 文件夹下 [README.md](./docs/README.md)
 │   ├── vfs/                # 虚拟文件系统模块
 │   └── vfs-core/           # 虚拟文件系统接口
 ├── testcase/               # 测试用例
-├── third-party/
-│   └── vendor/
+├── third-party/            # 第三方库
+│   └── vendor/             # Rust库缓存
 ├── user/                   # 用户程序
 ├── Cargo.lock
 ├── Cargo.toml
