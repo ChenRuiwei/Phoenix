@@ -1,11 +1,10 @@
 *.gdb
 .github
 .gdb_history
-*.gdb
 .idea
 .gdbinit
 target/
-# vendor/
+third-party/vendor/
 fs-img/
 kernel-qemu
 kernel/src/link_app.asm
