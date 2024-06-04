@@ -3,14 +3,17 @@ use core::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 
-use async_utils::{suspend_now, yield_now};
+use arch::time::get_time_duration;
+use async_utils::{suspend_now, take_waker, yield_now};
+use timer::timer::{Timer, TIMER_MANAGER};
 
 use super::Task;
 use crate::{
     processor::{env::EnvContext, hart},
-    task::task::TaskState::*,
+    task::{signal::do_signal, task::TaskState::*},
     trap,
 };
 
@@ -74,15 +77,13 @@ impl<F: Future<Output = ()> + Send + 'static> Future for KernelTaskFuture<F> {
 }
 
 pub async fn task_loop(task: Arc<Task>) {
-    task.set_waker(async_utils::take_waker().await);
-
+    *task.waker() = Some(take_waker().await);
     loop {
         trap::user_trap::trap_return(&task);
 
         // task may be set to zombie by other task, e.g. execve will kill other tasks in
         // the same thread group
-        let state = task.with_state(|s| *s);
-        match state {
+        match task.state() {
             Zombie => break,
             Stopped => suspend_now().await,
             _ => {}
@@ -90,14 +91,15 @@ pub async fn task_loop(task: Arc<Task>) {
 
         trap::user_trap::trap_handler(&task).await;
 
-        let state = task.with_state(|s| *s);
-        match state {
+        match task.state() {
             Zombie => break,
             Stopped => suspend_now().await,
             _ => {}
         }
 
         task.update_itimers();
+
+        do_signal(&task).expect("do signal error");
     }
 
     log::debug!("thread {} terminated", task.tid());
@@ -119,4 +121,23 @@ pub fn spawn_kernel_task<F: Future<Output = ()> + Send + 'static>(kernel_task: F
     let (runnable, task) = executor::spawn(future);
     runnable.schedule();
     task.detach();
+}
+
+impl Task {
+    /// 返回值代表的是条件满足时，还剩余多少Duration。如果剩余的 Duration 为
+    /// 0，说明就是超时了，大于 0 才是因事件唤醒
+    pub async fn suspend_timeout(&self, limit: Duration) -> Duration {
+        let expire = get_time_duration() + limit;
+        TIMER_MANAGER.add_timer(Timer {
+            expire,
+            callback: self.waker().clone(),
+        });
+        suspend_now().await;
+        let now = get_time_duration();
+        if expire > now {
+            expire - now
+        } else {
+            Duration::ZERO
+        }
+    }
 }

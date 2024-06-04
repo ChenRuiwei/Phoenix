@@ -1,17 +1,15 @@
-use alloc::{sync::Arc, task};
+use alloc::sync::Arc;
 use core::{
-    alloc::Layout,
-    future::Future,
+    future::{Future, Pending},
     intrinsics::size_of,
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
 };
 
-use arch::time::{get_time_duration, get_time_ms};
-use async_utils::take_waker;
+use arch::time::get_time_duration;
 use signal::{
-    action::{self, Action, ActionType, SigActionFlag},
+    action::{Action, ActionType, SigActionFlag},
     siginfo::{SigDetails, SigInfo},
     signal_stack::{MContext, UContext},
     sigset::{Sig, SigSet},
@@ -20,7 +18,7 @@ use systype::SysResult;
 use time::timeval::ITimerVal;
 
 use super::Task;
-use crate::{mm::UserWritePtr, processor::hart::current_task, task::task::TaskState};
+use crate::{mm::UserWritePtr, processor::hart::current_task_ref, task::task::TaskState};
 
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
@@ -74,28 +72,56 @@ impl Task {
                     // selected to receive the signal
                     let mut signal_delivered = false;
                     for task in tg.iter() {
-                        if task.sig_mask().contain_signal(si.sig) {
+                        if task.sig_mask_ref().contain_signal(si.sig) {
                             continue;
                         }
-                        task.with_mut_sig_pending(|pending| {
-                            pending.recv(si);
-                        });
+                        task.recv(si);
                         signal_delivered = true;
                         break;
                     }
                     if !signal_delivered {
                         let task = tg.iter().next().unwrap();
-                        task.with_mut_sig_pending(|pending| {
-                            pending.recv(si);
-                        });
+                        task.recv(si);
                     }
                 })
             }
-            true => {
-                self.with_mut_sig_pending(|pending| {
-                    pending.recv(si);
-                });
+            true => self.recv(si),
+        }
+    }
+    fn recv(&self, si: SigInfo) {
+        self.with_mut_sig_pending(|pending| {
+            pending.add(si);
+            if self.is_interruptable() && pending.should_wake.contain_signal(si.sig) {
+                self.wake();
             }
+        });
+    }
+
+    pub fn set_wake_up_signal(&self, except: SigSet) {
+        debug_assert!(self.is_interruptable());
+        self.with_mut_sig_pending(|pending| pending.should_wake = except)
+    }
+
+    fn notify_parent(self: &Arc<Self>, code: i32, signum: Sig) {
+        let parent = self.parent().unwrap().upgrade().unwrap();
+        if !parent
+            .with_sig_handlers(|handlers| handlers.get(Sig::SIGCHLD))
+            .flags
+            .contains(SigActionFlag::SA_NOCLDSTOP)
+        {
+            parent.receive_siginfo(
+                SigInfo {
+                    sig: Sig::SIGCHLD,
+                    code,
+                    details: SigDetails::CHLD {
+                        pid: self.pid(),
+                        status: signum.raw() as i32 & 0x7F,
+                        utime: self.time_stat().user_time(),
+                        stime: self.time_stat().sys_time(),
+                    },
+                },
+                false,
+            );
         }
     }
 }
@@ -107,8 +133,7 @@ extern "C" {
 /// Signal dispositions and actions are process-wide: if an unhandled signal is
 /// delivered to a thread, then it will affect (terminate, stop, continue, be
 /// ignored in) all members of the thread group.
-pub fn do_signal() -> SysResult<()> {
-    let task = current_task();
+pub fn do_signal(task: &Arc<Task>) -> SysResult<()> {
     let old_mask = *task.sig_mask();
     loop {
         if let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
@@ -117,9 +142,9 @@ pub fn do_signal() -> SysResult<()> {
             log::info!("[do signal] {:?}", action);
             match action.atype {
                 ActionType::Ignore => {}
-                ActionType::Kill => terminate(si.sig),
-                ActionType::Stop => stop(si.sig, &task),
-                ActionType::Cont => cont(si.sig, &task),
+                ActionType::Kill => terminate(task, si.sig),
+                ActionType::Stop => stop(task, si.sig),
+                ActionType::Cont => cont(task, si.sig),
                 ActionType::User { entry } => {
                     // The signal being delivered is also added to the signal mask, unless
                     // SA_NODEFER was specified when registering the handler.
@@ -193,9 +218,8 @@ pub fn do_signal() -> SysResult<()> {
 }
 
 /// terminate the process
-fn terminate(sig: Sig) {
+fn terminate(task: &Arc<Task>, sig: Sig) {
     // exit all the memers of a thread group
-    let task = current_task();
     task.with_thread_group(|tg| {
         for t in tg.iter() {
             t.set_zombie();
@@ -204,150 +228,26 @@ fn terminate(sig: Sig) {
     // 将信号放入低7位 (第8位是core dump标志,在gdb调试崩溃程序中用到)
     task.set_exit_code(sig.raw() as i32 & 0x7F);
 }
-fn stop(sig: Sig, task: &Arc<Task>) {
+fn stop(task: &Arc<Task>, sig: Sig) {
     log::warn!("[do_signal] task stopped!");
     task.with_mut_thread_group(|tg| {
         for t in tg.iter() {
-            t.with_mut_state(|state| match state {
-                TaskState::Running => *state = TaskState::Stopped,
-                _ => {}
-            });
-            t.set_exit_code(sig.raw() as i32 & 0x7F);
+            t.set_stopped();
+            t.set_wake_up_signal(SigSet::SIGCONT);
         }
     });
-    let parent = task.parent().unwrap().upgrade().unwrap();
-    if !parent
-        .with_sig_handlers(|handlers| handlers.get(Sig::SIGCHLD))
-        .flags
-        .contains(SigActionFlag::SA_NOCLDSTOP)
-    {
-        parent.receive_siginfo(
-            SigInfo {
-                sig: Sig::SIGCHLD,
-                code: SigInfo::CLD_STOPPED,
-                details: SigDetails::CHLD {
-                    pid: task.pid(),
-                    status: sig.raw() as i32 & 0x7F,
-                    utime: task.time_stat().user_time(),
-                    stime: task.time_stat().sys_time(),
-                },
-            },
-            false,
-        );
-    }
+    task.notify_parent(SigInfo::CLD_STOPPED, sig);
 }
 /// continue the process if it is currently stopped
-fn cont(sig: Sig, task: &Arc<Task>) {
+fn cont(task: &Arc<Task>, sig: Sig) {
     log::warn!("[do_signal] task continue");
     task.with_mut_thread_group(|tg| {
         for t in tg.iter() {
-            t.with_mut_state(|state| match state {
-                TaskState::Stopped => {
-                    *state = TaskState::Running;
-                    t.get_waker().wake_by_ref();
-                }
-                _ => {}
-            });
-            t.set_exit_code(0);
+            t.set_running();
+            t.wake();
         }
     });
-    let parent = task.parent().unwrap().upgrade().unwrap();
-    if !parent
-        .with_sig_handlers(|handlers| handlers.get(Sig::SIGCHLD))
-        .flags
-        .contains(SigActionFlag::SA_NOCLDSTOP)
-    {
-        parent.receive_siginfo(
-            SigInfo {
-                sig: Sig::SIGCHLD,
-                code: SigInfo::CLD_CONTINUED,
-                details: SigDetails::CHLD {
-                    pid: task.pid(),
-                    status: sig.raw() as i32 & 0x7F,
-                    utime: task.time_stat().user_time(),
-                    stime: task.time_stat().sys_time(),
-                },
-            },
-            false,
-        );
-    }
-}
-
-/// wait for more than one signal and don't need siginfo as return value
-pub struct WaitExpectSigSet<'a> {
-    task: &'a Arc<Task>,
-    expect: SigSet,
-    set_waker: bool,
-}
-
-impl<'a> WaitExpectSigSet<'a> {
-    pub fn new(task: &'a Arc<Task>, expect: SigSet) -> Self {
-        Self {
-            task,
-            expect,
-            set_waker: false,
-        }
-    }
-}
-
-impl<'a> Future for WaitExpectSigSet<'a> {
-    type Output = ();
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        if !self.set_waker {
-            self.task.with_mut_sig_pending(|pending| {
-                pending.set_waker(Some(cx.waker().clone()));
-            });
-        };
-        self.task
-            .with_mut_sig_pending(|pending| -> Poll<Self::Output> {
-                match pending.has_expect_signals(self.expect) {
-                    true => {
-                        pending.set_waker(None);
-                        Poll::Ready(())
-                    }
-                    false => Poll::Pending,
-                }
-            })
-    }
-}
-
-/// wait for a signal and need the siginfo of the expected signal
-pub struct WaitOneSignal<'a> {
-    task: &'a Arc<Task>,
-    expect: Sig,
-    set_waker: bool,
-}
-
-impl<'a> WaitOneSignal<'a> {
-    pub fn new(task: &'a Arc<Task>, expect: Sig) -> Self {
-        Self {
-            task,
-            expect,
-            set_waker: false,
-        }
-    }
-}
-
-impl<'a> Future for WaitOneSignal<'a> {
-    type Output = SigInfo;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        if !self.set_waker {
-            self.task.with_mut_sig_pending(|pending| {
-                pending.set_waker(Some(cx.waker().clone()));
-            });
-            self.set_waker = true;
-            return Poll::Pending;
-        };
-        self.task
-            .with_mut_sig_pending(|pending| -> Poll<Self::Output> {
-                if let Some(si) = pending.has_expect_signal(self.expect) {
-                    pending.set_waker(None);
-                    Poll::Ready(si)
-                } else {
-                    Poll::Pending
-                }
-            })
-    }
+    task.notify_parent(SigInfo::CLD_CONTINUED, sig);
 }
 
 /// A process has only one of each of the three types of timers.
@@ -383,7 +283,7 @@ impl ITimer {
         Self {
             interval: Duration::ZERO,
             next_expire: Duration::ZERO,
-            now: || current_task().get_process_utime(),
+            now: || current_task_ref().get_process_utime(),
             activated: false,
             sig: Sig::SIGVTALRM,
         }
@@ -399,7 +299,7 @@ impl ITimer {
         Self {
             interval: Duration::ZERO,
             next_expire: Duration::ZERO,
-            now: || current_task().get_process_cputime(),
+            now: || current_task_ref().get_process_cputime(),
             activated: false,
             sig: Sig::SIGPROF,
         }
@@ -415,7 +315,7 @@ impl ITimer {
                 self.activated = false;
             }
             self.next_expire = now + self.interval;
-            current_task().receive_siginfo(
+            current_task_ref().receive_siginfo(
                 SigInfo {
                     sig: self.sig,
                     // The SI-TIMER value indicates that the signal was triggered by a timer
@@ -460,6 +360,7 @@ impl Task {
     /// this function must be calld by the task which wants to modify itself
     /// because of the `current_task()`.(i.e. it can't be called when a process
     /// wants to modify other process's itimers)
+    /// TODO: 加入到全局的TIMER_MANAGER中去管理
     pub fn update_itimers(&self) {
         self.with_mut_itimers(|itimers| itimers.iter_mut().for_each(|itimer| itimer.update()))
     }

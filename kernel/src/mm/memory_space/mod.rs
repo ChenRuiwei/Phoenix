@@ -44,8 +44,11 @@ pub unsafe fn switch_kernel_page_table() {
     KERNEL_SPACE.switch_page_table();
 }
 
+/// Virtual memory space for kernel and user.
 pub struct MemorySpace {
+    /// Page table of this memory space.
     page_table: PageTable,
+    /// Map of `VmArea`s in this memory space.
     /// NOTE: stores range that is lazy allocated
     areas: RangeMap<VirtAddr, VmArea>,
 }

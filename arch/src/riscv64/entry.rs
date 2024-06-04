@@ -1,10 +1,13 @@
-use config::mm::{KERNEL_STACK_SIZE, VIRT_RAM_OFFSET};
+use config::{
+    mm::{KERNEL_STACK_SIZE, PAGE_SIZE, PTE_NUM_IN_ONE_PAGE, PTE_SIZE, VIRT_RAM_OFFSET},
+    processor::HART_NUM,
+};
 
 #[link_section = ".bss.stack"]
-static mut BOOT_STACK: [u8; KERNEL_STACK_SIZE * 8] = [0u8; KERNEL_STACK_SIZE * 8];
+static mut BOOT_STACK: [u8; KERNEL_STACK_SIZE * HART_NUM] = [0u8; KERNEL_STACK_SIZE * HART_NUM];
 
 #[repr(C, align(4096))]
-struct BootPageTable([u64; 512]);
+struct BootPageTable([u64; PTE_NUM_IN_ONE_PAGE]);
 
 static mut BOOT_PAGE_TABLE: BootPageTable = {
     let mut arr: [u64; 512] = [0; 512];

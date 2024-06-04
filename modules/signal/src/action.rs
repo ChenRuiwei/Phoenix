@@ -62,17 +62,18 @@ impl Action {
         }
     }
 }
-
-/// 存储着进程接收到的信号队列,当进程接收到一个信号时，
-/// 就需要把接收到的信号添加到 pending
-/// 这个队列中，即使被block了，因为在被解除block时task还是会接着处理这个信号。
-/// TODO:可否只留有一个bitmap?
+/// `SigPending` stores the signals received. When a task receives a signal,
+/// even if the signal is blocked, it still needs to be added to the pending
+/// queue. This is because the task will continue to handle the signal once it
+/// is unblocked.
 pub struct SigPending {
     /// 接收到的所有信号
     pub queue: VecDeque<SigInfo>,
     /// 比特位的内容代表是否收到信号，主要用来防止queue收到重复信号
     pub bitmap: SigSet,
-    pub waker: Option<Waker>,
+    /// 如果在receive_siginfo的时候收到的信号位于should_wake信号集合中，
+    /// 且task的wake存在，那么唤醒task
+    pub should_wake: SigSet,
 }
 
 impl SigPending {
@@ -80,7 +81,7 @@ impl SigPending {
         Self {
             queue: VecDeque::new(),
             bitmap: SigSet::empty(),
-            waker: None,
+            should_wake: SigSet::empty(),
         }
     }
 
@@ -120,48 +121,60 @@ impl SigPending {
         return None;
     }
 
-    #[inline]
-    pub fn has_expect_signals(&self, expect: SigSet) -> bool {
-        !(expect & self.bitmap).is_empty()
-    }
-
-    #[inline]
-    pub fn has_expect_signal(&self, expect: Sig) -> Option<SigInfo> {
-        if self.bitmap.contain_signal(expect) {
-            Some(
-                self.queue
-                    .iter()
-                    .find(|si| si.sig == expect)
-                    .unwrap()
-                    .clone(),
-            )
-        } else {
-            None
+    /// Dequeue a sepcific signal in `except` even if it is blocked and return
+    /// the SigInfo to the caller
+    pub fn dequeue_except(&mut self, except: SigSet) -> Option<SigInfo> {
+        let x = self.bitmap & except;
+        if x.is_empty() {
+            return None;
         }
-    }
-
-    #[inline]
-    pub fn set_waker(&mut self, waker: Option<Waker>) {
-        self.waker = waker;
-    }
-
-    pub fn recv(&mut self, si: SigInfo) {
-        self.add(si);
-        if let Some(waker) = self.waker.as_ref() {
-            waker.wake_by_ref(); // 调用 wake_by_ref，不消耗 waker
+        for i in 0..self.queue.len() {
+            let sig = self.queue[i].sig;
+            if x.contain_signal(sig) {
+                self.bitmap.remove_signal(sig);
+                return self.queue.remove(i);
+            }
         }
+        log::error!("[dequeue_except] I suppose it won't go here");
+        None
     }
+
+    // #[inline]
+    // pub fn has_expect_signals(&self, expect: SigSet) -> bool {
+    //     !(expect & self.bitmap).is_empty()
+    // }
+
+    // #[inline]
+    // pub fn has_expect_sigset(&self, expect: SigSet) -> Option<SigInfo> {
+    //     let x = self.bitmap & expect;
+    //     if !x.is_empty() {
+    //         Some(
+    //             self.queue
+    //                 .iter()
+    //                 .find(|si| x.contain_signal(si.sig))
+    //                 .unwrap()
+    //                 // TODO: NOT CLONE
+    //                 .clone(),
+    //         )
+    //     } else {
+    //         None
+    //     }
+    // }
 }
 #[derive(Clone)]
 pub struct SigHandlers {
     /// 注意信号编号与数组索引有1个offset，因此在Sig中有个index()函数负责-1
     actions: [Action; NSIG],
+    /// 一个位掩码，如果为1表示该信号是用户定义的，如果为0表示默认。
+    /// (实际上可以由actions间接得出来，这里只是存了一个快速路径)
+    bitmap: SigSet,
 }
 
 impl SigHandlers {
     pub fn new() -> Self {
         Self {
             actions: core::array::from_fn(|signo| Action::new((signo + 1).into())),
+            bitmap: SigSet::empty(),
         }
     }
 
@@ -173,6 +186,10 @@ impl SigHandlers {
     pub fn update(&mut self, sig: Sig, new: Action) {
         debug_assert!(!sig.is_kill_or_stop());
         self.actions[sig.index()] = new;
+        match new.atype {
+            ActionType::User { .. } => self.bitmap.add_signal(sig),
+            _ => self.bitmap.remove_signal(sig),
+        }
     }
 
     /// it is used in execve because it changed the memory
@@ -185,5 +202,10 @@ impl SigHandlers {
                 _ => {}
             }
         }
+        self.bitmap = SigSet::empty();
+    }
+
+    pub fn bitmap(&self) -> SigSet {
+        self.bitmap
     }
 }

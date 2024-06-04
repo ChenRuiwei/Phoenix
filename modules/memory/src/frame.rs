@@ -10,7 +10,7 @@ use crate::{PhysAddr, PhysPageNum};
 
 /// Manage a frame which has the same lifecycle as the tracker.
 pub struct FrameTracker {
-    /// PPN of the frame
+    /// PPN of the frame.
     pub ppn: PhysPageNum,
 }
 
