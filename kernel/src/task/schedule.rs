@@ -99,7 +99,7 @@ pub async fn task_loop(task: Arc<Task>) {
 
         task.update_itimers();
 
-        do_signal().expect("do signal error");
+        do_signal(&task).expect("do signal error");
     }
 
     log::debug!("thread {} terminated", task.tid());

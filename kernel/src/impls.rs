@@ -4,7 +4,7 @@ use alloc::fmt;
 
 use logging::LogIf;
 
-use crate::processor::hart::{current_task, local_hart};
+use crate::processor::hart::{current_task_ref, local_hart};
 
 /// Print msg with color
 pub fn print_in_color(args: fmt::Arguments, color_code: u8) {
@@ -24,8 +24,8 @@ impl LogIf for LogIfImpl {
                     record.file().unwrap(),
                     record.line().unwrap(),
                     local_hart().hart_id(),
-                    current_task().pid(),
-                    current_task().tid(),
+                    current_task_ref().pid(),
+                    current_task_ref().tid(),
                     record.args()
                 ),
                 logging::level_to_color_code(record.level()),

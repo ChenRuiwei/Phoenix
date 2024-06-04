@@ -18,7 +18,7 @@ use systype::SysResult;
 use time::timeval::ITimerVal;
 
 use super::Task;
-use crate::{mm::UserWritePtr, processor::hart::current_task, task::task::TaskState};
+use crate::{mm::UserWritePtr, processor::hart::current_task_ref, task::task::TaskState};
 
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
@@ -133,8 +133,7 @@ extern "C" {
 /// Signal dispositions and actions are process-wide: if an unhandled signal is
 /// delivered to a thread, then it will affect (terminate, stop, continue, be
 /// ignored in) all members of the thread group.
-pub fn do_signal() -> SysResult<()> {
-    let task = current_task();
+pub fn do_signal(task: &Arc<Task>) -> SysResult<()> {
     let old_mask = *task.sig_mask();
     loop {
         if let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
@@ -143,9 +142,9 @@ pub fn do_signal() -> SysResult<()> {
             log::info!("[do signal] {:?}", action);
             match action.atype {
                 ActionType::Ignore => {}
-                ActionType::Kill => terminate(si.sig),
-                ActionType::Stop => stop(si.sig, &task),
-                ActionType::Cont => cont(si.sig, &task),
+                ActionType::Kill => terminate(task, si.sig),
+                ActionType::Stop => stop(task, si.sig),
+                ActionType::Cont => cont(task, si.sig),
                 ActionType::User { entry } => {
                     // The signal being delivered is also added to the signal mask, unless
                     // SA_NODEFER was specified when registering the handler.
@@ -219,9 +218,8 @@ pub fn do_signal() -> SysResult<()> {
 }
 
 /// terminate the process
-fn terminate(sig: Sig) {
+fn terminate(task: &Arc<Task>, sig: Sig) {
     // exit all the memers of a thread group
-    let task = current_task();
     task.with_thread_group(|tg| {
         for t in tg.iter() {
             t.set_zombie();
@@ -230,7 +228,7 @@ fn terminate(sig: Sig) {
     // 将信号放入低7位 (第8位是core dump标志,在gdb调试崩溃程序中用到)
     task.set_exit_code(sig.raw() as i32 & 0x7F);
 }
-fn stop(sig: Sig, task: &Arc<Task>) {
+fn stop(task: &Arc<Task>, sig: Sig) {
     log::warn!("[do_signal] task stopped!");
     task.with_mut_thread_group(|tg| {
         for t in tg.iter() {
@@ -241,7 +239,7 @@ fn stop(sig: Sig, task: &Arc<Task>) {
     task.notify_parent(SigInfo::CLD_STOPPED, sig);
 }
 /// continue the process if it is currently stopped
-fn cont(sig: Sig, task: &Arc<Task>) {
+fn cont(task: &Arc<Task>, sig: Sig) {
     log::warn!("[do_signal] task continue");
     task.with_mut_thread_group(|tg| {
         for t in tg.iter() {
@@ -285,7 +283,7 @@ impl ITimer {
         Self {
             interval: Duration::ZERO,
             next_expire: Duration::ZERO,
-            now: || current_task().get_process_utime(),
+            now: || current_task_ref().get_process_utime(),
             activated: false,
             sig: Sig::SIGVTALRM,
         }
@@ -301,7 +299,7 @@ impl ITimer {
         Self {
             interval: Duration::ZERO,
             next_expire: Duration::ZERO,
-            now: || current_task().get_process_cputime(),
+            now: || current_task_ref().get_process_cputime(),
             activated: false,
             sig: Sig::SIGPROF,
         }
@@ -317,7 +315,7 @@ impl ITimer {
                 self.activated = false;
             }
             self.next_expire = now + self.interval;
-            current_task().receive_siginfo(
+            current_task_ref().receive_siginfo(
                 SigInfo {
                     sig: self.sig,
                     // The SI-TIMER value indicates that the signal was triggered by a timer

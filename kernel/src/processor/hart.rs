@@ -162,3 +162,16 @@ pub fn init(hart_id: usize) {
 pub fn current_task() -> Arc<Task> {
     local_hart().task().clone()
 }
+
+/// WARN: never hold a local task ref when it may get scheduled, will cause bug
+/// on smp situations.
+///
+/// ```rust
+/// let task = current_task_ref();
+/// task.do_something(); // the task ref is hart0's task
+/// yield_now().await();
+/// task.do_something(); // the task is still hart0's task, the two tasks may be different!
+/// ```
+pub fn current_task_ref() -> &'static Arc<Task> {
+    local_hart().task()
+}
