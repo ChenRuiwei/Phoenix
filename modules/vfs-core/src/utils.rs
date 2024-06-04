@@ -110,7 +110,7 @@ pub struct DirEntry {
 }
 
 bitflags! {
-    // See in "bits/poll.h"
+    // Defined in <bits/poll.h>.
     pub struct PollEvents: i16 {
         // Event types that can be polled for. These bits may be set in `events' to
         // indicate the interesting event types; they will appear in `revents' to

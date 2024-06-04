@@ -20,7 +20,7 @@ use crate::{
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    /// See in "bits/sched.h"
+    /// Defined in <bits/sched.h>
     pub struct CloneFlags: u64 {
         /// Set if VM shared between processes.
         const VM = 0x0000100;
@@ -47,7 +47,7 @@ bitflags! {
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    /// See in "bits/waitflags.h"
+    /// Defined in <bits/waitflags.h>.
     pub struct WaitOptions: i32 {
         /// Don't block waiting.
         const WNOHANG = 0x00000001;

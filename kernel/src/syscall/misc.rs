@@ -5,7 +5,7 @@ use systype::SyscallResult;
 use super::Syscall;
 use crate::mm::UserWritePtr;
 
-// See in "sys/utsname.h"
+// Defined in <sys/utsname.h>.
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct UtsName {

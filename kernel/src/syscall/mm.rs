@@ -9,7 +9,7 @@ use crate::{
 };
 
 bitflags! {
-    // See in "bits/mman-linux.h"
+    // Defined in <bits/mman-linux.h>
     #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct MmapFlags: i32 {
         // Sharing types (must choose one and only one of these).
@@ -32,7 +32,7 @@ bitflags! {
 }
 
 bitflags! {
-    // See in "bits/mman-linux.h"
+    // Defined in <bits/mman-linux.h>
     // NOTE: Zero bit flag is discouraged. See https://docs.rs/bitflags/latest/bitflags/#zero-bit-flags
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct MmapProt: i32 {
