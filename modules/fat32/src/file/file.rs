@@ -36,7 +36,17 @@ impl File for FatFileFile {
                     file.seek(fatfs::SeekFrom::Start(offset as u64))
                         .map_err(as_sys_err)?;
                 }
-                let count = file.read(buf).map_err(as_sys_err)?;
+                let mut count = 0;
+                let mut buf = buf;
+                while !buf.is_empty() {
+                    match file.read(buf).map_err(as_sys_err)? {
+                        0 => break,
+                        n => {
+                            buf = &mut buf[n..];
+                            count += n;
+                        }
+                    }
+                }
                 log::trace!("[FatFileFile::base_read] count {count}");
                 Ok(count)
             }

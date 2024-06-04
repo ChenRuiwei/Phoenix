@@ -60,7 +60,7 @@ impl FatSuperBlock {
             fs: Arc::new(
                 FatFs::new(
                     DiskCursor {
-                        sector: 0,
+                        block_id: 0,
                         offset: 0,
                         blk_dev,
                     },

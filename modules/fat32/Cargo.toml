@@ -10,6 +10,7 @@ vfs-core = { path = "../vfs-core/" }
 device-core = { path = "../device-core/" }
 sync = { path = "../sync/" }
 arch = { path = "../../arch/" }
+config = { path = "../../config/" }
 systype = { path = "../systype/" }
 
 log = "0.4"
