@@ -14,10 +14,10 @@ use config::{
     },
 };
 use log::info;
-use memory::{page::Page, pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
+use memory::{pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
 use spin::Lazy;
 use systype::{SysError, SysResult};
-use vfs_core::File;
+use vfs_core::{File, Page};
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};

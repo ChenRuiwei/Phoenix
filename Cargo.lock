@@ -149,12 +149,12 @@ dependencies = [
  "config",
  "device-core",
  "log",
- "lru",
  "memory",
  "spin",
  "sync",
  "systype",
  "uart_16550",
+ "vfs-core",
  "virtio-drivers",
 ]
 
@@ -555,6 +555,7 @@ dependencies = [
  "downcast-rs",
  "hashbrown",
  "log",
+ "lru",
  "memory",
  "spin",
  "sync",

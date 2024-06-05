@@ -14,12 +14,12 @@ use config::{
     board::BLOCK_SIZE,
     mm::{BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE, MAX_BUFFER_PAGES},
 };
+use device_core::BlockDevice;
 use lru::LruCache;
-use memory::page::Page;
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 
-use crate::{BlockDevice, BLOCK_DEVICE};
+use crate::Page;
 
 pub struct BufferCache {
     device: Option<Weak<dyn BlockDevice>>,
@@ -47,6 +47,7 @@ impl BufferCache {
     }
 
     pub fn read_block(&mut self, block_id: usize, buf: &mut [u8]) {
+        let device = self.device();
         // log::error!("block id {block_id}");
         if let Some(buffer_head) = self.buffer_heads.get_mut(&block_id) {
             buffer_head.inc_acc_cnt();
@@ -55,18 +56,12 @@ impl BufferCache {
                 // log::error!("need cache");
                 if let Some(page) = self.pages.get_mut(&block_page_id(block_id)) {
                     // log::error!("has page");
-                    BLOCK_DEVICE
-                        .get()
-                        .unwrap()
-                        .base_read_block(block_id, page.block_range(block_id));
+                    device.base_read_block(block_id, page.block_range(block_id));
                     page.set_buffer_head(buffer_head.clone());
                 } else {
                     // log::error!("page init");
                     let mut page = BufferPage::new();
-                    BLOCK_DEVICE
-                        .get()
-                        .unwrap()
-                        .base_read_block(block_id, page.block_range(block_id));
+                    device.base_read_block(block_id, page.block_range(block_id));
                     page.set_buffer_head(buffer_head.clone());
                     self.pages.push(block_page_id(block_id), page);
                 };
@@ -76,57 +71,18 @@ impl BufferCache {
                 buffer_head.read_block(buf)
             } else {
                 // log::error!("not cached");
-                BLOCK_DEVICE.get().unwrap().base_read_block(block_id, buf)
+                device.base_read_block(block_id, buf)
             }
         } else {
             // log::error!("init not cached");
             let buffer_head = BufferHead::new(block_id);
             buffer_head.inc_acc_cnt();
             self.buffer_heads.insert(block_id, Arc::new(buffer_head));
-            BLOCK_DEVICE.get().unwrap().base_read_block(block_id, buf)
+            device.base_read_block(block_id, buf)
         }
     }
 
-    pub fn write_block(&mut self, block_id: usize, buf: &mut [u8]) {
-        // log::error!("block id {block_id}");
-        if let Some(buffer_head) = self.buffer_heads.get_mut(&block_id) {
-            buffer_head.inc_acc_cnt();
-            // log::error!("acc cnt {}", buffer_head.acc_cnt());
-            if buffer_head.need_cache() && !buffer_head.has_cached() {
-                // log::error!("need cache");
-                if let Some(page) = self.pages.get_mut(&block_page_id(block_id)) {
-                    // log::error!("has page");
-                    BLOCK_DEVICE
-                        .get()
-                        .unwrap()
-                        .base_read_block(block_id, page.block_range(block_id));
-                    page.set_buffer_head(buffer_head.clone());
-                } else {
-                    // log::error!("page init");
-                    let mut page = BufferPage::new();
-                    BLOCK_DEVICE
-                        .get()
-                        .unwrap()
-                        .base_read_block(block_id, page.block_range(block_id));
-                    page.set_buffer_head(buffer_head.clone());
-                    self.pages.push(block_page_id(block_id), page);
-                };
-            }
-            if buffer_head.has_cached() {
-                // log::error!("cached");
-                buffer_head.read_block(buf)
-            } else {
-                // log::error!("not cached");
-                BLOCK_DEVICE.get().unwrap().base_read_block(block_id, buf)
-            }
-        } else {
-            // log::error!("init not cached");
-            let buffer_head = BufferHead::new(block_id);
-            buffer_head.inc_acc_cnt();
-            self.buffer_heads.insert(block_id, Arc::new(buffer_head));
-            BLOCK_DEVICE.get().unwrap().base_read_block(block_id, buf)
-        }
-    }
+    pub fn write_block(&mut self, block_id: usize, buf: &mut [u8]) {}
 }
 
 pub fn block_page_id(block_id: usize) -> usize {

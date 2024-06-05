@@ -16,7 +16,6 @@ use sync::mutex::SpinNoIrqLock;
 
 use self::sbi::console_putchar;
 
-mod buffer_cache;
 pub mod qemu;
 pub mod sbi;
 

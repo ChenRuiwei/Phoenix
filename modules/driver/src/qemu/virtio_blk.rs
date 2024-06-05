@@ -11,18 +11,15 @@ use config::{
     board::BLOCK_SIZE,
     mm::{MAX_BUFFER_CACHE, MAX_BUFFER_PAGES, VIRT_RAM_OFFSET},
 };
-use lru::LruCache;
 use sync::mutex::{SpinLock, SpinNoIrqLock};
+use vfs_core::BufferCache;
 use virtio_drivers::{
     device::blk::VirtIOBlk,
     transport::mmio::{MmioTransport, VirtIOHeader},
 };
 
 use super::VirtioHalImpl;
-use crate::{
-    buffer_cache::{self, BufferCache},
-    BlockDevice,
-};
+use crate::BlockDevice;
 
 pub struct VirtIOBlkDev {
     device: SpinNoIrqLock<VirtIOBlk<VirtioHalImpl, MmioTransport>>,

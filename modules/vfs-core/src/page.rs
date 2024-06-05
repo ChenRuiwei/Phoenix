@@ -1,8 +1,7 @@
 use core::cmp;
 
 use config::mm::PAGE_SIZE;
-
-use crate::{alloc_frame, FrameTracker, PhysPageNum};
+use memory::{alloc_frame, FrameTracker, PhysPageNum};
 
 pub struct Page {
     frame: FrameTracker,

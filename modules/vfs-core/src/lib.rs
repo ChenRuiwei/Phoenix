@@ -3,11 +3,13 @@
 #![feature(new_uninit)]
 
 mod address_space;
+mod buffer_cache;
 mod dcache;
 mod dentry;
 mod file;
 mod file_system_type;
 mod inode;
+mod page;
 mod path;
 mod super_block;
 mod utils;
@@ -22,11 +24,13 @@ use alloc::sync::Arc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub use address_space::*;
+pub use buffer_cache::*;
 pub use dcache::*;
 pub use dentry::*;
 pub use file::*;
 pub use file_system_type::*;
 pub use inode::*;
+pub use page::*;
 pub use path::*;
 pub use super_block::*;
 use sync::mutex::SpinNoIrqLock;
