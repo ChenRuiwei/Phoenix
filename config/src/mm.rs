@@ -46,7 +46,7 @@ pub const U_SEG_FILE_END: usize = 0x0000_0006_0000_0000;
 pub const U_SEG_SHARE_BEG: usize = 0x0000_0006_0000_0000;
 pub const U_SEG_SHARE_END: usize = 0x0000_0008_0000_0000;
 
-pub const BUFFER_CACHE_MAX: usize = 0x100;
-pub const BUFFER_PAGES_MAX: usize = BUFFER_CACHE_MAX / BUFFERS_IN_PAGE;
-pub const BUFFERS_IN_PAGE: usize = PAGE_SIZE / BLOCK_SIZE;
+pub const MAX_BUFFER_CACHE: usize = 0x1000;
+pub const MAX_BUFFER_PAGES: usize = MAX_BUFFER_CACHE / MAX_BUFFERS_PER_PAGE;
+pub const MAX_BUFFERS_PER_PAGE: usize = PAGE_SIZE / BLOCK_SIZE;
 pub const BUFFER_NEED_CACHE_CNT: usize = 8;

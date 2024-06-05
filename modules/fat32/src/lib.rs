@@ -42,7 +42,7 @@ pub const fn as_sys_err(err: fatfs::Error<()>) -> systype::SysError {
 
 #[derive(Clone)]
 pub struct DiskCursor {
-    /// Block idx.
+    /// Block index on block device.
     block_id: u64,
     /// Offset in a block.
     offset: usize,
@@ -52,21 +52,15 @@ pub struct DiskCursor {
 
 impl DiskCursor {
     fn pos(&self) -> usize {
-        // log::trace!(
-        //     "[DiskCursor::get_position] position {}",
-        //     (self.sector * 0x200) as usize + self.offset
-        // );
         (self.block_id as usize * BLOCK_SIZE) + self.offset
     }
 
     fn set_pos(&mut self, position: usize) {
-        // log::trace!("[DiskCursor::set_position] position {position}");
         self.block_id = (position / BLOCK_SIZE) as u64;
         self.offset = position % BLOCK_SIZE;
     }
 
     fn move_cur(&mut self, amount: usize) {
-        // log::trace!("[DiskCursor::move_cursor] amount {amount}",);
         self.set_pos(self.pos() + amount)
     }
 }

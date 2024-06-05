@@ -53,7 +53,7 @@ endif
 QEMU_ARGS += -machine virt
 QEMU_ARGS += -nographic
 QEMU_ARGS += -smp $(CPUS)
-QEMU_ARGS += -kernel $(KERNEL_BIN)
+QEMU_ARGS += -kernel $(KERNEL_ELF)
 QEMU_ARGS += -bios $(BOOTLOADER)
 QEMU_ARGS += -drive file=$(FS_IMG),if=none,format=raw,id=x0
 QEMU_ARGS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0

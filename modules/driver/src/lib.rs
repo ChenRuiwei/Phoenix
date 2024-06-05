@@ -31,7 +31,7 @@ pub static CHAR_DEVICE: Once<Arc<dyn CharDevice>> = Once::new();
 pub static BLOCK_DEVICE: Once<Arc<dyn BlockDevice>> = Once::new();
 
 fn init_block_device() {
-    BLOCK_DEVICE.call_once(|| Arc::new(VirtIOBlkDev::new()));
+    BLOCK_DEVICE.call_once(|| VirtIOBlkDev::new());
 }
 
 fn init_char_device() {

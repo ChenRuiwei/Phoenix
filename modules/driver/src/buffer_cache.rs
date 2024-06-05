@@ -5,13 +5,14 @@ use alloc::{
     vec::Vec,
 };
 use core::{
+    default,
     num::NonZeroUsize,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
 use config::{
     board::BLOCK_SIZE,
-    mm::{BUFFERS_IN_PAGE, BUFFER_NEED_CACHE_CNT, BUFFER_PAGES_MAX},
+    mm::{BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE, MAX_BUFFER_PAGES},
 };
 use lru::LruCache;
 use memory::page::Page;
@@ -32,13 +33,13 @@ impl BufferCache {
     pub fn new() -> Self {
         Self {
             device: None,
-            pages: LruCache::new(NonZeroUsize::new(BUFFER_PAGES_MAX).unwrap()),
+            pages: LruCache::new(NonZeroUsize::new(MAX_BUFFER_PAGES).unwrap()),
             buffer_heads: BTreeMap::new(),
         }
     }
 
-    pub fn set_device(&mut self, device: &Arc<dyn BlockDevice>) {
-        self.device = Some(Arc::downgrade(device))
+    pub fn set_device(&mut self, device: Arc<dyn BlockDevice>) {
+        self.device = Some(Arc::downgrade(&device))
     }
 
     pub fn device(&self) -> Arc<dyn BlockDevice> {
@@ -85,20 +86,61 @@ impl BufferCache {
             BLOCK_DEVICE.get().unwrap().base_read_block(block_id, buf)
         }
     }
+
+    pub fn write_block(&mut self, block_id: usize, buf: &mut [u8]) {
+        // log::error!("block id {block_id}");
+        if let Some(buffer_head) = self.buffer_heads.get_mut(&block_id) {
+            buffer_head.inc_acc_cnt();
+            // log::error!("acc cnt {}", buffer_head.acc_cnt());
+            if buffer_head.need_cache() && !buffer_head.has_cached() {
+                // log::error!("need cache");
+                if let Some(page) = self.pages.get_mut(&block_page_id(block_id)) {
+                    // log::error!("has page");
+                    BLOCK_DEVICE
+                        .get()
+                        .unwrap()
+                        .base_read_block(block_id, page.block_range(block_id));
+                    page.set_buffer_head(buffer_head.clone());
+                } else {
+                    // log::error!("page init");
+                    let mut page = BufferPage::new();
+                    BLOCK_DEVICE
+                        .get()
+                        .unwrap()
+                        .base_read_block(block_id, page.block_range(block_id));
+                    page.set_buffer_head(buffer_head.clone());
+                    self.pages.push(block_page_id(block_id), page);
+                };
+            }
+            if buffer_head.has_cached() {
+                // log::error!("cached");
+                buffer_head.read_block(buf)
+            } else {
+                // log::error!("not cached");
+                BLOCK_DEVICE.get().unwrap().base_read_block(block_id, buf)
+            }
+        } else {
+            // log::error!("init not cached");
+            let buffer_head = BufferHead::new(block_id);
+            buffer_head.inc_acc_cnt();
+            self.buffer_heads.insert(block_id, Arc::new(buffer_head));
+            BLOCK_DEVICE.get().unwrap().base_read_block(block_id, buf)
+        }
+    }
 }
 
 pub fn block_page_id(block_id: usize) -> usize {
-    block_id / BUFFERS_IN_PAGE
+    block_id / MAX_BUFFERS_PER_PAGE
 }
 
 pub fn block_page_offset(block_id: usize) -> usize {
-    block_id % BUFFERS_IN_PAGE * BLOCK_SIZE
+    block_id % MAX_BUFFERS_PER_PAGE * BLOCK_SIZE
 }
 
 /// A buffer page holds contiguous buffer heads.
 pub struct BufferPage {
     pub page: Arc<Page>,
-    pub buffer_heads: [Arc<BufferHead>; BUFFERS_IN_PAGE],
+    pub buffer_heads: [Arc<BufferHead>; MAX_BUFFERS_PER_PAGE],
 }
 
 impl BufferPage {
@@ -110,13 +152,13 @@ impl BufferPage {
     }
 
     pub fn block_range(&self, block_id: usize) -> &'static mut [u8] {
-        let offset = block_id % BUFFERS_IN_PAGE * BLOCK_SIZE;
+        let offset = block_page_offset(block_id);
         self.page.bytes_array_range(offset..offset + BLOCK_SIZE)
     }
 
     pub fn set_buffer_head(&mut self, buffer_head: Arc<BufferHead>) {
         buffer_head.init(&self.page, block_page_offset(buffer_head.block_id));
-        let idx = buffer_head.block_id % BUFFERS_IN_PAGE;
+        let idx = buffer_head.block_id % MAX_BUFFERS_PER_PAGE;
         self.buffer_heads[idx] = buffer_head;
     }
 }
@@ -131,11 +173,11 @@ impl Drop for BufferPage {
 #[derive(Default)]
 pub struct BufferHead {
     /// Buffer state.
-    bstate: usize,
+    bstate: BufferState,
     /// Block index on the device.
     block_id: usize,
     /// Count of access before cached.
-    access_count: AtomicUsize,
+    acc_cnt: AtomicUsize,
     once: Once<BufferHeadOnce>,
 }
 
@@ -146,12 +188,20 @@ pub struct BufferHeadOnce {
     offset: usize,
 }
 
+#[derive(Default)]
+pub enum BufferState {
+    #[default]
+    UNINIT,
+    SYNC,
+    DIRTY,
+}
+
 impl BufferHead {
     pub fn new(block_id: usize) -> Self {
         Self {
-            bstate: 0,
+            bstate: BufferState::UNINIT,
             block_id,
-            access_count: 0.into(),
+            acc_cnt: 0.into(),
             once: Once::new(),
         }
     }
@@ -164,11 +214,11 @@ impl BufferHead {
     }
 
     pub fn acc_cnt(&self) -> usize {
-        self.access_count.load(Ordering::SeqCst)
+        self.acc_cnt.load(Ordering::SeqCst)
     }
 
     pub fn inc_acc_cnt(&self) -> usize {
-        self.access_count.fetch_add(1, Ordering::SeqCst)
+        self.acc_cnt.fetch_add(1, Ordering::SeqCst)
     }
 
     pub fn need_cache(&self) -> bool {

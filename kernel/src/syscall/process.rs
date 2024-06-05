@@ -103,85 +103,87 @@ impl Syscall<'_> {
         Ok(self.task.ppid())
     }
 
-/// NOTE: A thread can, and by default will, wait on children of other threads
-/// in the same thread group.
-// TODO: wait for child state change, only terminate child when it is zombie
-// state but not stop state
-// TODO: More options and process group support.
-// PERF: use event bus to notify this task when child exits
-pub async fn sys_wait4(
-    pid: i32,
-    wstatus: UserWritePtr<i32>,
-    option: i32,
-    _rusage: usize,
-) -> SyscallResult {
-    let task = current_task();
-    let option = WaitOptions::from_bits_truncate(option);
-    #[derive(Debug)]
-    enum WaitFor {
-        // wait for any child process in the specific process group
-        PGid(PGid),
-        // wait for any child process
-        AnyChild,
-        // wait for any child process in the same process group of the calling process
-        AnyChildInGroup,
-        // wait for the child process with the specific pid
-        Pid(Pid),
-    }
-    let target = match pid {
-        -1 => WaitFor::AnyChild,
-        0 => WaitFor::AnyChildInGroup,
-        p if p > 0 => WaitFor::Pid(p as Pid),
-        p => WaitFor::PGid(p as PGid),
-    };
-    log::info!("[sys_wait4] target: {target:?}, option: {option:?}");
-    // 首先检查一遍等待的进程是否已经是zombie了
-    let children = task.children();
-    if children.is_empty() {
-        log::warn!("[sys_wait4] fail: no child");
-        return Err(SysError::ECHILD);
-    }
-    let res_task = match target {
-        WaitFor::AnyChild => children.values().find(|c| c.is_zombie()),
-        WaitFor::Pid(pid) => {
-            if let Some(child) = children.get(&pid) {
-                if child.is_zombie() {
-                    Some(child)
+    /// NOTE: A thread can, and by default will, wait on children of other
+    /// threads in the same thread group.
+    // TODO: More options and process group support.
+    // PERF: use event bus to notify this task when child exits
+    pub async fn sys_wait4(
+        &self,
+        pid: i32,
+        wstatus: UserWritePtr<i32>,
+        option: i32,
+        _rusage: usize,
+    ) -> SyscallResult {
+        let task = self.task;
+        let option = WaitOptions::from_bits_truncate(option);
+        #[derive(Debug)]
+        enum WaitFor {
+            // wait for any child process in the specific process group
+            PGid(PGid),
+            // wait for any child process
+            AnyChild,
+            // wait for any child process in the same process group of the calling process
+            AnyChildInGroup,
+            // wait for the child process with the specific pid
+            Pid(Pid),
+        }
+        let target = match pid {
+            -1 => WaitFor::AnyChild,
+            0 => WaitFor::AnyChildInGroup,
+            p if p > 0 => WaitFor::Pid(p as Pid),
+            p => WaitFor::PGid(p as PGid),
+        };
+        log::info!("[sys_wait4] target: {target:?}, option: {option:?}");
+        // 首先检查一遍等待的进程是否已经是zombie了
+        let children = task.children();
+        if children.is_empty() {
+            log::info!("[sys_wait4] fail: no child");
+            return Err(SysError::ECHILD);
+        }
+        let res_task = match target {
+            WaitFor::AnyChild => children.values().find(|c| c.is_zombie()),
+            WaitFor::Pid(pid) => {
+                if let Some(child) = children.get(&pid) {
+                    if child.is_zombie() {
+                        Some(child)
+                    } else {
+                        None
+                    }
                 } else {
-                    None
+                    log::info!("[sys_wait4] fail: no child with pid {pid}");
+                    return Err(SysError::ECHILD);
                 }
-            } else {
-                log::warn!("[sys_wait4] fail: no child with pid {pid}");
-                return Err(SysError::ECHILD);
             }
-        }
-        WaitFor::PGid(_) => unimplemented!(),
-        WaitFor::AnyChildInGroup => unimplemented!(),
-    };
-    if let Some(res_task) = res_task {
-        task.time_stat()
-            .update_child_time(res_task.time_stat().user_system_time());
-        if wstatus.not_null() {
-            // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
-            // wstatus macros can be found in "bits/waitstatus.h"
-            let exit_code = res_task.exit_code();
-            log::debug!("[sys_wait4] wstatus: {exit_code:#x}");
-            wstatus.write(&task, exit_code)?;
-        }
-        let tid = res_task.tid();
-        task.remove_child(tid);
-        TASK_MANAGER.remove(tid);
-        return Ok(tid);
-    } else if option.contains(WaitOptions::WNOHANG) {
-        return Ok(0);
-    } else {
-        // 如果等待的进程还不是zombie，那么本进程进行await，
-        // 直到等待的进程do_exit然后发送SIGCHLD信号唤醒自己
-        let (child_pid, exit_code, utime, stime) = match target {
-            WaitFor::AnyChild => {
-                let si = WaitOneSignal::new(&task, Sig::SIGCHLD).await;
-                match si.details {
-                    SigDetails::CHLD {
+            WaitFor::PGid(_) => unimplemented!(),
+            WaitFor::AnyChildInGroup => unimplemented!(),
+        };
+        if let Some(res_task) = res_task {
+            task.time_stat()
+                .update_child_time(res_task.time_stat().user_system_time());
+            if wstatus.not_null() {
+                // wstatus stores signal in the lowest 8 bits and exit code in higher 8 bits
+                // wstatus macros can be found in "bits/waitstatus.h"
+                let exit_code = res_task.exit_code();
+                log::debug!("[sys_wait4] wstatus: {exit_code:#x}");
+                wstatus.write(&task, exit_code)?;
+            }
+            let tid = res_task.tid();
+            task.remove_child(tid);
+            TASK_MANAGER.remove(tid);
+            return Ok(tid);
+        } else if option.contains(WaitOptions::WNOHANG) {
+            return Ok(0);
+        } else {
+            // 如果等待的进程还不是zombie，那么本进程进行await，
+            // 直到等待的进程do_exit然后发送SIGCHLD信号唤醒自己
+            let (child_pid, exit_code, child_utime, child_stime) = loop {
+                task.set_interruptable();
+                task.set_wake_up_signal(!*task.sig_mask_ref() | SigSet::SIGCHLD);
+                suspend_now().await;
+                let si =
+                    task.with_mut_sig_pending(|pending| pending.dequeue_except(SigSet::SIGCHLD));
+                if let Some(info) = si {
+                    if let SigDetails::CHLD {
                         pid,
                         status,
                         utime,

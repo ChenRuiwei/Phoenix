@@ -247,7 +247,11 @@ impl Task {
 
     /// Pid means tgid.
     pub fn pid(self: &Arc<Self>) -> Pid {
-        self.leader().tid()
+        if self.is_leader() {
+            self.tid()
+        } else {
+            self.leader().tid()
+        }
     }
 
     pub fn tid(&self) -> Tid {

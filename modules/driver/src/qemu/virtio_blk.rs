@@ -9,7 +9,7 @@ use core::{
 
 use config::{
     board::BLOCK_SIZE,
-    mm::{BUFFER_CACHE_MAX, BUFFER_PAGES_MAX, VIRT_RAM_OFFSET},
+    mm::{MAX_BUFFER_CACHE, MAX_BUFFER_PAGES, VIRT_RAM_OFFSET},
 };
 use lru::LruCache;
 use sync::mutex::{SpinLock, SpinNoIrqLock};
@@ -64,7 +64,7 @@ impl BlockDevice for VirtIOBlkDev {
 }
 
 impl VirtIOBlkDev {
-    pub fn new() -> Self {
+    pub fn new() -> Arc<Self> {
         const VIRTIO0: usize = 0x10001000 + VIRT_RAM_OFFSET;
         let device = unsafe {
             let header = &mut *(VIRTIO0 as *mut VirtIOHeader);
@@ -75,9 +75,11 @@ impl VirtIOBlkDev {
                 .unwrap(),
             )
         };
-        Self {
+        let blk_dev = Arc::new(Self {
             device,
             cache: SpinNoIrqLock::new(BufferCache::new()),
-        }
+        });
+        blk_dev.cache.lock().set_device(blk_dev.clone());
+        blk_dev
     }
 }

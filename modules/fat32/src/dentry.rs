@@ -120,11 +120,6 @@ impl Dentry for FatDentry {
             .inode()?
             .downcast_arc::<FatDirInode>()
             .map_err(|_| SysError::ENOTDIR)?;
-        let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
-        if sub_dentry.inode()?.itype().is_dir() {
-            return Err(SysError::EISDIR);
-        }
-        sub_dentry.clear_inode();
         inode.dir.lock().remove(name).map_err(as_sys_err)?;
         Ok(0)
     }
@@ -134,11 +129,6 @@ impl Dentry for FatDentry {
             .inode()?
             .downcast_arc::<FatDirInode>()
             .map_err(|_| SysError::ENOTDIR)?;
-        let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
-        if !sub_dentry.inode()?.itype().is_dir() {
-            return Err(SysError::ENOTDIR);
-        }
-        sub_dentry.clear_inode();
         inode.dir.lock().remove(name).map_err(as_sys_err)?;
         Ok(0)
     }

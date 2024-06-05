@@ -22,6 +22,7 @@ pub use process::CloneFlags;
 use process::*;
 use resource::*;
 use signal::*;
+use systype::SyscallResult;
 use time::*;
 
 use crate::{syscall::sched::*, task::Task};
@@ -153,6 +154,7 @@ impl<'a> Syscall<'a> {
             FACCESSAT => self.sys_faccessat(args[0].into(), args[1].into(), args[2], args[3]),
             LSEEK => self.sys_lseek(args[0], args[1] as _, args[2]),
             UMASK => self.sys_umask(args[0] as _),
+            SYNC => self.sys_do_nothing("sync"),
             // Signal
             RT_SIGPROCMASK => self.sys_rt_sigprocmask(args[0], args[1].into(), args[2].into()),
             RT_SIGACTION => self.sys_rt_sigaction(args[0] as _, args[1].into(), args[2].into()),
@@ -217,5 +219,10 @@ impl<'a> Syscall<'a> {
                 -(e as isize) as usize
             }
         }
+    }
+
+    fn sys_do_nothing(&self, name: &str) -> SyscallResult {
+        log::warn!("[sys_{}] unimplemented syscall, do nothing now", name);
+        Ok(0)
     }
 }

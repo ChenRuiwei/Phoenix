@@ -191,11 +191,24 @@ impl dyn Dentry {
         self.clone().base_create(name, mode)
     }
 
+    // FIXME: some dentry inode are created in mem currently and not flush bask
+    // to disk, base_unlink can not find these dentries.
     pub fn unlink(self: &Arc<Self>, name: &str) -> SyscallResult {
+        let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
+        if sub_dentry.inode()?.itype().is_dir() {
+            return Err(SysError::EISDIR);
+        }
+        sub_dentry.clear_inode();
         self.clone().base_unlink(name)
     }
 
     pub fn rmdir(self: &Arc<Self>, name: &str) -> SyscallResult {
+        let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
+        if !sub_dentry.inode()?.itype().is_dir() {
+            return Err(SysError::ENOTDIR);
+        }
+        sub_dentry.clear_inode();
+
         self.clone().base_rmdir(name)
     }
 
@@ -213,6 +226,12 @@ impl dyn Dentry {
             new_dentry
         })
     }
+}
+
+/// State for directory dentry.
+pub enum DentryState {
+    Cached,
+    HalfCached,
 }
 
 impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
