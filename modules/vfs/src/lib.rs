@@ -29,9 +29,11 @@ pub static FS_MANAGER: Mutex<BTreeMap<String, Arc<dyn FileSystemType>>> =
 
 static SYS_ROOT_DENTRY: Once<Arc<dyn Dentry>> = Once::new();
 
-type DiskFsType = fat32::FatFsType;
+// type DiskFsType = fat32::FatFsType;
+type DiskFsType = ext4::Ext4FsType;
 
-pub const DISK_FS_NAME: &str = "fat32";
+// pub const DISK_FS_NAME: &str = "fat32";
+pub const DISK_FS_NAME: &str = "ext4";
 
 fn register_all_fs() {
     let diskfs = DiskFsType::new();
@@ -50,6 +52,7 @@ fn register_all_fs() {
 pub fn init() {
     register_all_fs();
     let diskfs = FS_MANAGER.lock().get(DISK_FS_NAME).unwrap().clone();
+    log::info!("[vfs] mounting disk fs");
     let diskfs_root = diskfs
         .mount(
             "/",
@@ -59,6 +62,7 @@ pub fn init() {
         )
         .unwrap();
 
+    log::info!("[vfs] mounting dev fs");
     let devfs = FS_MANAGER.lock().get("devfs").unwrap().clone();
     devfs
         .mount("dev", Some(diskfs_root.clone()), MountFlags::empty(), None)

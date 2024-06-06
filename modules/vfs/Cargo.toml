@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 vfs-core = { path = "../vfs-core/" }
 fat32 = { path = "../fat32/" }
+ext4 = { path = "../ext4/" }
 sync = { path = "../sync/" }
 driver = { path = "../../driver/" }
 config = { path = "../../config/" }

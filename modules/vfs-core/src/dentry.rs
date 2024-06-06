@@ -74,11 +74,7 @@ pub trait Dentry: Send + Sync {
 
     /// Called by the unlink(2) system call. Delete a file inode in a directory
     /// inode.
-    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult;
-
-    /// Called by the rmdir(2) system call. Delete a dir inode in a directory
-    /// inode.
-    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult;
+    fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()>;
 
     /// Create a negetive child dentry with `name`.
     fn base_new_child(self: Arc<Self>, _name: &str) -> Arc<dyn Dentry> {
@@ -170,11 +166,6 @@ impl dyn Dentry {
         *self.meta().inode.lock() = None;
     }
 
-    /// Remove a child from this dentry and return the child.
-    pub fn remove(&self, name: &str) -> Option<Arc<dyn Dentry>> {
-        self.meta().children.lock().remove(name)
-    }
-
     pub fn open(self: &Arc<Self>) -> SysResult<Arc<dyn File>> {
         self.clone().base_open()
     }
@@ -204,12 +195,8 @@ impl dyn Dentry {
         self.clone().base_create(name, mode)
     }
 
-    pub fn unlink(self: &Arc<Self>, name: &str) -> SyscallResult {
-        self.clone().base_unlink(name)
-    }
-
-    pub fn rmdir(self: &Arc<Self>, name: &str) -> SyscallResult {
-        self.clone().base_rmdir(name)
+    pub fn remove(self: &Arc<Self>, name: &str) -> SysResult<()> {
+        self.clone().base_remove(name)
     }
 
     /// Create a negetive child dentry with `name`.
@@ -245,11 +232,7 @@ impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
         todo!()
     }
 
-    fn base_unlink(self: Arc<Self>, _name: &str) -> SyscallResult {
-        todo!()
-    }
-
-    fn base_rmdir(self: Arc<Self>, _name: &str) -> SyscallResult {
+    fn base_remove(self: Arc<Self>, _name: &str) -> SysResult<()> {
         todo!()
     }
 

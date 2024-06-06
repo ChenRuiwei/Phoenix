@@ -6,4 +6,5 @@
 target/
 vendor/
 fs-img/
+sdcard.img
 kernel/src/link_app.asm

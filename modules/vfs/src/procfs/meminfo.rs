@@ -115,11 +115,7 @@ impl Dentry for MemInfoDentry {
         todo!()
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
-        todo!()
-    }
-
-    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
+    fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()> {
         todo!()
     }
 }

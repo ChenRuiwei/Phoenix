@@ -5,6 +5,8 @@ extern crate alloc;
 use alloc::boxed::Box;
 use core::{future::Future, pin::Pin};
 
+use strum::FromRepr;
+
 pub type SyscallResult = Result<usize, SysError>;
 pub type SysResult<T> = Result<T, SysError>;
 
@@ -15,7 +17,7 @@ pub type ASysResult<'a, T> = SysFuture<'a, SysResult<T>>;
 
 /// Linux specific error codes defined in `errno.h`.
 // Defined in <asm-generic/errno-base.h> and <asm-generic/errno.h>.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(FromRepr, Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(i32)]
 pub enum SysError {
     /// Operation not permitted
@@ -149,6 +151,10 @@ impl SysError {
             ENOTCONN => "Transport endpoint is not connected",
             ECONNREFUSED => "Connection refused",
         }
+    }
+
+    pub fn from_i32(value: i32) -> Self {
+        Self::from_repr(value).unwrap()
     }
 
     /// Returns the error code value in `i32`.

@@ -54,11 +54,7 @@ impl Dentry for SimpleDentry {
         Ok(sub_dentry)
     }
 
-    fn base_unlink(self: Arc<Self>, _name: &str) -> systype::SyscallResult {
-        todo!()
-    }
-
-    fn base_rmdir(self: alloc::sync::Arc<Self>, _name: &str) -> systype::SyscallResult {
+    fn base_remove(self: Arc<Self>, _name: &str) -> SysResult<()> {
         todo!()
     }
 

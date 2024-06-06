@@ -31,6 +31,11 @@ impl BlockDevice for VirtIOBlkDev {
             .expect("Error when writing VirtIOBlk");
     }
 
+    // TODO: cached size value
+    fn size(&self) -> u64 {
+        self.0.lock().capacity() * (BLOCK_SIZE as u64)
+    }
+
     fn block_size(&self) -> usize {
         BLOCK_SIZE
     }

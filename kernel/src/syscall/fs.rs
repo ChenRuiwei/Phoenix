@@ -524,11 +524,13 @@ impl Syscall<'_> {
         let path = pathname.read_cstr(&task)?;
         let dentry = self.at_helper(dirfd, &path, InodeMode::empty())?;
         let parent = dentry.parent().expect("can not remove root directory");
-        if flags == AT_REMOVEDIR {
-            parent.rmdir(dentry.name())
-        } else {
-            parent.unlink(dentry.name())
+        let is_dir = dentry.inode()?.itype().is_dir();
+        if flags == AT_REMOVEDIR && !is_dir {
+            return Err(SysError::ENOTDIR);
+        } else if flags != AT_REMOVEDIR && is_dir {
+            return Err(SysError::EISDIR);
         }
+        parent.remove(dentry.name()).map(|_| 0)
     }
 
     pub fn sys_ioctl(&self, fd: usize, cmd: usize, arg: usize) -> SyscallResult {

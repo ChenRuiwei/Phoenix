@@ -21,6 +21,8 @@ pub mod sbi;
 type Mutex<T> = SpinNoIrqLock<T>;
 
 pub trait BlockDevice: Send + Sync {
+    fn size(&self) -> u64;
+
     fn block_size(&self) -> usize;
 
     /// Read data form block to buffer

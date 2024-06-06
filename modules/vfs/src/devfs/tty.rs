@@ -46,11 +46,7 @@ impl Dentry for TtyDentry {
         todo!()
     }
 
-    fn base_unlink(self: Arc<Self>, _name: &str) -> SyscallResult {
-        todo!()
-    }
-
-    fn base_rmdir(self: Arc<Self>, _name: &str) -> SyscallResult {
+    fn base_remove(self: Arc<Self>, _name: &str) -> SysResult<()> {
         todo!()
     }
 }
