@@ -2,7 +2,7 @@ use alloc::sync::Arc;
 
 use config::board::BLOCK_SIZE;
 use driver::BlockDevice;
-use lwext4_rust::KernelDevOp;
+use lwext4_rust::{bindings::{SEEK_CUR, SEEK_END, SEEK_SET}, KernelDevOp};
 use systype::SysResult;
 
 /// A disk device with a cursor.

@@ -1,60 +1,61 @@
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
+BASE_ADDRESS = 0xffffffc080200000;
 
 SECTIONS
 {
-    .text : ALIGN(4K){
-        _skernel = .;
-        _stext = .;
+    . = BASE_ADDRESS;
+    _skernel = .;
+
+    _stext = .;
+    .text : {
         *(.text.entry)
         . = ALIGN(4K);
-        /* the reason why sigreturn trampoline need a Page is that this Page has U flag but .text Page doesn't */
         _strampoline = .;
         *(.text.trampoline)
         . = ALIGN(4K);
         _etrampoline = .;
         *(.text .text.*)
-        _etext = .;
-    } > VIRT AT> RAM
-
-    .rodata : ALIGN(4K){
-        _srodata = .;
-        *(.rodata .rodata.*)
-        *(.srodata .srodata.*)
-        _erodata = .;
-    } > VIRT AT> RAM
-
-    .data : ALIGN(4K){
-        _sdata = .;
-        *(.data .data.*)
-        *(.sdata .sdata.*)
-        _edata = .;
-    } > VIRT AT> RAM
-
-    .stack : ALIGN(4K){
-        _sstack = .;
-        *(.bss.stack)
-        . = ALIGN(4K);
-        _estack = .;
-    } > VIRT AT> RAM
-
-    .bss : ALIGN(4K){
-        _sbss = .;
-        *(.bss .bss.*)
-        *(.sbss .sbss.*)
-        _ebss = .;
-    } > VIRT AT> RAM
+    }
 
     . = ALIGN(4K);
+    _etext = .;
+    _srodata = .;
+    .rodata : {
+        *(.rodata .rodata.*)
+        *(.srodata .srodata.*)
+    }
+
+    . = ALIGN(4K);
+    _erodata = .;
+    _sdata = .;
+    .data : {
+        *(.data .data.*)
+        *(.sdata .sdata.*)
+    }
+
+    . = ALIGN(4K);
+    _edata = .;
+    _sstack = .;
+    /* boot stack(in entry.S) */
+    .stack : {
+        *(.bss.stack)
+    }
+
+    . = ALIGN(4K);
+    _estack = .;
+    /* sbss_with_stack = .; */
+    _sbss = .;
+    .bss : {
+        *(.bss .bss.*)
+        *(.sbss .sbss.*)
+    }
+
+    . = ALIGN(4K);
+    _ebss = .;
     _ekernel = .;
 
     /DISCARD/ : {
         *(.eh_frame)
     }
-}
-
-MEMORY
-{
-    VIRT : ORIGIN = %VIRT_START%, LENGTH = %RAM_SIZE%
-    RAM : ORIGIN = %RAM_START%, LENGTH = %RAM_SIZE%
 }

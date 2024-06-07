@@ -38,26 +38,10 @@ fn insert_app_data() -> Result<()> {
             name_with_ext.drain(name_with_ext.find('.').unwrap()..name_with_ext.len());
             name_with_ext
         })
+        .filter(|name| name == "init_proc")
         .collect();
 
     apps.sort();
-
-    let testcases = [
-        // "true",
-        // "time-test",
-        // "busybox_testcode.sh",
-        // "busybox_cmd.txt",
-        "busybox",
-        // "lmbench_all",
-        // "lmbench_testcode.sh",
-        // "runtest.exe",
-        // "entry-static.exe",
-        // "run-static.sh",
-    ];
-
-    for testcase in testcases {
-        apps.push(testcase.to_string());
-    }
 
     writeln!(
         f,

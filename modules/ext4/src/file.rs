@@ -1,8 +1,5 @@
 use alloc::{
-    boxed::Box,
-    string::String,
-    sync::{self, Arc},
-    vec::Vec,
+    boxed::Box, ffi::CString, string::String, sync::{self, Arc}, vec::Vec
 };
 use core::iter::zip;
 
@@ -90,14 +87,10 @@ impl File for Ext4File {
 
         let path = self.dentry().path();
         for (name, file_type) in zip(iters.0, iters.1).skip(3) {
-            // log::info!(
-            //     "iter once {} {:?}",
-            //     String::from_utf8(name.clone()).map_err(|_| VfsError::InvalidData)?,
-            //     file_type
-            // );
-            let name = String::from_utf8(name).map_err(|_| SysError::EIO)?;
-            let sub_dentry = self.dentry().get_child_or_create(&name);
-            let ext4_file = LwExt4File::new(&(path.clone() + &name), file_type);
+            let name = CString::from_vec_with_nul(name).map_err(|_| SysError::EINVAL)?;
+            let name = name.to_str().unwrap();
+            let sub_dentry = self.dentry().get_child_or_create(name);
+            let ext4_file = LwExt4File::new(&(path.clone() + name), file_type);
             let new_inode: Arc<dyn Inode> = Ext4Inode::new(self.super_block(), ext4_file);
             sub_dentry.set_inode(new_inode);
         }

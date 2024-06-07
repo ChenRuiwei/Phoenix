@@ -30,8 +30,8 @@ USER_BINS := $(patsubst $(USER_APPS_DIR)/%.rs, $(TARGET_DIR)/%.bin, $(USER_APPS)
 FS_IMG_DIR := .
 FS_IMG := $(FS_IMG_DIR)/sdcard.img
 TEST := 23
-FS := FAT32
-# FS := EXT4
+# FS := fat32
+FS := ext4
 TEST_DIR := ./testcase/$(TEST)
 # TEST_DIR := ./testcase/24/preliminary/
 
@@ -55,7 +55,7 @@ endif
 QEMU_ARGS += -machine virt
 QEMU_ARGS += -nographic
 QEMU_ARGS += -smp $(CPUS)
-QEMU_ARGS += -kernel $(KERNEL_ELF)
+QEMU_ARGS += -kernel $(KERNEL_BIN)
 QEMU_ARGS += -bios $(BOOTLOADER)
 QEMU_ARGS += -drive file=$(FS_IMG),if=none,format=raw,id=x0
 QEMU_ARGS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
@@ -107,7 +107,7 @@ kernel:
 	@echo "building kernel..."
 	@echo Platform: $(BOARD)
 	@cd kernel && make build
-	# @$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $(KERNEL_BIN)
+	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $(KERNEL_BIN)
 	@echo "building kernel finished"
 
 PHONY += user
@@ -124,16 +124,16 @@ fs-img:
 	@rm $(FS_IMG)
 	@mkdir -p $(FS_IMG_DIR)
 	@mkdir -p mnt
-ifeq ($(FS), FAT32)
+ifeq ($(FS), fat32)
 	@dd if=/dev/zero of=$(FS_IMG) count=1363148 bs=1K
 	@mkfs.vfat -F 32 $(FS_IMG)
 	@echo "making fatfs image by using $(TEST_DIR)"
 	@mount -t vfat -o user,umask=000,utf8=1 --source $(FS_IMG) --target mnt
 else
 	@dd if=/dev/zero of=$(FS_IMG) count=2048 bs=1M
-	@mkfs.ext4 $(FS_IMG)
+	# @mkfs.ext4 $(FS_IMG)
+	@mkfs.ext4  -F -O ^metadata_csum_seed $(FS_IMG)
 	@echo "making ext4 image by using $(TEST_DIR)"
-	# @mount --source $(FS_IMG) --target mnt
 	@mount $(FS_IMG) mnt
 endif
 	@cp -r $(TEST_DIR)/* mnt

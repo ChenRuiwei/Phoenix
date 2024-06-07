@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use lwext4_rust::bindings::{ext4_flink, O_RDONLY};
+use lwext4_rust::{bindings::{ext4_flink, O_RDONLY}, InodeTypes};
 use systype::SysResult;
 use vfs_core::{Inode, InodeMeta, InodeMode, Stat, SuperBlock};
 
@@ -19,12 +19,15 @@ impl Ext4Inode {
         let mut file = file;
         let path = file.get_path();
         let path = path.to_str().unwrap();
-        file.file_open(path, O_RDONLY)
-            .map_err(map_ext4_err)
-            .unwrap();
-        let size = file.file_size();
+        let mut size = 0;
+        if file.get_type() == InodeTypes::EXT4_DE_REG_FILE {
+            file.file_open(path, O_RDONLY)
+                .map_err(map_ext4_err)
+                .unwrap();
+            size = file.file_size();
+            let _ = file.file_close();
+        }
         let itype = map_ext4_type(file.get_type());
-        let _ = file.file_close();
 
         let size: usize = size.try_into().unwrap();
         let inode = Arc::new(Self {
