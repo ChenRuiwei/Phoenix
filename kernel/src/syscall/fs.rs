@@ -184,6 +184,7 @@ impl Syscall<'_> {
             parent.create(dentry.name(), InodeMode::FILE)?;
         }
         let file = dentry.open()?;
+        file.set_flags(flags);
         task.with_mut_fd_table(|table| table.alloc(file))
     }
 
@@ -770,14 +771,15 @@ impl Syscall<'_> {
             return Err(SysError::EBADF);
         }
         let mut buf = vec![0 as u8; count];
+        let len;
         if offset.is_null() {
-            in_file.read(&mut buf).await?;
+            len = in_file.read(&mut buf).await?;
         } else {
             let mut offset = offset.into_mut(&task)?;
-            let len = in_file.read_at(*offset, &mut buf).await?;
+            len = in_file.read_at(*offset, &mut buf).await?;
             *offset = *offset + len;
         }
-        let ret = out_file.write(&buf).await?;
+        let ret = out_file.write(&buf[..len]).await?;
         Ok(ret)
     }
 
