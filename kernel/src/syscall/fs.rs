@@ -841,6 +841,28 @@ impl Syscall<'_> {
         Ok(0x777)
     }
 
+    /// change file timestamps with nanosecond precision
+    pub fn sys_utimensat(
+        &self,
+        dirfd: AtFd,
+        pathname: UserReadPtr<u8>,
+        _times: UserReadPtr<TimeSpec>,
+        _flags: u32,
+    ) -> SyscallResult {
+        let task = self.task;
+        let file = if pathname.not_null() {
+            let path = pathname.read_cstr(task)?;
+            log::info!("[sys_utimensat], dirfd: {dirfd}, path: {path}",);
+            let dentry = self.at_helper(dirfd, &path, InodeMode::empty())?;
+            dentry.inode()?;
+        } else {
+            // NOTE: if `pathname` is NULL, acts as futimens
+            log::info!("[sys_utimensat], fd: {dirfd}",);
+            // task.with_fd_table(|table| table.get(dirfd))?
+        };
+        Ok(0)
+    }
+
     /// The dirfd argument is used in conjunction with the pathname argument as
     /// follows:
     /// + If the pathname given in pathname is absolute, then dirfd is ignored.

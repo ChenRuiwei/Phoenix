@@ -5,6 +5,7 @@ use alloc::{
 };
 use core::{mem::MaybeUninit, str::FromStr};
 
+use sync::mutex::spin_mutex::SpinMutex;
 use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{inode::Inode, File, InodeMode, Mutex, SuperBlock};
@@ -21,6 +22,7 @@ pub struct DentryMeta {
     /// Children dentries. Key value pair is <name, dentry>.
     // PERF: may be no need to be BTreeMap, since we will look up in hash table
     pub children: Mutex<BTreeMap<String, Arc<dyn Dentry>>>,
+    pub state: Mutex<DentryState>,
 }
 
 impl DentryMeta {
@@ -39,6 +41,7 @@ impl DentryMeta {
                 inode,
                 parent: Some(Arc::downgrade(&parent)),
                 children: Mutex::new(BTreeMap::new()),
+                state: Mutex::new(DentryState::UnInit),
             }
         } else {
             Self {
@@ -47,9 +50,18 @@ impl DentryMeta {
                 inode,
                 parent: None,
                 children: Mutex::new(BTreeMap::new()),
+                state: Mutex::new(DentryState::UnInit),
             }
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum DentryState {
+    /// Either not read from disk or write in memory.
+    UnInit,
+    Sync,
+    Dirty,
 }
 
 pub trait Dentry: Send + Sync {
@@ -129,6 +141,10 @@ pub trait Dentry: Send + Sync {
             .insert(child.name_string(), child)
     }
 
+    fn change_state(&self, state: DentryState) {
+        *self.meta().state.lock() = state;
+    }
+
     /// Get the path of this dentry.
     // HACK: code looks ugly and may be has problem
     fn path(&self) -> String {
@@ -158,6 +174,10 @@ pub trait Dentry: Send + Sync {
 }
 
 impl dyn Dentry {
+    pub fn state(&self) -> DentryState {
+        *self.meta().state.lock()
+    }
+
     pub fn is_negetive(&self) -> bool {
         self.meta().inode.lock().is_none()
     }
@@ -176,19 +196,19 @@ impl dyn Dentry {
         //     log::warn!("[Dentry::lookup] find child in hash");
         //     return Ok(child);
         // }
-        let child = self.get_child(name);
-        if child.is_some() {
+        if !self.inode()?.itype().is_dir() {
+            return Err(SysError::ENOTDIR);
+        }
+        let child = self.get_child_or_create(name);
+        if child.state() == DentryState::UnInit {
             log::trace!(
-                "[Dentry::lookup] lookup {name} in cache in path {}",
+                "[Dentry::lookup] lookup {name} not in cache in path {}",
                 self.path()
             );
-            return Ok(child.unwrap());
+            self.clone().base_lookup(name)?;
+            return Ok(child);
         }
-        log::trace!(
-            "[Dentry::lookup] lookup {name} not in cache in path {}",
-            self.path()
-        );
-        self.clone().base_lookup(name)
+        Ok(child)
     }
 
     pub fn create(self: &Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
@@ -206,9 +226,9 @@ impl dyn Dentry {
         child
     }
 
-    pub fn get_child_or_create(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
+    pub fn get_child_or_create(self: &Arc<Self>, name: &str) -> Arc<dyn Dentry> {
         self.get_child(name).unwrap_or_else(|| {
-            let new_dentry = self.clone().new_child(name);
+            let new_dentry = self.new_child(name);
             self.insert(new_dentry.clone());
             new_dentry
         })

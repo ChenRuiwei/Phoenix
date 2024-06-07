@@ -153,6 +153,7 @@ impl<'a> Syscall<'a> {
             FACCESSAT => self.sys_faccessat(args[0].into(), args[1].into(), args[2], args[3]),
             LSEEK => self.sys_lseek(args[0], args[1] as _, args[2]),
             UMASK => self.sys_umask(args[0] as _),
+            UTIMENSAT => self.sys_utimensat(args[0].into(), args[1].into(), args[2].into(), args[3] as _),
             // Signal
             RT_SIGPROCMASK => self.sys_rt_sigprocmask(args[0], args[1].into(), args[2].into()),
             RT_SIGACTION => self.sys_rt_sigaction(args[0] as _, args[1].into(), args[2].into()),

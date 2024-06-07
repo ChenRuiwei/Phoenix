@@ -1,5 +1,9 @@
 use alloc::{
-    boxed::Box, ffi::CString, string::String, sync::{self, Arc}, vec::Vec
+    boxed::Box,
+    ffi::CString,
+    string::String,
+    sync::{self, Arc},
+    vec::Vec,
 };
 use core::iter::zip;
 

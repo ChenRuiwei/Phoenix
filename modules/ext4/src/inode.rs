@@ -1,6 +1,9 @@
 use alloc::sync::Arc;
 
-use lwext4_rust::{bindings::{ext4_flink, O_RDONLY}, InodeTypes};
+use lwext4_rust::{
+    bindings::{ext4_flink, O_RDONLY},
+    InodeTypes,
+};
 use systype::SysResult;
 use vfs_core::{Inode, InodeMeta, InodeMode, Stat, SuperBlock};
 

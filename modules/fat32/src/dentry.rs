@@ -54,7 +54,7 @@ impl Dentry for FatDentry {
         }
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> systype::SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
         let sb = self.super_block();
         let inode = self
             .inode()?

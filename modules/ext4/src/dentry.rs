@@ -7,8 +7,8 @@ use lwext4_rust::{
 };
 use systype::{SysError, SysResult};
 use vfs_core::{
-    Dentry, DentryMeta, File, FileSystemType, FileSystemTypeMeta, InodeMode, InodeType, MountFlags,
-    StatFs, SuperBlock, SuperBlockMeta,
+    Dentry, DentryMeta, DentryState, File, FileSystemType, FileSystemTypeMeta, InodeMode,
+    InodeType, MountFlags, StatFs, SuperBlock, SuperBlockMeta,
 };
 
 use crate::{file::Ext4File, inode::Ext4Inode, LwExt4File};
@@ -48,24 +48,31 @@ impl Dentry for Ext4Dentry {
     }
 
     fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
-        let fpath = self.path() + name;
-        let inode = self
-            .inode()?
+        let sb = self.super_block();
+        let inode = self.inode()?;
+        let inode = inode
             .downcast_arc::<Ext4Inode>()
             .map_err(|_| SysError::EIO)?;
+        let fpath = self.path() + name;
         let mut file = inode.file.lock();
+        let sub_dentry = self.into_dyn().get_child(name).unwrap();
+        sub_dentry.change_state(DentryState::Sync);
         if file.check_inode_exist(&fpath, InodeTypes::EXT4_DE_DIR) {
-            Ok(Self::new(name, self.super_block(), Some(self)))
+            let new_file = LwExt4File::new(&fpath, InodeTypes::EXT4_DE_DIR);
+            let new_inode = Ext4Inode::new(sb, new_file);
+            sub_dentry.set_inode(new_inode);
         } else if file.check_inode_exist(&fpath, InodeTypes::EXT4_DE_REG_FILE) {
-            Ok(Self::new(name, self.super_block(), Some(self)))
-        } else {
-            Err(SysError::ENOENT)
+            let new_file = LwExt4File::new(&fpath, InodeTypes::EXT4_DE_REG_FILE);
+            let new_inode = Ext4Inode::new(sb, new_file);
+            sub_dentry.set_inode(new_inode);
         }
+        Ok(sub_dentry)
     }
 
     fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         let fpath = self.path() + name;
 
+        log::debug!("[Ext4Dentry::base_create] fpath:{fpath}, mode:{mode:?}");
         let types = match mode.to_type() {
             InodeType::Dir => InodeTypes::EXT4_DE_DIR,
             InodeType::File => InodeTypes::EXT4_DE_REG_FILE,
