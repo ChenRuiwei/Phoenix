@@ -112,6 +112,11 @@ bitflags! {
         const SIGPWR    = 1 << 29;
         const SIGSYS    = 1 << 30;
         const SIGLEGACYMAX  = 1 << 31;
+
+        // TODO: rt signal
+        const SIGRT1    = 1 << (33 - 1);   // real time signal min
+        const SIGRT2    = 1 << (34 - 1);
+        const SIGRT3    = 1 << (34 - 1);
         const SIGMAX   = 1 << 63;
         // 下面信号通常是由程序中的错误或异常操作触发的，如非法内存访问（导致
         // SIGSEGV）、硬件异常（可能导致

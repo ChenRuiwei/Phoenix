@@ -107,6 +107,7 @@ impl Syscall<'_> {
         // const FUTEX_WAKE_BITSET: i32 = 10;
         let futex_op = futex_op & !FUTEX_PRIVATE_FLAG;
         let task = self.task;
+        log::info!("[sys_futex] uaddr:{:#x}", uaddr.raw());
         uaddr.check(&task)?;
         match futex_op {
             FUTEX_WAIT => {

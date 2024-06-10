@@ -2,7 +2,7 @@
 
 use arch::{
     interrupts::set_trap_handler_vector,
-    time::{get_time_duration, set_next_timer_irq},
+    time::{get_time_duration, set_next_timer_irq, set_timer_irq},
 };
 use riscv::register::{
     scause::{self, Exception, Interrupt, Scause, Trap},
@@ -10,7 +10,7 @@ use riscv::register::{
 };
 use timer::timer::TIMER_MANAGER;
 
-use crate::when_debug;
+use crate::{processor::hart::local_hart, when_debug};
 
 /// Kernel trap handler
 #[no_mangle]

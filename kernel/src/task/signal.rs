@@ -89,6 +89,7 @@ impl Task {
         }
     }
     fn recv(&self, si: SigInfo) {
+        log::info!("[Task::recv] tid {} recv {si:?}", self.tid());
         self.with_mut_sig_pending(|pending| {
             pending.add(si);
             if self.is_interruptable() && pending.should_wake.contain_signal(si.sig) {

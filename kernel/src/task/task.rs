@@ -290,7 +290,7 @@ impl Task {
         self: &Arc<Self>,
         flags: syscall::CloneFlags,
         stack: Option<VirtAddr>,
-        chilren_tid_ptr: usize,
+        child_tid: VirtAddr,
     ) -> Arc<Self> {
         use syscall::CloneFlags;
         let tid = alloc_tid();
@@ -357,7 +357,7 @@ impl Task {
             log::warn!("CloneFlags::CHILD_CLEARTID");
             SyncUnsafeCell::new(TidAddress {
                 set_child_tid: None,
-                clear_child_tid: Some(chilren_tid_ptr),
+                clear_child_tid: Some(child_tid.bits()),
             })
         } else {
             SyncUnsafeCell::new(TidAddress::new())
@@ -399,7 +399,7 @@ impl Task {
 
         if flags.contains(CloneFlags::CHILD_SETTID) {
             log::warn!("CloneFlags::CHILD_SETTID");
-            UserWritePtr::from_usize(chilren_tid_ptr)
+            UserWritePtr::from_usize(child_tid.bits())
                 .write(self, new.tid())
                 .expect("CloneFlags::CHILD_SETTID error");
         }

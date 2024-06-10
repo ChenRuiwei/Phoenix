@@ -81,7 +81,13 @@ impl<'a> Syscall<'a> {
                     .await
             }
             SCHED_YIELD => self.sys_sched_yield().await,
-            CLONE => self.sys_clone(args[0], args[1], args[2], args[3], args[4]),
+            CLONE => self.sys_clone(
+                args[0],
+                args[1],
+                args[2].into(),
+                args[3].into(),
+                args[4].into(),
+            ),
             WAIT4 => {
                 self.sys_wait4(args[0] as _, args[1].into(), args[2] as _, args[3])
                     .await
@@ -105,6 +111,7 @@ impl<'a> Syscall<'a> {
                 args[5],
             ),
             MUNMAP => self.sys_munmap(args[0].into(), args[1]),
+            MPROTECT => self.sys_mprotect(args[0].into(), args[1], args[2] as _),
             // Shared Memory
             SHMGET => self.sys_shmget(args[0], args[1], args[2] as _),
             SHMAT => self.sys_shmat(args[0], args[1], args[2] as _),
@@ -153,7 +160,9 @@ impl<'a> Syscall<'a> {
             FACCESSAT => self.sys_faccessat(args[0].into(), args[1].into(), args[2], args[3]),
             LSEEK => self.sys_lseek(args[0], args[1] as _, args[2]),
             UMASK => self.sys_umask(args[0] as _),
-            UTIMENSAT => self.sys_utimensat(args[0].into(), args[1].into(), args[2].into(), args[3] as _),
+            UTIMENSAT => {
+                self.sys_utimensat(args[0].into(), args[1].into(), args[2].into(), args[3] as _)
+            }
             // Signal
             RT_SIGPROCMASK => self.sys_rt_sigprocmask(args[0], args[1].into(), args[2].into()),
             RT_SIGACTION => self.sys_rt_sigaction(args[0] as _, args[1].into(), args[2].into()),

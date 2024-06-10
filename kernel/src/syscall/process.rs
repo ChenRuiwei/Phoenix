@@ -6,6 +6,7 @@ use alloc::{
 };
 
 use async_utils::{suspend_now, yield_now};
+use memory::VirtAddr;
 use signal::{
     siginfo::*,
     sigset::{Sig, SigSet},
@@ -30,10 +31,14 @@ bitflags! {
         const FILES = 0x0000400;
         /// Set if signal handlers shared.
         const SIGHAND = 0x00000800;
+        /// Set if a pidfd should be placed in parent.
+        const PIDFD = 0x00001000;
         /// Set if we want to have the same parent as the cloner.
         const PARENT = 0x00008000;
         /// Set to add to same thread group.
         const THREAD = 0x00010000;
+        /// Set to shared SVID SEM_UNDO semantics.
+        const SYSVSEM = 0x00040000;
         /// Set TLS info.
         const SETTLS = 0x00080000;
         /// Store TID in userlevel buffer before MM copy.
@@ -42,6 +47,24 @@ bitflags! {
         const CHILD_CLEARTID = 0x00200000;
         /// Store TID in userlevel buffer in the child.
         const CHILD_SETTID = 0x01000000;
+        /// Create clone detached.
+        const DETACHED = 0x00400000;
+        /// Set if the tracing process can't
+        const UNTRACED = 0x00800000;
+        /// New cgroup namespace.
+        const NEWCGROUP = 0x02000000;
+        /// New utsname group.
+        const NEWUTS = 0x04000000;
+        /// New ipcs.
+        const NEWIPC = 0x08000000;
+        /// New user namespace.
+        const NEWUSER = 0x10000000;
+        /// New pid namespace.
+        const NEWPID = 0x20000000;
+        /// New network namespace.
+        const NEWNET = 0x40000000;
+        /// Clone I/O context.
+        const IO = 0x80000000 ;
     }
 }
 
@@ -274,13 +297,19 @@ impl Syscall<'_> {
         &self,
         flags: usize,
         stack: usize,
-        _parent_tid_ptr: usize,
-        _tls_ptr: usize,
-        chilren_tid_ptr: usize,
+        parent_tid: VirtAddr,
+        tls: VirtAddr,
+        child_tid: VirtAddr,
     ) -> SyscallResult {
         let _exit_signal = flags & 0xff;
-        let flags = CloneFlags::from_bits(flags as u64 & !0xff).ok_or(SysError::EINVAL)?;
-        log::info!("[sys_clone] flags {flags:?}");
+        let flags = CloneFlags::from_bits(flags as u64 & !0xff).ok_or_else(|| {
+            log::error!("[sys_clone] unincluded flags {flags:#x}");
+            SysError::EINVAL
+        })?;
+        log::info!(
+            "[sys_clone] flags:{flags:?}, stack:{stack:#x}, tls:{tls:?}, parent_tid:{parent_tid:?}, child_tid:{child_tid:?}"
+        );
+        let task = self.task;
         // if flags.contains(CloneFlags::THREAD) {
         // // EINVAL:
         // // CLONE_SIGHAND was specified in the flags mask, but CLONE_VM was not.
@@ -290,10 +319,13 @@ impl Syscall<'_> {
         // }
         // }
         let stack = if stack != 0 { Some(stack.into()) } else { None };
-        let new_task = self.task.do_clone(flags, stack, chilren_tid_ptr);
+        let new_task = task.do_clone(flags, stack, child_tid);
         new_task.trap_context_mut().set_user_a0(0);
         let new_tid = new_task.tid();
         log::info!("[sys_clone] clone a new thread, tid {new_tid}, clone flags {flags:?}",);
+        if !parent_tid.is_null() {
+            UserWritePtr::from_usize(parent_tid.bits()).write(task, new_tid)?;
+        }
         spawn_user_task(new_task);
         Ok(new_tid)
     }
@@ -321,6 +353,7 @@ impl Syscall<'_> {
     // TODO: do the futex wake up at the address when task terminates
     pub fn sys_set_tid_address(&self, tidptr: usize) -> SyscallResult {
         let task = self.task;
+        log::info!("[sys_set_tid_address] tidptr:{tidptr:#x}");
         task.tid_address().clear_child_tid = Some(tidptr);
         Ok(task.tid())
     }

@@ -21,6 +21,7 @@ use vfs_core::File;
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};
+use super::PageFaultAccessType;
 use crate::{
     mm::{
         memory_space::vm_area::{MapPerm, VmAreaType},
@@ -186,6 +187,14 @@ impl MemorySpace {
         }
         log::debug!("[kernel] KERNEL SPACE init finished");
         memory_space
+    }
+
+    pub fn areas_mut(&mut self) -> &mut RangeMap<VirtAddr, VmArea> {
+        &mut self.areas
+    }
+
+    pub fn page_table_mut(&mut self) -> &mut PageTable {
+        &mut self.page_table
     }
 
     /// Map the sections in the elf.
@@ -601,13 +610,17 @@ impl MemorySpace {
         Ok(start)
     }
 
-    pub fn handle_page_fault(&mut self, va: VirtAddr) -> SysResult<()> {
+    pub fn handle_page_fault(
+        &mut self,
+        va: VirtAddr,
+        access_type: PageFaultAccessType,
+    ) -> SysResult<()> {
         log::trace!("[MemorySpace::handle_page_fault] {va:?}");
         let vm_area = self.areas.get_mut(va).ok_or_else(|| {
             log::error!("[handle_page_fault] no area containing {va:?}");
             SysError::EFAULT
         })?;
-        vm_area.handle_page_fault(&mut self.page_table, va.floor())?;
+        vm_area.handle_page_fault(&mut self.page_table, va.floor(), access_type)?;
         Ok(())
     }
 

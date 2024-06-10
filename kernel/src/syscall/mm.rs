@@ -358,4 +358,36 @@ impl Syscall<'_> {
         }
         Ok(0)
     }
+
+    pub fn sys_mprotect(&self, addr: VirtAddr, len: usize, prot: i32) -> SyscallResult {
+        let task = self.task;
+        if !addr.is_aligned() {
+            return Err(SysError::EINVAL);
+        }
+        let prot = MmapProt::from_bits(prot).ok_or(SysError::EINVAL)?;
+        log::info!("[sys_mprotect] addr:{addr:?}, len:{len}, prot:{prot:?}");
+        let new_range = addr..addr + len;
+        let perm: MapPerm = prot.into();
+        task.with_mut_memory_space(|m| {
+            let (old_range, area) = m
+                .areas_mut()
+                .get_key_value_mut(addr)
+                .ok_or(SysError::ENOMEM)?;
+            if new_range == old_range {
+                area.set_perm(perm);
+            } else {
+                // FIXME:
+                // TODO: Do split and remap
+                area.set_perm(perm);
+            }
+            let range_vpn = area.range_vpn();
+            let page_table = m.page_table_mut();
+            for vpn in range_vpn {
+                let pte = page_table.find_pte(vpn).unwrap();
+                pte.set_flags(pte.flags().union(perm.into()));
+            }
+            Ok(0)
+        })?;
+        Ok(0)
+    }
 }

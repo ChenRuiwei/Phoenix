@@ -15,7 +15,7 @@ use riscv::register::{
 use timer::timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
-use crate::{syscall::Syscall, task::Task, trap::set_user_trap};
+use crate::{mm::PageFaultAccessType, syscall::Syscall, task::Task, trap::set_user_trap};
 
 /// handle an interrupt, exception, or system call from user space
 #[no_mangle]
@@ -32,43 +32,58 @@ pub async fn trap_handler(task: &Arc<Task>) {
     unsafe { enable_interrupt() };
 
     match cause {
-        Trap::Exception(Exception::UserEnvCall) => {
-            let syscall_no = cx.syscall_no();
-            cx.set_user_pc_to_next();
-            // get system call return value
-            let ret = Syscall::new(task)
-                .syscall(syscall_no, cx.syscall_args())
-                .await;
-            // cx is changed during sys_exec, so we have to call it again
-            cx = task.trap_context_mut();
-            cx.set_user_a0(ret);
-        }
-        Trap::Exception(Exception::StorePageFault)
-        | Trap::Exception(Exception::InstructionPageFault)
-        | Trap::Exception(Exception::LoadPageFault) => {
-            log::info!(
+        Trap::Exception(e) => {
+            match e {
+                Exception::UserEnvCall => {
+                    let syscall_no = cx.syscall_no();
+                    cx.set_user_pc_to_next();
+                    // get system call return value
+                    let ret = Syscall::new(task)
+                        .syscall(syscall_no, cx.syscall_args())
+                        .await;
+                    // cx is changed during sys_exec, so we have to call it again
+                    cx = task.trap_context_mut();
+                    cx.set_user_a0(ret);
+                }
+                Exception::StorePageFault
+                | Exception::InstructionPageFault
+                | Exception::LoadPageFault => {
+                    log::info!(
                 "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
             );
-            // There are serveral kinds of page faults:
-            // 1. mmap area
-            // 2. sbrk area
-            // 3. fork cow area
-            // 4. user stack
-            // 5. execve elf file
-            // 6. dynamic link
-            // 7. illegal page fault
+                    let access_type = match e {
+                        Exception::InstructionPageFault => PageFaultAccessType::RX,
+                        Exception::LoadPageFault => PageFaultAccessType::RO,
+                        Exception::StorePageFault => PageFaultAccessType::RW,
+                        _ => unreachable!(),
+                    };
+                    // There are serveral kinds of page faults:
+                    // 1. mmap area
+                    // 2. sbrk area
+                    // 3. fork cow area
+                    // 4. user stack
+                    // 5. execve elf file
+                    // 6. dynamic link
+                    // 7. illegal page fault
 
-            let result = task.with_mut_memory_space(|m| m.handle_page_fault(VirtAddr::from(stval)));
-            if let Err(_e) = result {
-                // task.with_memory_space(|m| m.print_all());
-                task.set_zombie();
+                    let result = task.with_mut_memory_space(|m| {
+                        m.handle_page_fault(VirtAddr::from(stval), access_type)
+                    });
+                    if let Err(_e) = result {
+                        // task.with_memory_space(|m| m.print_all());
+                        task.set_zombie();
+                    }
+                }
+                Exception::IllegalInstruction => {
+                    log::warn!(
+                        "[trap_handler] detected illegal instruction, stval {stval:#x}, sepc {sepc:#x}",
+                    );
+                    task.set_zombie();
+                }
+                e => {
+                    log::warn!("Unknown user exception: {:?}", e);
+                }
             }
-        }
-        Trap::Exception(Exception::IllegalInstruction) => {
-            log::warn!(
-                "[trap_handler] detected illegal instruction, stval {stval:#x}, sepc {sepc:#x}",
-            );
-            task.set_zombie();
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");

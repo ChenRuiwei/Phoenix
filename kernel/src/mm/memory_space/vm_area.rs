@@ -5,11 +5,11 @@ use arch::memory::sfence_vma_vaddr;
 use async_utils::block_on;
 use config::mm::PAGE_SIZE;
 use memory::{page::Page, pte::PTEFlags, VirtAddr, VirtPageNum};
-use systype::SysResult;
+use systype::{SysError, SysResult};
 use vfs_core::File;
 
 use crate::{
-    mm::{PageTable, UserSlice},
+    mm::{PageFaultAccessType, PageTable, UserSlice},
     processor::env::SumGuard,
     syscall::MmapFlags,
 };
@@ -58,6 +58,25 @@ bitflags! {
         const URX = Self::U.bits() | Self::RX.bits();
         const UWX = Self::U.bits() | Self::WX.bits();
         const URWX = Self::U.bits() | Self::RWX.bits();
+    }
+}
+
+impl From<PTEFlags> for MapPerm {
+    fn from(flags: PTEFlags) -> Self {
+        let mut ret = Self::from_bits(0).unwrap();
+        if flags.contains(PTEFlags::U) {
+            ret |= MapPerm::U
+        }
+        if flags.contains(PTEFlags::R) {
+            ret |= MapPerm::R;
+        }
+        if flags.contains(PTEFlags::W) {
+            ret |= MapPerm::W;
+        }
+        if flags.contains(PTEFlags::X) {
+            ret |= MapPerm::X;
+        }
+        ret
     }
 }
 
@@ -202,6 +221,10 @@ impl VmArea {
         self.map_perm
     }
 
+    pub fn set_perm(&mut self, perm: MapPerm) {
+        self.map_perm = perm;
+    }
+
     pub fn get_page(&self, vpn: VirtPageNum) -> &Arc<Page> {
         self.pages.get(&vpn).expect("no page found for vpn")
     }
@@ -266,17 +289,24 @@ impl VmArea {
         &mut self,
         page_table: &mut PageTable,
         vpn: VirtPageNum,
+        access_type: PageFaultAccessType,
     ) -> SysResult<()> {
         log::debug!(
             "[VmArea::handle_page_fault] {self:?}, {vpn:?} at page table {:?}",
             page_table.root_ppn
         );
+
+        if !access_type.can_access(self.perm()) {
+            return Err(SysError::EFAULT);
+        }
+
         let page: Page;
         let pte = page_table.find_pte(vpn);
         if let Some(pte) = pte {
             // if PTE is valid, then it must be COW
             log::debug!("[VmArea::handle_page_fault] pte flags: {:?}", pte.flags());
             let mut pte_flags = pte.flags();
+
             debug_assert!(pte_flags.contains(PTEFlags::COW));
             debug_assert!(!pte_flags.contains(PTEFlags::W));
             debug_assert!(self.perm().contains(MapPerm::UW));

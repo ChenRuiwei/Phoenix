@@ -14,7 +14,9 @@ use config::board::MEMORY_END;
 pub use memory::page_table::PageTable;
 use memory::{frame, heap, VirtAddr};
 pub use memory_space::{switch_kernel_page_table, MemorySpace};
-pub use user_ptr::{FutexWord, UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr};
+pub use user_ptr::{
+    FutexWord, PageFaultAccessType, UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr,
+};
 
 use self::memory_space::vm_area::MapPerm;
 use crate::mm;

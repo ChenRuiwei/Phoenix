@@ -14,6 +14,7 @@ use memory::VirtAddr;
 use riscv::register::scause;
 use systype::{SysError, SysResult};
 
+use super::memory_space::vm_area::MapPerm;
 use crate::{
     processor::env::SumGuard,
     task::Task,
@@ -508,7 +509,7 @@ impl Task {
         let mut readable_len = 0;
         while readable_len < len {
             if test_fn(curr_vaddr.0) {
-                self.with_mut_memory_space(|m| m.handle_page_fault(curr_vaddr))?
+                self.with_mut_memory_space(|m| m.handle_page_fault(curr_vaddr, access))?
             }
 
             let next_page_beg: VirtAddr = VirtAddr::from(curr_vaddr.floor().next());
@@ -546,8 +547,6 @@ bitflags! {
 
 impl PageFaultAccessType {
     pub const RO: Self = Self::READ;
-    // can't use | (bits or) here
-    // see https://github.com/bitflags/bitflags/issues/180
     pub const RW: Self = Self::RO.union(Self::WRITE);
     pub const RX: Self = Self::RO.union(Self::EXECUTE);
 
@@ -559,30 +558,50 @@ impl PageFaultAccessType {
             _ => panic!("unexcepted exception type for PageFaultAccessType"),
         }
     }
+
+    pub fn can_access(self, flag: MapPerm) -> bool {
+        if self.contains(Self::WRITE) && !flag.contains(MapPerm::W) {
+            return false;
+        }
+        if self.contains(Self::EXECUTE) && !flag.contains(MapPerm::X) {
+            return false;
+        }
+        true
+    }
 }
 
-pub struct FutexWord(u32);
+pub struct FutexWord {
+    addr: u32,
+    _guard: SumGuard,
+}
 
 impl FutexWord {
     pub fn from(a: usize) -> Self {
-        Self(a as u32)
+        Self {
+            addr: a as u32,
+            _guard: SumGuard::new(),
+        }
     }
     pub fn raw(&self) -> u32 {
-        self.0
+        self.addr
     }
     pub fn check(&self, task: &Arc<Task>) -> SysResult<()> {
         task.just_ensure_user_area(
-            VirtAddr::from(self.0 as usize),
+            VirtAddr::from(self.addr as usize),
             size_of::<u32>(),
             PageFaultAccessType::RO,
         )
     }
     pub fn read(&self) -> u32 {
-        unsafe { atomic_load_acquire(self.0 as *const u32) }
+        unsafe { atomic_load_acquire(self.addr as *const u32) }
     }
 }
+
 impl From<usize> for FutexWord {
     fn from(a: usize) -> Self {
-        Self(a as u32)
+        Self {
+            addr: a as u32,
+            _guard: SumGuard::new(),
+        }
     }
 }
