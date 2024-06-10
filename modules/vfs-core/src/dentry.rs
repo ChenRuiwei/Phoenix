@@ -216,6 +216,8 @@ impl dyn Dentry {
     }
 
     pub fn remove(self: &Arc<Self>, name: &str) -> SysResult<()> {
+        let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
+        sub_dentry.clear_inode();
         self.clone().base_remove(name)
     }
 

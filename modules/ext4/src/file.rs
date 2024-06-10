@@ -56,9 +56,6 @@ impl File for Ext4File {
     }
 
     async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
-        if buf.is_empty() {
-            return Ok(0);
-        }
         match self.itype() {
             InodeType::File => {
                 let mut file = self.file.lock();

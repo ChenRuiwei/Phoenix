@@ -25,7 +25,7 @@ impl From<PhysAddr> for OffsetAddr {
 
 impl From<VirtAddr> for OffsetAddr {
     fn from(va: VirtAddr) -> Self {
-        assert!(va.0 >= VIRT_RAM_OFFSET);
+        assert!(va.0 >= VIRT_RAM_OFFSET, "va:{:?}", va);
         Self {
             pa_u: va.0 - VIRT_RAM_OFFSET,
         }
