@@ -8,6 +8,7 @@ pub mod fd_table;
 pub mod pipefs;
 pub mod procfs;
 pub mod simplefs;
+mod tmpfs;
 
 extern crate alloc;
 
@@ -20,7 +21,7 @@ use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 use vfs_core::{Dentry, FileSystemType, MountFlags};
 
-use crate::{devfs::DevFsType, procfs::ProcFsType};
+use crate::{devfs::DevFsType, procfs::ProcFsType, tmpfs::TmpFsType};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
@@ -44,6 +45,9 @@ fn register_all_fs() {
 
     let procfs = ProcFsType::new();
     FS_MANAGER.lock().insert(procfs.name_string(), procfs);
+
+    let tmpfs = TmpFsType::new();
+    FS_MANAGER.lock().insert(tmpfs.name_string(), tmpfs);
 
     log::info!("[vfs] register fs success");
 }
@@ -73,6 +77,11 @@ pub fn init() {
         .mount("proc", Some(diskfs_root.clone()), MountFlags::empty(), None)
         .unwrap();
     init_procfs(procfs_dentry).unwrap();
+
+    let tmpfs = FS_MANAGER.lock().get("tmpfs").unwrap().clone();
+    let tmpfs_dentry = tmpfs
+        .mount("tmp", Some(diskfs_root.clone()), MountFlags::empty(), None)
+        .unwrap();
 
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);
 

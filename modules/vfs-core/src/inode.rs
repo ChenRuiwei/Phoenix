@@ -33,7 +33,9 @@ pub struct InodeMetaInner {
 impl InodeMeta {
     pub fn new(mode: InodeMode, super_block: Arc<dyn SuperBlock>, size: usize) -> Self {
         let itype = mode.to_type();
-        let address_space = if itype.is_file() || itype.is_block_device() {
+        let address_space = if (itype.is_file() || itype.is_block_device())
+            && (super_block.meta().device.is_some())
+        {
             Some(AddressSpace::new())
         } else {
             None

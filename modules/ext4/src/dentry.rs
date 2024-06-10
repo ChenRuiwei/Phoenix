@@ -53,10 +53,9 @@ impl Dentry for Ext4Dentry {
         let inode = inode
             .downcast_arc::<Ext4Inode>()
             .map_err(|_| SysError::EIO)?;
-        let fpath = self.path() + name;
         let mut file = inode.file.lock();
         let sub_dentry = self.into_dyn().get_child(name).unwrap();
-        sub_dentry.change_state(DentryState::Sync);
+        let fpath = sub_dentry.path();
         if file.check_inode_exist(&fpath, InodeTypes::EXT4_DE_DIR) {
             let new_file = LwExt4File::new(&fpath, InodeTypes::EXT4_DE_DIR);
             let new_inode = Ext4Inode::new(sb, new_file);

@@ -3,7 +3,10 @@ use alloc::sync::Arc;
 use systype::{SysError, SysResult};
 use vfs_core::{Dentry, DentryMeta, File, InodeMode, InodeType, SuperBlock};
 
-use super::{file::SimpleDirFile, inode::SimpleInode};
+use super::{
+    file::{SimpleDirFile, SimpleFileFile},
+    inode::SimpleInode,
+};
 
 pub struct SimpleDentry {
     meta: DentryMeta,
@@ -34,14 +37,12 @@ impl Dentry for SimpleDentry {
         let inode = self.inode()?;
         match inode.itype() {
             InodeType::Dir => Ok(SimpleDirFile::new(self.clone(), inode)),
+            InodeType::File => Ok(SimpleFileFile::new(self.clone(), inode)),
             _ => unreachable!(),
         }
     }
 
     fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
-        if !self.inode()?.itype().is_dir() {
-            return Err(SysError::ENOTDIR);
-        }
         let sub_dentry = self.into_dyn().get_child_or_create(name);
         Ok(sub_dentry)
     }
@@ -54,8 +55,8 @@ impl Dentry for SimpleDentry {
         Ok(sub_dentry)
     }
 
-    fn base_remove(self: Arc<Self>, _name: &str) -> SysResult<()> {
-        todo!()
+    fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()> {
+        self.remove_child(name).ok_or(SysError::ENOENT).map(|_| ())
     }
 
     fn base_new_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {

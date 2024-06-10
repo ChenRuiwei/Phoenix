@@ -126,6 +126,10 @@ pub trait Dentry: Send + Sync {
         self.meta().children.lock().get(name).cloned()
     }
 
+    fn remove_child(&self, name: &str) -> Option<Arc<dyn Dentry>> {
+        self.meta().children.lock().remove(name)
+    }
+
     fn set_inode(&self, inode: Arc<dyn Inode>) {
         if self.meta().inode.lock().is_some() {
             log::warn!("[Dentry::set_inode] replace inode in {:?}", self.name());
@@ -206,16 +210,24 @@ impl dyn Dentry {
                 self.path()
             );
             self.clone().base_lookup(name)?;
+            child.change_state(DentryState::Sync);
             return Ok(child);
         }
         Ok(child)
     }
 
     pub fn create(self: &Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+        if !self.inode()?.itype().is_dir() {
+            return Err(SysError::ENOTDIR);
+        }
+        let child = self.get_child_or_create(name);
         self.clone().base_create(name, mode)
     }
 
     pub fn remove(self: &Arc<Self>, name: &str) -> SysResult<()> {
+        if !self.inode()?.itype().is_dir() {
+            return Err(SysError::ENOTDIR);
+        }
         let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
         sub_dentry.clear_inode();
         self.clone().base_remove(name)
