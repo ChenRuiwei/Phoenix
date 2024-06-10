@@ -212,6 +212,7 @@ impl<'a> Syscall<'a> {
             // Miscellaneous
             UNAME => self.sys_uname(args[0].into()),
             SYSLOG => self.sys_syslog(args[0], args[1].into(), args[2]),
+            SYSINFO => self.sys_sysinfo(args[0].into()),
             _ => {
                 log::error!("Unsupported syscall: {}", syscall_no);
                 Ok(0)
