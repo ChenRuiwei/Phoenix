@@ -8,7 +8,7 @@ use core::{mem::MaybeUninit, str::FromStr};
 use sync::mutex::spin_mutex::SpinMutex;
 use systype::{SysError, SysResult, SyscallResult};
 
-use crate::{inode::Inode, File, InodeMode, Mutex, SuperBlock};
+use crate::{inode::Inode, File, InodeMode, Mutex, RenameFlags, SuperBlock};
 
 pub struct DentryMeta {
     /// Name of this file or directory.
@@ -88,6 +88,10 @@ pub trait Dentry: Send + Sync {
     /// inode.
     fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()>;
 
+    fn base_rename_to(self: Arc<Self>, new: Arc<dyn Dentry>, flags: RenameFlags) -> SysResult<()> {
+        Err(SysError::EINVAL)
+    }
+
     /// Create a negetive child dentry with `name`.
     fn base_new_child(self: Arc<Self>, _name: &str) -> Arc<dyn Dentry> {
         todo!()
@@ -135,6 +139,10 @@ pub trait Dentry: Send + Sync {
             log::warn!("[Dentry::set_inode] replace inode in {:?}", self.name());
         }
         *self.meta().inode.lock() = Some(inode);
+    }
+
+    fn clear_inode(&self) {
+        *self.meta().inode.lock() = None;
     }
 
     /// Insert a child dentry to this dentry.
@@ -186,10 +194,6 @@ impl dyn Dentry {
         self.meta().inode.lock().is_none()
     }
 
-    pub fn clear_inode(&self) {
-        *self.meta().inode.lock() = None;
-    }
-
     pub fn open(self: &Arc<Self>) -> SysResult<Arc<dyn File>> {
         self.clone().base_open()
     }
@@ -233,6 +237,25 @@ impl dyn Dentry {
         self.clone().base_remove(name)
     }
 
+    pub fn rename_to(self: &Arc<Self>, new: &Arc<Self>, flags: RenameFlags) -> SysResult<()> {
+        if flags.contains(RenameFlags::RENAME_EXCHANGE)
+            && (flags.contains(RenameFlags::RENAME_NOREPLACE)
+                || flags.contains(RenameFlags::RENAME_WHITEOUT))
+        {
+            return Err(SysError::EINVAL);
+        }
+        if new.has_ancestor(self) {
+            return Err(SysError::EINVAL);
+        }
+
+        if new.is_negetive() && flags.contains(RenameFlags::RENAME_EXCHANGE) {
+            return Err(SysError::ENOENT);
+        } else if flags.contains(RenameFlags::RENAME_NOREPLACE) {
+            return Err(SysError::EEXIST);
+        }
+        self.clone().base_rename_to(new.clone(), flags)
+    }
+
     /// Create a negetive child dentry with `name`.
     pub fn new_child(self: &Arc<Self>, name: &str) -> Arc<dyn Dentry> {
         let child = self.clone().base_new_child(name);
@@ -246,6 +269,17 @@ impl dyn Dentry {
             self.insert(new_dentry.clone());
             new_dentry
         })
+    }
+
+    pub fn has_ancestor(self: &Arc<Self>, dir: &Arc<Self>) -> bool {
+        let mut parent_opt = self.parent();
+        while let Some(parent) = parent_opt {
+            if Arc::ptr_eq(self, dir) {
+                return true;
+            }
+            parent_opt = parent.parent();
+        }
+        false
     }
 }
 

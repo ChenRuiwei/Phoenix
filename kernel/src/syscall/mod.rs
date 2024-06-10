@@ -163,6 +163,13 @@ impl<'a> Syscall<'a> {
             UTIMENSAT => {
                 self.sys_utimensat(args[0].into(), args[1].into(), args[2].into(), args[3] as _)
             }
+            RENAMEAT2 => self.sys_renameat2(
+                args[0].into(),
+                args[1].into(),
+                args[2].into(),
+                args[3].into(),
+                args[4] as _,
+            ),
             // Signal
             RT_SIGPROCMASK => self.sys_rt_sigprocmask(args[0], args[1].into(), args[2].into()),
             RT_SIGACTION => self.sys_rt_sigaction(args[0] as _, args[1].into(), args[2].into()),

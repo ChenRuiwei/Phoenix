@@ -7,8 +7,8 @@ use lwext4_rust::{
 };
 use systype::{SysError, SysResult};
 use vfs_core::{
-    Dentry, DentryMeta, DentryState, File, FileSystemType, FileSystemTypeMeta, InodeMode,
-    InodeType, MountFlags, StatFs, SuperBlock, SuperBlockMeta,
+    Dentry, DentryMeta, DentryState, File, FileSystemType, FileSystemTypeMeta, Inode, InodeMode,
+    InodeType, MountFlags, RenameFlags, StatFs, SuperBlock, SuperBlockMeta,
 };
 
 use crate::{file::Ext4File, inode::Ext4Inode, LwExt4File};
@@ -120,5 +120,46 @@ impl Dentry for Ext4Dentry {
 
     fn base_new_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {
         Self::new(name, self.super_block(), Some(self))
+    }
+
+    fn base_rename_to(self: Arc<Self>, new: Arc<dyn Dentry>, flags: RenameFlags) -> SysResult<()> {
+        // TODO: lwext4_rust does not support RENAME_EXCHANGE, it remove old path when
+        // renaming
+        let old_inode = self
+            .inode()?
+            .downcast_arc::<Ext4Inode>()
+            .map_err(|_| SysError::EIO)?;
+        let old_itype = self.inode()?.itype();
+        if !new.is_negetive() {
+            let new_inode = new
+                .inode()?
+                .downcast_arc::<Ext4Inode>()
+                .map_err(|_| SysError::EIO)?;
+            let new_itype = new.inode()?.itype();
+            if new_itype != old_itype {
+                return match (old_itype, new_itype) {
+                    (InodeType::File, InodeType::Dir) => Err(SysError::EISDIR),
+                    (InodeType::Dir, InodeType::File) => Err(SysError::ENOTDIR),
+                    _ => unimplemented!(),
+                };
+            }
+        }
+        match old_itype {
+            InodeType::Dir => {
+                old_inode.file.lock().dir_mv(&self.path(), &new.path());
+            }
+            InodeType::File => {
+                old_inode.file.lock().file_rename(&self.path(), &new.path());
+            }
+            InodeType::SymLink => todo!(),
+            _ => unimplemented!(),
+        }
+        new.set_inode(self.inode()?);
+        if flags.contains(RenameFlags::RENAME_EXCHANGE) {
+            self.set_inode(new.inode()?);
+        } else {
+            self.clear_inode();
+        }
+        Ok(())
     }
 }

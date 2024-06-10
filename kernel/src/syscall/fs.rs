@@ -15,7 +15,7 @@ use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, MountFlags, OpenFlags,
-    Path, PollEvents, SeekFrom, AT_FDCWD, AT_REMOVEDIR,
+    Path, PollEvents, RenameFlags, SeekFrom, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use super::Syscall;
@@ -843,6 +843,7 @@ impl Syscall<'_> {
         Ok(0x777)
     }
 
+    // TODO:
     /// change file timestamps with nanosecond precision
     pub fn sys_utimensat(
         &self,
@@ -860,9 +861,35 @@ impl Syscall<'_> {
         } else {
             // NOTE: if `pathname` is NULL, acts as futimens
             log::info!("[sys_utimensat], fd: {dirfd}",);
-            // task.with_fd_table(|table| table.get(dirfd))?
+            match dirfd {
+                AtFd::FdCwd => return Err(SysError::EINVAL),
+                AtFd::Normal(fd) => {
+                    task.with_fd_table(|table| table.get_file(fd))?;
+                }
+            }
         };
         Ok(0)
+    }
+
+    pub fn sys_renameat2(
+        &self,
+        olddirfd: AtFd,
+        oldpath: UserReadPtr<u8>,
+        newdirfd: AtFd,
+        newpath: UserReadPtr<u8>,
+        flags: i32,
+    ) -> SyscallResult {
+        let task = self.task;
+        let flags = RenameFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+        let oldpath = oldpath.read_cstr(&task)?;
+        let newpath = newpath.read_cstr(&task)?;
+        log::info!("[sys_renameat2] olddirfd:{olddirfd:?}, oldpath:{oldpath}, newdirfd:{newdirfd:?}, newpath:{newpath}, flags:{flags:?}");
+
+        let old_dentry = self.at_helper(olddirfd, &oldpath, InodeMode::empty())?;
+        let new_dentry = self.at_helper(newdirfd, &newpath, InodeMode::empty())?;
+
+        // TODO: currently don't care about `RENAME_WHITEOUT`
+        old_dentry.rename_to(&new_dentry, flags).map(|_| 0)
     }
 
     /// The dirfd argument is used in conjunction with the pathname argument as

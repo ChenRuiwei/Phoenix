@@ -162,19 +162,6 @@ pub struct Stat {
     pub unused: u64,
 }
 
-bitflags! {
-    /// renameat flag
-   pub struct RenameFlag: u32 {
-       /// Atomically exchange oldpath and newpath.
-       /// Both pathnames must exist but may be of different type
-       const RENAME_EXCHANGE = 1 << 1;
-       /// Don't overwrite newpath of the rename. Return an error if newpath already exists.
-       const RENAME_NOREPLACE = 1 << 0;
-       /// This operation makes sense only for overlay/union filesystem implementations.
-       const RENAME_WHITEOUT = 1 << 2;
-   }
-}
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Time {
     AccessTime(TimeSpec),
@@ -307,3 +294,16 @@ pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
 pub const AT_REMOVEDIR: i32 = 0x200;
 /// Follow symbolic links.
 pub const AT_SYMLINK_FOLLOW: i32 = 0x400;
+
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    // Defined in <stdio.h>.
+    pub struct RenameFlags: i32 {
+        /// Don't overwrite newpath of the rename. Return an error if newpath already exists.
+        const RENAME_NOREPLACE = 1 << 0;
+        /// Atomically exchange oldpath and newpath.
+        const RENAME_EXCHANGE = 1 << 1;
+        /// This operation makes sense only for overlay/union filesystem implementations.
+        const RENAME_WHITEOUT = 1 << 2;
+    }
+}
