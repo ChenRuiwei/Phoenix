@@ -193,6 +193,9 @@ pub fn do_signal(task: &Arc<Task>) -> SysResult<()> {
                     // if sa_flags contains SA_SIGINFO, It means user defined function is
                     // void (*sa_sigaction)(int, siginfo_t *, void *ucontext); which two more
                     // parameters
+                    // FIXME: `SigInfo` and `UContext` may not be the exact struct in C, which will
+                    // cause a random bug that sometimes user will trap into kernel because of
+                    // accessing kernel addrress
                     if action.flags.contains(SigActionFlag::SA_SIGINFO) {
                         // a2
                         cx.user_x[12] = new_sp;
