@@ -13,7 +13,7 @@ pub struct FileSystemTypeMeta {
     /// Name of this file system type.
     name: String,
     /// Super blocks.
-    supers: Mutex<BTreeMap<String, Arc<dyn SuperBlock>>>,
+    pub supers: Mutex<BTreeMap<String, Arc<dyn SuperBlock>>>,
 }
 
 impl FileSystemTypeMeta {

@@ -14,7 +14,7 @@ bitflags::bitflags! {
     pub struct OpenFlags: i32 {
         // reserve 3 bits for the access mode
         // NOTE: bitflags do not encourage zero bit flag, we should not directly check `O_RDONLY`
-        const O_RDONLY      = 0;
+        // const O_RDONLY      = 0;
         const O_WRONLY      = 1;
         const O_RDWR        = 2;
         const O_ACCMODE     = 3;
@@ -257,7 +257,7 @@ pub enum AtFd {
     /// Special value used to indicate the *at functions should use the current
     /// working directory.
     FdCwd = -100,
-    /// Normal file descriptor
+    /// Normal file descriptor.
     Normal(usize),
 }
 

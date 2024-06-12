@@ -17,7 +17,7 @@ pub struct FdTable {
 }
 
 bitflags::bitflags! {
-    // Defined in <bits/fcntl-linux.h>
+    // Defined in <bits/fcntl-linux.h>.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct FdFlags: isize {
         const CLOEXEC = 1;

@@ -1,4 +1,5 @@
 mod meminfo;
+mod mounts;
 
 use alloc::sync::Arc;
 
@@ -8,7 +9,10 @@ use vfs_core::{
     Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, MountFlags, SuperBlock, SuperBlockMeta,
 };
 
-use self::meminfo::{MemInfoDentry, MemInfoInode};
+use self::{
+    meminfo::{MemInfoDentry, MemInfoInode},
+    mounts::{MountsDentry, MountsInode},
+};
 use crate::simplefs::{
     dentry::{self, SimpleDentry},
     inode::SimpleInode,
@@ -23,6 +27,15 @@ pub fn init_procfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
     let mem_info_inode = MemInfoInode::new(root_dentry.super_block(), 0);
     mem_info_dentry.set_inode(mem_info_inode);
     root_dentry.insert(mem_info_dentry);
+
+    let mounts_dentry = MountsDentry::new(
+        "mounts",
+        root_dentry.super_block(),
+        Some(root_dentry.clone()),
+    );
+    let mounts_inode = MountsInode::new(root_dentry.super_block(), 0);
+    mounts_dentry.set_inode(mounts_inode);
+    root_dentry.insert(mounts_dentry);
     Ok(())
 }
 

@@ -6,6 +6,7 @@ use core::{
 };
 
 use async_utils::{dyn_future, Async};
+use config::board::BLOCK_SIZE;
 use driver::BLOCK_DEVICE;
 use memory::VirtAddr;
 use strum::FromRepr;
@@ -15,7 +16,7 @@ use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, MountFlags, OpenFlags,
-    Path, PollEvents, RenameFlags, SeekFrom, AT_FDCWD, AT_REMOVEDIR,
+    Path, PollEvents, RenameFlags, SeekFrom, StatFs, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use super::Syscall;
@@ -890,6 +891,28 @@ impl Syscall<'_> {
 
         // TODO: currently don't care about `RENAME_WHITEOUT`
         old_dentry.rename_to(&new_dentry, flags).map(|_| 0)
+    }
+
+    pub fn sys_statfs(&self, path: UserReadPtr<u8>, buf: UserWritePtr<StatFs>) -> SyscallResult {
+        let task = self.task;
+        let path = path.read_cstr(task)?;
+        let stfs = StatFs {
+            f_type: 0x2011BAB0 as i64,
+            f_bsize: BLOCK_SIZE as i64,
+            f_blocks: 1 << 27,
+            f_bfree: 1 << 26,
+            f_bavail: 1 << 20,
+            f_files: 1 << 10,
+            f_ffree: 1 << 9,
+            f_fsid: [0; 2],
+            f_namelen: 1 << 8,
+            f_frsize: 1 << 9,
+            f_flags: 1 << 1 as i64,
+            f_spare: [0; 4],
+        };
+        // TODO: find the target fs
+        buf.write(task, stfs)?;
+        Ok(0)
     }
 
     /// The dirfd argument is used in conjunction with the pathname argument as

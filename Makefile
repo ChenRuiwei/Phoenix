@@ -80,7 +80,7 @@ $(KERNEL_ASM): $(KERNEL_ELF)
 
 # Phony targets
 PHONY := all
-all: build run
+all: build run MODE=release
 
 PHONY += build_docker
 build_docker:
@@ -121,7 +121,7 @@ user:
 PHONY += fs-img
 fs-img:
 	@echo "building fs-img..."
-	@rm $(FS_IMG)
+	@rm -f $(FS_IMG)
 	@mkdir -p $(FS_IMG_DIR)
 	@mkdir -p mnt
 ifeq ($(FS), fat32)

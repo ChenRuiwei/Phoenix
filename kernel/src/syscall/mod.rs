@@ -170,6 +170,7 @@ impl<'a> Syscall<'a> {
                 args[3].into(),
                 args[4] as _,
             ),
+            STATFS => self.sys_statfs(args[0].into(), args[1].into()),
             // Signal
             RT_SIGPROCMASK => self.sys_rt_sigprocmask(args[0], args[1].into(), args[2].into()),
             RT_SIGACTION => self.sys_rt_sigaction(args[0] as _, args[1].into(), args[2].into()),

@@ -54,7 +54,7 @@ impl Syscall<'_> {
                 flags: action.sa_flags,
                 mask: action.sa_mask,
             };
-            log::info!("[sys_sigaction] new:{:?}", new);
+            log::info!("[sys_rt_sigaction] new:{:?}", new);
             task.with_mut_sig_handlers(|handlers| handlers.update(signum, new));
         }
         if old_action.not_null() {

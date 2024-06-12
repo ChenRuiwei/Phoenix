@@ -6,9 +6,10 @@ use driver::{getchar, print, CHAR_DEVICE};
 use spin::Once;
 use strum::FromRepr;
 use sync::mutex::{SleepLock, SpinNoIrqLock};
-use systype::{SysResult, SyscallResult};
+use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
-    Dentry, DentryMeta, File, FileMeta, Inode, InodeMeta, InodeMode, Path, Stat, SuperBlock,
+    Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Path, Stat,
+    SuperBlock,
 };
 
 use crate::sys_root_dentry;
@@ -39,15 +40,15 @@ impl Dentry for TtyDentry {
     }
 
     fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
-        todo!()
+        Err(SysError::ENOTDIR)
     }
 
     fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
-        todo!()
+        Err(SysError::ENOTDIR)
     }
 
     fn base_remove(self: Arc<Self>, _name: &str) -> SysResult<()> {
-        todo!()
+        Err(SysError::ENOTDIR)
     }
 }
 
@@ -165,10 +166,9 @@ pub fn init() -> SysResult<()> {
     let path = Path::new(sys_root_dentry(), sys_root_dentry(), path);
     let tty_dentry = path.walk()?;
     let parent = tty_dentry.parent().unwrap();
-    let tty_dentry = TtyDentry::new("tty", parent.super_block(), Some(parent.clone()));
+    let sb = parent.super_block();
+    let tty_dentry = TtyDentry::new("tty", sb.clone(), Some(parent.clone()));
     parent.insert(tty_dentry.clone());
-    // let tty_file = tty_dentry.open()?;
-    let sb = parent.clone().super_block();
     let tty_inode = TtyInode::new(sb.clone());
     tty_dentry.set_inode(tty_inode);
     let tty_file = TtyFile::new(tty_dentry.clone(), tty_dentry.inode()?);
@@ -379,8 +379,8 @@ impl File for TtyFile {
         }
     }
 
-    fn base_read_dir(&self) -> SysResult<Option<vfs_core::DirEntry>> {
-        todo!()
+    fn base_read_dir(&self) -> SysResult<Option<DirEntry>> {
+        Err(SysError::ENOTDIR)
     }
 
     fn flush(&self) -> SysResult<usize> {
