@@ -175,7 +175,7 @@ impl Syscall<'_> {
         log::info!(
             "[sys_openat] dirfd: {dirfd}, pathname: {pathname}, flags: {flags:?}, mode: {mode:?}"
         );
-        let dentry = self.at_helper(dirfd, &pathname, mode)?;
+        let dentry = task.at_helper(dirfd, &pathname, mode)?;
         if flags.contains(OpenFlags::O_CREAT) {
             // If pathname does not exist, create it as a regular file.
             if flags.contains(OpenFlags::O_EXCL) && !dentry.is_negetive() {
@@ -215,7 +215,7 @@ impl Syscall<'_> {
         let mode = InodeMode::from_bits_truncate(mode);
         let pathname = pathname.read_cstr(&task)?;
         log::debug!("[sys_mkdirat] {mode:?}");
-        let dentry = self.at_helper(dirfd, &pathname, mode)?;
+        let dentry = task.at_helper(dirfd, &pathname, mode)?;
         if !dentry.is_negetive() {
             return Err(SysError::EEXIST);
         }
@@ -274,7 +274,7 @@ impl Syscall<'_> {
         let task = self.task;
         let path = path.read_cstr(&task)?;
         log::debug!("[sys_chdir] path {path}");
-        let dentry = self.resolve_path(&path)?;
+        let dentry = task.resolve_path(&path)?;
         if !dentry.inode()?.itype().is_dir() {
             return Err(SysError::ENOTDIR);
         }
@@ -358,7 +358,7 @@ impl Syscall<'_> {
     ) -> SyscallResult {
         let task = self.task;
         let path = pathname.read_cstr(&task)?;
-        let dentry = self.at_helper(dirfd, &path, InodeMode::empty())?;
+        let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
         stat_buf.write(&task, Kstat::from_vfs_file(dentry.inode()?)?)?;
         Ok(0)
     }
@@ -406,8 +406,7 @@ impl Syscall<'_> {
                 };
                 let (parent, name) = split_parent_and_name(&target);
 
-                let parent = self.resolve_path(parent)?;
-                // let dentry = resolve_path(&target)?;
+                let parent = task.resolve_path(parent)?;
                 fs_type.mount(name.unwrap(), Some(parent), flags, dev)?
             }
             _ => return Err(SysError::EINVAL),
@@ -524,7 +523,7 @@ impl Syscall<'_> {
     ) -> SyscallResult {
         let task = self.task;
         let path = pathname.read_cstr(&task)?;
-        let dentry = self.at_helper(dirfd, &path, InodeMode::empty())?;
+        let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
         let parent = dentry.parent().expect("can not remove root directory");
         let is_dir = dentry.inode()?.itype().is_dir();
         if flags == AT_REMOVEDIR && !is_dir {
@@ -796,7 +795,7 @@ impl Syscall<'_> {
     ) -> SyscallResult {
         let task = self.task;
         let pathname = pathname.read_cstr(&task)?;
-        let dentry = self.at_helper(dirfd, &pathname, InodeMode::empty())?;
+        let dentry = task.at_helper(dirfd, &pathname, InodeMode::empty())?;
         dentry.open()?;
         Ok(0)
     }
@@ -857,7 +856,7 @@ impl Syscall<'_> {
         let file = if pathname.not_null() {
             let path = pathname.read_cstr(task)?;
             log::info!("[sys_utimensat], dirfd: {dirfd}, path: {path}",);
-            let dentry = self.at_helper(dirfd, &path, InodeMode::empty())?;
+            let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
             dentry.inode()?;
         } else {
             // NOTE: if `pathname` is NULL, acts as futimens
@@ -886,8 +885,8 @@ impl Syscall<'_> {
         let newpath = newpath.read_cstr(&task)?;
         log::info!("[sys_renameat2] olddirfd:{olddirfd:?}, oldpath:{oldpath}, newdirfd:{newdirfd:?}, newpath:{newpath}, flags:{flags:?}");
 
-        let old_dentry = self.at_helper(olddirfd, &oldpath, InodeMode::empty())?;
-        let new_dentry = self.at_helper(newdirfd, &newpath, InodeMode::empty())?;
+        let old_dentry = task.at_helper(olddirfd, &oldpath, InodeMode::empty())?;
+        let new_dentry = task.at_helper(newdirfd, &newpath, InodeMode::empty())?;
 
         // TODO: currently don't care about `RENAME_WHITEOUT`
         old_dentry.rename_to(&new_dentry, flags).map(|_| 0)
@@ -913,39 +912,5 @@ impl Syscall<'_> {
         // TODO: find the target fs
         buf.write(task, stfs)?;
         Ok(0)
-    }
-
-    /// The dirfd argument is used in conjunction with the pathname argument as
-    /// follows:
-    /// + If the pathname given in pathname is absolute, then dirfd is ignored.
-    /// + If the pathname given in pathname is relative and dirfd is the special
-    ///   value AT_FDCWD, then pathname is interpreted relative to the current
-    ///   working directory of the calling process (like open()).
-    /// + If the pathname given in pathname is relative, then it is interpreted
-    ///   relative to the directory referred to by the file descriptor dirfd
-    ///   (rather than relative to the current working directory of the calling
-    ///   process, as is done by open() for a relative pathname).  In this case,
-    ///   dirfd must be a directory that was opened for reading (O_RDONLY) or
-    ///   using the O_PATH flag.
-    pub fn at_helper(&self, fd: AtFd, path: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
-        log::info!("[at_helper] fd: {fd}, path: {path}");
-        let task = self.task;
-        let path = if is_absolute_path(path) {
-            Path::new(sys_root_dentry(), sys_root_dentry(), path)
-        } else {
-            match fd {
-                AtFd::FdCwd => Path::new(sys_root_dentry(), task.cwd(), path),
-                AtFd::Normal(fd) => {
-                    let file = task.with_fd_table(|table| table.get_file(fd))?;
-                    Path::new(sys_root_dentry(), file.dentry(), path)
-                }
-            }
-        };
-        path.walk()
-    }
-
-    /// Given a path, absolute or relative, will find.
-    pub fn resolve_path(&self, path: &str) -> SysResult<Arc<dyn Dentry>> {
-        self.at_helper(AtFd::FdCwd, path, InodeMode::empty())
     }
 }

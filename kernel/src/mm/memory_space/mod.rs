@@ -1,6 +1,7 @@
 use alloc::{
-    string::String,
+    string::{String, ToString},
     sync::{Arc, Weak},
+    vec,
     vec::Vec,
 };
 use core::ops::Range;
@@ -9,15 +10,16 @@ use async_utils::block_on;
 use config::{
     board::MEMORY_END,
     mm::{
-        PAGE_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END,
-        U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
+        DL_INTERP_OFFSET, PAGE_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END,
+        U_SEG_HEAP_BEG, U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG,
+        U_SEG_STACK_END, VIRT_RAM_OFFSET,
     },
 };
 use log::info;
 use memory::{page::Page, pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
 use spin::Lazy;
 use systype::{SysError, SysResult};
-use vfs_core::File;
+use vfs_core::{Dentry, File};
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};
@@ -30,7 +32,10 @@ use crate::{
     },
     processor::env::SumGuard,
     syscall::MmapFlags,
-    task::aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR},
+    task::{
+        aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR},
+        Task,
+    },
 };
 
 mod range_map;
@@ -52,6 +57,8 @@ pub struct MemorySpace {
     /// Map of `VmArea`s in this memory space.
     /// NOTE: stores range that is lazy allocated
     areas: RangeMap<VirtAddr, VmArea>,
+    /// Pointes to leader task.
+    task: Option<Weak<Task>>,
 }
 
 impl MemorySpace {
@@ -60,6 +67,7 @@ impl MemorySpace {
         Self {
             page_table: PageTable::new(),
             areas: RangeMap::new(),
+            task: None,
         }
     }
 
@@ -68,6 +76,7 @@ impl MemorySpace {
         Self {
             page_table: PageTable::from_kernel(&KERNEL_SPACE.page_table),
             areas: RangeMap::new(),
+            task: None,
         }
     }
 
@@ -187,6 +196,14 @@ impl MemorySpace {
         }
         log::debug!("[kernel] KERNEL SPACE init finished");
         memory_space
+    }
+
+    pub fn set_task(&mut self, task: &Arc<Task>) {
+        self.task = Some(Arc::downgrade(task))
+    }
+
+    pub fn task(&self) -> Arc<Task> {
+        self.task.as_ref().unwrap().upgrade().unwrap()
     }
 
     pub fn areas_mut(&mut self) -> &mut RangeMap<VirtAddr, VmArea> {
@@ -339,6 +356,62 @@ impl MemorySpace {
         auxv.push(AuxHeader::new(AT_PHDR, ph_head_addr));
 
         (entry, auxv)
+    }
+
+    /// Check whether the elf file is dynamic linked and
+    /// if so, load the dl interpreter.
+    /// Return the interpreter's entry point(at the base of DL_INTERP_OFFSET) if
+    /// so.
+    pub fn load_dl_interp_if_needed(&mut self, elf: &ElfFile) -> Option<usize> {
+        let elf_header = elf.header;
+        let ph_count = elf_header.pt2.ph_count();
+
+        let mut is_dl = false;
+        for i in 0..ph_count {
+            let ph = elf.program_header(i).unwrap();
+            if ph.get_type().unwrap() == xmas_elf::program::Type::Interp {
+                is_dl = true;
+                break;
+            }
+        }
+
+        if is_dl {
+            log::info!("[load_dl] encounter a dl elf");
+            let section = elf.find_section_by_name(".interp").unwrap();
+            let mut interp = String::from_utf8(section.raw_data(&elf).to_vec()).unwrap();
+            interp = interp.strip_suffix("\0").unwrap_or(&interp).to_string();
+            log::info!("[load_dl] interp {}", interp);
+
+            let mut interps: Vec<String> = vec![interp.clone()];
+
+            log::info!("interp {}", interp);
+
+            if interp.eq("/lib/ld-musl-riscv64-sf.so.1") || interp.eq("/lib/ld-musl-riscv64.so.1") {
+                // interp =
+                // "/lib/libc.so".to_string();
+                // interps.push("/libc.so".to_string());
+                interps.clear();
+                interps.push("/lib/musl/libc.so".to_string());
+            }
+
+            let mut interp_dentry: SysResult<Arc<dyn Dentry>> = Err(SysError::ENOENT);
+            for interp in interps.into_iter() {
+                if let Ok(dentry) = self.task().resolve_path(&interp) {
+                    interp_dentry = Ok(dentry);
+                    break;
+                }
+            }
+            let interp_dentry: Arc<dyn Dentry> = interp_dentry.unwrap();
+            let interp_file = interp_dentry.open().ok().unwrap();
+            let interp_elf_data = block_on(async { interp_file.read_all().await }).ok()?;
+            let interp_elf = xmas_elf::ElfFile::new(&interp_elf_data).unwrap();
+            self.map_elf(&interp_elf, DL_INTERP_OFFSET.into());
+
+            Some(interp_elf.header.pt2.entry_point() as usize + DL_INTERP_OFFSET)
+        } else {
+            log::debug!("[load_dl] encounter a static elf");
+            None
+        }
     }
 
     /// Attach given `pages` to the MemorySpace. If pages is not given, it will

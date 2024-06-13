@@ -11,7 +11,10 @@ use core::{
 };
 
 use arch::memory::sfence_vma_all;
-use config::{mm::USER_STACK_SIZE, process::INIT_PROC_PID};
+use config::{
+    mm::{DL_INTERP_OFFSET, USER_STACK_SIZE},
+    process::INIT_PROC_PID,
+};
 use futex::Futexes;
 use memory::VirtAddr;
 use signal::{
@@ -21,9 +24,10 @@ use signal::{
     sigset::{Sig, SigSet},
 };
 use sync::mutex::SpinNoIrqLock;
+use systype::SysResult;
 use time::stat::TaskTimeStat;
 use vfs::{fd_table::FdTable, sys_root_dentry};
-use vfs_core::Dentry;
+use vfs_core::{is_absolute_path, AtFd, Dentry, InodeMode, Path};
 
 use super::{
     resource::CpuMask,
@@ -37,6 +41,7 @@ use crate::{
     processor::env::within_sum,
     syscall,
     task::{
+        aux::{AuxHeader, AT_BASE},
         manager::TASK_MANAGER,
         schedule,
         tid::{alloc_tid, TidAddress},
@@ -167,6 +172,7 @@ impl Task {
         state: TaskState,
         shm_ids: BTreeMap<VirtAddr, usize>
     );
+
     // TODO: this function is not clear, may be replaced with exec
     pub fn spawn_from_elf(elf_data: &[u8]) {
         let (memory_space, user_sp_top, entry_point, _auxv) = MemorySpace::from_elf(elf_data);
@@ -202,7 +208,7 @@ impl Task {
             shm_ids: new_shared(BTreeMap::new()),
         });
         task.thread_group.lock().push(task.clone());
-
+        task.memory_space.lock().set_task(&task);
         TASK_MANAGER.add(&task);
         log::debug!("create a new process, pid {}", task.tid());
         schedule::spawn_user_task(task);
@@ -397,6 +403,10 @@ impl Task {
         }
         new.with_mut_thread_group(|tg| tg.push(new.clone()));
 
+        if new.is_leader() {
+            new.memory_space.lock().set_task(&new);
+        }
+
         if flags.contains(CloneFlags::CHILD_SETTID) {
             log::warn!("CloneFlags::CHILD_SETTID");
             UserWritePtr::from_usize(child_tid.bits())
@@ -410,11 +420,19 @@ impl Task {
 
     // TODO: figure out what should be reserved across this syscall
     // TODO: support CLOSE_ON_EXEC flag may be
-    pub fn do_execve(&self, elf_data: &[u8], argv: Vec<String>, envp: Vec<String>) {
+    pub fn do_execve(self: &Arc<Self>, elf_data: &[u8], argv: Vec<String>, envp: Vec<String>) {
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();
-        let (entry, auxv) = memory_space.parse_and_map_elf(elf_data);
+        memory_space.set_task(&self.leader());
+        let (mut entry, mut auxv) = memory_space.parse_and_map_elf(elf_data);
 
+        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
+        if let Some(interp_entry_point) = memory_space.load_dl_interp_if_needed(&elf) {
+            auxv.push(AuxHeader::new(AT_BASE, DL_INTERP_OFFSET));
+            entry = interp_entry_point;
+        } else {
+            auxv.push(AuxHeader::new(AT_BASE, 0));
+        }
         // NOTE: should do termination before switching page table, so that other
         // threads will trap in by page fault and be handled by `do_exit`
         log::debug!("[Task::do_execve] terminating all threads except the leader");
@@ -424,7 +442,7 @@ impl Task {
                 if !t.is_leader() {
                     t.set_zombie();
                 } else {
-                    pid = t.tid.0;
+                    pid = t.tid();
                 }
             }
             pid
@@ -536,6 +554,42 @@ impl Task {
                 }
             });
         }
+    }
+
+    /// The dirfd argument is used in conjunction with the pathname argument as
+    /// follows:
+    /// + If the pathname given in pathname is absolute, then dirfd is ignored.
+    /// + If the pathname given in pathname is relative and dirfd is the special
+    ///   value AT_FDCWD, then pathname is interpreted relative to the current
+    ///   working directory of the calling process (like open()).
+    /// + If the pathname given in pathname is relative, then it is interpreted
+    ///   relative to the directory referred to by the file descriptor dirfd
+    ///   (rather than relative to the current working directory of the calling
+    ///   process, as is done by open() for a relative pathname).  In this case,
+    ///   dirfd must be a directory that was opened for reading (O_RDONLY) or
+    ///   using the O_PATH flag.
+    pub fn at_helper(&self, fd: AtFd, path: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+        log::info!("[at_helper] fd: {fd}, path: {path}");
+        let path = if is_absolute_path(path) {
+            Path::new(sys_root_dentry(), sys_root_dentry(), path)
+        } else {
+            match fd {
+                AtFd::FdCwd => {
+                    log::info!("[at_helper] cwd: {}", self.cwd().path());
+                    Path::new(sys_root_dentry(), self.cwd(), path)
+                }
+                AtFd::Normal(fd) => {
+                    let file = self.with_fd_table(|table| table.get_file(fd))?;
+                    Path::new(sys_root_dentry(), file.dentry(), path)
+                }
+            }
+        };
+        path.walk()
+    }
+
+    /// Given a path, absolute or relative, will find.
+    pub fn resolve_path(&self, path: &str) -> SysResult<Arc<dyn Dentry>> {
+        self.at_helper(AtFd::FdCwd, path, InodeMode::empty())
     }
 }
 

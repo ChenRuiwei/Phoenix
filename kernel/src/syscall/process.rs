@@ -286,7 +286,7 @@ impl Syscall<'_> {
             argv.insert(1, "sh".to_string());
         }
 
-        let file = self.resolve_path(&path)?.open()?;
+        let file = task.resolve_path(&path)?.open()?;
         let elf_data = file.read_all().await?;
         task.do_execve(&elf_data, argv, envp);
         Ok(0)
