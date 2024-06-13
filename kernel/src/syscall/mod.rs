@@ -12,6 +12,7 @@ mod signal;
 mod time;
 
 use alloc::sync::Arc;
+use core::arch;
 
 pub use consts::SyscallNo;
 use fs::*;
@@ -171,6 +172,10 @@ impl<'a> Syscall<'a> {
                 args[4] as _,
             ),
             STATFS => self.sys_statfs(args[0].into(), args[1].into()),
+            READLINKAT => {
+                self.sys_readlinkat(args[0].into(), args[1].into(), args[2].into(), args[3])
+                    .await
+            }
             // Signal
             RT_SIGPROCMASK => {
                 self.sys_rt_sigprocmask(args[0], args[1].into(), args[2].into(), args[3])

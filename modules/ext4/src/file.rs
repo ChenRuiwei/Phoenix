@@ -39,7 +39,7 @@ impl File for Ext4File {
 
     async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         match self.itype() {
-            InodeType::File => {
+            InodeType::File | InodeType::SymLink => {
                 let mut file = self.file.lock();
                 let path = file.get_path();
                 let path = path.to_str().unwrap();

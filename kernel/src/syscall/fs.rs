@@ -15,8 +15,8 @@ use time::timespec::TimeSpec;
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, MountFlags, OpenFlags,
-    Path, PollEvents, RenameFlags, SeekFrom, Stat, StatFs, AT_FDCWD, AT_REMOVEDIR,
+    is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, InodeType, MountFlags,
+    OpenFlags, Path, PollEvents, RenameFlags, SeekFrom, Stat, StatFs, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use super::Syscall;
@@ -913,5 +913,27 @@ impl Syscall<'_> {
         // TODO: find the target fs
         buf.write(task, stfs)?;
         Ok(0)
+    }
+
+    pub async fn sys_readlinkat(
+        &self,
+        dirfd: AtFd,
+        pathname: UserReadPtr<u8>,
+        buf: UserWritePtr<u8>,
+        bufsiz: usize,
+    ) -> SyscallResult {
+        let task = self.task;
+        let path = pathname.read_cstr(task)?;
+        log::info!(
+            "[sys_readlinkat] dirfd:{dirfd}, path:{path}, buf:{:x}, bufsiz: {bufsiz}",
+            buf.as_usize()
+        );
+        let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
+        let file = dentry.open()?;
+        if file.inode().itype() != InodeType::SymLink {
+            return Err(SysError::EINVAL);
+        }
+        let mut buf = buf.into_mut_slice(task, bufsiz)?;
+        file.read_at(0, &mut buf).await
     }
 }
