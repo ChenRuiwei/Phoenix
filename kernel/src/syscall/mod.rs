@@ -172,7 +172,9 @@ impl<'a> Syscall<'a> {
             ),
             STATFS => self.sys_statfs(args[0].into(), args[1].into()),
             // Signal
-            RT_SIGPROCMASK => self.sys_rt_sigprocmask(args[0], args[1].into(), args[2].into()),
+            RT_SIGPROCMASK => {
+                self.sys_rt_sigprocmask(args[0], args[1].into(), args[2].into(), args[3])
+            }
             RT_SIGACTION => self.sys_rt_sigaction(args[0] as _, args[1].into(), args[2].into()),
             KILL => self.sys_kill(args[0] as _, args[1] as _),
             TKILL => self.sys_tkill(args[0] as _, args[1] as _),

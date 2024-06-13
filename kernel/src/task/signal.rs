@@ -10,7 +10,7 @@ use core::{
 use arch::time::get_time_duration;
 use signal::{
     action::{Action, ActionType, SigActionFlag},
-    siginfo::{SigDetails, SigInfo},
+    siginfo::{self, SigDetails, SigInfo},
     signal_stack::{MContext, UContext},
     sigset::{Sig, SigSet},
 };
@@ -171,12 +171,14 @@ pub fn do_signal(task: &Arc<Task>) -> SysResult<()> {
                             cx.user_x[2]
                         }
                     };
+                    log::error!("stask origin {:#x}", cx.user_x[2]);
                     // extend the signal_stack
                     // 在栈上压入一个UContext，存储trap frame里的寄存器信息
                     let ucontext_ptr = UserWritePtr::<UContext>::from(sp - size_of::<UContext>());
                     // TODO: should increase the size of the signal_stack? It seams umi doesn't do
                     // that
                     let ucontext = UContext {
+                        uc_flags: 0,
                         uc_link: 0,
                         uc_sigmask: old_mask,
                         uc_stack: signal_stack.unwrap_or_default(),
@@ -199,10 +201,22 @@ pub fn do_signal(task: &Arc<Task>) -> SysResult<()> {
                     if action.flags.contains(SigActionFlag::SA_SIGINFO) {
                         // a2
                         cx.user_x[12] = new_sp;
+                        #[derive(Default, Copy, Clone)]
+                        #[repr(C)]
+                        pub struct LinuxSigInfo {
+                            pub si_signo: i32,
+                            pub si_errno: i32,
+                            pub si_code: i32,
+                            pub _pad: [i32; 29],
+                            _align: [u64; 0],
+                        }
+                        let mut siginfo_v = LinuxSigInfo::default();
+                        siginfo_v.si_signo = si.sig.raw() as _;
+                        siginfo_v.si_code = si.code;
                         let siginfo_ptr =
-                            UserWritePtr::<SigInfo>::from(new_sp - size_of::<SigInfo>());
+                            UserWritePtr::<LinuxSigInfo>::from(new_sp - size_of::<LinuxSigInfo>());
                         new_sp = siginfo_ptr.as_usize();
-                        siginfo_ptr.write(&task, si.clone())?;
+                        siginfo_ptr.write(&task, siginfo_v)?;
                         cx.user_x[11] = new_sp;
                     }
                     cx.sepc = entry;
@@ -211,6 +225,7 @@ pub fn do_signal(task: &Arc<Task>) -> SysResult<()> {
                     cx.user_x[1] = sigreturn_trampoline as usize;
                     // sp (it will be used later by sys_sigreturn to restore ucontext)
                     cx.user_x[2] = new_sp;
+                    log::error!("{:#x}", new_sp);
                     task.set_sig_ucontext_ptr(new_sp);
                 }
             }

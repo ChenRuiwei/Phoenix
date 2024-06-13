@@ -69,7 +69,7 @@ impl Syscall<'_> {
         futex_op: i32,
         val: u32,
         timeout: u32,
-        uaddr2: u32,
+        uaddr2: usize,
         val3: u32,
     ) -> SyscallResult {
         /// Tells the kernel that the futex is process-private and not shared

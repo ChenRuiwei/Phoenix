@@ -521,7 +521,7 @@ impl Task {
             UserWritePtr::from(address)
                 .write(self, 0)
                 .expect("tid address write error");
-            self.with_mut_futexes(|futexes| futexes.wake(address as u32, 1));
+            self.with_mut_futexes(|futexes| futexes.wake(address, 1));
         }
 
         // NOTE: leader will be removed by parent calling `sys_wait4`

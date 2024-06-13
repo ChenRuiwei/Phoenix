@@ -39,12 +39,13 @@ impl SignalStack {
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct UContext {
+    pub uc_flags: usize,
     /// 当前上下文返回时将恢复执行的下一个上下文的指针
     pub uc_link: usize,
-    // 当前上下文活跃时被阻塞的信号集
-    pub uc_sigmask: SigSet,
     // 当前上下文使用的栈信息,包含栈的基址、大小等信息
     pub uc_stack: SignalStack,
+    // 当前上下文活跃时被阻塞的信号集
+    pub uc_sigmask: SigSet,
     // 保存具体机器状态的上下文信息，这是一个机器相关的表示，包含了处理器的寄存器状态等信息
     pub uc_mcontext: MContext,
 }

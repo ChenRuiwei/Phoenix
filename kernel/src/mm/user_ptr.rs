@@ -571,18 +571,18 @@ impl PageFaultAccessType {
 }
 
 pub struct FutexWord {
-    addr: u32,
+    addr: usize,
     _guard: SumGuard,
 }
 
 impl FutexWord {
     pub fn from(a: usize) -> Self {
         Self {
-            addr: a as u32,
+            addr: a,
             _guard: SumGuard::new(),
         }
     }
-    pub fn raw(&self) -> u32 {
+    pub fn raw(&self) -> usize {
         self.addr
     }
     pub fn check(&self, task: &Arc<Task>) -> SysResult<()> {
@@ -600,7 +600,7 @@ impl FutexWord {
 impl From<usize> for FutexWord {
     fn from(a: usize) -> Self {
         Self {
-            addr: a as u32,
+            addr: a,
             _guard: SumGuard::new(),
         }
     }

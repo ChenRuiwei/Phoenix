@@ -8,7 +8,7 @@ use hashbrown::HashMap;
 
 pub(crate) type Tid = usize;
 pub struct Futexes {
-    pub map: HashMap<u32, UnsafeCell<HashMap<Tid, Waker>>>,
+    pub map: HashMap<usize, UnsafeCell<HashMap<Tid, Waker>>>,
     pub robust_list: AtomicPtr<RobustListHead>,
 }
 
@@ -42,7 +42,7 @@ impl Futexes {
         }
     }
 
-    pub fn add_waiter(&mut self, uaddr: u32, tid: Tid, waker: Waker) {
+    pub fn add_waiter(&mut self, uaddr: usize, tid: Tid, waker: Waker) {
         if let Some(waiters) = self.map.get(&uaddr) {
             unsafe { &mut *waiters.get() }.insert(tid, waker);
         } else {
@@ -52,7 +52,7 @@ impl Futexes {
         }
     }
 
-    pub fn waiters(&self, uaddr: u32) -> Option<&mut HashMap<Tid, Waker>> {
+    pub fn waiters(&self, uaddr: usize) -> Option<&mut HashMap<Tid, Waker>> {
         if let Some(waiters) = self.map.get(&uaddr) {
             Some(unsafe { &mut *waiters.get() })
         } else {
@@ -60,12 +60,12 @@ impl Futexes {
         }
     }
 
-    pub fn remove_waiter(&mut self, uaddr: u32, tid: Tid) {
+    pub fn remove_waiter(&mut self, uaddr: usize, tid: Tid) {
         let waiters = self.waiters(uaddr).unwrap();
         waiters.remove(&tid).expect("no waiters of this tid");
     }
 
-    pub fn wake(&mut self, uaddr: u32, n: u32) -> usize {
+    pub fn wake(&mut self, uaddr: usize, n: u32) -> usize {
         let mut count = 0;
         if let Some(waiters) = self.waiters(uaddr) {
             while let Some((_, waiter)) = pop_waiter(waiters) {
@@ -91,8 +91,8 @@ impl Futexes {
     /// queue of `old_uaddr` and added to the wait queue of `new_uaddr`
     pub fn requeue_waiters(
         &mut self,
-        old_uaddr: u32,
-        new_uaddr: u32,
+        old_uaddr: usize,
+        new_uaddr: usize,
         n_wake: u32,
         n_rq: u32,
     ) -> usize {

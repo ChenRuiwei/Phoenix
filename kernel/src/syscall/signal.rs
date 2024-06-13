@@ -72,16 +72,19 @@ impl Syscall<'_> {
         how: usize,
         set: UserReadPtr<SigSet>,
         old_set: UserWritePtr<SigSet>,
+        sigset_size: usize,
     ) -> SyscallResult {
         const SIGBLOCK: usize = 0;
         const SIGUNBLOCK: usize = 1;
         const SIGSETMASK: usize = 2;
+        debug_assert!(sigset_size == 8);
         let task = self.task;
         if old_set.not_null() {
             old_set.write(&task, *task.sig_mask())?;
         }
         if set.not_null() {
             let mut set = set.read(&task)?;
+            log::info!("[sys_rt_sigprocmask] set:{set:#x}");
             // It is not possible to block SIGKILL or SIGSTOP.  Attempts to do so are
             // silently ignored.
             set.remove(SigSet::SIGKILL | SigSet::SIGCONT);
@@ -115,6 +118,7 @@ impl Syscall<'_> {
         *task.sig_stack() = (ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack);
         cx.sepc = ucontext.uc_mcontext.sepc;
         cx.user_x = ucontext.uc_mcontext.user_x;
+        log::error!("stask after {:#x}", cx.user_x[2]);
         Ok(cx.user_x[10])
     }
 
