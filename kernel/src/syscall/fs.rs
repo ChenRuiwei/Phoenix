@@ -16,7 +16,7 @@ use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, MountFlags, OpenFlags,
-    Path, PollEvents, RenameFlags, SeekFrom, StatFs, AT_FDCWD, AT_REMOVEDIR,
+    Path, PollEvents, RenameFlags, SeekFrom, Stat, StatFs, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use super::Syscall;
@@ -94,9 +94,8 @@ pub struct Kstat {
 }
 
 impl Kstat {
-    pub fn from_vfs_file(file: Arc<dyn Inode>) -> SysResult<Self> {
-        let stat = file.get_attr()?;
-        Ok(Kstat {
+    pub fn from_stat(stat: Stat) -> Self {
+        Kstat {
             st_dev: stat.st_dev,
             st_ino: stat.st_ino,
             st_mode: stat.st_mode, // 0777 permission, we don't care about permission
@@ -115,7 +114,7 @@ impl Kstat {
             st_mtime_nsec: stat.st_mtime.nsec as isize,
             st_ctime_sec: stat.st_ctime.sec as isize,
             st_ctime_nsec: stat.st_ctime.nsec as isize,
-        })
+        }
     }
 }
 
@@ -345,7 +344,8 @@ impl Syscall<'_> {
     pub fn sys_fstat(&self, fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
         let task = self.task;
         let file = task.with_fd_table(|table| table.get_file(fd))?;
-        stat_buf.write(&task, Kstat::from_vfs_file(file.inode())?)?;
+        let kstat = Kstat::from_stat(file.inode().get_attr()?);
+        stat_buf.write(&task, kstat)?;
         Ok(0)
     }
 
@@ -359,7 +359,8 @@ impl Syscall<'_> {
         let task = self.task;
         let path = pathname.read_cstr(&task)?;
         let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
-        stat_buf.write(&task, Kstat::from_vfs_file(dentry.inode()?)?)?;
+        let kstat = Kstat::from_stat(dentry.inode()?.get_attr()?);
+        stat_buf.write(&task, kstat)?;
         Ok(0)
     }
 

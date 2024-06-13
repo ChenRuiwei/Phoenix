@@ -33,7 +33,7 @@ use crate::{
     processor::env::SumGuard,
     syscall::MmapFlags,
     task::{
-        aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR},
+        aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR, AT_RANDOM},
         Task,
     },
 };
@@ -352,6 +352,7 @@ impl MemorySpace {
         let (_max_end_vpn, header_va) = self.map_elf(&elf, 0.into());
 
         let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
+        auxv.push(AuxHeader::new(AT_RANDOM, ph_head_addr));
         log::debug!("[parse_and_map_elf] AT_PHDR  ph_head_addr is {ph_head_addr:x}",);
         auxv.push(AuxHeader::new(AT_PHDR, ph_head_addr));
 

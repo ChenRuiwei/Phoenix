@@ -50,6 +50,8 @@ pub const AT_SECURE: usize = 23;
 #[allow(unused)]
 pub const AT_BASE_PLATFORM: usize = 24;
 /// address of 16 random bytes
+// NOTE: libc may use these 16 bytes as stack check guard, therefore, the
+// address must be valid
 pub const AT_RANDOM: usize = 25;
 /// extension of AT_HWCAP
 #[allow(unused)]
