@@ -39,6 +39,7 @@ pub fn map_ext4_type(value: InodeTypes) -> InodeType {
     match value {
         InodeTypes::EXT4_DE_REG_FILE => InodeType::File,
         InodeTypes::EXT4_DE_DIR => InodeType::Dir,
-        _ => unimplemented!(),
+        InodeTypes::EXT4_DE_SYMLINK => InodeType::SymLink,
+        other => unimplemented!("{:?}", other),
     }
 }
