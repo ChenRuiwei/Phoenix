@@ -34,6 +34,7 @@ impl TaskTimeStat {
             last_trap: Duration::ZERO,
         }
     }
+
     /// return the cutime and cstime
     pub fn user_system_time(&self) -> (Duration, Duration) {
         (self.utime, self.stime)

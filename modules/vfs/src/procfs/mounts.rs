@@ -98,6 +98,7 @@ impl Inode for MountsInode {
     }
 }
 
+// TODO:
 pub fn list_mounts() -> String {
     let mut res = "".to_string();
     let fs_mgr = FS_MANAGER.lock();
@@ -105,17 +106,8 @@ pub fn list_mounts() -> String {
         let supers = fs.meta().supers.lock();
         for (mount_path, sb) in supers.iter() {
             res += "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"
-            // // res += fs_ptr.meta().dev_name.as_str();
-            // res += " ";
-            // res += mount_path.as_str();
-            // res += " ";
-            // res += fstype.to_string().as_str();
-            // res += " ";
-            // // res += fs_ptr.metadata().flags.to_string().as_str();
-            // res += " 0 0\n";
         }
     }
-    log::error!("{res}");
     res
 }
 
@@ -130,7 +122,6 @@ impl File for MountsFile {
     }
 
     async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
-        log::error!("fuck");
         let info = list_mounts();
         let len = info.len();
         if self.pos() >= len {

@@ -3,6 +3,7 @@
 .gdb_history
 .idea
 .gdbinit
+ltp/
 target/
 vendor/
 fs-img/
