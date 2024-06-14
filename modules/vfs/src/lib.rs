@@ -21,7 +21,11 @@ use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 use vfs_core::{Dentry, FileSystemType, MountFlags};
 
-use crate::{devfs::DevFsType, procfs::ProcFsType, tmpfs::TmpFsType};
+use crate::{
+    devfs::{init_devfs, DevFsType},
+    procfs::ProcFsType,
+    tmpfs::TmpFsType,
+};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
@@ -68,9 +72,10 @@ pub fn init() {
 
     log::info!("[vfs] mounting dev fs");
     let devfs = FS_MANAGER.lock().get("devfs").unwrap().clone();
-    devfs
+    let devfs_dentry = devfs
         .mount("dev", Some(diskfs_root.clone()), MountFlags::empty(), None)
         .unwrap();
+    init_devfs(devfs_dentry).unwrap();
 
     let procfs = FS_MANAGER.lock().get("procfs").unwrap().clone();
     let procfs_dentry = procfs
@@ -86,8 +91,6 @@ pub fn init() {
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);
 
     sys_root_dentry().open().unwrap().load_dir();
-
-    tty::init().unwrap();
 }
 
 pub fn sys_root_dentry() -> Arc<dyn Dentry> {

@@ -161,21 +161,6 @@ impl WinSize {
     }
 }
 
-pub fn init() -> SysResult<()> {
-    let path = "/dev/tty";
-    let path = Path::new(sys_root_dentry(), sys_root_dentry(), path);
-    let tty_dentry = path.walk()?;
-    let parent = tty_dentry.parent().unwrap();
-    let sb = parent.super_block();
-    let tty_dentry = TtyDentry::new("tty", sb.clone(), Some(parent.clone()));
-    parent.insert(tty_dentry.clone());
-    let tty_inode = TtyInode::new(sb.clone());
-    tty_dentry.set_inode(tty_inode);
-    let tty_file = TtyFile::new(tty_dentry.clone(), tty_dentry.inode()?);
-    TTY.call_once(|| tty_file);
-    Ok(())
-}
-
 const CTRL_C: u8 = 3;
 
 pub static TTY: Once<Arc<TtyFile>> = Once::new();
