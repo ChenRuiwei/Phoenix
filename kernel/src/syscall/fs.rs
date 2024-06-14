@@ -1,5 +1,6 @@
-use alloc::{ffi::CString, sync::Arc, vec, vec::Vec};
+use alloc::{ffi::CString, string::ToString, sync::Arc, vec, vec::Vec};
 use core::{
+    cmp,
     future::Future,
     pin::Pin,
     task::{Context, Poll},
@@ -667,6 +668,8 @@ impl Syscall<'_> {
         impl Future for PollFuture<'_> {
             type Output = Vec<(usize, SysResult<PollEvents>)>;
 
+            /// Return vec of futures that are ready. Return `Poll::Pending` if
+            /// no futures are ready.
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
                 let this = unsafe { self.get_unchecked_mut() };
                 let mut ret_vec = Vec::new();
@@ -928,12 +931,19 @@ impl Syscall<'_> {
             "[sys_readlinkat] dirfd:{dirfd}, path:{path}, buf:{:x}, bufsiz: {bufsiz}",
             buf.as_usize()
         );
+        let mut buf = buf.into_mut_slice(task, bufsiz)?;
+        // TODO:
+        if path == "/proc/self/exe" {
+            let target = CString::new("/lmbench_all").unwrap();
+            let len = cmp::min(buf.len(), target.to_bytes_with_nul().len());
+            buf[..len].copy_from_slice(&target.to_bytes_with_nul()[..len]);
+            return Ok(len);
+        }
         let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
         let file = dentry.open()?;
         if file.inode().itype() != InodeType::SymLink {
             return Err(SysError::EINVAL);
         }
-        let mut buf = buf.into_mut_slice(task, bufsiz)?;
         file.read_at(0, &mut buf).await
     }
 }

@@ -4,7 +4,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::ops::Range;
+use core::{arch::riscv64, ops::Range};
 
 use async_utils::block_on;
 use config::{
@@ -17,6 +17,7 @@ use config::{
 };
 use log::info;
 use memory::{page::Page, pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
+use riscv::register::mideleg;
 use spin::Lazy;
 use systype::{SysError, SysResult};
 use vfs_core::{Dentry, File};
@@ -212,6 +213,20 @@ impl MemorySpace {
 
     pub fn page_table_mut(&mut self) -> &mut PageTable {
         &mut self.page_table
+    }
+
+    pub fn split_area(
+        &mut self,
+        old_range: Range<VirtAddr>,
+        split_range: Range<VirtAddr>,
+    ) -> Option<&mut VmArea> {
+        let area = self.areas.force_remove_one(old_range);
+        let (mut left, mut middle, mut right) = area.split(split_range);
+        let left_ret = left.map(|left| self.areas.try_insert(left.range_va(), left).unwrap());
+        let right_ret = right.map(|right| self.areas.try_insert(right.range_va(), right).unwrap());
+        let middle_ret =
+            middle.map(|middle| self.areas.try_insert(middle.range_va(), middle).unwrap());
+        middle_ret
     }
 
     /// Map the sections in the elf.
