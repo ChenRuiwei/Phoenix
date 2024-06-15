@@ -23,10 +23,17 @@ pub fn init() {
 }
 
 /// Add escape sequence to print with color in linux console
+// #[macro_export]
+// macro_rules! with_color {
+//     ($args:ident, $color_code:ident) => {{
+//         format_args!("\u{1B}[{}m{}\u{1B}[0m", $color_code as u8, $args)
+//     }};
+// }
+
 #[macro_export]
 macro_rules! with_color {
-    ($args:ident, $color_code:ident) => {{
-        format_args!("\u{1B}[{}m{}\u{1B}[0m", $color_code as u8, $args)
+    ($color_code:expr, $($arg:tt)*) => {{
+        format_args!("\u{1B}[{}m{}\u{1B}[m", $color_code as u8, format_args!($($arg)*))
     }};
 }
 
@@ -58,4 +65,25 @@ pub fn level_to_color_code(level: Level) -> u8 {
         Level::Debug => 32, // Green
         Level::Trace => 90, // BrightBlack
     }
+}
+
+#[derive(Copy, Clone)]
+#[repr(u8)]
+pub enum ColorCode {
+    Black = 30,
+    Red = 31,
+    Green = 32,
+    Yellow = 33,
+    Blue = 34,
+    Magenta = 35,
+    Cyan = 36,
+    White = 37,
+    BrightBlack = 90,
+    BrightRed = 91,
+    BrightGreen = 92,
+    BrightYellow = 93,
+    BrightBlue = 94,
+    BrightMagenta = 95,
+    BrightCyan = 96,
+    BrightWhite = 97,
 }
