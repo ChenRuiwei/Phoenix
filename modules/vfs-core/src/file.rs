@@ -70,16 +70,18 @@ pub trait File: Send + Sync {
         Err(SysError::ENOTTY)
     }
 
+    /// Given interested events, keep track of these events and return events
+    /// that is ready.
     // TODO:
-    async fn poll(&self, events: PollEvents) -> SysResult<PollEvents> {
+    fn base_poll(&self, events: PollEvents) -> PollEvents {
         let mut res = PollEvents::empty();
-        if events.contains(PollEvents::POLLIN) {
-            res |= PollEvents::POLLIN;
+        if events.contains(PollEvents::IN) {
+            res |= PollEvents::IN;
         }
-        if events.contains(PollEvents::POLLOUT) {
-            res |= PollEvents::POLLOUT;
+        if events.contains(PollEvents::OUT) {
+            res |= PollEvents::OUT;
         }
-        Ok(res)
+        res
     }
 
     fn inode(&self) -> Arc<dyn Inode> {
@@ -225,6 +227,14 @@ impl dyn File {
         let ret = self.write_at(pos, buf).await?;
         self.set_pos(pos + ret);
         Ok(ret)
+    }
+
+    /// Given interested events, keep track of these events and return events
+    /// that is ready.
+    // TODO:
+    pub async fn poll(&self, events: PollEvents) -> PollEvents {
+        log::info!("[File::poll] path:{}", self.dentry().path());
+        self.base_poll(events)
     }
 
     pub fn load_dir(&self) -> SysResult<()> {

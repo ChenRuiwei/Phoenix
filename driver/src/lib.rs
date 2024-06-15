@@ -3,12 +3,13 @@
 
 extern crate alloc;
 
-use alloc::sync::Arc;
+use alloc::{boxed::Box, sync::Arc};
 use core::{
     fmt::{self, Write},
     task::Waker,
 };
 
+use async_trait::async_trait;
 use qemu::{uart::UartDevice, virtio_blk::VirtIOBlkDev};
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
@@ -32,9 +33,12 @@ pub trait BlockDevice: Send + Sync {
     fn write_blocks(&self, block_id: usize, buf: &[u8]);
 }
 
+#[async_trait]
 pub trait CharDevice: Send + Sync {
-    fn getchar(&self) -> u8;
-    fn puts(&self, char: &[u8]);
+    async fn getchar(&self) -> u8;
+    async fn puts(&self, char: &[u8]);
+    fn poll_in(&self) -> bool;
+    fn poll_out(&self) -> bool;
     fn handle_irq(&self);
     fn register_waker(&self, _waker: Waker) {
         todo!()
@@ -69,9 +73,9 @@ impl Write for Stdout {
     }
 }
 
-pub fn getchar() -> u8 {
+pub async fn getchar() -> u8 {
     let char_device = CHAR_DEVICE.get().unwrap();
-    char_device.getchar()
+    char_device.getchar().await
 }
 
 pub fn print(args: fmt::Arguments<'_>) {

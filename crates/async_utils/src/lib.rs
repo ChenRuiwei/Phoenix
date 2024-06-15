@@ -11,8 +11,6 @@ use core::{
     task::{ready, Context, Poll, Waker},
 };
 
-use log::trace;
-
 /// Take the waker of the current future
 #[inline(always)]
 pub async fn take_waker() -> Waker {
@@ -61,7 +59,7 @@ struct BlockWaker;
 
 impl Wake for BlockWaker {
     fn wake(self: Arc<Self>) {
-        trace!("block waker wakes");
+        log::trace!("block waker wakes");
     }
 }
 
@@ -204,6 +202,7 @@ impl Future for YieldFuture {
 
 /// Yield the current thread (the scheduler will switch to the next thread)
 pub async fn yield_now() {
+    log::info!("yield_now");
     YieldFuture::new().await;
 }
 

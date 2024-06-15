@@ -1,15 +1,17 @@
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use core::{cmp, ptr::drop_in_place};
 
 use async_trait::async_trait;
-use async_utils::{take_waker, yield_now};
+use async_utils::{block_on, take_waker, yield_now};
 use driver::{getchar, print, CHAR_DEVICE};
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 use spin::Once;
 use strum::FromRepr;
 use sync::mutex::{SleepLock, SpinNoIrqLock};
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
-    Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Path, Stat,
-    SuperBlock,
+    Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Path, PollEvents,
+    Stat, SuperBlock,
 };
 
 use crate::sys_root_dentry;
@@ -167,47 +169,10 @@ pub static TTY: Once<Arc<TtyFile>> = Once::new();
 
 const QUEUE_BUFFER_LEN: usize = 256;
 
-struct QueueBuffer {
-    buf: [u8; QUEUE_BUFFER_LEN],
-    e: usize,
-    f: usize,
-}
-
-impl QueueBuffer {
-    fn new() -> Self {
-        Self {
-            buf: [0; QUEUE_BUFFER_LEN],
-            e: 0,
-            f: 0,
-        }
-    }
-    fn push(&mut self, val: u8) {
-        self.buf[self.f] = val;
-        self.f = (self.f + 1) % QUEUE_BUFFER_LEN;
-    }
-    fn top(&self) -> u8 {
-        if self.e == self.f {
-            0xff
-        } else {
-            self.buf[self.e]
-        }
-    }
-
-    fn pop(&mut self) -> u8 {
-        if self.e == self.f {
-            0xff
-        } else {
-            let ret = self.buf[self.e];
-            self.e = (self.e + 1) % QUEUE_BUFFER_LEN;
-            ret
-        }
-    }
-}
-
 pub struct TtyFile {
-    /// Temporarily save poll in data
-    buf: SpinNoIrqLock<QueueBuffer>,
     meta: FileMeta,
+    /// Temporarily save chars that `poll` has taken from `CHAR_DEVICE`.
+    buf: SpinNoIrqLock<AllocRingBuffer<u8>>,
     inner: SpinNoIrqLock<TtyInner>,
 }
 
@@ -220,7 +185,7 @@ struct TtyInner {
 impl TtyFile {
     pub fn new(dentry: Arc<dyn Dentry>, inode: Arc<dyn Inode>) -> Arc<Self> {
         Arc::new(Self {
-            buf: SpinNoIrqLock::new(QueueBuffer::new()),
+            buf: SpinNoIrqLock::new(AllocRingBuffer::new(QUEUE_BUFFER_LEN)),
             meta: FileMeta::new(dentry, inode),
             inner: SpinNoIrqLock::new(TtyInner {
                 fg_pgid: 2 as u32,
@@ -257,40 +222,25 @@ impl TtyFile {
 
 #[async_trait]
 impl File for TtyFile {
+    fn meta(&self) -> &FileMeta {
+        &self.meta
+    }
+
     async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
-        let mut cnt = 0;
-        loop {
-            let ch: u8;
-            let self_buf = self.buf.lock().pop();
-            if self_buf != 0xff {
-                ch = self_buf;
-            } else {
-                ch = getchar();
-                if ch == 0xff {
-                    CHAR_DEVICE
-                        .get()
-                        .unwrap()
-                        .register_waker(take_waker().await);
-                    log::debug!("[TtyFuture::poll] nothing to read");
-                    yield_now().await;
-                    continue;
-                }
+        log::debug!("[TtyFile::base_read_at] buf len {}", buf.len());
+        if self.buf.lock().len() > 0 {
+            let mut self_buf = self.buf.lock();
+            // `poll` before, we need to retrieve data from `self.buf`
+            let len = cmp::min(self_buf.len(), buf.len());
+            for i in 0..len {
+                buf[i] = self_buf.dequeue().unwrap();
             }
-            log::debug!(
-                "[TtyFuture::poll] recv ch {ch}, cnt {cnt}, len {}",
-                buf.len()
-            );
-            buf[cnt] = ch;
-
-            cnt += 1;
-
-            if cnt < buf.len() {
-                yield_now().await;
-                continue;
-            } else {
-                return Ok(buf.len());
-            }
+            return Ok(len);
         }
+
+        let c = getchar().await;
+        buf[0] = c as u8;
+        Ok(1)
     }
 
     async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
@@ -304,8 +254,25 @@ impl File for TtyFile {
         Ok(buf.len())
     }
 
-    fn meta(&self) -> &FileMeta {
-        &self.meta
+    fn base_poll(&self, events: PollEvents) -> PollEvents {
+        let mut res = PollEvents::empty();
+        if events.contains(PollEvents::IN) {
+            let buf_len = self.buf.lock().len();
+            if buf_len > 0 {
+                res |= PollEvents::IN;
+            } else {
+                if CHAR_DEVICE.get().unwrap().poll_in() {
+                    let c = block_on(async { getchar().await });
+                    self.buf.lock().push(c);
+                    res |= PollEvents::IN;
+                }
+            }
+        }
+        if events.contains(PollEvents::OUT) {
+            res |= PollEvents::OUT;
+        }
+        log::debug!("[TtyFile::base_poll] ret events:{res:?}");
+        res
     }
 
     /// See `ioctl_tty` manual page.

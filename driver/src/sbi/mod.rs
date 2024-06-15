@@ -1,7 +1,10 @@
 //! SBI call wrappers
 #![allow(unused)]
 
+use alloc::boxed::Box;
 use core::arch::asm;
+
+use async_trait::async_trait;
 
 use super::CharDevice;
 
@@ -69,15 +72,25 @@ impl SbiChar {
     }
 }
 
+#[async_trait]
 impl CharDevice for SbiChar {
-    fn getchar(&self) -> u8 {
+    async fn getchar(&self) -> u8 {
         console_getchar()
     }
-    fn puts(&self, str: &[u8]) {
+    async fn puts(&self, str: &[u8]) {
         for s in str {
             console_putchar(*s as usize);
         }
     }
+
+    fn poll_in(&self) -> bool {
+        true
+    }
+
+    fn poll_out(&self) -> bool {
+        true
+    }
+
     fn handle_irq(&self) {
         todo!()
     }
