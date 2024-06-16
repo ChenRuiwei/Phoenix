@@ -17,6 +17,7 @@ use core::arch;
 
 pub use consts::SyscallNo;
 use fs::*;
+use logging::ColorCode;
 use misc::*;
 pub use mm::MmapFlags;
 use mm::*;
@@ -29,7 +30,7 @@ use time::*;
 use crate::{syscall::sched::*, task::Task};
 
 #[cfg(feature = "strace")]
-pub const STRACE_COLOR_CODE: u8 = 96; 
+pub const STRACE_COLOR_CODE: ColorCode = ColorCode::BrightMagenta;
 
 /// Syscall trace.
 // TODO: syscall trace with exact args and return value
@@ -46,7 +47,7 @@ macro_rules! strace {
             current_task_ref().pid(),
             current_task_ref().tid(),
             $($args)*),
-            $crate::syscall::STRACE_COLOR_CODE
+            $crate::syscall::STRACE_COLOR_CODE as u8
         );
     }
 }

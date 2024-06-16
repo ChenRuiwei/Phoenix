@@ -22,13 +22,13 @@ use crate::{mm::PageFaultAccessType, syscall::Syscall, task::Task, trap::set_use
 pub async fn trap_handler(task: &Arc<Task>) {
     unsafe { set_kernel_trap() };
 
-    log::trace!("[trap_handler] user task trap into kernel");
     let mut cx = task.trap_context_mut();
     let stval = stval::read();
     let scause = scause::read();
     let sepc = sepc::read();
     let cause = scause.cause();
-
+    log::trace!("[trap_handler] user task trap into kernel");
+    log::trace!("[trap_handler] sepc:{sepc:#x}, stval:{stval:#x}");
     unsafe { enable_interrupt() };
 
     match cause {

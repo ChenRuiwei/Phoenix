@@ -3,6 +3,7 @@ use core::{
     fmt::Error,
     future::{self, Future},
     mem::size_of,
+    ops::Deref,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -29,17 +30,18 @@ pub struct PollFd {
 }
 
 const FD_SETSIZE: usize = 1024;
+const FD_SETLEN: usize = FD_SETSIZE / (8 * size_of::<u64>());
 
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct FdSet {
-    fds_bits: [u64; FD_SETSIZE / size_of::<u64>()],
+    fds_bits: [u64; FD_SETLEN],
 }
 
 impl FdSet {
     pub fn zero() -> Self {
         Self {
-            fds_bits: [0; 1024 / size_of::<u64>()],
+            fds_bits: [0; FD_SETLEN],
         }
     }
 
@@ -171,6 +173,7 @@ impl Syscall<'_> {
         if nfds < 0 {
             return Err(SysError::EINVAL);
         }
+        let nfds = nfds as usize;
         let timeout = if timeout.is_null() {
             None
         } else {
@@ -181,15 +184,27 @@ impl Syscall<'_> {
 
         let mut zero_read_fdset = FdSet::zero();
         let mut zero_write_fdset = FdSet::zero();
+        let mut zero_except_fdset = FdSet::zero();
         let mut readfds = if readfds.is_null() {
             UserMut::new(&mut zero_read_fdset)
         } else {
-            readfds.into_mut(task)?
+            let readfds = readfds.into_mut(task)?;
+            log::info!("readfds: {:?}", &readfds.fds_bits[..nfds]);
+            readfds
         };
         let mut writefds = if writefds.is_null() {
             UserMut::new(&mut zero_write_fdset)
         } else {
-            writefds.into_mut(task)?
+            let writefds = writefds.into_mut(task)?;
+            log::info!("writefds: {:?}", &writefds.fds_bits[..nfds]);
+            writefds
+        };
+        let mut exceptfds = if exceptfds.is_null() {
+            UserMut::new(&mut zero_except_fdset)
+        } else {
+            let exceptfds = exceptfds.into_mut(task)?;
+            log::info!("exceptfds: {:?}", &exceptfds.fds_bits[..nfds]);
+            exceptfds
         };
 
         // `future` idx in `futures` -> fd
@@ -213,6 +228,7 @@ impl Syscall<'_> {
 
         readfds.clear();
         writefds.clear();
+        exceptfds.clear();
 
         let poll_future = PollFuture {
             polls,
@@ -222,7 +238,7 @@ impl Syscall<'_> {
             match TimeLimitedTaskFuture::new(timeout, poll_future).await {
                 TimeLimitedTaskOutput::Ok(ret_vec) => ret_vec,
                 TimeLimitedTaskOutput::TimeOut => {
-                    log::debug!("[sys_ppoll]: timeout");
+                    log::debug!("[sys_pselect6]: timeout");
                     return Ok(0);
                 }
             }

@@ -64,7 +64,7 @@ macro_rules! impl_fmt {
     ($name:ident) => {
         impl<T: Clone + Copy + 'static> fmt::Display for $name<T> {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "{}({})", stringify!($name), self.as_usize())
+                write!(f, "{}({:#x})", stringify!($name), self.as_usize())
             }
         }
 
