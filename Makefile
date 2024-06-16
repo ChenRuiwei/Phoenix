@@ -45,7 +45,7 @@ export PREEMPT :=
 DISASM_ARGS = -d
 
 BOOTLOADER := default
-CPUS := 2
+CPUS := 1
 QEMU_ARGS :=
 ifeq ($(SUBMIT), )
 	QEMU_ARGS += -m 512M
@@ -147,6 +147,11 @@ PHONY += qemu
 qemu:
 	@echo "start to run kernel in qemu..."
 	$(QEMU) $(QEMU_ARGS)
+
+PHONY += dumpdtb
+dumpdtb:
+	$(QEMU) $(QEMU_ARGS) -machine dumpdtb=riscv64-virt.dtb
+	dtc -I dtb -O dts -o riscv64-virt.dts riscv64-virt.dtb
 
 PHONY += run
 run: qemu

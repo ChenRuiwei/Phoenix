@@ -11,6 +11,7 @@ fat32 = { path = "../fat32/" }
 ext4 = { path = "../ext4/" }
 sync = { path = "../sync/" }
 driver = { path = "../../driver/" }
+device-core = { path = "../device-core/" }
 config = { path = "../../config/" }
 systype = { path = "../systype/" }
 async_utils = { path = "../../crates/async_utils/" }

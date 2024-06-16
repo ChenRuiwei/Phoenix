@@ -7,7 +7,10 @@ const VA_WIDTH_SV39: usize = 39;
 const PPN_WIDTH_SV39: usize = PA_WIDTH_SV39 - PAGE_SIZE_BITS;
 const VPN_WIDTH_SV39: usize = VA_WIDTH_SV39 - PAGE_SIZE_BITS;
 
-use config::mm::{PAGE_SIZE_BITS, VIRT_RAM_OFFSET, VIRT_START};
+use config::{
+    board::MEMORY_END,
+    mm::{PAGE_SIZE_BITS, VIRT_RAM_OFFSET, VIRT_START},
+};
 pub use phys::{PhysAddr, PhysPageNum};
 pub use virt::{VirtAddr, VirtPageNum};
 
@@ -90,19 +93,3 @@ macro_rules! impl_step {
 pub(self) use impl_arithmetic_with_usize;
 pub(self) use impl_fmt;
 pub(self) use impl_step;
-
-// Kernel Virt to Phy function
-#[inline]
-pub fn kernel_virt_to_phys(addr: usize) -> usize {
-    // Return if the address is obviously in HIGH address space
-    if addr <= VIRT_RAM_OFFSET {
-        log::warn!(
-            "Virtual address 0x{:x} is not in kernel phy mem space",
-            addr
-        );
-        return addr;
-    }
-    log::trace!("Kernel virtual address 0x{:x} to physical addr", addr);
-
-    addr + VIRT_RAM_OFFSET
-}

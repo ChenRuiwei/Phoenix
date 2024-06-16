@@ -113,6 +113,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 [[package]]
 name = "config"
 version = "0.1.0"
+dependencies = [
+ "paste",
+]
 
 [[package]]
 name = "crate_interface"
@@ -148,6 +151,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b365fabc795046672053e29c954733ec3b05e4be654ab130fe8f1f94d7051f35"
 
 [[package]]
+name = "device-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "downcast-rs",
+]
+
+[[package]]
 name = "downcast-rs"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -159,10 +170,15 @@ version = "0.1.0"
 dependencies = [
  "arch",
  "async-trait",
+ "bitflags 2.5.0",
  "config",
+ "device-core",
+ "fdt",
  "log",
  "memory",
  "plic",
+ "ringbuffer",
+ "rustversion",
  "spin",
  "sync",
  "systype",
@@ -230,6 +246,12 @@ dependencies = [
  "log",
  "spin",
 ]
+
+[[package]]
+name = "fdt"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "784a4df722dc6267a04af36895398f59d21d07dce47232adf31ec0ff2fa45e67"
 
 [[package]]
 name = "futex"
@@ -599,6 +621,7 @@ dependencies = [
  "async_utils",
  "bitflags 2.5.0",
  "config",
+ "device-core",
  "driver",
  "ext4",
  "fat32",
@@ -619,6 +642,7 @@ dependencies = [
  "async-trait",
  "bitflags 2.5.0",
  "config",
+ "device-core",
  "downcast-rs",
  "driver",
  "hashbrown",

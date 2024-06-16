@@ -63,35 +63,3 @@ pub fn shutdown() -> ! {
 pub fn hart_start(hart_id: usize, start_addr: usize) -> usize {
     sbi_call(SBI_HART_START, hart_id, start_addr, 0)
 }
-
-pub struct SbiChar;
-
-impl SbiChar {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-#[async_trait]
-impl CharDevice for SbiChar {
-    async fn getchar(&self) -> u8 {
-        console_getchar()
-    }
-    async fn puts(&self, str: &[u8]) {
-        for s in str {
-            console_putchar(*s as usize);
-        }
-    }
-
-    fn poll_in(&self) -> bool {
-        true
-    }
-
-    fn poll_out(&self) -> bool {
-        true
-    }
-
-    fn handle_irq(&self) {
-        todo!()
-    }
-}

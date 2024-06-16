@@ -195,6 +195,15 @@ impl MemorySpace {
                 VmAreaType::Mmio,
             ));
         }
+
+        let dtb_addr = config::mm::dtb_addr();
+        memory_space.push_vma(VmArea::new(
+            (dtb_addr + VIRT_RAM_OFFSET).into()
+                ..(dtb_addr + PAGE_SIZE * PAGE_SIZE + VIRT_RAM_OFFSET).into(),
+            MapPerm::RW,
+            VmAreaType::Mmio,
+        ));
+
         log::debug!("[kernel] KERNEL SPACE init finished");
         memory_space
     }

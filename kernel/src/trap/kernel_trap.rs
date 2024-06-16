@@ -20,7 +20,7 @@ pub fn kernel_trap_handler() {
     match scause.cause() {
         Trap::Interrupt(Interrupt::SupervisorExternal) => {
             log::info!("[kernel] receive externel interrupt");
-            todo!()
+            driver::get_device_manager_mut().handle_irq();
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             // log::trace!("[kernel_trap] receive timer interrupt");

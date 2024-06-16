@@ -1,4 +1,3 @@
-pub mod uart;
 pub mod virtio_blk;
 
 use alloc::vec::Vec;

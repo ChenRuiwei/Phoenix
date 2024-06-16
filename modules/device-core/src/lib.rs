@@ -1,0 +1,92 @@
+#![no_std]
+#![no_main]
+
+extern crate alloc;
+
+use alloc::{boxed::Box, string::String};
+use core::task::Waker;
+
+use async_trait::async_trait;
+use downcast_rs::{impl_downcast, DowncastSync};
+
+/// General Device Operations
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum DeviceType {
+    Block,
+    Char,
+    Net,
+    Display,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(usize)]
+pub enum DeviceMajor {
+    Serial = 4,
+    Block = 8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DevId {
+    pub major: DeviceMajor,
+    pub minor: usize,
+}
+
+pub struct DeviceMeta {
+    pub dev_id: DevId,
+    /// Name of the device.
+    pub name: String,
+    /// Mmio start address.
+    pub mmio_base: usize,
+    /// Mmio size.
+    pub mmio_size: usize,
+    /// Interrupt number.
+    pub irq_no: Option<usize>,
+    /// Device type.
+    pub dtype: DeviceType,
+}
+
+pub trait Device: Sync + Send + DowncastSync {
+    fn meta(&self) -> &DeviceMeta;
+
+    fn init(&self);
+
+    fn handle_irq(&self);
+
+    fn dev_id(&self) -> DevId {
+        self.meta().dev_id
+    }
+
+    fn name(&self) -> &str {
+        &self.meta().name
+    }
+
+    fn mmio_base(&self) -> usize {
+        self.meta().mmio_base
+    }
+
+    fn mmio_size(&self) -> usize {
+        self.meta().mmio_size
+    }
+
+    fn irq_no(&self) -> Option<usize> {
+        self.meta().irq_no
+    }
+
+    fn dtype(&self) -> DeviceType {
+        self.meta().dtype
+    }
+}
+
+impl_downcast!(sync Device);
+
+#[async_trait]
+pub trait CharDevice: Send + Sync + Device {
+    async fn getchar(&self) -> u8;
+    async fn puts(&self, char: &[u8]);
+    fn poll_in(&self) -> bool;
+    fn poll_out(&self) -> bool;
+    fn handle_irq(&self);
+    fn register_waker(&self, _waker: Waker) {
+        todo!()
+    }
+}

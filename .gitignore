@@ -2,6 +2,8 @@
 .github
 .gdb_history
 .idea
+*.dtb
+*.dts
 .gdbinit
 ltp/
 target/

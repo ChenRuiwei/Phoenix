@@ -1,5 +1,6 @@
 //! Implementation of [`FrameAllocator`] which
 //! controls all the frames in the operating system.
+
 use alloc::vec::Vec;
 use core::fmt::{self, Debug, Formatter};
 

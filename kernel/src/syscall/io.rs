@@ -92,7 +92,7 @@ impl Future for PollFuture {
         if this.ready_cnt > 0 {
             Poll::Ready(ret_vec)
         } else {
-            cx.waker().wake_by_ref();
+            // cx.waker().wake_by_ref();
             Poll::Pending
         }
     }

@@ -3,7 +3,8 @@ use core::{cmp, ptr::drop_in_place};
 
 use async_trait::async_trait;
 use async_utils::{block_on, take_waker, yield_now};
-use driver::{getchar, print, CHAR_DEVICE};
+use device_core::{CharDevice, DeviceMajor};
+use driver::{get_device_manager, get_device_manager_mut, print, serial::Serial};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use spin::Once;
 use strum::FromRepr;
@@ -56,12 +57,24 @@ impl Dentry for TtyDentry {
 
 pub struct TtyInode {
     meta: InodeMeta,
+    char_dev: Arc<dyn CharDevice>,
 }
 
 impl TtyInode {
     pub fn new(super_block: Arc<dyn SuperBlock>) -> Arc<Self> {
-        let meta = InodeMeta::new(InodeMode::CHAR, super_block, 0);
-        Arc::new(Self { meta })
+        let mut meta = InodeMeta::new(InodeMode::CHAR, super_block, 0);
+        let (&dev_id, char_dev) = get_device_manager()
+            .devices()
+            .iter()
+            .filter(|(dev_id, device)| dev_id.major == DeviceMajor::Serial)
+            .next()
+            .unwrap();
+        meta.dev_id = Some(dev_id);
+        let char_dev = char_dev
+            .clone()
+            .downcast_arc::<Serial>()
+            .unwrap_or_else(|_| unreachable!());
+        Arc::new(Self { meta, char_dev })
     }
 }
 
@@ -237,8 +250,12 @@ impl File for TtyFile {
             }
             return Ok(len);
         }
-
-        let c = getchar().await;
+        let char_dev = &self
+            .inode()
+            .downcast_arc::<TtyInode>()
+            .unwrap_or_else(|_| unreachable!())
+            .char_dev;
+        let c = char_dev.getchar().await;
         buf[0] = c as u8;
         Ok(1)
     }
@@ -261,8 +278,13 @@ impl File for TtyFile {
             if buf_len > 0 {
                 res |= PollEvents::IN;
             } else {
-                if CHAR_DEVICE.get().unwrap().poll_in() {
-                    let c = block_on(async { getchar().await });
+                let char_dev = &self
+                    .inode()
+                    .downcast_arc::<TtyInode>()
+                    .unwrap_or_else(|_| unreachable!())
+                    .char_dev;
+                if char_dev.poll_in() {
+                    let c = block_on(async { char_dev.getchar().await });
                     self.buf.lock().push(c);
                     res |= PollEvents::IN;
                 }

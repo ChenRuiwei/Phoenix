@@ -1,6 +1,7 @@
 use alloc::sync::{Arc, Weak};
 use core::mem::MaybeUninit;
 
+use device_core::DevId;
 use downcast_rs::{impl_downcast, DowncastSync};
 use systype::SysResult;
 
@@ -11,6 +12,7 @@ pub struct InodeMeta {
     pub ino: usize,
     /// mode of inode.
     pub mode: InodeMode,
+    pub dev_id: Option<DevId>,
     pub super_block: Weak<dyn SuperBlock>,
 
     pub address_space: Option<AddressSpace>,
@@ -44,6 +46,7 @@ impl InodeMeta {
             ino: alloc_ino(),
             mode,
             super_block: Arc::downgrade(&super_block),
+            dev_id: None,
             address_space,
             inner: Mutex::new(InodeMetaInner {
                 size,
@@ -65,6 +68,10 @@ pub trait Inode: Send + Sync + DowncastSync {
 impl dyn Inode {
     pub fn ino(&self) -> usize {
         self.meta().ino
+    }
+
+    pub fn dev_id(&self) -> DevId {
+        self.meta().dev_id.expect("should own a dev id")
     }
 
     pub fn itype(&self) -> InodeType {
