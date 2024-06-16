@@ -12,13 +12,15 @@ use core::{
 };
 
 use async_trait::async_trait;
-use device_core::{CharDevice, DevId, Device};
+use async_utils::block_on;
+use device_core::{CharDevice, DevId, Device, DeviceMajor};
 use manager::DeviceManager;
 use qemu::virtio_blk::VirtIOBlkDev;
 use spin::Once;
 use sync::mutex::{SpinLock, SpinNoIrqLock};
 
 use self::sbi::console_putchar;
+use crate::serial::{Serial, UART0};
 
 mod cpu;
 mod manager;
@@ -50,10 +52,21 @@ pub fn init(dtb_addr: usize) {
     log::info!("Device initialization complete");
     manager.enable_device_interrupts();
     log::info!("External interrupts enabled");
+    let serial = manager
+        .devices()
+        .iter()
+        .filter(|(dev_id, device)| dev_id.major == DeviceMajor::Serial)
+        .map(|(_, device)| {
+            device
+                .clone()
+                .downcast_arc::<Serial>()
+                .unwrap_or_else(|_| unreachable!())
+        })
+        .next()
+        .unwrap();
+    unsafe { *UART0.lock() = Some(serial) };
     // CHAR_DEVICE.call_once(|| manager.char_device[0].clone());
 }
-
-pub static DEVICES: Once<BTreeMap<DevId, Arc<dyn Device>>> = Once::new();
 
 pub static BLOCK_DEVICE: Once<Arc<dyn BlockDevice>> = Once::new();
 
@@ -66,6 +79,7 @@ static mut DEVICE_MANAGER: Option<DeviceManager> = None;
 pub fn get_device_manager() -> &'static DeviceManager {
     unsafe { DEVICE_MANAGER.as_ref().unwrap() }
 }
+
 pub fn get_device_manager_mut() -> &'static mut DeviceManager {
     unsafe { DEVICE_MANAGER.as_mut().unwrap() }
 }
@@ -79,8 +93,11 @@ pub fn init_device_manager() {
 struct Stdout;
 
 impl Write for Stdout {
-    // TODO: char device support
     fn write_str(&mut self, s: &str) -> fmt::Result {
+        if let Some(serial) = unsafe { UART0.lock().as_mut() } {
+            block_on(async { serial.write(s.as_bytes()).await });
+            return Ok(());
+        }
         for s in s.as_bytes() {
             console_putchar(*s as usize);
         }
@@ -89,8 +106,6 @@ impl Write for Stdout {
 }
 
 pub fn print(args: fmt::Arguments<'_>) {
-    // static PRINT_MUTEX: Mutex<()> = Mutex::new(());
-    // let _lock = PRINT_MUTEX.lock();
     Stdout.write_fmt(args).unwrap();
 }
 

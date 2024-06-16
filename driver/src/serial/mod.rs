@@ -1,17 +1,17 @@
 pub mod uart8250;
 
-use alloc::{boxed::Box, collections::VecDeque, string::ToString};
+use alloc::{boxed::Box, collections::VecDeque, string::ToString, sync::Arc};
 use core::{
     cell::UnsafeCell,
     cmp,
-    fmt::{Debug, Write},
+    fmt::{self, Debug, Write},
     future::Future,
     pin::Pin,
     task::{Poll, Waker},
 };
 
 use async_trait::async_trait;
-use async_utils::get_waker;
+use async_utils::{block_on, get_waker};
 use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
 use device_core::{DevId, Device, DeviceMajor, DeviceMeta, DeviceType};
 use ringbuffer::RingBuffer;
@@ -19,6 +19,8 @@ use sync::mutex::SpinNoIrqLock;
 
 use super::CharDevice;
 use crate::{println, serial::uart8250::Uart};
+
+pub static mut UART0: SpinNoIrqLock<Option<Arc<Serial>>> = SpinNoIrqLock::new(None);
 
 trait UartDriver: Send + Sync {
     fn init(&mut self);
@@ -96,6 +98,13 @@ impl Device for Serial {
         if let Some(waiting) = self.pollin_queue.lock().pop_front() {
             waiting.wake();
         }
+    }
+}
+
+impl Write for Serial {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        block_on(async { self.write(s.as_bytes()).await });
+        Ok(())
     }
 }
 
