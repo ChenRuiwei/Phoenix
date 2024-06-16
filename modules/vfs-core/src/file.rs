@@ -73,7 +73,7 @@ pub trait File: Send + Sync {
     /// Given interested events, keep track of these events and return events
     /// that is ready.
     // TODO:
-    fn base_poll(&self, events: PollEvents) -> PollEvents {
+    async fn base_poll(&self, events: PollEvents) -> PollEvents {
         let mut res = PollEvents::empty();
         if events.contains(PollEvents::IN) {
             res |= PollEvents::IN;
@@ -234,7 +234,7 @@ impl dyn File {
     // TODO:
     pub async fn poll(&self, events: PollEvents) -> PollEvents {
         log::info!("[File::poll] path:{}", self.dentry().path());
-        self.base_poll(events)
+        self.base_poll(events).await
     }
 
     pub fn load_dir(&self) -> SysResult<()> {

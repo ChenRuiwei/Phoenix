@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 arch = { path = "../arch/" }
+async_utils = {path = "../crates/async_utils/"}
 config = { path = "../config/" }
 sync = { path = "../modules/sync/" }
 memory = { path = "../modules/memory/" }

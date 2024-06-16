@@ -29,7 +29,7 @@ use time::*;
 use crate::{syscall::sched::*, task::Task};
 
 #[cfg(feature = "strace")]
-pub const STRACE_COLOR_CODE: u8 = 35; // Purple
+pub const STRACE_COLOR_CODE: u8 = 96; 
 
 /// Syscall trace.
 // TODO: syscall trace with exact args and return value

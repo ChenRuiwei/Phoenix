@@ -11,9 +11,9 @@ use core::{
     task::{ready, Context, Poll, Waker},
 };
 
-/// Take the waker of the current future
+/// Get the waker of the current future.
 #[inline(always)]
-pub async fn take_waker() -> Waker {
+pub async fn get_waker() -> Waker {
     TakeWakerFuture.await
 }
 

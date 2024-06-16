@@ -5,7 +5,9 @@
 use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET, VIRT_START};
 
 pub struct PLIC {
+    /// MMIO base address.
     pub mmio_base: usize,
+    /// MMIO region size.
     pub mmio_size: usize,
 }
 

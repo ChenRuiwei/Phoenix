@@ -3,6 +3,7 @@ pub mod uart8250;
 use alloc::{boxed::Box, collections::VecDeque, string::ToString};
 use core::{
     cell::UnsafeCell,
+    cmp,
     fmt::{Debug, Write},
     future::Future,
     pin::Pin,
@@ -10,9 +11,9 @@ use core::{
 };
 
 use async_trait::async_trait;
+use async_utils::get_waker;
 use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
 use device_core::{DevId, Device, DeviceMajor, DeviceMeta, DeviceType};
-use log::{info, warn};
 use ringbuffer::RingBuffer;
 use sync::mutex::SpinNoIrqLock;
 
@@ -21,15 +22,18 @@ use crate::{println, serial::uart8250::Uart};
 
 trait UartDriver: Send + Sync {
     fn init(&mut self);
-    fn putchar(&mut self, byte: u8);
-    fn getchar(&mut self) -> Option<u8>;
+    fn putc(&mut self, byte: u8);
+    fn getc(&mut self) -> u8;
+    fn poll_in(&self) -> bool;
+    fn poll_out(&self) -> bool;
 }
 
 pub struct Serial {
     meta: DeviceMeta,
     inner: UnsafeCell<Box<dyn UartDriver>>,
-    buffer: SpinNoIrqLock<ringbuffer::ConstGenericRingBuffer<u8, 512>>, // Hard-coded buffer size
-    waiting: SpinNoIrqLock<VecDeque<Waker>>,
+    read_buf: SpinNoIrqLock<ringbuffer::ConstGenericRingBuffer<u8, 512>>, // Hard-coded buffer size
+    /// Hold waker of pollin tasks.
+    pollin_queue: SpinNoIrqLock<VecDeque<Waker>>,
 }
 
 unsafe impl Send for Serial {}
@@ -52,9 +56,13 @@ impl Serial {
         Self {
             meta,
             inner: UnsafeCell::new(driver),
-            buffer: SpinNoIrqLock::new(ringbuffer::ConstGenericRingBuffer::new()),
-            waiting: SpinNoIrqLock::new(VecDeque::new()),
+            read_buf: SpinNoIrqLock::new(ringbuffer::ConstGenericRingBuffer::new()),
+            pollin_queue: SpinNoIrqLock::new(VecDeque::new()),
         }
+    }
+
+    fn uart(&self) -> &mut Box<dyn UartDriver> {
+        unsafe { &mut *self.inner.get() }
     }
 }
 
@@ -69,38 +77,70 @@ impl Device for Serial {
         &self.meta
     }
 
-    fn handle_irq(&self) {
-        todo!()
-    }
-
     fn init(&self) {
         unsafe { &mut *self.inner.get() }.as_mut().init()
+    }
+
+    fn handle_irq(&self) {
+        let uart = self.uart();
+        let mut read_buf = self.read_buf.lock();
+        while uart.poll_in() {
+            let byte = uart.getc();
+            log::info!(
+                "Serial interrupt handler got byte: {}",
+                core::str::from_utf8(&[byte]).unwrap()
+            );
+            read_buf.enqueue(byte);
+        }
+        // Round Robin
+        if let Some(waiting) = self.pollin_queue.lock().pop_front() {
+            waiting.wake();
+        }
     }
 }
 
 #[async_trait]
 impl CharDevice for Serial {
-    async fn getchar(&self) -> u8 {
-        0
-        // (unsafe { *self.inner.get() }).getchar().unwrap()
-    }
-
-    async fn puts(&self, char: &[u8]) {
-        for &c in char {
-            // (unsafe { *self.inner.get() }).putchar(c)
+    async fn read(&self, buf: &mut [u8]) -> usize {
+        let mut len = 0;
+        let mut read_buf = self.read_buf.lock();
+        if !read_buf.is_empty() {
+            len = cmp::min(read_buf.len(), buf.len());
+            for i in 0..len {
+                buf[i] = read_buf
+                    .dequeue()
+                    .expect("Just checked for len, should not fail");
+            }
         }
+        drop(read_buf);
+        let uart = self.uart();
+        while uart.poll_in() && len < buf.len() {
+            let c = uart.getc();
+            buf[len] = c;
+            len += 1;
+        }
+        len
     }
 
-    fn poll_in(&self) -> bool {
-        todo!()
+    async fn write(&self, buf: &[u8]) -> usize {
+        for &c in buf {
+            self.uart().putc(c)
+        }
+        buf.len()
     }
 
-    fn poll_out(&self) -> bool {
-        todo!()
+    async fn poll_in(&self) -> bool {
+        if self.uart().poll_in() || self.read_buf.lock().len() > 0 {
+            return true;
+        }
+        let waker = get_waker().await;
+        self.pollin_queue.lock().push_back(waker);
+        false
     }
 
-    fn handle_irq(&self) {
-        todo!()
+    // TODO:
+    async fn poll_out(&self) -> bool {
+        true
     }
 }
 
@@ -161,7 +201,7 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
     let size = reg.size.unwrap();
     let base_vaddr = base_paddr + VIRT_RAM_OFFSET;
     let irq_number = stdout.property("interrupts").unwrap().as_usize().unwrap();
-    info!("IRQ number: {}", irq_number);
+    log::info!("IRQ number: {}", irq_number);
 
     let first_compatible = stdout.compatible().unwrap().first();
     match first_compatible {

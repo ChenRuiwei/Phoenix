@@ -14,8 +14,9 @@ pub struct CPU {
 }
 
 pub fn probe() -> Vec<CPU> {
-    let device_tree = unsafe { fdt::Fdt::from_ptr((DTB_ADDR + VIRT_RAM_OFFSET) as
-    _).expect("Parse DTB failed") }; let dtb_cpus = device_tree.cpus();
+    let device_tree =
+        unsafe { fdt::Fdt::from_ptr((DTB_ADDR + VIRT_RAM_OFFSET) as _).expect("Parse DTB failed") };
+    let dtb_cpus = device_tree.cpus();
     for prop in device_tree.find_node("/cpus").unwrap().properties() {
         info!("{:?}", prop);
     }
@@ -44,8 +45,11 @@ pub fn probe() -> Vec<CPU> {
 
         // Mask CPU without MMU
         // Get RISC-V ISA string
-        let isa = dtb_cpu.property("riscv,isa").expect("RISC-V ISA not
-    found");     if isa.as_str().unwrap().contains('u') {
+        let isa = dtb_cpu.property("riscv,isa").expect(
+            "RISC-V ISA not
+    found",
+        );
+        if isa.as_str().unwrap().contains('u') {
             // Privleged mode is in ISA string
             if !isa.as_str().unwrap().contains('s') {
                 cpu.usable = false;

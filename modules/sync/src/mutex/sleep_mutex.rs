@@ -90,7 +90,7 @@ impl<'a, T: ?Sized, S: MutexSupport> SleepMutexFuture<'a, T, S> {
                 .store(true, Ordering::Release);
         } else {
             log::trace!("[SleepMutexFuture::init] wait for lock...");
-            unsafe { &mut *this.grant.inner.get() }.1 = Some(async_utils::take_waker().await);
+            unsafe { &mut *this.grant.inner.get() }.1 = Some(async_utils::get_waker().await);
             let queue = unsafe { &mut (*inner.queue.get()) };
             if queue.is_none() {
                 *queue = Some(VecDeque::new());

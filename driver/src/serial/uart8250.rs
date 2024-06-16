@@ -3,7 +3,7 @@
 
 use core::fmt::Write;
 
-use bitflags::bitflags;
+use bitflags::{bitflags, Flags};
 use log::info;
 macro_rules! wait_for {
     ($cond:expr) => {{
@@ -56,7 +56,7 @@ bitflags! {
 #[derive(Debug)]
 pub struct Uart {
     /// UART MMIO base address
-    base_address: usize,
+    mmio_base: usize,
     clock_frequency: u32,
     baud_rate: u32,
     reg_io_width: usize,
@@ -71,7 +71,7 @@ impl Uart {
     /// base address really points to a serial port device.
     #[rustversion::attr(since(1.61), const)]
     pub unsafe fn new(
-        base: usize,
+        mmio_base: usize,
         clock_frequency: usize,
         baud_rate: usize,
         reg_io_width: usize,
@@ -79,7 +79,7 @@ impl Uart {
         is_snps: bool,
     ) -> Self {
         Self {
-            base_address: base,
+            mmio_base,
             clock_frequency: clock_frequency as u32,
             baud_rate: baud_rate as u32,
             reg_io_width,
@@ -111,7 +111,7 @@ impl Uart {
     }
 
     fn init_u8(&mut self) {
-        let reg = self.base_address as *mut u8;
+        let reg = self.mmio_base as *mut u8;
 
         unsafe {
             // Disable Interrupt
@@ -144,7 +144,7 @@ impl Uart {
     }
 
     fn init_u32(&mut self) {
-        let reg = self.base_address as *mut u32;
+        let reg = self.mmio_base as *mut u32;
 
         unsafe {
             // Disable Interrupt
@@ -179,14 +179,15 @@ impl Uart {
         });
     }
 
-    fn line_sts_u8(&mut self) -> LineStsFlags {
-        let ptr = self.base_address as *mut u8;
+    fn line_sts_u8(&self) -> LineStsFlags {
+        let ptr = self.mmio_base as *mut u8;
         unsafe {
             LineStsFlags::from_bits_truncate(ptr.byte_add(LSR << self.reg_shift).read_volatile())
         }
     }
-    fn line_sts_u32(&mut self) -> LineStsFlags {
-        let ptr = self.base_address as *mut u32;
+
+    fn line_sts_u32(&self) -> LineStsFlags {
+        let ptr = self.mmio_base as *mut u32;
         unsafe {
             LineStsFlags::from_bits_truncate(
                 ptr.byte_add(LSR << self.reg_shift).read_volatile() as u8
@@ -196,7 +197,7 @@ impl Uart {
 
     /// Sends a byte on the serial port.
     pub fn send_u8(&mut self, c: u8) {
-        let ptr = self.base_address as *mut u8;
+        let ptr = self.mmio_base as *mut u8;
         unsafe {
             match c {
                 8 | 0x7F => {
@@ -219,7 +220,7 @@ impl Uart {
     }
 
     pub fn send_u32(&mut self, c: u8) {
-        let ptr = self.base_address as *mut u32;
+        let ptr = self.mmio_base as *mut u32;
         unsafe {
             match c {
                 8 | 0x7F => {
@@ -243,7 +244,7 @@ impl Uart {
 
     /// Receives a byte on the serial port.
     pub fn receive(&mut self) -> u8 {
-        let ptr = self.base_address as *mut u32;
+        let ptr = self.mmio_base as *mut u32;
         unsafe {
             wait_for!(self.line_sts_u8().contains(LineStsFlags::INPUT_FULL));
             if self.is_snps {
@@ -261,11 +262,29 @@ impl UartDriver for Uart {
     fn init(&mut self) {
         self.init()
     }
-    fn putchar(&mut self, byte: u8) {
+
+    fn putc(&mut self, byte: u8) {
         self.send(byte)
     }
-    fn getchar(&mut self) -> Option<u8> {
-        Some(self.receive())
+
+    fn getc(&mut self) -> u8 {
+        self.receive()
+    }
+
+    fn poll_in(&self) -> bool {
+        match self.reg_io_width {
+            1 => self.line_sts_u8().contains(LineStsFlags::INPUT_FULL),
+            4 => self.line_sts_u32().contains(LineStsFlags::INPUT_FULL),
+            _ => unimplemented!(),
+        }
+    }
+
+    fn poll_out(&self) -> bool {
+        match self.reg_io_width {
+            1 => self.line_sts_u8().contains(LineStsFlags::OUTPUT_EMPTY),
+            4 => self.line_sts_u32().contains(LineStsFlags::OUTPUT_EMPTY),
+            _ => unimplemented!(),
+        }
     }
 }
 

@@ -2,7 +2,7 @@ use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{cmp, ptr::drop_in_place};
 
 use async_trait::async_trait;
-use async_utils::{block_on, take_waker, yield_now};
+use async_utils::{block_on, get_waker, yield_now};
 use device_core::{CharDevice, DeviceMajor};
 use driver::{get_device_manager, get_device_manager_mut, print, serial::Serial};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -180,12 +180,8 @@ const CTRL_C: u8 = 3;
 
 pub static TTY: Once<Arc<TtyFile>> = Once::new();
 
-const QUEUE_BUFFER_LEN: usize = 256;
-
 pub struct TtyFile {
     meta: FileMeta,
-    /// Temporarily save chars that `poll` has taken from `CHAR_DEVICE`.
-    buf: SpinNoIrqLock<AllocRingBuffer<u8>>,
     inner: SpinNoIrqLock<TtyInner>,
 }
 
@@ -198,7 +194,6 @@ struct TtyInner {
 impl TtyFile {
     pub fn new(dentry: Arc<dyn Dentry>, inode: Arc<dyn Inode>) -> Arc<Self> {
         Arc::new(Self {
-            buf: SpinNoIrqLock::new(AllocRingBuffer::new(QUEUE_BUFFER_LEN)),
             meta: FileMeta::new(dentry, inode),
             inner: SpinNoIrqLock::new(TtyInner {
                 fg_pgid: 2 as u32,
@@ -206,30 +201,6 @@ impl TtyFile {
                 termios: Termios::new(),
             }),
         })
-    }
-
-    pub fn handle_irq(&self, _ch: u8) {
-        todo!()
-        // log::debug!("[TtyFile::handle_irq] handle irq, ch {}", ch);
-        // self.buf.lock().push(ch);
-        // if ch == CTRL_C {
-        //     let pids =
-        // PROCESS_GROUP_MANAGER.get_group_by_pgid(self.inner.lock().fg_pgid as
-        // usize);     log::debug!("[TtyFile::handle_irq] fg pid {}",
-        // self.inner.lock().fg_pgid);     for pid in pids {
-        //         let process = PROCESS_MANAGER.get(pid);
-        //         if let Some(p) = process {
-        //             p.inner_handler(|proc| {
-        //                 for (_, thread) in proc.threads.iter() {
-        //                     if let Some(t) = thread.upgrade() {
-        //                         log::debug!("[TtyFile::handle_irq] kill tid
-        // {}", t.tid());                         t.recv_signal(SIGINT);
-        //                     }
-        //                 }
-        //             })
-        //         }
-        //     }
-        // }
     }
 }
 
@@ -241,57 +212,48 @@ impl File for TtyFile {
 
     async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
         log::debug!("[TtyFile::base_read_at] buf len {}", buf.len());
-        if self.buf.lock().len() > 0 {
-            let mut self_buf = self.buf.lock();
-            // `poll` before, we need to retrieve data from `self.buf`
-            let len = cmp::min(self_buf.len(), buf.len());
-            for i in 0..len {
-                buf[i] = self_buf.dequeue().unwrap();
-            }
-            return Ok(len);
-        }
         let char_dev = &self
             .inode()
             .downcast_arc::<TtyInode>()
             .unwrap_or_else(|_| unreachable!())
             .char_dev;
-        let c = char_dev.getchar().await;
-        buf[0] = c as u8;
-        Ok(1)
+        let len = char_dev.read(buf).await;
+        Ok(len)
     }
 
     async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
         let utf8_buf: Vec<u8> = buf.iter().filter(|c| c.is_ascii()).map(|c| *c).collect();
-        if PRINT_LOCKED {
-            let _locked = PRINT_MUTEX.lock().await;
-            print!("{}", unsafe { core::str::from_utf8_unchecked(&utf8_buf) });
-        } else {
-            print!("{}", unsafe { core::str::from_utf8_unchecked(&utf8_buf) });
-        }
-        Ok(buf.len())
+        // if PRINT_LOCKED {
+        //     let _locked = PRINT_MUTEX.lock().await;
+        //     print!("{}", unsafe { core::str::from_utf8_unchecked(&utf8_buf) });
+        // } else {
+        //     print!("{}", unsafe { core::str::from_utf8_unchecked(&utf8_buf) });
+        // }
+        let char_dev = &self
+            .inode()
+            .downcast_arc::<TtyInode>()
+            .unwrap_or_else(|_| unreachable!())
+            .char_dev;
+        let len = char_dev.write(buf).await;
+        Ok(len)
     }
 
-    fn base_poll(&self, events: PollEvents) -> PollEvents {
+    async fn base_poll(&self, events: PollEvents) -> PollEvents {
         let mut res = PollEvents::empty();
+        let char_dev = &self
+            .inode()
+            .downcast_arc::<TtyInode>()
+            .unwrap_or_else(|_| unreachable!())
+            .char_dev;
         if events.contains(PollEvents::IN) {
-            let buf_len = self.buf.lock().len();
-            if buf_len > 0 {
+            if char_dev.poll_in().await {
                 res |= PollEvents::IN;
-            } else {
-                let char_dev = &self
-                    .inode()
-                    .downcast_arc::<TtyInode>()
-                    .unwrap_or_else(|_| unreachable!())
-                    .char_dev;
-                if char_dev.poll_in() {
-                    let c = block_on(async { char_dev.getchar().await });
-                    self.buf.lock().push(c);
-                    res |= PollEvents::IN;
-                }
             }
         }
         if events.contains(PollEvents::OUT) {
-            res |= PollEvents::OUT;
+            if char_dev.poll_out().await {
+                res |= PollEvents::OUT;
+            }
         }
         log::debug!("[TtyFile::base_poll] ret events:{res:?}");
         res

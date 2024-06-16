@@ -170,6 +170,7 @@ version = "0.1.0"
 dependencies = [
  "arch",
  "async-trait",
+ "async_utils",
  "bitflags 2.5.0",
  "config",
  "device-core",

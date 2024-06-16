@@ -81,12 +81,8 @@ impl_downcast!(sync Device);
 
 #[async_trait]
 pub trait CharDevice: Send + Sync + Device {
-    async fn getchar(&self) -> u8;
-    async fn puts(&self, char: &[u8]);
-    fn poll_in(&self) -> bool;
-    fn poll_out(&self) -> bool;
-    fn handle_irq(&self);
-    fn register_waker(&self, _waker: Waker) {
-        todo!()
-    }
+    async fn read(&self, buf: &mut [u8]) -> usize;
+    async fn write(&self, buf: &[u8]) -> usize;
+    async fn poll_in(&self) -> bool;
+    async fn poll_out(&self) -> bool;
 }
