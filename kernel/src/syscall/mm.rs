@@ -1,6 +1,6 @@
 use arch::memory::sfence_vma_vaddr;
 use config::mm::PAGE_MASK;
-use memory::VirtAddr;
+use memory::{page_table, VirtAddr};
 use systype::{SysError, SyscallResult};
 
 use super::Syscall;
@@ -369,37 +369,6 @@ impl Syscall<'_> {
         log::info!("[sys_mprotect] addr:{addr:?}, len:{len:#x}, prot:{prot:?}");
         let new_range = addr..addr + len;
         let perm: MapPerm = prot.into();
-        task.with_mut_memory_space(|m| {
-            let (old_range, area) = m
-                .areas_mut()
-                .get_key_value_mut(addr)
-                .ok_or(SysError::ENOMEM)?;
-            if new_range == old_range {
-                area.set_perm(perm);
-                let range_vpn = area.range_vpn();
-                let page_table = m.page_table_mut();
-                for vpn in range_vpn {
-                    let pte = page_table.find_pte(vpn).unwrap();
-                    pte.set_flags(pte.flags().union(perm.into()));
-                    unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
-                }
-            } else {
-                // WARN: currently do not support split between areas.
-                debug_assert!(old_range.end > new_range.end);
-                // do split and remap
-                let middle = m.split_area(old_range, new_range);
-                if let Some(mut middle) = middle {
-                    middle.set_perm(perm);
-                    let range_vpn = middle.range_vpn();
-                    let page_table = m.page_table_mut();
-                    for vpn in range_vpn {
-                        let pte = page_table.find_pte(vpn).unwrap();
-                        pte.set_flags(pte.flags().union(perm.into()));
-                        unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
-                    }
-                }
-            }
-            Ok(0)
-        })
+        task.with_mut_memory_space(|m| m.mprotect(new_range, perm))
     }
 }

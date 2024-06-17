@@ -229,6 +229,17 @@ impl VmArea {
         self.pages.get(&vpn).expect("no page found for vpn")
     }
 
+    pub fn set_perm_and_flush(&mut self, page_table: &mut PageTable, perm: MapPerm) {
+        self.set_perm(perm);
+        let pte_flags = perm.into();
+        let range_vpn = self.range_vpn();
+        for vpn in range_vpn {
+            let pte = page_table.find_pte(vpn).unwrap();
+            pte.set_flags(pte.flags().union(pte_flags));
+            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+        }
+    }
+
     /// Map `VmArea` into page table.
     ///
     /// Will alloc new pages for `VmArea` according to `VmAreaType`.
