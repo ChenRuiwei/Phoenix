@@ -8,6 +8,7 @@ use vfs_core::{
 
 use self::{
     null::{NullDentry, NullInode},
+    rtc::{RtcDentry, RtcInode},
     tty::{TtyDentry, TtyFile, TtyInode, TTY},
     zero::{ZeroDentry, ZeroFile, ZeroInode},
 };
@@ -17,6 +18,7 @@ use crate::{
 };
 
 mod null;
+mod rtc;
 pub mod stdio;
 pub mod tty;
 mod zero;
@@ -33,6 +35,11 @@ pub fn init_devfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
     root_dentry.insert(null_dentry.clone());
     let null_inode = NullInode::new(sb.clone());
     null_dentry.set_inode(null_inode);
+
+    let rtc_dentry = RtcDentry::new("rtc", sb.clone(), Some(root_dentry.clone()));
+    root_dentry.insert(rtc_dentry.clone());
+    let rtc_inode = RtcInode::new(sb.clone());
+    rtc_dentry.set_inode(rtc_inode);
 
     let tty_dentry = TtyDentry::new("tty", sb.clone(), Some(root_dentry.clone()));
     root_dentry.insert(tty_dentry.clone());

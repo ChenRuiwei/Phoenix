@@ -3,7 +3,7 @@ use alloc::{sync::Arc, vec::Vec};
 use systype::{SysError, SysResult};
 use vfs_core::{File, OpenFlags};
 
-use crate::devfs::tty::TTY;
+use crate::devfs::{stdio, tty::TTY};
 
 pub type Fd = usize;
 
@@ -71,9 +71,17 @@ impl FdInfo {
 impl FdTable {
     pub fn new() -> Self {
         let mut vec: Vec<Option<FdInfo>> = Vec::new();
-        vec.push(Some(FdInfo::new(TTY.get().unwrap().clone())));
-        vec.push(Some(FdInfo::new(TTY.get().unwrap().clone())));
-        vec.push(Some(FdInfo::new(TTY.get().unwrap().clone())));
+        let tty_file = TTY.get().unwrap().clone();
+        let stdin = tty_file.clone();
+        stdin.set_flags(OpenFlags::empty());
+        let stdout = tty_file.clone();
+        stdout.set_flags(OpenFlags::O_WRONLY);
+        let stderr = tty_file.clone();
+        stderr.set_flags(OpenFlags::O_WRONLY);
+
+        vec.push(Some(FdInfo::new(stdin)));
+        vec.push(Some(FdInfo::new(stdout)));
+        vec.push(Some(FdInfo::new(stderr)));
         Self {
             table: vec,
             limit: MAX_FD_NUM_DEFAULT,

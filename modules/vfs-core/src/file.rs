@@ -95,6 +95,11 @@ pub trait File: Send + Sync {
     /// Called when the VFS needs to move the file position index.
     ///
     /// Return the result offset.
+    ///
+    /// lseek() allows the file offset to be set beyond the end of the file (but
+    /// this does not change the size of the file). If data is later written at
+    /// this point, subsequent reads of the data in the gap (a "hole") return
+    /// null bytes ('\0') until data is actually written into the gap.
     fn seek(&self, pos: SeekFrom) -> SyscallResult {
         let mut res_pos = self.pos();
         match pos {
@@ -140,17 +145,17 @@ pub trait File: Send + Sync {
     fn size(&self) -> usize {
         self.meta().inode.size()
     }
-}
 
-impl dyn File {
-    pub fn flags(&self) -> OpenFlags {
+    fn flags(&self) -> OpenFlags {
         self.meta().flags.lock().clone()
     }
 
-    pub fn set_flags(&self, flags: OpenFlags) {
+    fn set_flags(&self, flags: OpenFlags) {
         *self.meta().flags.lock() = flags;
     }
+}
 
+impl dyn File {
     /// Read at an `offset`, and will fill `buf` until `buf` is full or eof is
     /// reached. Will not advance offset.
     ///
@@ -165,11 +170,13 @@ impl dyn File {
         let mut count = 0;
         let mut offset = offset;
         let inode = self.inode();
+
         let Some(address_space) = inode.address_space() else {
             log::debug!("[File::read] read without address_space");
             let count = self.base_read_at(offset, buf).await?;
             return Ok(count);
         };
+
         log::debug!("[File::read] read with address_space");
         while !buf.is_empty() && offset < self.size() {
             let offset_aligned = offset & !PAGE_MASK;
@@ -210,7 +217,58 @@ impl dyn File {
     /// On success, the number of bytes written is returned, and the file offset
     /// is incremented by the number of bytes actually written.
     pub async fn write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
-        self.base_write_at(offset, buf).await
+        log::info!(
+            "[File::write] file {}, offset {offset}, buf len {}",
+            self.dentry().path(),
+            buf.len()
+        );
+        let mut buf = buf;
+        let mut count = 0;
+        let old_offset = offset;
+        let mut offset = offset;
+        let inode = self.inode();
+
+        let Some(address_space) = inode.address_space() else {
+            log::debug!("[File::write] write without address_space");
+            let count = self.base_write_at(offset, buf).await?;
+            return Ok(count);
+        };
+
+        log::debug!("[File::write] write with address_space");
+        while !buf.is_empty() {
+            let offset_aligned = offset & !PAGE_MASK;
+            let offset_in_page = offset - offset_aligned;
+
+            let len = if let Some(page) = address_space.get_page(offset_aligned) {
+                log::trace!("[File::write] offset {offset_aligned} cached in address space");
+                let len = cmp::min(buf.len(), PAGE_SIZE - offset_in_page);
+                page.bytes_array_range(offset_in_page..offset_in_page + len)
+                    .copy_from_slice(&buf[0..len]);
+                len
+            } else {
+                log::trace!("[File::write] offset {offset_aligned} not cached in address space");
+                let page = Page::new();
+                if offset < self.size() {
+                    self.base_read_at(offset_aligned, page.bytes_array())
+                        .await?;
+                }
+                let len = cmp::min(buf.len(), PAGE_SIZE - offset_in_page);
+                page.bytes_array_range(offset_in_page..offset_in_page + len)
+                    .copy_from_slice(&buf[0..len]);
+                address_space.insert_page(offset_aligned, page);
+                len
+            };
+            log::trace!("[File::write] write count {len}, buf len {}", buf.len());
+            count += len;
+            offset += len;
+            buf = &buf[len..];
+        }
+        if old_offset + count > self.size() {
+            log::info!("[File::write] write beyond file size");
+            self.inode().set_size(offset + count);
+        }
+        log::info!("[File::write] write count {count}");
+        Ok(count)
     }
 
     /// Read from offset in self, and will fill `buf` until `buf` is full or eof
@@ -223,6 +281,9 @@ impl dyn File {
     }
 
     pub async fn write(&self, buf: &[u8]) -> SyscallResult {
+        if self.flags().contains(OpenFlags::O_APPEND) {
+            self.set_pos(self.size());
+        }
         let pos = self.pos();
         let ret = self.write_at(pos, buf).await?;
         self.set_pos(pos + ret);

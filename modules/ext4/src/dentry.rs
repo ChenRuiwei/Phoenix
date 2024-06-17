@@ -40,6 +40,7 @@ impl Dentry for Ext4Dentry {
     }
 
     fn base_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
+        log::debug!("[Ext4Dentry::base_open]");
         let inode = self
             .inode()?
             .downcast_arc::<Ext4Inode>()
@@ -48,6 +49,7 @@ impl Dentry for Ext4Dentry {
     }
 
     fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+        log::debug!("[Ext4Dentry::base_lookup] name: {name}");
         let sb = self.super_block();
         let inode = self.inode()?;
         let inode = inode
@@ -85,9 +87,6 @@ impl Dentry for Ext4Dentry {
             .map_err(|_| SysError::EIO)?;
         let sub_dentry = self.into_dyn().get_child_or_create(name);
         let mut file = inode.file.lock();
-        if file.check_inode_exist(&fpath, types.clone()) {
-            return Err(SysError::EEXIST);
-        }
         if types == InodeTypes::EXT4_DE_DIR {
             file.dir_mk(&fpath).map_err(SysError::from_i32)?;
         } else {
@@ -102,6 +101,7 @@ impl Dentry for Ext4Dentry {
     }
 
     fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()> {
+        log::debug!("[Ext4Dentry::base_remove] name: {name}");
         let fpath = self.path() + name;
         let inode = self
             .inode()?

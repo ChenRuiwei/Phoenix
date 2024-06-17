@@ -23,13 +23,15 @@ pub struct PipeInode {
     inner: Mutex<PipeInodeInner>,
 }
 
-// FIXME: multi thread read and write will be broken, e.g. is_closed
 pub struct PipeInodeInner {
     is_write_closed: bool,
     is_read_closed: bool,
     buf: AllocRingBuffer<u8>,
-    // WARN: `Waker` may not wake the task exactly, it may be abandoned. Rust only guarentees that
-    // waker will wake the task from the last poll where the waker is passed in.
+    // WARN: `Waker` may not wake the task exactly, it may be abandoned.
+    // Rust only guarentees that waker will wake the task from the last poll where the waker is
+    // passed in.
+    // Also, `sys_ppoll` and `sys_pselect6` may return because of other wake ups
+    // while the waker registered here is not removed.
     read_waker: VecDeque<Waker>,
     write_waker: VecDeque<Waker>,
 }
