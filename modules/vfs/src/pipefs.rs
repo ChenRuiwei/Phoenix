@@ -129,7 +129,7 @@ impl Drop for PipeWriteFile {
             .inode()
             .downcast_arc::<PipeInode>()
             .unwrap_or_else(|_| unreachable!());
-        log::debug!("[PipeWriteFile::drop] pipe write is closed");
+        log::info!("[PipeWriteFile::drop] pipe write end is closed");
         let mut inner = pipe.inner.lock();
         inner.is_write_closed = true;
         while let Some(waker) = inner.read_waker.pop_front() {
@@ -155,7 +155,7 @@ impl Drop for PipeReadFile {
             .inode()
             .downcast_arc::<PipeInode>()
             .unwrap_or_else(|_| unreachable!());
-        log::debug!("[PipeReadFile::drop] pipe read is closed");
+        log::info!("[PipeReadFile::drop] pipe read end is closed");
         let mut inner = pipe.inner.lock();
         inner.is_read_closed = true;
         while let Some(waker) = inner.write_waker.pop_front() {

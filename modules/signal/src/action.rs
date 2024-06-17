@@ -116,6 +116,7 @@ impl SigPending {
                 return self.queue.remove(i);
             }
         }
+        // FIXME: lmbench_all lat_sig -P 1 catch
         // if it isn't in self.queue, it must be wrong
         log::error!("[dequeue_signal] I suppose it won't go here");
         return None;
