@@ -21,11 +21,11 @@ use config::{
     },
 };
 use log::info;
-use memory::{page::Page, pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
+use memory::{pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
 use riscv::register::mideleg;
 use spin::Lazy;
 use systype::{SysError, SysResult};
-use vfs_core::{Dentry, File};
+use vfs_core::{Dentry, File, Page};
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};

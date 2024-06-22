@@ -7,12 +7,11 @@ use core::{
 
 use async_trait::async_trait;
 use config::mm::{PAGE_MASK, PAGE_SIZE};
-use memory::page::Page;
 use spin::Mutex;
 use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{
-    Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom, SuperBlock,
+    Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, Page, PollEvents, SeekFrom, SuperBlock
 };
 
 pub struct FileMeta {

@@ -38,10 +38,10 @@ impl File for Ext4File {
     }
 
     async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
-        log::error!(
-            "offset {offset} in blk id {}",
-            self.inode().get_blk_idx(offset as u64)?
-        );
+        // log::error!(
+        //     "offset {offset} in blk id {}",
+        //     self.inode().get_blk_idx(offset as u64)?
+        // );
         match self.itype() {
             InodeType::File | InodeType::SymLink => {
                 let mut file = self.file.lock();

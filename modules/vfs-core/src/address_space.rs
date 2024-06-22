@@ -4,10 +4,9 @@ use alloc::{
 };
 
 use config::mm::PAGE_MASK;
-use memory::page::Page;
 use spin::Once;
 
-use crate::{Inode, Mutex};
+use crate::{Inode, Mutex, Page};
 
 pub struct AddressSpace {
     /// Map from aligned file offset to page cache.
