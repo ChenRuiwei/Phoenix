@@ -44,7 +44,7 @@ impl Dentry for Ext4Dentry {
         let inode = self
             .inode()?
             .downcast_arc::<Ext4Inode>()
-            .map_err(|_| SysError::EIO)?;
+            .unwrap_or_else(|_| unreachable!());
         Ok(Ext4File::new(self, inode))
     }
 
@@ -54,7 +54,7 @@ impl Dentry for Ext4Dentry {
         let inode = self.inode()?;
         let inode = inode
             .downcast_arc::<Ext4Inode>()
-            .map_err(|_| SysError::EIO)?;
+            .unwrap_or_else(|_| unreachable!());
         let mut file = inode.file.lock();
         let sub_dentry = self.into_dyn().get_child(name).unwrap();
         let fpath = sub_dentry.path();
@@ -84,7 +84,7 @@ impl Dentry for Ext4Dentry {
         let inode = self
             .inode()?
             .downcast_arc::<Ext4Inode>()
-            .map_err(|_| SysError::EIO)?;
+            .unwrap_or_else(|_| unreachable!());
         let sub_dentry = self.into_dyn().get_child_or_create(name);
         let mut file = inode.file.lock();
         if types == InodeTypes::EXT4_DE_DIR {
@@ -92,7 +92,7 @@ impl Dentry for Ext4Dentry {
         } else {
             file.file_open(&fpath, O_WRONLY | O_CREAT | O_TRUNC)
                 .expect("create file failed");
-            file.file_close().map_err(SysError::from_i32)?;
+            // file.file_close().map_err(SysError::from_i32)?;
         }
         let new_file = LwExt4File::new(&fpath, types);
         let new_inode = Ext4Inode::new(sb, new_file);
@@ -106,7 +106,7 @@ impl Dentry for Ext4Dentry {
         let inode = self
             .inode()?
             .downcast_arc::<Ext4Inode>()
-            .map_err(|_| SysError::EIO)?;
+            .unwrap_or_else(|_| unreachable!());
         let mut file = inode.file.lock();
         if file.check_inode_exist(&fpath, InodeTypes::EXT4_DE_DIR) {
             // Recursive directory remove
@@ -128,7 +128,7 @@ impl Dentry for Ext4Dentry {
         let old_inode = self
             .inode()?
             .downcast_arc::<Ext4Inode>()
-            .map_err(|_| SysError::EIO)?;
+            .unwrap_or_else(|_| unreachable!());
         let old_itype = self.inode()?.itype();
         if !new.is_negetive() {
             let new_inode = new

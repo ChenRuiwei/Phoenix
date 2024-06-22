@@ -38,16 +38,20 @@ impl File for Ext4File {
     }
 
     async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+        log::error!(
+            "offset {offset} in blk id {}",
+            self.inode().get_blk_idx(offset as u64)?
+        );
         match self.itype() {
             InodeType::File | InodeType::SymLink => {
                 let mut file = self.file.lock();
                 let path = file.get_path();
                 let path = path.to_str().unwrap();
-                file.file_open(path, O_RDONLY).map_err(SysError::from_i32)?;
+                // file.file_open(path, O_RDONLY).map_err(SysError::from_i32)?;
                 file.file_seek(offset as i64, SEEK_SET)
                     .map_err(SysError::from_i32)?;
                 let r = file.file_read(buf).map_err(SysError::from_i32);
-                let _ = file.file_close();
+                // let _ = file.file_close();
                 r
             }
             InodeType::Dir => Err(SysError::EISDIR),
@@ -61,11 +65,11 @@ impl File for Ext4File {
                 let mut file = self.file.lock();
                 let path = file.get_path();
                 let path = path.to_str().unwrap();
-                file.file_open(path, O_RDWR).map_err(SysError::from_i32)?;
+                // file.file_open(path, O_RDWR).map_err(SysError::from_i32)?;
                 file.file_seek(offset as i64, SEEK_SET)
                     .map_err(SysError::from_i32)?;
                 let r = file.file_write(buf).map_err(SysError::from_i32);
-                let _ = file.file_close();
+                // let _ = file.file_close();
                 r
             }
             InodeType::Dir => Err(SysError::EISDIR),

@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 
 use lwext4_rust::{
-    bindings::{ext4_flink, O_RDONLY},
+    bindings::{ext4_flink, O_RDONLY, SEEK_CUR, SEEK_SET},
     InodeTypes,
 };
 use systype::SysResult;
@@ -28,7 +28,7 @@ impl Ext4Inode {
                 .map_err(map_ext4_err)
                 .unwrap();
             size = file.file_size();
-            let _ = file.file_close();
+            // let _ = file.file_close();
         }
         let itype = map_ext4_type(file.get_type());
 
@@ -69,5 +69,19 @@ impl Inode for Ext4Inode {
             st_ctime: inner.ctime,
             unused: 0,
         })
+    }
+
+    fn base_truncate(&self, len: u64) -> SysResult<()> {
+        self.file.lock().file_truncate(len);
+        Ok(())
+    }
+
+    fn base_get_blk_idx(&self, offset: u64) -> SysResult<u64> {
+        let mut file = self.file.lock();
+        let origin_offset = file.file_tell();
+        file.file_seek(offset as i64, SEEK_SET);
+        let blk_idx = file.file_get_blk_idx().unwrap();
+        file.file_seek(origin_offset as i64, SEEK_SET);
+        Ok(blk_idx)
     }
 }

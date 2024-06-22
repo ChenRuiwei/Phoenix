@@ -10,7 +10,6 @@ use spin::Once;
 use crate::{Inode, Mutex};
 
 pub struct AddressSpace {
-    inode: Once<Weak<dyn Inode>>,
     /// Map from aligned file offset to page cache.
     pages: Mutex<BTreeMap<usize, Arc<Page>>>,
 }
@@ -18,13 +17,8 @@ pub struct AddressSpace {
 impl AddressSpace {
     pub fn new() -> Self {
         Self {
-            inode: Once::new(),
             pages: Mutex::new(BTreeMap::new()),
         }
-    }
-
-    pub fn set_inode(&self, inode: Arc<dyn Inode>) {
-        self.inode.call_once(|| Arc::downgrade(&inode));
     }
 
     pub fn get_page(&self, offset: usize) -> Option<Arc<Page>> {

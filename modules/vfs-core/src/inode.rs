@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 
 use device_core::DevId;
 use downcast_rs::{impl_downcast, DowncastSync};
-use systype::SysResult;
+use systype::{SysResult, SyscallResult};
 
 use crate::{address_space::AddressSpace, alloc_ino, Mutex, Stat, SuperBlock, TimeSpec};
 
@@ -63,6 +63,14 @@ pub trait Inode: Send + Sync + DowncastSync {
     fn meta(&self) -> &InodeMeta;
 
     fn get_attr(&self) -> SysResult<Stat>;
+
+    fn base_truncate(&self, len: u64) -> SysResult<()> {
+        todo!()
+    }
+
+    fn base_get_blk_idx(&self, offset: u64) -> SysResult<u64> {
+        todo!()
+    }
 }
 
 impl dyn Inode {
@@ -79,10 +87,7 @@ impl dyn Inode {
     }
 
     pub fn address_space<'a>(self: &'a Arc<dyn Inode>) -> Option<&'a AddressSpace> {
-        self.meta().address_space.as_ref().map(|a| {
-            a.set_inode(self.clone());
-            a
-        })
+        self.meta().address_space.as_ref()
     }
 
     pub fn size(&self) -> usize {
@@ -99,6 +104,21 @@ impl dyn Inode {
 
     pub fn set_state(&self, state: InodeState) {
         self.meta().inner.lock().state = state;
+    }
+
+    pub fn truncate(&self, len: u64) -> SyscallResult {
+        log::info!(
+            "[Inode::truncate] len:{len:#x}, origin size:{:#x}",
+            self.size()
+        );
+        // if self.size() < len {
+        //     self.address_space()
+        // }
+        self.base_truncate(len).map(|_| 0)
+    }
+
+    pub fn get_blk_idx(&self, offset: u64) -> SysResult<u64> {
+        self.base_get_blk_idx(offset)
     }
 }
 

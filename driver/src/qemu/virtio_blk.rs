@@ -15,6 +15,7 @@ unsafe impl Sync for VirtIOBlkDev {}
 
 impl BlockDevice for VirtIOBlkDev {
     fn read_blocks(&self, block_id: usize, buf: &mut [u8]) {
+        // log::error!("read blk id {}", block_id);
         let res = self.0.lock().read_blocks(block_id, buf);
         if res.is_err() {
             panic!(
