@@ -3,6 +3,7 @@
 #![feature(new_uninit)]
 
 mod address_space;
+mod buffer_cache;
 mod dcache;
 mod dentry;
 mod file;
@@ -12,7 +13,6 @@ mod page;
 mod path;
 mod super_block;
 mod utils;
-mod buffer_cache;
 
 #[macro_use]
 extern crate bitflags;
@@ -24,6 +24,7 @@ use alloc::sync::Arc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub use address_space::*;
+pub use buffer_cache::*;
 pub use dcache::*;
 pub use dentry::*;
 pub use file::*;

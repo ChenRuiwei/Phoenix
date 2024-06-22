@@ -56,8 +56,7 @@ impl BufferCache {
             if buffer_head.need_cache() && !buffer_head.has_cached() {
                 // log::error!("need cache");
                 if let Some(page) = self.pages.get_mut(&block_page_id(block_id)) {
-                    //
-                    log::error!("has page");
+                    // log::error!("has page");
                     device.base_read_block(block_id, page.block_range(block_id));
                     page.insert_buffer_head(buffer_head.clone());
                 } else {
@@ -84,7 +83,7 @@ impl BufferCache {
         }
     }
 
-    pub fn write_block(&mut self, block_id: usize, buf: &mut [u8]) {
+    pub fn write_block(&mut self, block_id: usize, buf: &[u8]) {
         self.device().base_write_block(block_id, buf)
     }
 }

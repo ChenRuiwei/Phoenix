@@ -183,6 +183,7 @@ dependencies = [
  "spin",
  "sync",
  "systype",
+ "vfs-core",
  "virtio-drivers",
 ]
 

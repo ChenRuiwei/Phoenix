@@ -59,7 +59,7 @@ pub fn init(dtb_addr: usize) {
 pub static BLOCK_DEVICE: Once<Arc<dyn BlockDevice>> = Once::new();
 
 fn init_block_device() {
-    BLOCK_DEVICE.call_once(|| Arc::new(VirtIOBlkDev::new()));
+    BLOCK_DEVICE.call_once(|| VirtIOBlkDev::new());
 }
 
 static mut DEVICE_MANAGER: Option<DeviceManager> = None;
