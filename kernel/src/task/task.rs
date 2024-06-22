@@ -457,7 +457,7 @@ impl Task {
 
         // alloc stack, and push argv, envp and auxv
         log::debug!("[Task::do_execve] allocing stack");
-        let sp_init = self.with_mut_memory_space(|m| m.alloc_stack(USER_STACK_SIZE));
+        let sp_init = self.with_mut_memory_space(|m| m.alloc_stack_lazily(USER_STACK_SIZE));
 
         let (sp, argc, argv, envp) = within_sum(|| init_stack(sp_init, argv, envp, auxv));
 

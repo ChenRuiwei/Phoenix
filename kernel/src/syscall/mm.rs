@@ -172,14 +172,14 @@ impl Syscall<'_> {
     /// On success, munmap() returns 0. On failure, it returns -1, and errno is
     /// set to indicate the error (probably to EINVAL).
     // TODO:
-    pub fn sys_munmap(&self, _addr: VirtAddr, _length: usize) -> SyscallResult {
-        // if !addr.is_aligned() {
-        //     return Err(SysError::EINVAL);
-        // }
-
-        // let task = self.task;
-        // let range = VirtAddr::from(addr)..VirtAddr::from(addr + length);
-        // task.with_mut_memory_space(|m| m.unmap(range));
+    pub fn sys_munmap(&self, addr: VirtAddr, length: usize) -> SyscallResult {
+        if !addr.is_aligned() {
+            return Err(SysError::EINVAL);
+        }
+        let task = self.task;
+        let end = VirtAddr::from(addr + length).rounded_up();
+        let range = VirtAddr::from(addr)..end;
+        task.with_mut_memory_space(|m| m.unmap(range));
         Ok(0)
     }
 
@@ -370,5 +370,6 @@ impl Syscall<'_> {
         let new_range = addr..addr + len;
         let perm: MapPerm = prot.into();
         task.with_mut_memory_space(|m| m.mprotect(new_range, perm))
+            .map(|_| 0)
     }
 }

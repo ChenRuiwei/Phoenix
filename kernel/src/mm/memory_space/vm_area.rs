@@ -1,5 +1,5 @@
 use alloc::{collections::BTreeMap, sync::Arc};
-use core::ops::Range;
+use core::ops::{Range, RangeBounds};
 
 use arch::memory::sfence_vma_vaddr;
 use async_utils::block_on;
@@ -259,6 +259,17 @@ impl VmArea {
         }
     }
 
+    pub fn map_range(&mut self, page_table: &mut PageTable, range: Range<VirtAddr>) {
+        let range_vpn = range.start.into()..range.end.into();
+        assert!(self.start_vpn() <= range_vpn.start && self.end_vpn() >= range_vpn.end);
+        let pte_flags: PTEFlags = self.map_perm.into();
+        for vpn in range_vpn {
+            let page = Page::new();
+            page_table.map(vpn, page.ppn(), pte_flags);
+            self.pages.insert(vpn, Arc::new(page));
+        }
+    }
+
     pub fn unmap(&mut self, page_table: &mut PageTable, range_vpn: Range<VirtPageNum>) {
         for vpn in range_vpn {
             page_table.unmap(vpn);
@@ -419,7 +430,7 @@ impl VmArea {
                 self.vma_type
             );
             match self.vma_type {
-                VmAreaType::Heap => {
+                VmAreaType::Heap | VmAreaType::Stack => {
                     // lazy allcation for heap
                     page = Page::new();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());

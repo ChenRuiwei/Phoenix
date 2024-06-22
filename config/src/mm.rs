@@ -19,6 +19,7 @@ register_mut_const!(pub DTB_ADDR, usize, 0);
 pub const HART_START_ADDR: usize = 0x80200000;
 
 pub const USER_STACK_SIZE: usize = 8 * 1024 * 1024; // 8M
+pub const USER_STACK_PRE_ALLOC_SIZE: usize = 4 * PAGE_SIZE;
 
 pub const PAGE_SIZE: usize = 1 << PAGE_SIZE_BITS;
 pub const PAGE_MASK: usize = PAGE_SIZE - 1;

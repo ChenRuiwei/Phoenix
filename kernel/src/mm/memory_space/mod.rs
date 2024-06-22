@@ -15,9 +15,9 @@ use async_utils::block_on;
 use config::{
     board::MEMORY_END,
     mm::{
-        DL_INTERP_OFFSET, PAGE_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END,
-        U_SEG_HEAP_BEG, U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG,
-        U_SEG_STACK_END, VIRT_RAM_OFFSET,
+        DL_INTERP_OFFSET, PAGE_SIZE, USER_STACK_PRE_ALLOC_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG,
+        U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END,
+        U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
     },
 };
 use log::info;
@@ -239,27 +239,6 @@ impl MemorySpace {
         unsafe { &mut *self.page_table.get() }
     }
 
-    fn split_area(
-        &self,
-        old_range: Range<VirtAddr>,
-        split_range: Range<VirtAddr>,
-    ) -> Option<&mut VmArea> {
-        let area = self.areas_mut().force_remove_one(old_range);
-        let (mut left, mut middle, mut right) = area.split(split_range);
-        let left_ret = left.map(|left| self.areas_mut().try_insert(left.range_va(), left).unwrap());
-        let right_ret = right.map(|right| {
-            self.areas_mut()
-                .try_insert(right.range_va(), right)
-                .unwrap()
-        });
-        let middle_ret = middle.map(|middle| {
-            self.areas_mut()
-                .try_insert(middle.range_va(), middle)
-                .unwrap()
-        });
-        middle_ret
-    }
-
     /// Map the sections in the elf.
     ///
     /// Return the max end vpn and the first section's va.
@@ -362,21 +341,6 @@ impl MemorySpace {
 
         memory_space.alloc_heap_lazily();
 
-        // // guard page
-        // let heap_start_va = user_stack_top + PAGE_SIZE;
-        // let heap_end_va = heap_start_va;
-        // let mut heap_vma = VmArea::new(
-        //     heap_start_va.into(),
-        //     heap_end_va.into(),
-        //     MapPerm::URW,
-        //     VmAreaType::Heap,
-        // );
-        // memory_space.push_vma(heap_vma);
-        // log::info!(
-        //     "[from_elf] map heap: {:#x}, {:#x}",
-        //     heap_start_va,
-        //     heap_end_va
-        // );
         (memory_space, user_stack_top, entry_point, auxv)
     }
 
@@ -542,7 +506,7 @@ impl MemorySpace {
     /// Return the address of the stack top, which is aligned to 16 bytes.
     ///
     /// The stack has a range of [sp - size, sp].
-    pub fn alloc_stack(&mut self, size: usize) -> VirtAddr {
+    pub fn alloc_stack_lazily(&mut self, size: usize) -> VirtAddr {
         const STACK_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize_range(U_SEG_STACK_BEG..U_SEG_STACK_END);
 
@@ -555,8 +519,12 @@ impl MemorySpace {
         let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
         log::debug!("[MemorySpace::alloc_stack] stack: {range:x?}, sp_init: {sp_init:x?}");
 
-        let vm_area = VmArea::new(range, MapPerm::URW, VmAreaType::Stack);
-        self.push_vma(vm_area);
+        let mut vm_area = VmArea::new(range.clone(), MapPerm::URW, VmAreaType::Stack);
+        vm_area.map_range(
+            self.page_table_mut(),
+            range.end - USER_STACK_PRE_ALLOC_SIZE..range.end,
+        );
+        self.push_vma_lazily(vm_area);
         sp_init
     }
 
@@ -735,7 +703,51 @@ impl MemorySpace {
         Ok(start)
     }
 
-    pub fn mprotect(&mut self, range: Range<VirtAddr>, perm: MapPerm) -> SysResult<usize> {
+    fn split_area(
+        &self,
+        old_range: Range<VirtAddr>,
+        split_range: Range<VirtAddr>,
+    ) -> (
+        Option<&mut VmArea>,
+        Option<&mut VmArea>,
+        Option<&mut VmArea>,
+    ) {
+        let area = self.areas_mut().force_remove_one(old_range);
+        let (mut left, mut middle, mut right) = area.split(split_range);
+        let left_ret = left.map(|left| self.areas_mut().try_insert(left.range_va(), left).unwrap());
+        let right_ret = right.map(|right| {
+            self.areas_mut()
+                .try_insert(right.range_va(), right)
+                .unwrap()
+        });
+        let middle_ret = middle.map(|middle| {
+            self.areas_mut()
+                .try_insert(middle.range_va(), middle)
+                .unwrap()
+        });
+        (left_ret, middle_ret, right_ret)
+    }
+
+    pub fn unmap(&mut self, range: Range<VirtAddr>) -> SysResult<()> {
+        let (old_range, area) = self
+            .areas_mut()
+            .get_key_value_mut(range.start)
+            .ok_or(SysError::ENOMEM)?;
+        if range == old_range {
+            self.areas_mut().force_remove_one(old_range);
+        } else {
+            // WARN: currently do not support split between areas.
+            debug_assert!(old_range.end > range.end);
+            // do split and unmap
+            let (_, middle, _) = self.split_area(old_range.clone(), range);
+            if let Some(middle) = middle {
+                self.areas_mut().force_remove_one(old_range);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn mprotect(&mut self, range: Range<VirtAddr>, perm: MapPerm) -> SysResult<()> {
         let (old_range, area) = self
             .areas_mut()
             .get_key_value_mut(range.start)
@@ -743,15 +755,14 @@ impl MemorySpace {
         if range == old_range {
             area.set_perm_and_flush(self.page_table_mut(), perm);
         } else {
-            // WARN: currently do not support split between areas.
             debug_assert!(old_range.end > range.end);
             // do split and remap
-            let middle = self.split_area(old_range, range);
+            let (_, middle, _) = self.split_area(old_range, range);
             if let Some(middle) = middle {
                 middle.set_perm_and_flush(self.page_table_mut(), perm);
             }
         }
-        Ok(0)
+        Ok(())
     }
 
     pub fn handle_page_fault(
