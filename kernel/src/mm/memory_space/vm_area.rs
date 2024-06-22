@@ -240,6 +240,13 @@ impl VmArea {
         }
     }
 
+    pub fn flush(&mut self, page_table: &mut PageTable) {
+        let range_vpn = self.range_vpn();
+        for vpn in range_vpn {
+            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+        }
+    }
+
     /// Map `VmArea` into page table.
     ///
     /// Will alloc new pages for `VmArea` according to `VmAreaType`.

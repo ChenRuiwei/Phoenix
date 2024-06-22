@@ -36,7 +36,7 @@ use crate::{
         user_ptr::UserSlice,
         MMIO,
     },
-    processor::env::SumGuard,
+    processor::env::{within_sum, SumGuard},
     syscall::MmapFlags,
     task::{
         aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR, AT_RANDOM},
@@ -670,9 +670,6 @@ impl MemorySpace {
         let start = range.start;
         let mut vma = VmArea::new(range, perm, VmAreaType::Mmap);
         vma.map(self.page_table_mut());
-        let mut buf = Vec::with_capacity(length);
-        buf.fill(0);
-        vma.copy_data_with_offset(self.page_table(), 0, &buf);
         self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
         Ok(start)
     }
@@ -695,9 +692,8 @@ impl MemorySpace {
         let kernel_perm = perm | MapPerm::W;
         let mut vma = VmArea::new_mmap(range, kernel_perm, flags, Some(file.clone()), offset);
         vma.map(self.page_table_mut());
-        let mut buf = unsafe { UserSlice::new_unchecked(vma.start_va(), length) };
+        let mut buf = unsafe { UserSlice::<u8>::new_unchecked(vma.start_va(), length) };
         block_on(async { file.read_at(offset, &mut buf).await })?;
-        // vma.copy_data_with_offset(&self.page_table, 0, &buf);
         vma.set_perm_and_flush(self.page_table_mut(), perm);
         self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
         Ok(start)
