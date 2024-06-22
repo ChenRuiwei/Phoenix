@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeMap, sync::Arc};
 use core::ops::{Range, RangeBounds};
 
-use arch::memory::sfence_vma_vaddr;
+use arch::{memory::sfence_vma_vaddr, sstatus};
 use async_utils::block_on;
 use config::mm::PAGE_SIZE;
 use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
@@ -229,12 +229,23 @@ impl VmArea {
         self.pages.get(&vpn).expect("no page found for vpn")
     }
 
+    pub fn clear(&self) {
+        for page in self.pages.values() {
+            page.clear()
+        }
+    }
+
     pub fn set_perm_and_flush(&mut self, page_table: &mut PageTable, perm: MapPerm) {
         self.set_perm(perm);
         let pte_flags = perm.into();
         let range_vpn = self.range_vpn();
         for vpn in range_vpn {
             let pte = page_table.find_pte(vpn).unwrap();
+            log::trace!(
+                "[origin pte:{:?}, new_flag:{:?}]",
+                pte.flags(),
+                pte.flags().union(pte_flags)
+            );
             pte.set_flags(pte.flags().union(pte_flags));
             unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
         }
@@ -260,6 +271,7 @@ impl VmArea {
         } else {
             for vpn in self.range_vpn() {
                 let page = Page::new();
+                // page.clear();
                 page_table.map(vpn, page.ppn(), pte_flags);
                 self.pages.insert(vpn, Arc::new(page));
             }
@@ -290,7 +302,12 @@ impl VmArea {
     ///
     /// Assume that all frames were cleared before.
     // HACK: ugly
-    pub fn copy_data_with_offset(&self, page_table: &PageTable, offset: usize, data: &[u8]) {
+    pub fn copy_data_with_offset(
+        &mut self,
+        page_table: &mut PageTable,
+        offset: usize,
+        data: &[u8],
+    ) {
         // debug_assert_eq!(self.vma_type, VmAreaType::Elf);
         let _sum_guard = SumGuard::new();
 
@@ -440,6 +457,7 @@ impl VmArea {
                 VmAreaType::Heap | VmAreaType::Stack => {
                     // lazy allcation for heap
                     page = Page::new();
+                    page.clear();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, Arc::new(page));
                     unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
