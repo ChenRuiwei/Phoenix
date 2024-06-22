@@ -1,16 +1,20 @@
 use alloc::{collections::BTreeMap, sync::Arc};
-use core::ops::{Range, RangeBounds};
+use core::{
+    // arch::riscv64::{sfence_vma_all, sfence_vma_vaddr},
+    ops::{Range, RangeBounds},
+};
 
-use arch::memory::sfence_vma_vaddr;
+use arch::{memory::sfence_vma_vaddr, sstatus};
 use async_utils::block_on;
 use config::mm::PAGE_SIZE;
 use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
+use riscv::asm::sfence_vma_all;
 use systype::{SysError, SysResult};
 use vfs_core::{File, Page};
 
 use crate::{
     mm::{PageFaultAccessType, PageTable, UserSlice},
-    processor::env::SumGuard,
+    processor::env::{within_sum, SumGuard},
     syscall::MmapFlags,
 };
 
@@ -229,12 +233,23 @@ impl VmArea {
         self.pages.get(&vpn).expect("no page found for vpn")
     }
 
+    pub fn clear(&self) {
+        for page in self.pages.values() {
+            page.clear()
+        }
+    }
+
     pub fn set_perm_and_flush(&mut self, page_table: &mut PageTable, perm: MapPerm) {
         self.set_perm(perm);
         let pte_flags = perm.into();
         let range_vpn = self.range_vpn();
         for vpn in range_vpn {
             let pte = page_table.find_pte(vpn).unwrap();
+            log::trace!(
+                "[origin pte:{:?}, new_flag:{:?}]",
+                pte.flags(),
+                pte.flags().union(pte_flags)
+            );
             pte.set_flags(pte.flags().union(pte_flags));
             unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
         }
@@ -260,6 +275,7 @@ impl VmArea {
         } else {
             for vpn in self.range_vpn() {
                 let page = Page::new();
+                page.clear();
                 page_table.map(vpn, page.ppn(), pte_flags);
                 self.pages.insert(vpn, Arc::new(page));
             }
@@ -290,26 +306,61 @@ impl VmArea {
     ///
     /// Assume that all frames were cleared before.
     // HACK: ugly
-    pub fn copy_data_with_offset(&self, page_table: &PageTable, offset: usize, data: &[u8]) {
-        // debug_assert_eq!(self.vma_type, VmAreaType::Elf);
+    pub fn copy_data_with_offset(
+        &mut self,
+        page_table: &mut PageTable,
+        offset: usize,
+        data: &[u8],
+    ) {
         let _sum_guard = SumGuard::new();
-
-        let mut offset = offset;
-        let mut start: usize = 0;
-        let mut current_vpn = self.start_vpn();
-        let len = data.len();
-        while start < len {
-            let src = &data[start..len.min(start + PAGE_SIZE - offset)];
-            let dst = page_table
-                .find_pte(current_vpn)
-                .unwrap()
-                .ppn()
-                .bytes_array_range(offset..offset + src.len());
-            dst.copy_from_slice(src);
-            start += PAGE_SIZE - offset;
-            offset = 0;
-            current_vpn += 1;
+        let old_perm = self.perm();
+        let kernel_perm = MapPerm::RW;
+        self.set_perm(kernel_perm);
+        let mut pte_flags = kernel_perm.into();
+        pte_flags |= PTEFlags::V;
+        let range_vpn = self.range_vpn();
+        for vpn in range_vpn {
+            let pte = page_table.find_pte(vpn).unwrap();
+            pte.set_flags(pte_flags);
+            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
         }
+        log::info!("{offset}, perm:{old_perm:?}, len:{:#x}", data.len());
+        unsafe { sfence_vma_all() };
+        unsafe { sfence_vma_all() };
+        unsafe { sfence_vma_all() };
+        let pte = page_table.find_pte(self.start_vpn()).unwrap();
+        log::info!("cur perm {:?}, pte flags:{:?}", self.perm(), pte.flags());
+        let mut slice =
+            unsafe { UserSlice::<u8>::new_unchecked(self.start_va() + offset, data.len()) };
+        // self.set_perm(kernel_perm);
+        // self.map(page_table);
+        // // self.clear();
+        unsafe { riscv::register::sstatus::set_sum() }
+        log::info!("sstatus:{:#b}", sstatus::read().bits());
+        let a = slice[0];
+        // log::info!("{}", slice[0]);
+        within_sum(|| slice.copy_from_slice(data));
+        self.set_perm_and_flush(page_table, old_perm);
+
+        // // debug_assert_eq!(self.vma_type, VmAreaType::Elf);
+        // let _sum_guard = SumGuard::new();
+        //
+        // let mut offset = offset;
+        // let mut start: usize = 0;
+        // let mut current_vpn = self.start_vpn();
+        // let len = data.len();
+        // while start < len {
+        //     let src = &data[start..len.min(start + PAGE_SIZE - offset)];
+        //     let dst = page_table
+        //         .find_pte(current_vpn)
+        //         .unwrap()
+        //         .ppn()
+        //         .bytes_array_range(offset..offset + src.len());
+        //     dst.copy_from_slice(src);
+        //     start += PAGE_SIZE - offset;
+        //     offset = 0;
+        //     current_vpn += 1;
+        // }
     }
 
     pub fn split(
@@ -440,6 +491,7 @@ impl VmArea {
                 VmAreaType::Heap | VmAreaType::Stack => {
                     // lazy allcation for heap
                     page = Page::new();
+                    page.clear();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, Arc::new(page));
                     unsafe { sfence_vma_vaddr(vpn.to_va().into()) };

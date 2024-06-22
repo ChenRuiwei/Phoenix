@@ -20,8 +20,13 @@ impl FrameTracker {
     pub fn new(ppn: PhysPageNum) -> Self {
         // page cleaning
         // TODO: may be no need to always clean the page at first
-        ppn.empty_the_page();
+        // ppn.empty_the_page();
         Self { ppn }
+    }
+
+    /// Fill the page with zero.
+    pub fn clear(&self) {
+        self.ppn.empty_the_page();
     }
 }
 

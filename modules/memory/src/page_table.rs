@@ -27,6 +27,7 @@ impl PageTable {
     /// Create a new empty page table.
     pub fn new() -> Self {
         let root_frame = alloc_frame();
+        root_frame.clear();
         PageTable {
             root_ppn: root_frame.ppn,
             frames: vec![root_frame],
@@ -41,6 +42,7 @@ impl PageTable {
     /// There is only mapping from `VIRT_RAM_OFFSET`, but no MMIO mapping.
     pub fn from_kernel(kernel_page_table: &Self) -> Self {
         let root_frame = alloc_frame();
+        root_frame.clear();
 
         let kernel_start_vpn: VirtPageNum = VirtAddr::from(VIRT_RAM_OFFSET).into();
         let level_0_index = kernel_start_vpn.indices()[0];
@@ -96,6 +98,7 @@ impl PageTable {
             }
             if !pte.is_valid() {
                 let frame = alloc_frame();
+                frame.clear();
                 *pte = PageTableEntry::new(frame.ppn, PTEFlags::V);
                 self.frames.push(frame);
             }

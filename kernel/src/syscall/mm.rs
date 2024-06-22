@@ -177,7 +177,7 @@ impl Syscall<'_> {
             return Err(SysError::EINVAL);
         }
         let task = self.task;
-        let end = VirtAddr::from(addr + length).rounded_up();
+        let end = VirtAddr::from(addr + length).round_up();
         let range = VirtAddr::from(addr)..end;
         task.with_mut_memory_space(|m| m.unmap(range));
         Ok(0)
@@ -278,7 +278,7 @@ impl Syscall<'_> {
             // value
             return Err(SysError::EINVAL);
         }
-        shm_va = shm_va.rounded_down();
+        shm_va = shm_va.round_down();
         let mut map_perm = MapPerm::RW;
         if shmflg.contains(ShmAtFlags::SHM_EXEC) {
             map_perm.insert(MapPerm::X);

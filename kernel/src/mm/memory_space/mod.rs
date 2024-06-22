@@ -279,7 +279,7 @@ impl MemorySpace {
 
             max_end_vpn = vm_area.end_vpn();
 
-            let map_offset = start_va.0 - start_va.floor().0 * PAGE_SIZE;
+            let map_offset = start_va - start_va.round_down();
 
             log::debug!(
                 "[map_elf] ph offset {:#x}, file size {:#x}, mem size {:#x}",
@@ -656,7 +656,8 @@ impl MemorySpace {
     /// `data` at `offset` of `vma`.
     pub fn push_vma_with_data(&mut self, mut vma: VmArea, offset: usize, data: &[u8]) {
         vma.map(self.page_table_mut());
-        vma.copy_data_with_offset(self.page_table(), offset, data);
+        vma.clear();
+        vma.copy_data_with_offset(self.page_table_mut(), offset, data);
         self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
     }
 
