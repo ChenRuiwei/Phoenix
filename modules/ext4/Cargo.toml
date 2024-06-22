@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 config = { path = "../../config/" }
-driver = { path = "../../driver/" }
+device-core = { path = "../device-core/" }
 vfs-core = { path = "../vfs-core/" }
 sync = { path = "../sync/" }
 arch = { path = "../../arch/" }

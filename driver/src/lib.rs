@@ -13,7 +13,7 @@ use core::{
 
 use async_trait::async_trait;
 use async_utils::block_on;
-use device_core::{CharDevice, DevId, Device, DeviceMajor};
+use device_core::{BlockDevice, CharDevice, DevId, Device, DeviceMajor};
 use manager::DeviceManager;
 use qemu::virtio_blk::VirtIOBlkDev;
 use spin::Once;
@@ -30,18 +30,6 @@ pub mod sbi;
 pub mod serial;
 
 type Mutex<T> = SpinLock<T>;
-
-pub trait BlockDevice: Send + Sync {
-    fn size(&self) -> u64;
-
-    fn block_size(&self) -> usize;
-
-    /// Read data form block to buffer
-    fn read_blocks(&self, block_id: usize, buf: &mut [u8]);
-
-    /// Write data from buffer to block
-    fn write_blocks(&self, block_id: usize, buf: &[u8]);
-}
 
 pub fn init(dtb_addr: usize) {
     init_block_device();

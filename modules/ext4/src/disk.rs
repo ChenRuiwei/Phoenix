@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 
 use config::board::BLOCK_SIZE;
-use driver::BlockDevice;
+use device_core::BlockDevice;
 use lwext4_rust::{
     bindings::{SEEK_CUR, SEEK_END, SEEK_SET},
     KernelDevOp,
@@ -47,7 +47,7 @@ impl Disk {
         // info!("block id: {}", self.block_id);
         let read_size = if self.offset == 0 && buf.len() >= BLOCK_SIZE {
             // whole block
-            self.dev.read_blocks(self.block_id, &mut buf[0..BLOCK_SIZE]);
+            self.dev.read_block(self.block_id, &mut buf[0..BLOCK_SIZE]);
             self.block_id += 1;
             BLOCK_SIZE
         } else {
@@ -59,7 +59,7 @@ impl Disk {
                 log::info!("block size: {} start {}", BLOCK_SIZE, start);
             }
 
-            self.dev.read_blocks(self.block_id, &mut data);
+            self.dev.read_block(self.block_id, &mut data);
             buf[..count].copy_from_slice(&data[start..start + count]);
 
             self.offset += count;
@@ -76,7 +76,7 @@ impl Disk {
     pub fn write_one(&mut self, buf: &[u8]) -> SysResult<usize> {
         let write_size = if self.offset == 0 && buf.len() >= BLOCK_SIZE {
             // whole block
-            self.dev.write_blocks(self.block_id, &buf[0..BLOCK_SIZE]);
+            self.dev.write_block(self.block_id, &buf[0..BLOCK_SIZE]);
             self.block_id += 1;
             BLOCK_SIZE
         } else {
@@ -85,9 +85,9 @@ impl Disk {
             let start = self.offset;
             let count = buf.len().min(BLOCK_SIZE - self.offset);
 
-            self.dev.read_blocks(self.block_id, &mut data);
+            self.dev.read_block(self.block_id, &mut data);
             data[start..start + count].copy_from_slice(&buf[..count]);
-            self.dev.write_blocks(self.block_id, &data);
+            self.dev.write_block(self.block_id, &data);
 
             self.offset += count;
             if self.offset >= BLOCK_SIZE {

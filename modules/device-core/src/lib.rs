@@ -86,3 +86,21 @@ pub trait CharDevice: Send + Sync + Device {
     async fn poll_in(&self) -> bool;
     async fn poll_out(&self) -> bool;
 }
+
+pub trait BlockDevice: Send + Sync {
+    fn size(&self) -> u64;
+
+    fn block_size(&self) -> usize;
+
+    /// Read data form block to buffer
+    fn base_read_block(&self, block_id: usize, buf: &mut [u8]);
+
+    /// Write data from buffer to block
+    fn base_write_block(&self, block_id: usize, buf: &[u8]);
+
+    /// Read data form block to buffer
+    fn read_block(&self, block_id: usize, buf: &mut [u8]);
+
+    /// Write data from buffer to block
+    fn write_block(&self, block_id: usize, buf: &[u8]);
+}

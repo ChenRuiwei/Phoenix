@@ -213,8 +213,8 @@ dependencies = [
  "arch",
  "async-trait",
  "config",
+ "device-core",
  "downcast-rs",
- "driver",
  "log",
  "lwext4_rust",
  "sync",
@@ -228,8 +228,8 @@ version = "0.1.0"
 dependencies = [
  "arch",
  "async-trait",
+ "device-core",
  "downcast-rs",
- "driver",
  "fatfs",
  "log",
  "sync",
@@ -276,6 +276,15 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "intrusive-collections"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b694dc9f70c3bda874626d2aed13b780f137aab435f4e9814121955cf706122e"
+dependencies = [
+ "memoffset",
+]
 
 [[package]]
 name = "itertools"
@@ -355,6 +364,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lru"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3262e75e648fce39813cb56ac41f3c3e3f65217ebf3844d818d1f9398cfb0dc"
+dependencies = [
+ "hashbrown",
+]
+
+[[package]]
 name = "lwext4_rust"
 version = "0.2.0"
 source = "git+https://github.com/ChenRuiwei/lwext4_rust.git#201d8fd9c21e814a63f9e6e887c03d7e81b3eec1"
@@ -368,6 +386,15 @@ name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
+
+[[package]]
+name = "memoffset"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
+dependencies = [
+ "autocfg",
+]
 
 [[package]]
 name = "memory"
@@ -625,9 +652,10 @@ dependencies = [
  "config",
  "device-core",
  "downcast-rs",
- "driver",
  "hashbrown",
+ "intrusive-collections",
  "log",
+ "lru",
  "memory",
  "spin",
  "sync",

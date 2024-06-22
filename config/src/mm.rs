@@ -1,4 +1,4 @@
-use crate::utils::register_mut_const;
+use crate::{board::BLOCK_SIZE, utils::register_mut_const};
 
 pub const RAM_START: usize = 0x8000_0000;
 pub const VIRT_START: usize = 0xffff_ffc0_8000_0000;
@@ -33,6 +33,11 @@ pub const PAGE_TABLE_LEVEL_NUM: usize = 3;
 
 /// Dynamic linked interpreter address range in user space
 pub const DL_INTERP_OFFSET: usize = 0x20_0000_0000;
+
+pub const MAX_BUFFER_CACHE: usize = 0x1000;
+pub const MAX_BUFFER_PAGES: usize = MAX_BUFFER_CACHE / MAX_BUFFERS_PER_PAGE;
+pub const MAX_BUFFERS_PER_PAGE: usize = PAGE_SIZE / BLOCK_SIZE;
+pub const BUFFER_NEED_CACHE_CNT: usize = 8;
 
 /// User stack segment
 pub const U_SEG_STACK_BEG: usize = 0x0000_0001_0000_0000;

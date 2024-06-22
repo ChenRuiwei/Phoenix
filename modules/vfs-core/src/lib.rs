@@ -12,6 +12,7 @@ mod page;
 mod path;
 mod super_block;
 mod utils;
+mod buffer_cache;
 
 #[macro_use]
 extern crate bitflags;

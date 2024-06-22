@@ -1,6 +1,5 @@
 use alloc::sync::Arc;
 
-use driver::BlockDevice;
 use lwext4_rust::{
     bindings::{EEXIST, O_CREAT, O_TRUNC, O_WRONLY},
     InodeTypes,
