@@ -21,14 +21,14 @@ impl AddressSpace {
         }
     }
 
-    pub fn get_page(&self, offset: usize) -> Option<Arc<Page>> {
-        debug_assert!(is_aligned(offset));
-        self.pages.lock().get(&offset).cloned()
+    pub fn get_page(&self, offset_aligned: usize) -> Option<Arc<Page>> {
+        debug_assert!(is_aligned(offset_aligned));
+        self.pages.lock().get(&offset_aligned).cloned()
     }
 
-    pub fn insert_page(&self, offset: usize, page: Arc<Page>) {
-        debug_assert!(is_aligned(offset));
-        self.pages.lock().insert(offset, page);
+    pub fn insert_page(&self, offset_aligned: usize, page: Arc<Page>) {
+        debug_assert!(is_aligned(offset_aligned));
+        self.pages.lock().insert(offset_aligned, page);
     }
 }
 

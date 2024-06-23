@@ -40,7 +40,7 @@ pub const DL_INTERP_OFFSET: usize = 0x20_0000_0000;
 pub const MAX_BUFFER_CACHE: usize = 0x100;
 pub const MAX_BUFFER_PAGES: usize = MAX_BUFFER_CACHE / MAX_BUFFERS_PER_PAGE;
 pub const MAX_BUFFERS_PER_PAGE: usize = PAGE_SIZE / BLOCK_SIZE;
-pub const BUFFER_NEED_CACHE_CNT: usize = 8;
+pub const BUFFER_NEED_CACHE_CNT: usize = 4;
 
 /// User stack segment
 pub const U_SEG_STACK_BEG: usize = 0x0000_0001_0000_0000;
@@ -99,4 +99,12 @@ pub fn is_page_aligned(offset: usize) -> bool {
 
 pub fn is_block_aligned(offset: usize) -> bool {
     offset & BLOCK_MASK == 0
+}
+
+pub fn round_down_to_page(offset: usize) -> usize {
+    offset & !PAGE_MASK
+}
+
+pub fn round_up_to_page(offset: usize) -> usize {
+    round_down_to_page(offset) + PAGE_SIZE
 }

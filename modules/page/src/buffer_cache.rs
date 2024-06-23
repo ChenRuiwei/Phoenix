@@ -1,6 +1,5 @@
 use alloc::{
     collections::BTreeMap,
-    rc::Rc,
     sync::{Arc, Weak},
     vec::Vec,
 };
@@ -55,8 +54,26 @@ impl BufferCache {
     }
 
     pub fn read_block(&mut self, block_id: usize, buf: &mut [u8]) {
-        let device = self.device();
+        let buffer_head = self.get_buffer_head_from_disk(block_id);
+        if buffer_head.has_cached() {
+            buffer_head.read_block(buf)
+        } else {
+            self.device().base_read_block(block_id, buf)
+        }
+    }
+
+    pub fn write_block(&mut self, block_id: usize, buf: &[u8]) {
+        let buffer_head = self.get_buffer_head_from_disk(block_id);
+        if buffer_head.has_cached() {
+            buffer_head.write_block(buf)
+        } else {
+            self.device().base_write_block(block_id, buf)
+        }
+    }
+
+    pub fn get_buffer_head_from_disk(&mut self, block_id: usize) -> Arc<BufferHead> {
         // log::error!("block id {block_id}");
+        let device = self.device();
         if let Some(buffer_head) = self.buffer_heads.get_mut(&block_id) {
             buffer_head.inc_acc_cnt();
             // log::error!("acc cnt {}", buffer_head.acc_cnt());
@@ -64,35 +81,27 @@ impl BufferCache {
                 // log::error!("need cache");
                 if let Some(page) = self.pages.get_mut(&block_page_id(block_id)) {
                     // log::error!("has page");
-                    device.base_read_block(block_id, page.block_range(block_id));
+                    device.base_read_block(block_id, page.block_bytes_array(block_id));
                     page.insert_buffer_head(buffer_head.clone());
                 } else {
-                    // log::error!("page init");
+                    log::info!("buffer page init");
                     let mut page = Page::new_arc();
                     page.init_block_device(&device);
-                    device.base_read_block(block_id, page.block_range(block_id));
+                    device.base_read_block(block_id, page.block_bytes_array(block_id));
                     page.insert_buffer_head(buffer_head.clone());
                     self.pages.push(block_page_id(block_id), page);
                 };
             }
-            if buffer_head.has_cached() {
-                // log::error!("cached");
-                buffer_head.read_block(buf)
-            } else {
-                // log::error!("not cached");
-                device.base_read_block(block_id, buf)
-            }
+            buffer_head.clone()
         } else {
-            // log::error!("init not cached");
-            let buffer_head = BufferHead::new(block_id);
+            log::trace!(
+                "[BufferCache::get_buffer_head_from_disk] init buffer_head for blk idx {block_id}"
+            );
+            let buffer_head = BufferHead::new_arc(block_id);
             buffer_head.inc_acc_cnt();
-            self.buffer_heads.insert(block_id, Arc::new(buffer_head));
-            device.base_read_block(block_id, buf)
+            self.buffer_heads.insert(block_id, buffer_head.clone());
+            buffer_head
         }
-    }
-
-    pub fn write_block(&mut self, block_id: usize, buf: &[u8]) {
-        self.device().base_write_block(block_id, buf)
     }
 
     pub fn get_buffer_head(&self, block_id: usize) -> Arc<BufferHead> {
@@ -118,9 +127,10 @@ pub struct BufferHeadInner {
     page: Weak<Page>,
     /// Offset in page, aligned with `BLOCK_SIZE`.
     offset: usize,
+    // NOTE: when `Arc<Page>` gets dropped, Arc will be dropped early
 }
 
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BufferState {
     #[default]
     UnInit,
@@ -142,12 +152,31 @@ impl BufferHead {
         }
     }
 
+    pub fn new_arc(block_id: usize) -> Arc<Self> {
+        Arc::new(Self::new(block_id))
+    }
+
     pub fn init(&self, page: &Arc<Page>, offset: usize) {
+        if self.has_cached() {
+            log::error!(
+                "block id {} already cached, with acc_cnt {}",
+                self.block_id,
+                self.acc_cnt()
+            );
+        }
         debug_assert!(is_block_aligned(offset) && offset < PAGE_SIZE);
         let mut inner = self.inner.lock();
         inner.bstate = BufferState::Sync;
         inner.page = Arc::downgrade(page);
         inner.offset = offset;
+    }
+
+    pub fn reset(&self) {
+        let mut inner = self.inner.lock();
+        inner.acc_cnt = 0;
+        inner.bstate = BufferState::UnInit;
+        inner.page = Weak::new();
+        inner.offset = 0;
     }
 
     pub fn block_id(&self) -> usize {

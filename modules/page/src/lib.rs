@@ -29,6 +29,7 @@ pub struct Page {
 pub struct PageInner {
     device: Option<Weak<dyn BlockDevice>>,
     buffer_heads: LinkedList<BufferHeadAdapter>,
+    cnt: usize,
 }
 
 impl core::fmt::Debug for Page {
@@ -39,14 +40,23 @@ impl core::fmt::Debug for Page {
 
 impl Drop for Page {
     fn drop(&mut self) {
-        let inner = self.inner.lock();
+        // NOTE: can not use `Arc<Page>` or `Weak<Page>` in this drop function because
+        // `Arc` has already be dropped
+        let mut inner = self.inner.lock();
         if let Some(device) = &inner.device {
+            log::warn!("[Page::drop] sync buffer back to disk");
             let device = device.upgrade().unwrap();
             for buffer_head in inner.buffer_heads.iter() {
                 if buffer_head.bstate() == BufferState::Dirty {
-                    device.base_write_block(buffer_head.block_id(), buffer_head.bytes_array())
+                    let block_id = buffer_head.block_id();
+                    device.base_write_block(
+                        buffer_head.block_id(),
+                        &self.block_bytes_array(block_id),
+                    );
                 }
+                buffer_head.reset();
             }
+            inner.buffer_heads.clear();
         }
     }
 }
@@ -61,6 +71,7 @@ impl Page {
             inner: SpinNoIrqLock::new(PageInner {
                 device: None,
                 buffer_heads: LinkedList::new(BufferHeadAdapter::new()),
+                cnt: 0,
             }),
         }
     }
@@ -96,7 +107,7 @@ impl Page {
         self.ppn().bytes_array_range(range)
     }
 
-    pub fn block_range(&self, block_id: usize) -> &'static mut [u8] {
+    pub fn block_bytes_array(&self, block_id: usize) -> &'static mut [u8] {
         let offset = block_page_offset(block_id);
         self.bytes_array_range(offset..offset + BLOCK_SIZE)
     }
@@ -106,11 +117,21 @@ impl Page {
         inner.device = Some(Arc::downgrade(block_device))
     }
 
-    pub fn insert_buffer_head(self: &mut Arc<Page>, buffer_head: Arc<BufferHead>) {
+    pub fn insert_buffer_head(self: &Arc<Page>, buffer_head: Arc<BufferHead>) {
+        if buffer_head.has_cached() && Arc::ptr_eq(self, &buffer_head.page()) {
+            log::error!("duplicate insert, block id:{}", buffer_head.block_id());
+            return;
+        }
         let mut inner = self.inner.lock();
         let count = inner.buffer_heads.iter().count();
         buffer_head.init(self, count * BLOCK_SIZE);
         inner.buffer_heads.push_back(buffer_head);
+        inner.cnt += 1;
+    }
+
+    pub fn buffer_head_cnts(&self) -> usize {
+        let inner = self.inner.lock();
+        inner.cnt
     }
 }
 

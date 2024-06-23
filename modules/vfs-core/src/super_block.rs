@@ -18,11 +18,10 @@ pub struct SuperBlockMeta {
     pub fs_type: Weak<dyn FileSystemType>,
     /// Root dentry points to the mount point.
     pub root_dentry: Once<Arc<dyn Dentry>>,
-
-    /// All inodes.
-    pub inodes: Mutex<Vec<Arc<dyn Inode>>>,
-    /// All dirty inodes.
-    pub dirty: Mutex<Vec<Arc<dyn Inode>>>,
+    // /// All inodes.
+    // pub inodes: Mutex<Vec<Arc<dyn Inode>>>,
+    // /// All dirty inodes.
+    // pub dirty: Mutex<Vec<Arc<dyn Inode>>>,
 }
 
 impl SuperBlockMeta {
@@ -31,8 +30,8 @@ impl SuperBlockMeta {
             device,
             root_dentry: Once::new(),
             fs_type: Arc::downgrade(&fs_type),
-            inodes: Mutex::new(Vec::new()),
-            dirty: Mutex::new(Vec::new()),
+            // inodes: Mutex::new(Vec::new()),
+            // dirty: Mutex::new(Vec::new()),
         }
     }
 }
@@ -65,7 +64,7 @@ impl dyn SuperBlock {
     }
 
     pub fn push_inode(&self, inode: Arc<dyn Inode>) {
-        self.meta().inodes.lock().push(inode)
+        // self.meta().inodes.lock().push(inode)
     }
 
     pub fn device(&self) -> Arc<dyn BlockDevice> {

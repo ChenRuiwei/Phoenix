@@ -8,9 +8,13 @@ use core::{
 use async_trait::async_trait;
 use config::{
     board::BLOCK_SIZE,
-    mm::{align_offset_to_page, PAGE_MASK, PAGE_SIZE},
+    mm::{
+        align_offset_to_page, round_down_to_page, round_up_to_page, MAX_BUFFERS_PER_PAGE,
+        PAGE_MASK, PAGE_SIZE,
+    },
 };
 use driver::qemu::virtio_blk::VirtIOBlkDev;
+use memory::address;
 use page::Page;
 use spin::Mutex;
 use systype::{SysError, SysResult, SyscallResult};
@@ -172,21 +176,20 @@ impl dyn File {
             buf.len()
         );
 
-        let mut buf_it = buf;
-        let mut offset_it = offset;
         let inode = self.inode();
 
         let Some(address_space) = inode.address_space() else {
             log::debug!("[File::read] read without address_space");
-            let count = self.base_read_at(offset_it, buf_it).await?;
+            let count = self.base_read_at(offset, buf).await?;
             return Ok(count);
         };
+
+        let mut buf_it = buf;
+        let mut offset_it = offset;
 
         log::debug!("[File::read] read with address_space");
         while !buf_it.is_empty() && offset_it < self.size() {
             let (offset_aligned, offset_in_page) = align_offset_to_page(offset_it);
-            let len =
-                cmp::min(buf_it.len(), PAGE_SIZE - offset_in_page).min(self.size() - offset_it);
             let page = if let Some(page) = address_space.get_page(offset_aligned) {
                 page
             } else if let Some(page) = self.read_page_at(offset_aligned).await? {
@@ -195,6 +198,9 @@ impl dyn File {
                 // no page means EOF
                 break;
             };
+            let len = (buf_it.len())
+                .min(PAGE_SIZE - offset_in_page)
+                .min(self.size() - offset_it);
             buf_it[0..len]
                 .copy_from_slice(page.bytes_array_range(offset_in_page..offset_in_page + len));
             log::trace!("[File::read] read count {len}, buf len {}", buf_it.len());
@@ -250,10 +256,7 @@ impl dyn File {
             self.dentry().path(),
             buf.len()
         );
-        let mut buf = buf;
-        let mut count = 0;
-        let old_offset = offset;
-        let mut offset = offset;
+
         let inode = self.inode();
 
         let Some(address_space) = inode.address_space() else {
@@ -262,41 +265,59 @@ impl dyn File {
             return Ok(count);
         };
 
-        log::debug!("[File::write] write with address_space");
-        while !buf.is_empty() {
-            let offset_aligned = offset & !PAGE_MASK;
-            let offset_in_page = offset - offset_aligned;
+        if offset > self.size() {
+            todo!("offset greater than size, will create hole");
+        }
 
-            let len = if let Some(page) = address_space.get_page(offset_aligned) {
-                log::trace!("[File::write] offset {offset_aligned} cached in address space");
-                let len = cmp::min(buf.len(), PAGE_SIZE - offset_in_page);
-                page.bytes_array_range(offset_in_page..offset_in_page + len)
-                    .copy_from_slice(&buf[0..len]);
-                len
+        let device = self.super_block().device();
+        let mut buf_it = buf;
+        let mut offset_it = offset;
+
+        while !buf_it.is_empty() {
+            let (offset_aligned, offset_in_page) = align_offset_to_page(offset_it);
+            let page = if let Some(page) = address_space.get_page(offset_aligned) {
+                page
+            } else if let Some(page) = self.read_page_at(offset_aligned).await? {
+                page
             } else {
-                log::trace!("[File::write] offset {offset_aligned} not cached in address space");
+                log::warn!("[File::write_at] create new page");
                 let page = Page::new_arc();
-                if offset < self.size() {
-                    self.base_read_at(offset_aligned, page.bytes_array())
-                        .await?;
-                }
-                let len = cmp::min(buf.len(), PAGE_SIZE - offset_in_page);
-                page.bytes_array_range(offset_in_page..offset_in_page + len)
-                    .copy_from_slice(&buf[0..len]);
-                address_space.insert_page(offset_aligned, page);
-                len
+                page.init_block_device(&device);
+                address_space.insert_page(offset_aligned, page.clone());
+                page
             };
-            log::trace!("[File::write] write count {len}, buf len {}", buf.len());
-            count += len;
-            offset += len;
-            buf = &buf[len..];
+            let len = (buf_it.len()).min(PAGE_SIZE - offset_in_page);
+            page.bytes_array_range(offset_in_page..offset_in_page + len)
+                .copy_from_slice(&buf_it[0..len]);
+            log::trace!("[File::write] read count {len}, buf len {}", buf_it.len());
+            offset_it += len;
+            buf_it = &buf_it[len..];
         }
-        if old_offset + count > self.size() {
-            log::info!("[File::write] write beyond file size");
-            self.inode().set_size(offset + count);
+
+        if offset_it > self.size() {
+            log::warn!("[File::write_at] write beyond file");
+            self.base_write_at(self.size(), &buf[self.size() - offset..])
+                .await?;
+            let old_size = self.size();
+            let new_size = offset_it;
+            let virtio_blk = device
+                .downcast_arc::<VirtIOBlkDev>()
+                .unwrap_or_else(|_| unreachable!());
+            let buffer_caches = virtio_blk.cache.lock();
+            for offset_aligned_page in (round_down_to_page(old_size)..new_size).step_by(PAGE_SIZE) {
+                let page = address_space.get_page(offset_aligned_page).unwrap();
+                for i in page.buffer_head_cnts()..MAX_BUFFERS_PER_PAGE {
+                    let offset_aligned_block = offset_aligned_page + i * BLOCK_SIZE;
+                    if offset_aligned_block < new_size {
+                        let blk_idx = inode.get_blk_idx(offset_aligned_block)?;
+                        let buffer_head = buffer_caches.get_buffer_head(blk_idx);
+                        page.insert_buffer_head(buffer_head);
+                    }
+                }
+            }
+            inode.set_size(new_size);
         }
-        log::info!("[File::write] write count {count}");
-        Ok(count)
+        Ok(buf.len())
     }
 
     /// Read from offset in self, and will fill `buf` until `buf` is full or eof

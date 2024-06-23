@@ -62,6 +62,11 @@ impl File for Ext4File {
     async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
         match self.itype() {
             InodeType::File => {
+                log::debug!(
+                    "[Ext4File::base_write_at] offset:{offset}, buf len:{}, self size:{}",
+                    buf.len(),
+                    self.size()
+                );
                 let mut file = self.file.lock();
                 let path = file.get_path();
                 let path = path.to_str().unwrap();
