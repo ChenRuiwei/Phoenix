@@ -4,7 +4,6 @@
 extern crate alloc;
 
 use alloc::{boxed::Box, string::String};
-use core::task::Waker;
 
 use async_trait::async_trait;
 use downcast_rs::{impl_downcast, DowncastSync};
@@ -87,7 +86,7 @@ pub trait CharDevice: Send + Sync + Device {
     async fn poll_out(&self) -> bool;
 }
 
-pub trait BlockDevice: Send + Sync {
+pub trait BlockDevice: Send + Sync + DowncastSync {
     fn size(&self) -> u64;
 
     fn block_size(&self) -> usize;
@@ -104,3 +103,5 @@ pub trait BlockDevice: Send + Sync {
     /// Write data from buffer to block
     fn write_block(&self, block_id: usize, buf: &[u8]);
 }
+
+impl_downcast!(sync BlockDevice);

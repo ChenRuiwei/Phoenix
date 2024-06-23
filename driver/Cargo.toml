@@ -11,8 +11,8 @@ async_utils = { path = "../crates/async_utils/" }
 config = { path = "../config/" }
 sync = { path = "../modules/sync/" }
 memory = { path = "../modules/memory/" }
-vfs-core = { path = "../modules/vfs-core/" }
 systype = { path = "../modules/systype/" }
+page = { path = "../modules/page/" }
 device-core = { path = "../modules/device-core/" }
 
 bitflags = "2.5"

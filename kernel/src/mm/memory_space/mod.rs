@@ -22,10 +22,11 @@ use config::{
 };
 use log::info;
 use memory::{pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
+use page::Page;
 use riscv::register::mideleg;
 use spin::Lazy;
 use systype::{SysError, SysResult};
-use vfs_core::{Dentry, File, Page};
+use vfs_core::{Dentry, File};
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};

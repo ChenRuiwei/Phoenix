@@ -1,4 +1,5 @@
 use alloc::{collections::BTreeMap, sync::Arc};
+use page::Page;
 use core::ops::{Range, RangeBounds};
 
 use arch::{memory::sfence_vma_vaddr, sstatus};
@@ -6,7 +7,7 @@ use async_utils::block_on;
 use config::mm::PAGE_SIZE;
 use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
 use systype::{SysError, SysResult};
-use vfs_core::{File, Page};
+use vfs_core::File;
 
 use crate::{
     mm::{PageFaultAccessType, PageTable, UserSlice},

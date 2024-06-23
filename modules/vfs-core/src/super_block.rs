@@ -67,6 +67,10 @@ impl dyn SuperBlock {
     pub fn push_inode(&self, inode: Arc<dyn Inode>) {
         self.meta().inodes.lock().push(inode)
     }
+
+    pub fn device(&self) -> Arc<dyn BlockDevice> {
+        self.meta().device.as_ref().cloned().unwrap()
+    }
 }
 
 impl<T: Send + Sync + 'static> SuperBlock for MaybeUninit<T> {

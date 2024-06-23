@@ -7,11 +7,12 @@ use core::{
 
 use async_trait::async_trait;
 use config::mm::{PAGE_MASK, PAGE_SIZE};
+use page::Page;
 use spin::Mutex;
 use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{
-    Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, Page, PollEvents, SeekFrom, SuperBlock
+    Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom, SuperBlock,
 };
 
 pub struct FileMeta {
@@ -188,7 +189,7 @@ impl dyn File {
                 len
             } else {
                 log::trace!("[File::read] offset {offset_aligned} not cached in address space");
-                let page = Page::new();
+                let page = Page::new_arc();
                 let len = self
                     .base_read_at(offset_aligned, page.bytes_array())
                     .await?;
@@ -199,6 +200,10 @@ impl dyn File {
                 let len = cmp::min(buf.len(), len);
                 buf[0..len]
                     .copy_from_slice(page.bytes_array_range(offset_in_page..offset_in_page + len));
+                let device = inode.super_block().device();
+
+                // device.downcast_arc::<VirtIOBlkDev>();
+                // page.insert_buffer_head(buffer_head);
                 address_space.insert_page(offset_aligned, page);
                 len
             };
@@ -246,7 +251,7 @@ impl dyn File {
                 len
             } else {
                 log::trace!("[File::write] offset {offset_aligned} not cached in address space");
-                let page = Page::new();
+                let page = Page::new_arc();
                 if offset < self.size() {
                     self.base_read_at(offset_aligned, page.bytes_array())
                         .await?;

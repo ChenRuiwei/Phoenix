@@ -177,13 +177,13 @@ dependencies = [
  "fdt",
  "log",
  "memory",
+ "page",
  "plic",
  "ringbuffer",
  "rustversion",
  "spin",
  "sync",
  "systype",
- "vfs-core",
  "virtio-drivers",
 ]
 
@@ -315,6 +315,7 @@ dependencies = [
  "log",
  "logging",
  "memory",
+ "page",
  "paste",
  "recycle_allocator",
  "riscv",
@@ -416,6 +417,21 @@ name = "once_cell"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
+
+[[package]]
+name = "page"
+version = "0.1.0"
+dependencies = [
+ "config",
+ "device-core",
+ "intrusive-collections",
+ "log",
+ "lru",
+ "memory",
+ "spin",
+ "sync",
+ "systype",
+]
 
 [[package]]
 name = "paste"
@@ -658,6 +674,7 @@ dependencies = [
  "log",
  "lru",
  "memory",
+ "page",
  "spin",
  "sync",
  "systype",

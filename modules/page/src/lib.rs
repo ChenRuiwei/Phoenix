@@ -1,3 +1,12 @@
+#![no_std]
+#![no_main]
+
+mod buffer_cache;
+
+pub use buffer_cache::*;
+
+extern crate alloc;
+
 use alloc::sync::Arc;
 use core::cmp;
 
@@ -31,6 +40,10 @@ impl Page {
             frame,
             buffer_heads: SpinNoIrqLock::new(LinkedList::new(BufferHeadAdapter::new())),
         }
+    }
+
+    pub fn new_arc() -> Arc<Self> {
+        Arc::new(Self::new())
     }
 
     // WARN: user program may rely on cleared page, page is not cleared may cause

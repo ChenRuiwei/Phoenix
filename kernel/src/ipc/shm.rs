@@ -6,10 +6,10 @@ use alloc::{
 use arch::time::get_time_sec;
 use config::mm::PAGE_SIZE;
 use hashbrown::HashMap;
+use page::Page;
 use recycle_allocator::RecycleAllocator;
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
-use vfs_core::Page;
 
 use super::IpcPerm;
 

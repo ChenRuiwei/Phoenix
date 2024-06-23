@@ -4,9 +4,10 @@ use alloc::{
 };
 
 use config::mm::PAGE_MASK;
+use page::Page;
 use spin::Once;
 
-use crate::{Inode, Mutex, Page};
+use crate::{Inode, Mutex};
 
 pub struct AddressSpace {
     /// Map from aligned file offset to page cache.
@@ -25,9 +26,9 @@ impl AddressSpace {
         self.pages.lock().get(&offset).cloned()
     }
 
-    pub fn insert_page(&self, offset: usize, page: Page) {
+    pub fn insert_page(&self, offset: usize, page: Arc<Page>) {
         debug_assert!(is_aligned(offset));
-        self.pages.lock().insert(offset, Arc::new(page));
+        self.pages.lock().insert(offset, page);
     }
 }
 

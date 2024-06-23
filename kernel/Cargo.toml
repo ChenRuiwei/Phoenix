@@ -21,6 +21,7 @@ recycle_allocator = { path = "../crates/recycle_allocator/" }
 time = { path = "../modules/time/" }
 timer = { path = "../modules/timer/" }
 futex = { path = "../modules/futex/" }
+page = { path = "../modules/page/" }
 
 cfg-if = "1.0"
 crate_interface = "0.1"

@@ -2,8 +2,8 @@ use alloc::sync::Arc;
 
 use config::{board::BLOCK_SIZE, mm::VIRT_RAM_OFFSET};
 use device_core::BlockDevice;
+use page::BufferCache;
 use sync::mutex::SpinNoIrqLock;
-use vfs_core::BufferCache;
 use virtio_drivers::{
     device::blk::VirtIOBlk,
     transport::mmio::{MmioTransport, VirtIOHeader},

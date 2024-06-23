@@ -120,6 +120,10 @@ impl dyn Inode {
     pub fn get_blk_idx(&self, offset: u64) -> SysResult<u64> {
         self.base_get_blk_idx(offset)
     }
+
+    pub fn super_block(&self) -> Arc<dyn SuperBlock> {
+        self.meta().super_block.upgrade().unwrap()
+    }
 }
 
 impl_downcast!(sync Inode);
