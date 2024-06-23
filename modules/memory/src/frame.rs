@@ -25,7 +25,7 @@ impl FrameTracker {
     }
 
     /// Fill the page with zero.
-    pub fn clear(&self) {
+    pub fn fill_zero(&self) {
         self.ppn.empty_the_page();
     }
 }

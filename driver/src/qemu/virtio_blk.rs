@@ -13,7 +13,7 @@ use super::VirtioHalImpl;
 
 pub struct VirtIOBlkDev {
     device: SpinNoIrqLock<VirtIOBlk<VirtioHalImpl, MmioTransport>>,
-    cache: SpinNoIrqLock<BufferCache>,
+    pub cache: SpinNoIrqLock<BufferCache>,
 }
 
 unsafe impl Send for VirtIOBlkDev {}

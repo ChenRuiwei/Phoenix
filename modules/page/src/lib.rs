@@ -7,13 +7,14 @@ pub use buffer_cache::*;
 
 extern crate alloc;
 
-use alloc::sync::Arc;
+use alloc::sync::{Arc, Weak};
 use core::cmp;
 
 use config::{
     board::BLOCK_SIZE,
     mm::{MAX_BUFFERS_PER_PAGE, PAGE_SIZE},
 };
+use device_core::BlockDevice;
 use intrusive_collections::LinkedList;
 use memory::{alloc_frame, FrameTracker, PhysPageNum};
 use sync::mutex::SpinNoIrqLock;
@@ -22,12 +23,31 @@ use crate::buffer_cache::{BufferHead, BufferHeadAdapter};
 
 pub struct Page {
     frame: FrameTracker,
-    buffer_heads: SpinNoIrqLock<LinkedList<BufferHeadAdapter>>,
+    inner: SpinNoIrqLock<PageInner>,
+}
+
+pub struct PageInner {
+    device: Option<Weak<dyn BlockDevice>>,
+    buffer_heads: LinkedList<BufferHeadAdapter>,
 }
 
 impl core::fmt::Debug for Page {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Page").field("frame", &self.ppn()).finish()
+    }
+}
+
+impl Drop for Page {
+    fn drop(&mut self) {
+        let inner = self.inner.lock();
+        if let Some(device) = &inner.device {
+            let device = device.upgrade().unwrap();
+            for buffer_head in inner.buffer_heads.iter() {
+                if buffer_head.bstate() == BufferState::Dirty {
+                    device.base_write_block(buffer_head.block_id(), buffer_head.bytes_array())
+                }
+            }
+        }
     }
 }
 
@@ -38,7 +58,10 @@ impl Page {
         // frame.clear_page();
         Self {
             frame,
-            buffer_heads: SpinNoIrqLock::new(LinkedList::new(BufferHeadAdapter::new())),
+            inner: SpinNoIrqLock::new(PageInner {
+                device: None,
+                buffer_heads: LinkedList::new(BufferHeadAdapter::new()),
+            }),
         }
     }
 
@@ -48,8 +71,8 @@ impl Page {
 
     // WARN: user program may rely on cleared page, page is not cleared may cause
     // unknown bug
-    pub fn clear(&self) {
-        self.frame.clear()
+    pub fn fill_zero(&self) {
+        self.frame.fill_zero()
     }
 
     pub fn copy_data_from_another(&self, another: &Page) {
@@ -78,11 +101,16 @@ impl Page {
         self.bytes_array_range(offset..offset + BLOCK_SIZE)
     }
 
+    pub fn init_block_device(&self, block_device: &Arc<dyn BlockDevice>) {
+        let mut inner = self.inner.lock();
+        inner.device = Some(Arc::downgrade(block_device))
+    }
+
     pub fn insert_buffer_head(self: &mut Arc<Page>, buffer_head: Arc<BufferHead>) {
-        let mut buffer_heads = self.buffer_heads.lock();
-        let count = buffer_heads.iter().count();
+        let mut inner = self.inner.lock();
+        let count = inner.buffer_heads.iter().count();
         buffer_head.init(self, count * BLOCK_SIZE);
-        buffer_heads.push_back(buffer_head);
+        inner.buffer_heads.push_back(buffer_head);
     }
 }
 

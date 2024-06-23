@@ -71,17 +71,17 @@ impl Inode for Ext4Inode {
         })
     }
 
-    fn base_truncate(&self, len: u64) -> SysResult<()> {
-        self.file.lock().file_truncate(len);
+    fn base_truncate(&self, len: usize) -> SysResult<()> {
+        self.file.lock().file_truncate(len as u64);
         Ok(())
     }
 
-    fn base_get_blk_idx(&self, offset: u64) -> SysResult<u64> {
+    fn base_get_blk_idx(&self, offset: usize) -> SysResult<usize> {
         let mut file = self.file.lock();
         let origin_offset = file.file_tell();
         file.file_seek(offset as i64, SEEK_SET);
         let blk_idx = file.file_get_blk_idx().unwrap();
         file.file_seek(origin_offset as i64, SEEK_SET);
-        Ok(blk_idx)
+        Ok(blk_idx as usize)
     }
 }

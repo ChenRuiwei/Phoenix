@@ -1,4 +1,7 @@
-use crate::{board::BLOCK_SIZE, utils::register_mut_const};
+use crate::{
+    board::{BLOCK_MASK, BLOCK_SIZE},
+    utils::register_mut_const,
+};
 
 pub const RAM_START: usize = 0x8000_0000;
 pub const VIRT_START: usize = 0xffff_ffc0_8000_0000;
@@ -34,7 +37,7 @@ pub const PAGE_TABLE_LEVEL_NUM: usize = 3;
 /// Dynamic linked interpreter address range in user space
 pub const DL_INTERP_OFFSET: usize = 0x20_0000_0000;
 
-pub const MAX_BUFFER_CACHE: usize = 0x1000;
+pub const MAX_BUFFER_CACHE: usize = 0x100;
 pub const MAX_BUFFER_PAGES: usize = MAX_BUFFER_CACHE / MAX_BUFFERS_PER_PAGE;
 pub const MAX_BUFFERS_PER_PAGE: usize = PAGE_SIZE / BLOCK_SIZE;
 pub const BUFFER_NEED_CACHE_CNT: usize = 8;
@@ -83,3 +86,17 @@ pub const K_SEG_HARDWARE_END: usize = 0xffff_ffff_f000_0000;
 // DTB fixed mapping
 pub const K_SEG_DTB: usize = 0xffff_ffff_f000_0000;
 pub const K_SEG_END: usize = 0xffff_ffff_ffff_ffff;
+
+pub fn align_offset_to_page(offset: usize) -> (usize, usize) {
+    let offset_aligned = offset & !PAGE_MASK;
+    let offset_in_page = offset - offset_aligned;
+    (offset_aligned, offset_in_page)
+}
+
+pub fn is_page_aligned(offset: usize) -> bool {
+    offset & PAGE_MASK == 0
+}
+
+pub fn is_block_aligned(offset: usize) -> bool {
+    offset & BLOCK_MASK == 0
+}

@@ -12,7 +12,9 @@ use core::{
 
 use config::{
     board::BLOCK_SIZE,
-    mm::{BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE, MAX_BUFFER_PAGES},
+    mm::{
+        is_block_aligned, BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE, MAX_BUFFER_PAGES, PAGE_SIZE,
+    },
 };
 use device_core::BlockDevice;
 use intrusive_collections::{intrusive_adapter, LinkedListAtomicLink, LinkedListLink};
@@ -25,8 +27,13 @@ use crate::{block_page_id, Page};
 pub struct BufferCache {
     device: Option<Weak<dyn BlockDevice>>,
     /// Block page id to `Page`.
+    /// NOTE: These `Page`s are pages without file, only exist for caching pure
+    /// block data.
     pages: LruCache<usize, Arc<Page>>,
-    /// Block id to `BufferHead`.
+    /// Block idx to `BufferHead`.
+    /// NOTE: Stores all access to block device. Some of them will be attached
+    /// to pages above, while others with file related will be attached to pages
+    /// stored in address space.
     buffer_heads: BTreeMap<usize, Arc<BufferHead>>,
 }
 
@@ -61,7 +68,8 @@ impl BufferCache {
                     page.insert_buffer_head(buffer_head.clone());
                 } else {
                     // log::error!("page init");
-                    let mut page = Arc::new(Page::new());
+                    let mut page = Page::new_arc();
+                    page.init_block_device(&device);
                     device.base_read_block(block_id, page.block_range(block_id));
                     page.insert_buffer_head(buffer_head.clone());
                     self.pages.push(block_page_id(block_id), page);
@@ -86,81 +94,110 @@ impl BufferCache {
     pub fn write_block(&mut self, block_id: usize, buf: &[u8]) {
         self.device().base_write_block(block_id, buf)
     }
+
+    pub fn get_buffer_head(&self, block_id: usize) -> Arc<BufferHead> {
+        self.buffer_heads.get(&block_id).cloned().unwrap()
+    }
 }
 
-#[derive(Default)]
 pub struct BufferHead {
-    /// Buffer state.
-    bstate: BufferState,
     /// Block index on the device.
-    pub block_id: usize,
-    /// Count of access before cached.
-    acc_cnt: AtomicUsize,
+    block_id: usize,
     link: LinkedListAtomicLink,
-    once: Once<BufferHeadOnce>,
+    inner: SpinNoIrqLock<BufferHeadInner>,
 }
 
 intrusive_adapter!(pub BufferHeadAdapter = Arc<BufferHead>: BufferHead { link: LinkedListLink });
 
-pub struct BufferHeadOnce {
+pub struct BufferHeadInner {
+    /// Count of access before cached.
+    acc_cnt: usize,
+    /// Buffer state.
+    bstate: BufferState,
     /// Page cache which holds the actual buffer data.
     page: Weak<Page>,
     /// Offset in page, aligned with `BLOCK_SIZE`.
     offset: usize,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub enum BufferState {
     #[default]
-    UNINIT,
-    SYNC,
-    DIRTY,
+    UnInit,
+    Sync,
+    Dirty,
 }
 
 impl BufferHead {
     pub fn new(block_id: usize) -> Self {
         Self {
-            bstate: BufferState::UNINIT,
             block_id,
-            acc_cnt: 0.into(),
             link: LinkedListAtomicLink::new(),
-            once: Once::new(),
+            inner: SpinNoIrqLock::new(BufferHeadInner {
+                acc_cnt: 0,
+                bstate: BufferState::UnInit,
+                page: Weak::new(),
+                offset: 0,
+            }),
         }
     }
 
     pub fn init(&self, page: &Arc<Page>, offset: usize) {
-        self.once.call_once(|| BufferHeadOnce {
-            page: Arc::downgrade(page),
-            offset,
-        });
+        debug_assert!(is_block_aligned(offset) && offset < PAGE_SIZE);
+        let mut inner = self.inner.lock();
+        inner.bstate = BufferState::Sync;
+        inner.page = Arc::downgrade(page);
+        inner.offset = offset;
+    }
+
+    pub fn block_id(&self) -> usize {
+        self.block_id
     }
 
     pub fn acc_cnt(&self) -> usize {
-        self.acc_cnt.load(Ordering::Relaxed)
+        self.inner.lock().acc_cnt
     }
 
-    pub fn inc_acc_cnt(&self) -> usize {
-        self.acc_cnt.fetch_add(1, Ordering::Relaxed)
+    pub fn inc_acc_cnt(&self) {
+        self.inner.lock().acc_cnt += 1
     }
 
     pub fn need_cache(&self) -> bool {
         self.acc_cnt() >= BUFFER_NEED_CACHE_CNT
     }
 
-    pub fn has_cached(&self) -> bool {
-        self.once.is_completed()
+    pub fn bstate(&self) -> BufferState {
+        self.inner.lock().bstate
+    }
+
+    pub fn set_bstate(&self, bstate: BufferState) {
+        self.inner.lock().bstate = bstate
     }
 
     pub fn page(&self) -> Arc<Page> {
-        self.once.get().unwrap().page.upgrade().unwrap()
+        self.inner.lock().page.upgrade().unwrap()
     }
 
     pub fn offset(&self) -> usize {
-        self.once.get().unwrap().offset
+        debug_assert!(self.has_cached());
+        self.inner.lock().offset
+    }
+
+    pub fn has_cached(&self) -> bool {
+        self.inner.lock().bstate != BufferState::UnInit
     }
 
     pub fn read_block(&self, buf: &mut [u8]) {
+        buf.copy_from_slice(self.bytes_array())
+    }
+
+    pub fn bytes_array(&self) -> &'static mut [u8] {
         let offset = self.offset();
-        buf.copy_from_slice(self.page().bytes_array_range(offset..offset + BLOCK_SIZE))
+        self.page().bytes_array_range(offset..offset + BLOCK_SIZE)
+    }
+
+    pub fn write_block(&self, buf: &[u8]) {
+        self.bytes_array().copy_from_slice(buf);
+        self.set_bstate(BufferState::Dirty)
     }
 }

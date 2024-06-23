@@ -669,6 +669,7 @@ dependencies = [
  "config",
  "device-core",
  "downcast-rs",
+ "driver",
  "hashbrown",
  "intrusive-collections",
  "log",

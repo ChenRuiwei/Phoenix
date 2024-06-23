@@ -64,11 +64,11 @@ pub trait Inode: Send + Sync + DowncastSync {
 
     fn get_attr(&self) -> SysResult<Stat>;
 
-    fn base_truncate(&self, len: u64) -> SysResult<()> {
+    fn base_truncate(&self, len: usize) -> SysResult<()> {
         todo!()
     }
 
-    fn base_get_blk_idx(&self, offset: u64) -> SysResult<u64> {
+    fn base_get_blk_idx(&self, offset: usize) -> SysResult<usize> {
         todo!()
     }
 }
@@ -106,7 +106,7 @@ impl dyn Inode {
         self.meta().inner.lock().state = state;
     }
 
-    pub fn truncate(&self, len: u64) -> SyscallResult {
+    pub fn truncate(&self, len: usize) -> SyscallResult {
         log::info!(
             "[Inode::truncate] len:{len:#x}, origin size:{:#x}",
             self.size()
@@ -117,7 +117,7 @@ impl dyn Inode {
         self.base_truncate(len).map(|_| 0)
     }
 
-    pub fn get_blk_idx(&self, offset: u64) -> SysResult<u64> {
+    pub fn get_blk_idx(&self, offset: usize) -> SysResult<usize> {
         self.base_get_blk_idx(offset)
     }
 

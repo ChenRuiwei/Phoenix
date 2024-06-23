@@ -657,7 +657,7 @@ impl MemorySpace {
     /// `data` at `offset` of `vma`.
     pub fn push_vma_with_data(&mut self, mut vma: VmArea, offset: usize, data: &[u8]) {
         vma.map(self.page_table_mut());
-        vma.clear();
+        vma.fill_zero();
         vma.copy_data_with_offset(self.page_table_mut(), offset, data);
         self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
     }

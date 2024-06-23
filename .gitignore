@@ -4,6 +4,7 @@
 .idea
 *.dtb
 *.dts
+lmbench_all_debug
 .gdbinit
 ltp/
 target/

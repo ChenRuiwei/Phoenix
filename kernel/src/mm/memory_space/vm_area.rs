@@ -1,11 +1,11 @@
 use alloc::{collections::BTreeMap, sync::Arc};
-use page::Page;
 use core::ops::{Range, RangeBounds};
 
 use arch::{memory::sfence_vma_vaddr, sstatus};
 use async_utils::block_on;
 use config::mm::PAGE_SIZE;
 use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
+use page::Page;
 use systype::{SysError, SysResult};
 use vfs_core::File;
 
@@ -230,9 +230,9 @@ impl VmArea {
         self.pages.get(&vpn).expect("no page found for vpn")
     }
 
-    pub fn clear(&self) {
+    pub fn fill_zero(&self) {
         for page in self.pages.values() {
-            page.clear()
+            page.fill_zero()
         }
     }
 
@@ -458,7 +458,7 @@ impl VmArea {
                 VmAreaType::Heap | VmAreaType::Stack => {
                     // lazy allcation for heap
                     page = Page::new();
-                    page.clear();
+                    page.fill_zero();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, Arc::new(page));
                     unsafe { sfence_vma_vaddr(vpn.to_va().into()) };

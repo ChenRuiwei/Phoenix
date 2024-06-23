@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, string::String, sync::Arc};
 
 use async_trait::async_trait;
 use downcast_rs::{impl_downcast, DowncastSync};

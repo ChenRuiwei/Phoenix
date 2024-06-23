@@ -858,6 +858,6 @@ impl Syscall<'_> {
     pub async fn sys_ftruncate(&self, fd: usize, length: u64) -> SyscallResult {
         let task = self.task;
         let file = task.with_fd_table(|table| table.get_file(fd))?;
-        file.inode().truncate(length)
+        file.inode().truncate(length as usize)
     }
 }
