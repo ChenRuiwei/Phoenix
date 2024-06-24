@@ -570,37 +570,27 @@ impl PageFaultAccessType {
     }
 }
 
-pub struct FutexWord {
-    addr: usize,
+pub struct FutexAddr {
+    pub addr: VirtAddr,
     _guard: SumGuard,
 }
 
-impl FutexWord {
-    pub fn from(a: usize) -> Self {
-        Self {
-            addr: a,
-            _guard: SumGuard::new(),
-        }
-    }
+impl FutexAddr {
     pub fn raw(&self) -> usize {
-        self.addr
+        self.addr.into()
     }
     pub fn check(&self, task: &Arc<Task>) -> SysResult<()> {
-        task.just_ensure_user_area(
-            VirtAddr::from(self.addr as usize),
-            size_of::<u32>(),
-            PageFaultAccessType::RO,
-        )
+        task.just_ensure_user_area(self.addr, size_of::<VirtAddr>(), PageFaultAccessType::RO)
     }
     pub fn read(&self) -> u32 {
-        unsafe { atomic_load_acquire(self.addr as *const u32) }
+        unsafe { atomic_load_acquire(self.addr.0 as *const u32) }
     }
 }
 
-impl From<usize> for FutexWord {
+impl From<usize> for FutexAddr {
     fn from(a: usize) -> Self {
         Self {
-            addr: a,
+            addr: a.into(),
             _guard: SumGuard::new(),
         }
     }

@@ -200,6 +200,9 @@ syscall!(
     *const u8
 );
 
+// futex
+syscall!(sys_futex, SYSCALL_FUTEX, usize, i32, u32, usize, usize, u32);
+
 // file system
 syscall!(sys_close, SYSCALL_CLOSE, usize);
 syscall!(sys_getcwd, SYSCALL_GETCWD, *mut u8, usize);

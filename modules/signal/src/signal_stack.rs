@@ -9,7 +9,7 @@ use crate::sigset::SigSet;
 /// 那么这些函数的栈帧也会被压入信号栈。每个栈帧通常包含了函数参数、
 /// 局部变量以及返回地址。 4.信号处理程序的返回地址：当信号处理程序完成执行后，
 /// 系统需要知道从哪里返回继续执行，因此信号栈上会保存一个返回地址。
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct SignalStack {
     /// Base address of stack
@@ -36,7 +36,7 @@ impl SignalStack {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct UContext {
     pub uc_flags: usize,
@@ -50,7 +50,7 @@ pub struct UContext {
     pub uc_mcontext: MContext,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct MContext {
     pub sepc: usize,

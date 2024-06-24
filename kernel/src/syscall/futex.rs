@@ -1,52 +1,12 @@
-use alloc::sync::Arc;
-use core::{
-    future::Future,
-    mem,
-    pin::Pin,
-    sync::atomic::Ordering,
-    task::{Context, Poll},
-};
-
-use async_utils::yield_now;
-use futex::RobustListHead;
+use async_utils::suspend_now;
 use systype::{SysError, SyscallResult};
 use time::timespec::TimeSpec;
-use timer::timelimited_task::TimeLimitedTaskFuture;
 
 use super::Syscall;
 use crate::{
-    mm::{FutexWord, UserReadPtr, UserWritePtr},
-    task::{Task, TASK_MANAGER},
+    ipc::futex::{futex_manager, FutexHashKey, FutexWaiter, RobustListHead},
+    mm::{FutexAddr, UserReadPtr, UserWritePtr},
 };
-
-struct FutexFuture {
-    task: Arc<Task>,
-    uaddr: FutexWord,
-    val: u32,
-    in_futexes: bool,
-}
-
-impl Future for FutexFuture {
-    type Output = ();
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let tid = self.task.tid();
-        self.task.clone().with_mut_futexes(|futexes| {
-            if !self.in_futexes {
-                futexes.add_waiter(self.uaddr.raw(), tid, cx.waker().clone());
-                self.in_futexes = true;
-                if self.uaddr.read() == self.val {
-                    return Poll::Pending;
-                    // 一旦返回Pending就会被移出调度队列，直到被wake
-                } else {
-                    return Poll::Ready(());
-                };
-            }
-            // task is waked and will run the following code
-            futexes.remove_waiter(self.uaddr.raw(), tid);
-            Poll::Ready(())
-        })
-    }
-}
 
 impl Syscall<'_> {
     /// futex - fast user-space locking
@@ -65,10 +25,10 @@ impl Syscall<'_> {
     /// - `val3`: depends on the operation.
     pub async fn sys_futex(
         &self,
-        uaddr: FutexWord,
+        uaddr: FutexAddr,
         futex_op: i32,
         val: u32,
-        timeout: u32,
+        timeout: usize,
         uaddr2: usize,
         val3: u32,
     ) -> SyscallResult {
@@ -105,52 +65,93 @@ impl Syscall<'_> {
         // const FUTEX_WAKE_OP: i32 = 5;
         // const FUTEX_WAIT_BITSET: i32 = 9;
         // const FUTEX_WAKE_BITSET: i32 = 10;
-        let futex_op = futex_op & !FUTEX_PRIVATE_FLAG;
         let task = self.task;
-        log::info!("[sys_futex] uaddr:{:#x}", uaddr.raw());
         uaddr.check(&task)?;
+        let futex_key = if futex_op & FUTEX_PRIVATE_FLAG != 0 {
+            FutexHashKey::Private {
+                mm: task.raw_mm_pointer(),
+                virtaddr: uaddr.addr,
+            }
+        } else {
+            let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr.addr));
+            FutexHashKey::Shared { phyaddr }
+        };
+        let futex_op = futex_op & !FUTEX_PRIVATE_FLAG;
+        log::warn!("[sys_futex] uaddr:{:#x} key:{:?}", uaddr.raw(), futex_key);
+
         match futex_op {
             FUTEX_WAIT => {
-                if uaddr.read() != val {
+                let res = uaddr.read();
+                if res != val {
+                    log::warn!(
+                        "[futex_wait] value in {} addr is {res} but expect {val}",
+                        uaddr.addr.0
+                    );
                     return Err(SysError::EAGAIN);
                 }
-                let future = FutexFuture {
-                    task: task.clone(),
-                    uaddr,
-                    val,
-                    in_futexes: false,
-                };
-                let timeout = UserReadPtr::<TimeSpec>::from(timeout as usize);
-                if timeout.is_null() {
-                    future.await;
+                futex_manager().add_waiter(
+                    &futex_key,
+                    FutexWaiter {
+                        tid: task.tid(),
+                        waker: task.waker().clone().unwrap(),
+                    },
+                );
+                task.set_interruptable();
+                task.set_wake_up_signal(!*task.sig_mask_ref());
+                if timeout == 0 {
+                    suspend_now().await;
                 } else {
-                    let timeout = timeout.read(&task)?;
-                    TimeLimitedTaskFuture::new(timeout.into(), future).await;
+                    let timeout = UserReadPtr::<TimeSpec>::from(timeout as usize).read(&task)?;
+                    log::warn!("[futex_wait] waiting for {:?}", timeout);
+                    if !timeout.is_valid() {
+                        return Err(SysError::EINVAL);
+                    }
+                    let rem = task.suspend_timeout(timeout.into()).await;
+                    if rem.is_zero() {
+                        futex_manager().remove_waiter(&futex_key, task.tid());
+                    }
                 }
+                log::warn!("[sys_futex] I was woken");
+                task.set_running();
+                Ok(0)
             }
             FUTEX_WAKE => {
-                let n_wake = task.with_mut_futexes(|futexes| futexes.wake(uaddr.raw(), val));
-                yield_now().await;
+                let n_wake = futex_manager().wake(&futex_key, val)?;
                 return Ok(n_wake);
             }
             FUTEX_CMP_REQUEUE => {
-                if uaddr.read() != val3 {
+                if uaddr.read() as u32 != val3 {
                     return Err(SysError::EAGAIN);
                 }
-                // const struct timespec *timeout,   /* or: uint32_t val2 */
-                task.with_mut_futexes(|futexes| {
-                    futexes.requeue_waiters(uaddr.raw(), uaddr2, val, timeout)
-                });
+                let n_wake = futex_manager().wake(&futex_key, val)?;
+                let new_key = if futex_op & FUTEX_PRIVATE_FLAG != 0 {
+                    FutexHashKey::Private {
+                        mm: task.raw_mm_pointer(),
+                        virtaddr: uaddr2.into(),
+                    }
+                } else {
+                    let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr2.into()));
+                    FutexHashKey::Shared { phyaddr }
+                };
+                futex_manager().requeue_waiters(futex_key, new_key, timeout)?;
+                Ok(n_wake)
             }
             FUTEX_REQUEUE => {
-                // const struct timespec *timeout,   /* or: uint32_t val2 */
-                task.with_mut_futexes(|futexes| {
-                    futexes.requeue_waiters(uaddr.raw(), uaddr2, val, timeout)
-                });
+                let n_wake = futex_manager().wake(&futex_key, val)?;
+                let new_key = if futex_op & FUTEX_PRIVATE_FLAG != 0 {
+                    FutexHashKey::Private {
+                        mm: task.raw_mm_pointer(),
+                        virtaddr: uaddr2.into(),
+                    }
+                } else {
+                    let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr2.into()));
+                    FutexHashKey::Shared { phyaddr }
+                };
+                futex_manager().requeue_waiters(futex_key, new_key, timeout)?;
+                Ok(n_wake)
             }
-            _ => return Err(SysError::ENOSYS),
+            _ => panic!("unimplemented futexop {:?}", futex_op),
         }
-        Ok(0)
     }
 
     /// actually this syscall has no actual effect
@@ -160,17 +161,17 @@ impl Syscall<'_> {
         robust_list_head: UserWritePtr<RobustListHead>,
         len_ptr: UserWritePtr<usize>,
     ) -> SyscallResult {
-        let Some(task) = TASK_MANAGER.get(pid as usize) else {
-            return Err(SysError::ESRCH);
-        };
-        if !task.is_leader() {
-            return Err(SysError::ESRCH);
-        }
-        // UserReadPtr::<RobustListHead>::from(value)
-        len_ptr.write(&task, mem::size_of::<RobustListHead>())?;
-        robust_list_head.write(&task, unsafe {
-            *task.with_futexes(|futexes| futexes.robust_list.load(Ordering::SeqCst))
-        })?;
+        // let Some(task) = TASK_MANAGER.get(pid as usize) else {
+        //     return Err(SysError::ESRCH);
+        // };
+        // if !task.is_leader() {
+        //     return Err(SysError::ESRCH);
+        // }
+        // // UserReadPtr::<RobustListHead>::from(value)
+        // len_ptr.write(&task, mem::size_of::<RobustListHead>())?;
+        // robust_list_head.write(&task, unsafe {
+        //     *task.with_futexes(|futexes| futexes.robust_list.load(Ordering::SeqCst))
+        // })?;
         Ok(0)
     }
 
@@ -180,14 +181,14 @@ impl Syscall<'_> {
         robust_list_head: UserReadPtr<RobustListHead>,
         len: usize,
     ) -> SyscallResult {
-        let task = self.task;
-        if len != mem::size_of::<RobustListHead>() {
-            return Err(SysError::EINVAL);
-        }
-        let mut head = robust_list_head.into_ref(&task)?;
-        task.with_mut_futexes(|futexes| {
-            futexes.robust_list.store(head.ptr_mut(), Ordering::SeqCst)
-        });
+        // let task = self.task;
+        // if len != mem::size_of::<RobustListHead>() {
+        //     return Err(SysError::EINVAL);
+        // }
+        // let mut head = robust_list_head.into_ref(&task)?;
+        // task.with_mut_futexes(|futexes| {
+        //     futexes.robust_list.store(head.ptr_mut(), Ordering::SeqCst)
+        // });
         Ok(0)
     }
 }

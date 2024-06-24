@@ -16,7 +16,7 @@ use config::{
     },
 };
 use log::info;
-use memory::{page::Page, pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
+use memory::{page::Page, pte::PTEFlags, PageTable, PhysAddr, VirtAddr, VirtPageNum};
 use spin::Lazy;
 use systype::{SysError, SysResult};
 use vfs_core::{Dentry, File};
@@ -740,6 +740,11 @@ impl MemorySpace {
         }
         log::warn!("==== print all done ====");
         unsafe { set_kernel_trap() };
+    }
+
+    pub fn va2pa(&self, va: VirtAddr) -> PhysAddr {
+        let pte = self.page_table.find_pte(va.into()).expect("[va2pa] error");
+        (pte.bits & 0xFFFF_FFFF_FFFF_F000 + va.page_offset()).into()
     }
 }
 

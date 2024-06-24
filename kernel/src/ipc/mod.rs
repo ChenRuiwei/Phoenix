@@ -1,3 +1,4 @@
+pub mod futex;
 pub mod shm;
 #[repr(C)]
 #[derive(Default, Clone, Copy, Debug)]

@@ -1,5 +1,8 @@
 //! Implementation of physical and virtual address and page number.
-use core::fmt::{self};
+use core::{
+    fmt::{self},
+    hash::Hash,
+};
 
 use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM};
 
@@ -10,7 +13,7 @@ use super::{
 use crate::address::{VA_WIDTH_SV39, VPN_WIDTH_SV39};
 
 /// Virtual address
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Hash, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtAddr(pub usize);
 
 /// Virtual page number

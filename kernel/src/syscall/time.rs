@@ -113,18 +113,18 @@ impl Syscall<'_> {
             || clockid == CLOCK_MONOTONIC
         {
             log::error!("[sys_clock_settime] The clockid {} specified in a call to clock_settime() is not a settable clock.", clockid);
-            return Err(SysError::EINTR);
+            return Err(SysError::EINVAL);
         }
         let task = self.task;
         let tp = tp.read(&task)?;
         if !tp.is_valid() {
-            return Err(SysError::EINTR);
+            return Err(SysError::EINVAL);
         }
         match clockid {
             CLOCK_REALTIME => {
                 if tp.into_ms() < get_time_ms() {
                     log::error!("[sys_clock_settime] attempted to set the time to a value less than the current value of the CLOCK_MONOTONIC clock.");
-                    return Err(SysError::EINTR);
+                    return Err(SysError::EINVAL);
                 }
                 unsafe {
                     CLOCK_DEVIATION[clockid] = Duration::from(tp) - get_time_duration();
@@ -132,7 +132,7 @@ impl Syscall<'_> {
             }
             _ => {
                 log::error!("[sys_clock_gettime] unsupported clockid{}", clockid);
-                return Err(SysError::EINTR);
+                return Err(SysError::EINVAL);
             }
         }
         Ok(0)

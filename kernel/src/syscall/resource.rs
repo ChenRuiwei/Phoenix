@@ -82,7 +82,7 @@ impl Syscall<'_> {
                 RLIMIT_NOFILE => task.with_fd_table(|table| table.limit()),
                 r => panic!("[sys_prlimit64] get old_limit : unimplemented {r}"),
             };
-            old_limit.write(&task, RLimit::new(limit));
+            old_limit.write(&task, RLimit::new(limit))?;
         }
         if new_limit.not_null() {
             let limit = new_limit.read(&task)?;

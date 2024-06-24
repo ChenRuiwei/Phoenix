@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 /// Describes times in seconds and nanoseconds.
 pub struct TimeSpec {

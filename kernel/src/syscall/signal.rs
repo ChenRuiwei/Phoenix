@@ -41,6 +41,10 @@ impl Syscall<'_> {
         "[sys_rt_sigaction] {signum:?}, new_ptr:{action}, old_ptr:{old_action}, old_sa_type:{:?}",
         task.with_sig_handlers(|handlers| { handlers.get(signum).atype })
     );
+        if old_action.not_null() {
+            let old = task.with_sig_handlers(|handlers| handlers.get(signum));
+            old_action.write(&task, old.into())?;
+        }
         if action.not_null() {
             let mut action = action.read(&task)?;
             // 无法在一个信号处理函数执行的时候屏蔽调SIGKILL和SIGSTOP信号
@@ -56,10 +60,6 @@ impl Syscall<'_> {
             };
             log::info!("[sys_rt_sigaction] new:{:?}", new);
             task.with_mut_sig_handlers(|handlers| handlers.update(signum, new));
-        }
-        if old_action.not_null() {
-            let old = task.with_sig_handlers(|handlers| handlers.get(signum));
-            old_action.write(&task, old.into())?;
         }
         Ok(0)
     }
@@ -111,14 +111,15 @@ impl Syscall<'_> {
     pub fn sys_rt_sigreturn(&self) -> SyscallResult {
         let task = self.task;
         let cx = task.trap_context_mut();
-        let ucontext_ptr = UserReadPtr::<UContext>::from(task.sig_ucontext_ptr());
-        log::trace!("[sys_rt_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
+        let ucontext_ptr: UserReadPtr<UContext> = (task.sig_ucontext_ptr()).into();
+        // log::trace!("[sys_rt_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
         let ucontext = ucontext_ptr.read(&task)?;
+        // log::error!("[SA_SIGINFO] load ucontext {ucontext:?}");
         *task.sig_mask() = ucontext.uc_sigmask;
         *task.sig_stack() = (ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack);
         cx.sepc = ucontext.uc_mcontext.sepc;
         cx.user_x = ucontext.uc_mcontext.user_x;
-        log::error!("stask after {:#x}", cx.user_x[2]);
+        // log::error!("stask after {:#x}", cx.user_x[2]);
         Ok(cx.user_x[10])
     }
 
@@ -294,9 +295,10 @@ impl Syscall<'_> {
         let oldmask = mem::replace(task.sig_mask(), mask);
         let invoke_signal = task.with_sig_handlers(|handlers| handlers.bitmap());
         task.set_interruptable();
-        suspend_now().await;
         task.set_wake_up_signal(mask | invoke_signal);
+        suspend_now().await;
         *task.sig_mask() = oldmask;
+        task.set_running();
         Err(SysError::EINTR)
     }
 
@@ -330,9 +332,10 @@ impl Syscall<'_> {
         if timeout.not_null() {
             let timeout = timeout.read(&task)?;
             task.suspend_timeout(timeout.into()).await;
+        } else {
+            suspend_now().await;
         }
-        suspend_now().await;
-
+        task.set_running();
         Ok(0)
     }
 }

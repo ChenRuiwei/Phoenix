@@ -203,6 +203,7 @@ impl Syscall<'_> {
                 task.set_interruptable();
                 task.set_wake_up_signal(!*task.sig_mask_ref() | SigSet::SIGCHLD);
                 suspend_now().await;
+                task.set_running();
                 let si =
                     task.with_mut_sig_pending(|pending| pending.dequeue_except(SigSet::SIGCHLD));
                 if let Some(info) = si {

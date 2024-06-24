@@ -15,7 +15,6 @@ use config::{
     mm::{DL_INTERP_OFFSET, USER_STACK_SIZE},
     process::INIT_PROC_PID,
 };
-use futex::Futexes;
 use memory::VirtAddr;
 use signal::{
     action::{SigHandlers, SigPending},
@@ -36,7 +35,7 @@ use super::{
 };
 use crate::{
     generate_accessors, generate_atomic_accessors, generate_state_methods, generate_with_methods,
-    ipc::shm::SHARED_MEMORY_MANAGER,
+    ipc::{futex::RobustListHead, shm::SHARED_MEMORY_MANAGER},
     mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
     processor::env::within_sum,
     syscall,
@@ -111,7 +110,7 @@ pub struct Task {
     /// Interval timers for the task.
     itimers: Shared<[ITimer; 3]>,
     /// Futexes used by the task.
-    futexes: Shared<Futexes>,
+    robust: Shared<RobustListHead>,
     ///
     tid_address: SyncUnsafeCell<TidAddress>,
     cpus_allowed: SyncUnsafeCell<CpuMask>,
@@ -167,7 +166,7 @@ impl Task {
         thread_group: ThreadGroup,
         sig_pending: SigPending,
         itimers: [ITimer; 3],
-        futexes: Futexes,
+        robust: RobustListHead,
         sig_handlers: SigHandlers,
         state: TaskState,
         shm_ids: BTreeMap<VirtAddr, usize>
@@ -202,7 +201,7 @@ impl Task {
                 ITimer::new_virtual(),
                 ITimer::new_prof(),
             ]),
-            futexes: new_shared(Futexes::new()),
+            robust: new_shared(RobustListHead::default()),
             tid_address: SyncUnsafeCell::new(TidAddress::new()),
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
             shm_ids: new_shared(BTreeMap::new()),
@@ -291,6 +290,10 @@ impl Task {
         self.memory_space.lock().switch_page_table()
     }
 
+    pub fn raw_mm_pointer(&self) -> usize {
+        Arc::as_ptr(&self.memory_space) as usize
+    }
+
     // TODO:
     pub fn do_clone(
         self: &Arc<Self>,
@@ -310,7 +313,7 @@ impl Task {
         let thread_group;
         let cwd;
         let itimers;
-        let futexes;
+        let robust;
         let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
             self.sig_handlers.clone()
         } else {
@@ -324,7 +327,7 @@ impl Task {
             thread_group = self.thread_group.clone();
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
-            futexes = self.futexes.clone();
+            robust = self.robust.clone();
         } else {
             is_leader = true;
             leader = None;
@@ -337,7 +340,7 @@ impl Task {
                 ITimer::new_prof(),
             ]);
             cwd = new_shared(self.cwd());
-            futexes = new_shared(Futexes::new());
+            robust = new_shared(RobustListHead::default());
         }
 
         let memory_space;
@@ -391,7 +394,7 @@ impl Task {
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
             itimers,
-            futexes,
+            robust,
             tid_address,
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
             // After a fork(2), the child inherits the attached shared memory segments.
@@ -521,7 +524,8 @@ impl Task {
             UserWritePtr::from(address)
                 .write(self, 0)
                 .expect("tid address write error");
-            self.with_mut_futexes(|futexes| futexes.wake(address, 1));
+            // TODO:
+            // self.with_mut_futexes(|futexes| futexes.wake(address, 1));
         }
 
         // NOTE: leader will be removed by parent calling `sys_wait4`
