@@ -7,6 +7,7 @@ use arch::{
     time::{get_time_duration, set_next_timer_irq},
 };
 use async_utils::yield_now;
+use executor::has_task;
 use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
@@ -30,6 +31,11 @@ pub async fn trap_handler(task: &Arc<Task>) {
     log::trace!("[trap_handler] user task trap into kernel");
     log::trace!("[trap_handler] sepc:{sepc:#x}, stval:{stval:#x}");
     unsafe { enable_interrupt() };
+
+    if task.time_stat_ref().need_schedule() && has_task() {
+        log::info!("time slice used up, yield now");
+        yield_now().await;
+    }
 
     match cause {
         Trap::Exception(e) => {

@@ -23,7 +23,7 @@ pub fn kernel_trap_handler() {
             driver::get_device_manager_mut().handle_irq();
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            // log::trace!("[kernel_trap] receive timer interrupt");
+            // log::warn!("[kernel_trap] receive timer interrupt");
             TIMER_MANAGER.check(get_time_duration());
             unsafe { set_next_timer_irq() };
             #[cfg(feature = "preempt")]
