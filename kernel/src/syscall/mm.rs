@@ -147,7 +147,7 @@ impl Syscall<'_> {
                     }
                     // PERF: lazy alloc for mmap
                     let start_va = task.with_mut_memory_space(|m| {
-                        m.alloc_mmap_area(length, perm, flags, file, offset)
+                        m.alloc_mmap_area_lazily(length, perm, flags, file, offset)
                     })?;
                     Ok(start_va.bits())
                 }
@@ -163,7 +163,7 @@ impl Syscall<'_> {
                     return Err(SysError::EINVAL);
                 }
                 let start_va = task.with_mut_memory_space(|m| {
-                    m.alloc_mmap_area(length, perm, flags, file, offset)
+                    m.alloc_mmap_area_lazily(length, perm, flags, file, offset)
                 })?;
                 Ok(start_va.bits())
             }
@@ -193,7 +193,8 @@ impl Syscall<'_> {
         let task = self.task;
         let end = VirtAddr::from(addr + length).round_up();
         let range = VirtAddr::from(addr)..end;
-        task.with_mut_memory_space(|m| m.unmap(range));
+        log::info!("[sys_munmap] remove range {:?}", range.clone());
+        task.with_mut_memory_space(|m| m.unmap(range))?;
         Ok(0)
     }
 

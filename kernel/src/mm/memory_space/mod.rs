@@ -8,14 +8,15 @@ use core::{
     arch::riscv64,
     borrow::Borrow,
     cell::{RefCell, SyncUnsafeCell, UnsafeCell},
-    ops::Range,
+    cmp,
+    ops::{self, Range},
 };
 
 use async_utils::block_on;
 use config::{
     board::MEMORY_END,
     mm::{
-        align_offset_to_page, is_page_aligned, DL_INTERP_OFFSET, PAGE_SIZE,
+        align_offset_to_page, is_page_aligned, DL_INTERP_OFFSET, MMAP_PRE_ALLOC_PAGES, PAGE_SIZE,
         USER_STACK_PRE_ALLOC_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG,
         U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG, U_SEG_STACK_END,
         VIRT_RAM_OFFSET,
@@ -695,7 +696,7 @@ impl MemorySpace {
         Ok(start)
     }
 
-    pub fn alloc_mmap_area(
+    pub fn alloc_mmap_area_lazily(
         &mut self,
         length: usize,
         perm: MapPerm,
@@ -722,6 +723,7 @@ impl MemorySpace {
             .expect("should have address space, and may be no");
         let mut vma = VmArea::new_mmap(range, perm, flags, Some(file.clone()), offset);
         let mut range_vpn = vma.range_vpn();
+        let length = cmp::min(length, MMAP_PRE_ALLOC_PAGES * PAGE_SIZE);
         for offset_aligned in (offset..offset + length).step_by(PAGE_SIZE) {
             let page = if let Some(page) = address_space.get_page(offset_aligned) {
                 page
@@ -736,14 +738,7 @@ impl MemorySpace {
             page_table.map(vpn, page.ppn(), perm.into());
             vma.pages.insert(vpn, page);
         }
-
-        // let kernel_perm = perm | MapPerm::W;
-        // let mut vma = VmArea::new_mmap(range, kernel_perm, flags, Some(file.clone()),
-        // offset); vma.map(self.page_table_mut());
-        // let mut buf = unsafe { UserSlice::<u8>::new_unchecked(vma.start_va(), length)
-        // }; block_on(async { file.read_at(offset, &mut buf).await })?;
-        // vma.set_perm_and_flush(self.page_table_mut(), perm);
-        // self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
+        self.push_vma_lazily(vma);
         Ok(start)
     }
 
@@ -778,14 +773,18 @@ impl MemorySpace {
             .get_key_value_mut(range.start)
             .ok_or(SysError::ENOMEM)?;
         if range == old_range {
-            self.areas_mut().force_remove_one(old_range);
+            log::debug!("[MemorySpace::unmap] remove area {:?}", range.clone());
+            let mut vma = self.areas_mut().force_remove_one(old_range);
+            vma.unmap(self.page_table_mut(), vma.range_vpn());
         } else {
             // WARN: currently do not support split between areas.
             debug_assert!(old_range.end > range.end);
             // do split and unmap
-            let (_, middle, _) = self.split_area(old_range.clone(), range);
+            let (_, middle, _) = self.split_area(old_range.clone(), range.clone());
             if let Some(middle) = middle {
-                self.areas_mut().force_remove_one(old_range);
+                let mut vma = self.areas_mut().force_remove_one(middle.range_va());
+                vma.unmap(self.page_table_mut(), vma.range_vpn());
+                log::debug!("[MemorySpace::unmap] split and remove area {range:?}");
             }
         }
         Ok(())
@@ -799,7 +798,7 @@ impl MemorySpace {
         if range == old_range {
             area.set_perm_and_flush(self.page_table_mut(), perm);
         } else {
-            debug_assert!(old_range.end > range.end);
+            debug_assert!(old_range.end >= range.end);
             // do split and remap
             let (_, middle, _) = self.split_area(old_range, range);
             if let Some(middle) = middle {

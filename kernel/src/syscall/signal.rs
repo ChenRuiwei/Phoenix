@@ -38,9 +38,9 @@ impl Syscall<'_> {
             return Err(SysError::EINVAL);
         }
         log::info!(
-        "[sys_rt_sigaction] {signum:?}, new_ptr:{action}, old_ptr:{old_action}, old_sa_type:{:?}",
-        task.with_sig_handlers(|handlers| { handlers.get(signum).atype })
-    );
+            "[sys_rt_sigaction] {signum:?}, new_ptr:{action}, old_ptr:{old_action}, old_sa_type:{:?}",
+            task.with_sig_handlers(|handlers| { handlers.get(signum).atype })
+        );
         if old_action.not_null() {
             let old = task.with_sig_handlers(|handlers| handlers.get(signum));
             old_action.write(&task, old.into())?;
