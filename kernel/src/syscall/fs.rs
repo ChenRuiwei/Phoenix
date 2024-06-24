@@ -1,5 +1,6 @@
-use alloc::{ffi::CString, sync::Arc, vec, vec::Vec};
+use alloc::{ffi::CString, string::ToString, sync::Arc, vec, vec::Vec};
 use core::{
+    cmp,
     future::Future,
     pin::Pin,
     task::{Context, Poll},
@@ -15,8 +16,8 @@ use time::timespec::TimeSpec;
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
-    is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, MountFlags, OpenFlags,
-    Path, PollEvents, RenameFlags, SeekFrom, StatFs, AT_FDCWD, AT_REMOVEDIR,
+    is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, InodeType, MountFlags,
+    OpenFlags, Path, PollEvents, RenameFlags, SeekFrom, Stat, StatFs, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use super::Syscall;
@@ -30,14 +31,6 @@ use crate::{
 pub struct IoVec {
     base: usize,
     len: usize,
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(C)]
-pub struct PollFd {
-    fd: i32,      // file descriptor
-    events: i16,  // requested events
-    revents: i16, // returned events
 }
 
 // Defined in <bits/fcntl-linux.h>
@@ -94,9 +87,8 @@ pub struct Kstat {
 }
 
 impl Kstat {
-    pub fn from_vfs_file(file: Arc<dyn Inode>) -> SysResult<Self> {
-        let stat = file.get_attr()?;
-        Ok(Kstat {
+    pub fn from_stat(stat: Stat) -> Self {
+        Kstat {
             st_dev: stat.st_dev,
             st_ino: stat.st_ino,
             st_mode: stat.st_mode, // 0777 permission, we don't care about permission
@@ -115,7 +107,7 @@ impl Kstat {
             st_mtime_nsec: stat.st_mtime.nsec as isize,
             st_ctime_sec: stat.st_ctime.sec as isize,
             st_ctime_nsec: stat.st_ctime.nsec as isize,
-        })
+        }
     }
 }
 
@@ -345,7 +337,8 @@ impl Syscall<'_> {
     pub fn sys_fstat(&self, fd: usize, stat_buf: UserWritePtr<Kstat>) -> SyscallResult {
         let task = self.task;
         let file = task.with_fd_table(|table| table.get_file(fd))?;
-        stat_buf.write(&task, Kstat::from_vfs_file(file.inode())?)?;
+        let kstat = Kstat::from_stat(file.inode().get_attr()?);
+        stat_buf.write(&task, kstat)?;
         Ok(0)
     }
 
@@ -359,7 +352,8 @@ impl Syscall<'_> {
         let task = self.task;
         let path = pathname.read_cstr(&task)?;
         let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
-        stat_buf.write(&task, Kstat::from_vfs_file(dentry.inode()?)?)?;
+        let kstat = Kstat::from_stat(dentry.inode()?.get_attr()?);
+        stat_buf.write(&task, kstat)?;
         Ok(0)
     }
 
@@ -642,88 +636,6 @@ impl Syscall<'_> {
         Ok(total_len)
     }
 
-    pub async fn sys_ppoll(
-        &self,
-        fds: UserRdWrPtr<PollFd>,
-        nfds: usize,
-        timeout_ts: UserReadPtr<TimeSpec>,
-        _sigmask: usize,
-    ) -> SyscallResult {
-        let task = self.task;
-        let fds_va: VirtAddr = fds.as_usize().into();
-        let mut poll_fds = fds.read_array(&task, nfds)?;
-        let timeout = if timeout_ts.is_null() {
-            None
-        } else {
-            Some(timeout_ts.read(&task)?.into())
-        };
-
-        pub struct PollFuture<'a> {
-            futures: Vec<Async<'a, SysResult<PollEvents>>>,
-            ready_cnt: usize,
-        }
-
-        impl Future for PollFuture<'_> {
-            type Output = Vec<(usize, SysResult<PollEvents>)>;
-
-            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-                let this = unsafe { self.get_unchecked_mut() };
-                let mut ret_vec = Vec::new();
-                for (i, future) in this.futures.iter_mut().enumerate() {
-                    let result = unsafe { Pin::new_unchecked(future).poll(cx) };
-                    if let Poll::Ready(result) = result {
-                        this.ready_cnt += 1;
-                        ret_vec.push((i, result))
-                    }
-                }
-                if this.ready_cnt > 0 {
-                    Poll::Ready(ret_vec)
-                } else {
-                    Poll::Pending
-                }
-            }
-        }
-
-        let mut futures = Vec::<Async<SysResult<PollEvents>>>::with_capacity(nfds);
-        for poll_fd in poll_fds.iter() {
-            let fd = poll_fd.fd as usize;
-            let events = PollEvents::from_bits(poll_fd.events).unwrap();
-            let file = task.with_fd_table(|table| table.get_file(fd))?;
-            let future = dyn_future(async move { file.poll(events).await });
-            futures.push(future);
-        }
-
-        let poll_future = PollFuture {
-            futures,
-            ready_cnt: 0,
-        };
-
-        let mut poll_fds_slice = unsafe { UserSlice::<PollFd>::new_unchecked(fds_va, nfds) };
-
-        let ret_vec = if let Some(timeout) = timeout {
-            match TimeLimitedTaskFuture::new(timeout, poll_future).await {
-                TimeLimitedTaskOutput::Ok(ret_vec) => ret_vec,
-                TimeLimitedTaskOutput::TimeOut => {
-                    log::debug!("[sys_ppoll]: timeout");
-                    return Ok(0);
-                }
-            }
-        } else {
-            poll_future.await
-        };
-
-        let ret = ret_vec.len();
-        for (i, result) in ret_vec {
-            if let Ok(result) = result {
-                poll_fds[i].revents |= result.bits() as i16;
-            } else {
-                poll_fds[i].revents |= PollEvents::POLLERR.bits() as i16;
-            }
-        }
-        poll_fds_slice.copy_from_slice(&poll_fds);
-        Ok(ret)
-    }
-
     /// sendfile() copies data between one file descriptor and another. Because
     /// this copying is done within the kernel, sendfile() is more efficient
     /// than the combination of read(2) and write(2), which would require
@@ -912,5 +824,34 @@ impl Syscall<'_> {
         // TODO: find the target fs
         buf.write(task, stfs)?;
         Ok(0)
+    }
+
+    pub async fn sys_readlinkat(
+        &self,
+        dirfd: AtFd,
+        pathname: UserReadPtr<u8>,
+        buf: UserWritePtr<u8>,
+        bufsiz: usize,
+    ) -> SyscallResult {
+        let task = self.task;
+        let path = pathname.read_cstr(task)?;
+        log::info!(
+            "[sys_readlinkat] dirfd:{dirfd}, path:{path}, buf:{:x}, bufsiz: {bufsiz}",
+            buf.as_usize()
+        );
+        let mut buf = buf.into_mut_slice(task, bufsiz)?;
+        // TODO:
+        if path == "/proc/self/exe" {
+            let target = CString::new("/lmbench_all").unwrap();
+            let len = cmp::min(buf.len(), target.to_bytes_with_nul().len());
+            buf[..len].copy_from_slice(&target.to_bytes_with_nul()[..len]);
+            return Ok(len);
+        }
+        let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
+        let file = dentry.open()?;
+        if file.inode().itype() != InodeType::SymLink {
+            return Err(SysError::EINVAL);
+        }
+        file.read_at(0, &mut buf).await
     }
 }

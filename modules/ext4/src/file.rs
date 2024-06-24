@@ -39,7 +39,7 @@ impl File for Ext4File {
 
     async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         match self.itype() {
-            InodeType::File => {
+            InodeType::File | InodeType::SymLink => {
                 let mut file = self.file.lock();
                 let path = file.get_path();
                 let path = path.to_str().unwrap();
@@ -91,7 +91,7 @@ impl File for Ext4File {
             let name = CString::from_vec_with_nul(name).map_err(|_| SysError::EINVAL)?;
             let name = name.to_str().unwrap();
             let sub_dentry = self.dentry().get_child_or_create(name);
-            let ext4_file = LwExt4File::new(&(path.clone() + name), file_type);
+            let ext4_file = LwExt4File::new(&(sub_dentry.path()), file_type);
             let new_inode: Arc<dyn Inode> = Ext4Inode::new(self.super_block(), ext4_file);
             sub_dentry.set_inode(new_inode);
         }

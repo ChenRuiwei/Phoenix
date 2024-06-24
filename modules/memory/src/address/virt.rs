@@ -124,6 +124,7 @@ impl VirtAddr {
         unsafe { (self.0 as *mut T).as_mut().unwrap() }
     }
 }
+
 impl From<VirtAddr> for VirtPageNum {
     fn from(v: VirtAddr) -> Self {
         assert_eq!(v.page_offset(), 0);

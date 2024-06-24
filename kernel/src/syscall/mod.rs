@@ -3,6 +3,7 @@
 mod consts;
 mod fs;
 pub mod futex;
+mod io;
 mod misc;
 mod mm;
 mod process;
@@ -12,6 +13,7 @@ mod signal;
 mod time;
 
 use alloc::sync::Arc;
+use core::arch;
 
 pub use consts::SyscallNo;
 use fs::*;
@@ -149,10 +151,6 @@ impl<'a> Syscall<'a> {
             FCNTL => self.sys_fcntl(args[0], args[1] as _, args[2]),
             WRITEV => self.sys_writev(args[0], args[1].into(), args[2]).await,
             READV => self.sys_readv(args[0], args[1].into(), args[2]).await,
-            PPOLL => {
-                self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3])
-                    .await
-            }
             SENDFILE => {
                 self.sys_sendfile(args[0], args[1], args[2].into(), args[3])
                     .await
@@ -171,6 +169,26 @@ impl<'a> Syscall<'a> {
                 args[4] as _,
             ),
             STATFS => self.sys_statfs(args[0].into(), args[1].into()),
+            READLINKAT => {
+                self.sys_readlinkat(args[0].into(), args[1].into(), args[2].into(), args[3])
+                    .await
+            }
+            // IO
+            PPOLL => {
+                self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3])
+                    .await
+            }
+            PSELECT6 => {
+                self.sys_pselect6(
+                    args[0] as _,
+                    args[1].into(),
+                    args[2].into(),
+                    args[3].into(),
+                    args[4].into(),
+                    args[5],
+                )
+                .await
+            }
             // Signal
             RT_SIGPROCMASK => {
                 self.sys_rt_sigprocmask(args[0], args[1].into(), args[2].into(), args[3])

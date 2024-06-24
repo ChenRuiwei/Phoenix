@@ -4,7 +4,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::ops::Range;
+use core::{arch::riscv64, ops::Range};
 
 use async_utils::block_on;
 use config::{
@@ -17,6 +17,7 @@ use config::{
 };
 use log::info;
 use memory::{page::Page, pte::PTEFlags, PageTable, PhysAddr, VirtAddr, VirtPageNum};
+use riscv::register::mideleg;
 use spin::Lazy;
 use systype::{SysError, SysResult};
 use vfs_core::{Dentry, File};
@@ -33,7 +34,7 @@ use crate::{
     processor::env::SumGuard,
     syscall::MmapFlags,
     task::{
-        aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR},
+        aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR, AT_RANDOM},
         Task,
     },
 };
@@ -214,6 +215,20 @@ impl MemorySpace {
         &mut self.page_table
     }
 
+    pub fn split_area(
+        &mut self,
+        old_range: Range<VirtAddr>,
+        split_range: Range<VirtAddr>,
+    ) -> Option<&mut VmArea> {
+        let area = self.areas.force_remove_one(old_range);
+        let (mut left, mut middle, mut right) = area.split(split_range);
+        let left_ret = left.map(|left| self.areas.try_insert(left.range_va(), left).unwrap());
+        let right_ret = right.map(|right| self.areas.try_insert(right.range_va(), right).unwrap());
+        let middle_ret =
+            middle.map(|middle| self.areas.try_insert(middle.range_va(), middle).unwrap());
+        middle_ret
+    }
+
     /// Map the sections in the elf.
     ///
     /// Return the max end vpn and the first section's va.
@@ -352,6 +367,7 @@ impl MemorySpace {
         let (_max_end_vpn, header_va) = self.map_elf(&elf, 0.into());
 
         let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
+        auxv.push(AuxHeader::new(AT_RANDOM, ph_head_addr));
         log::debug!("[parse_and_map_elf] AT_PHDR  ph_head_addr is {ph_head_addr:x}",);
         auxv.push(AuxHeader::new(AT_PHDR, ph_head_addr));
 

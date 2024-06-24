@@ -1,8 +1,15 @@
 use alloc::sync::Arc;
 
 use driver::BlockDevice;
-use vfs_core::{Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, SuperBlock, SuperBlockMeta};
+use systype::SysResult;
+use vfs_core::{
+    Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, Path, SuperBlock, SuperBlockMeta,
+};
 
+use self::{
+    tty::{TtyDentry, TtyFile, TtyInode, TTY},
+    zero::{ZeroDentry, ZeroFile, ZeroInode},
+};
 use crate::{
     simplefs::{dentry::SimpleDentry, inode::SimpleInode},
     sys_root_dentry,
@@ -10,6 +17,24 @@ use crate::{
 
 pub mod stdio;
 pub mod tty;
+mod zero;
+
+pub fn init_devfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
+    let sb = root_dentry.super_block();
+
+    let zero_dentry = ZeroDentry::new("zero", sb.clone(), Some(root_dentry.clone()));
+    root_dentry.insert(zero_dentry.clone());
+    let zero_inode = ZeroInode::new(sb.clone());
+    zero_dentry.set_inode(zero_inode);
+
+    let tty_dentry = TtyDentry::new("tty", sb.clone(), Some(root_dentry.clone()));
+    root_dentry.insert(tty_dentry.clone());
+    let tty_inode = TtyInode::new(sb.clone());
+    tty_dentry.set_inode(tty_inode);
+    let tty_file = TtyFile::new(tty_dentry.clone(), tty_dentry.inode()?);
+    TTY.call_once(|| tty_file);
+    Ok(())
+}
 
 pub struct DevFsType {
     meta: FileSystemTypeMeta,

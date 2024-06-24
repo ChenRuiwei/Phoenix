@@ -283,6 +283,62 @@ impl VmArea {
         }
     }
 
+    pub fn split(
+        mut self,
+        split_range: Range<VirtAddr>,
+    ) -> (Option<Self>, Option<Self>, Option<Self>) {
+        debug_assert!(split_range.start.is_aligned() && split_range.end.is_aligned());
+        debug_assert!(split_range.start >= self.start_va() && split_range.end <= self.end_va());
+        let start_vpn: VirtPageNum = split_range.start.into();
+        let end_vpn: VirtPageNum = split_range.end.into();
+        let (mut left, mut middle, mut right) = (None, None, None);
+        let (left_range, middle_range, right_range) = (
+            self.start_va()..split_range.start,
+            split_range.clone(),
+            split_range.end..self.end_va(),
+        );
+        if !left_range.is_empty() {
+            let mut left_vma = VmArea::from_another(&self);
+            left_vma.set_range_va(left_range);
+            left_vma.pages.extend(
+                self.pages
+                    .range(left_vma.range_vpn())
+                    .into_iter()
+                    .map(|(&k, v)| (k, v.clone())),
+            );
+            left_vma.offset += left_vma.start_va() - self.start_va();
+            left = Some(left_vma)
+        }
+        if !middle_range.is_empty() {
+            let mut middle_vma = VmArea::from_another(&self);
+            middle_vma.set_range_va(middle_range);
+            middle_vma.pages.extend(
+                self.pages
+                    .range(middle_vma.range_vpn())
+                    .into_iter()
+                    .map(|(&k, v)| (k, v.clone())),
+            );
+            middle_vma.offset += middle_vma.start_va() - self.start_va();
+            middle = Some(middle_vma)
+        }
+        if !right_range.is_empty() {
+            let mut right_vma = VmArea::from_another(&self);
+            right_vma.set_range_va(right_range);
+            right_vma.pages.extend(
+                self.pages
+                    .range(right_vma.range_vpn())
+                    .into_iter()
+                    .map(|(&k, v)| (k, v.clone())),
+            );
+            right_vma.offset += right_vma.start_va() - self.start_va();
+            right = Some(right_vma)
+        }
+        log::info!("[VmArea::split] left: {left:?}");
+        log::info!("[VmArea::split] middle: {middle:?}");
+        log::info!("[VmArea::split] right: {right:?}");
+        (left, middle, right)
+    }
+
     // FIXME: should kill user program if it deref a invalid pointer, e.g. try to
     // write at a read only area?
     pub fn handle_page_fault(
@@ -297,6 +353,10 @@ impl VmArea {
         );
 
         if !access_type.can_access(self.perm()) {
+            log::error!(
+                "[VmArea::handle_page_fault] permission not allowed, perm:{:?}",
+                self.perm()
+            );
             return Err(SysError::EFAULT);
         }
 
