@@ -74,7 +74,7 @@ impl<'a> Syscall<'a> {
             unimplemented!()
         };
         log::info!("[syscall] handle {syscall_no}");
-        strace!("{}, args: {:?}", syscall_no, args);
+        strace!("{}, args: {:#x}", syscall_no, args);
         let result = match syscall_no {
             // Process
             EXIT => self.sys_exit(args[0] as _),

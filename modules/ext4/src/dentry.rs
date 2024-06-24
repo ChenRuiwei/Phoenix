@@ -72,7 +72,6 @@ impl Dentry for Ext4Dentry {
     fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         let fpath = self.path() + name;
 
-        log::debug!("[Ext4Dentry::base_create] fpath:{fpath}, mode:{mode:?}");
         let types = match mode.to_type() {
             InodeType::Dir => InodeTypes::EXT4_DE_DIR,
             InodeType::File => InodeTypes::EXT4_DE_REG_FILE,
@@ -85,6 +84,8 @@ impl Dentry for Ext4Dentry {
             .downcast_arc::<Ext4Inode>()
             .unwrap_or_else(|_| unreachable!());
         let sub_dentry = self.into_dyn().get_child_or_create(name);
+        let fpath = sub_dentry.path();
+        log::debug!("[Ext4Dentry::base_create] fpath:{fpath}, mode:{mode:?}");
         let mut file = inode.file.lock();
         if types == InodeTypes::EXT4_DE_DIR {
             file.dir_mk(&fpath).map_err(SysError::from_i32)?;
@@ -100,12 +101,13 @@ impl Dentry for Ext4Dentry {
     }
 
     fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()> {
-        log::debug!("[Ext4Dentry::base_remove] name: {name}");
-        let fpath = self.path() + name;
         let inode = self
             .inode()?
             .downcast_arc::<Ext4Inode>()
             .unwrap_or_else(|_| unreachable!());
+        let sub_dentry = self.get_child(name).unwrap();
+        let fpath = sub_dentry.path();
+        log::debug!("[Ext4Dentry::base_remove] path: {fpath}");
         let mut file = inode.file.lock();
         if file.check_inode_exist(&fpath, InodeTypes::EXT4_DE_DIR) {
             // Recursive directory remove

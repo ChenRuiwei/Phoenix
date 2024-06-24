@@ -15,13 +15,14 @@ use async_utils::block_on;
 use config::{
     board::MEMORY_END,
     mm::{
-        DL_INTERP_OFFSET, PAGE_SIZE, USER_STACK_PRE_ALLOC_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG,
-        U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END,
-        U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
+        align_offset_to_page, is_page_aligned, DL_INTERP_OFFSET, PAGE_SIZE,
+        USER_STACK_PRE_ALLOC_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG,
+        U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG, U_SEG_STACK_END,
+        VIRT_RAM_OFFSET,
     },
 };
 use log::info;
-use memory::{pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
+use memory::{page_table, pte::PTEFlags, PageTable, VirtAddr, VirtPageNum};
 use page::Page;
 use riscv::register::mideleg;
 use spin::Lazy;
@@ -676,6 +677,24 @@ impl MemorySpace {
         Ok(start)
     }
 
+    pub fn alloc_mmap_anonymous(
+        &mut self,
+        perm: MapPerm,
+        flags: MmapFlags,
+        length: usize,
+    ) -> SysResult<VirtAddr> {
+        const MMAP_RANGE: Range<VirtAddr> =
+            VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
+        let range = self
+            .areas()
+            .find_free_range(MMAP_RANGE, length)
+            .expect("mmap range is full");
+        let start = range.start;
+        let mut vma = VmArea::new_mmap(range, perm, flags, None, 0);
+        self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
+        Ok(start)
+    }
+
     pub fn alloc_mmap_area(
         &mut self,
         length: usize,
@@ -684,20 +703,47 @@ impl MemorySpace {
         file: Arc<dyn File>,
         offset: usize,
     ) -> SysResult<VirtAddr> {
+        debug_assert!(is_page_aligned(offset));
+        debug_assert!(offset + length <= file.size());
+
         const MMAP_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
+
         let range = self
             .areas_mut()
             .find_free_range(MMAP_RANGE, length)
             .expect("mmap range is full");
         let start = range.start;
-        let kernel_perm = perm | MapPerm::W;
-        let mut vma = VmArea::new_mmap(range, kernel_perm, flags, Some(file.clone()), offset);
-        vma.map(self.page_table_mut());
-        let mut buf = unsafe { UserSlice::<u8>::new_unchecked(vma.start_va(), length) };
-        block_on(async { file.read_at(offset, &mut buf).await })?;
-        vma.set_perm_and_flush(self.page_table_mut(), perm);
-        self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
+
+        let page_table = self.page_table_mut();
+        let inode = file.inode();
+        let address_space = inode
+            .address_space()
+            .expect("should have address space, and may be no");
+        let mut vma = VmArea::new_mmap(range, perm, flags, Some(file.clone()), offset);
+        let mut range_vpn = vma.range_vpn();
+        for offset_aligned in (offset..offset + length).step_by(PAGE_SIZE) {
+            let page = if let Some(page) = address_space.get_page(offset_aligned) {
+                page
+            } else if let Some(page) = block_on(async { file.read_page_at(offset_aligned).await })?
+            {
+                page
+            } else {
+                // no page means EOF
+                break;
+            };
+            let vpn = range_vpn.next().unwrap();
+            page_table.map(vpn, page.ppn(), perm.into());
+            vma.pages.insert(vpn, page);
+        }
+
+        // let kernel_perm = perm | MapPerm::W;
+        // let mut vma = VmArea::new_mmap(range, kernel_perm, flags, Some(file.clone()),
+        // offset); vma.map(self.page_table_mut());
+        // let mut buf = unsafe { UserSlice::<u8>::new_unchecked(vma.start_va(), length)
+        // }; block_on(async { file.read_at(offset, &mut buf).await })?;
+        // vma.set_perm_and_flush(self.page_table_mut(), perm);
+        // self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
         Ok(start)
     }
 

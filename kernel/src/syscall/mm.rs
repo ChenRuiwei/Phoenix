@@ -1,5 +1,5 @@
 use arch::memory::sfence_vma_vaddr;
-use config::mm::PAGE_MASK;
+use config::mm::{is_page_aligned, PAGE_MASK};
 use memory::{page_table, VirtAddr};
 use systype::{SysError, SyscallResult};
 
@@ -112,9 +112,6 @@ impl Syscall<'_> {
         fd: usize,
         offset: usize,
     ) -> SyscallResult {
-        if length == 0 {
-            return Err(SysError::EINVAL);
-        }
         let task = self.task;
         let flags = MmapFlags::from_bits_truncate(flags);
         let prot = MmapProt::from_bits_truncate(prot);
@@ -122,18 +119,32 @@ impl Syscall<'_> {
 
         log::info!("[sys_mmap] prot:{prot:?}, flags:{flags:?}, perm:{perm:?}");
 
-        if addr.is_null() && flags.contains(MmapFlags::MAP_FIXED) {
+        if length == 0 {
             return Err(SysError::EINVAL);
+        } else if addr.is_null() && flags.contains(MmapFlags::MAP_FIXED) {
+            return Err(SysError::EINVAL);
+        } else if !is_page_aligned(offset) {
+            return Err(SysError::EINVAL);
+        }
+
+        if flags.contains(MmapFlags::MAP_FIXED) {
+            log::error!("not support mmap fixed yet");
         }
 
         match flags.intersection(MmapFlags::MAP_TYPE_MASK) {
             MmapFlags::MAP_SHARED => {
                 if flags.contains(MmapFlags::MAP_ANONYMOUS) {
-                    // TODO: MAP_ANONYMOUS & MAP_SHARED is not supported, May be they share this by
-                    // pointing to the same addr region by parent and child process
+                    // TODO: MAP_SHARED page fault should keep track of all vm areas
                     todo!()
+                    // let start_va = task
+                    //     .with_mut_memory_space(|m|
+                    // m.alloc_mmap_anonymous(perm, flags, length))?;
+                    // Ok(start_va.bits())
                 } else {
                     let file = task.with_fd_table(|table| table.get_file(fd))?;
+                    if offset + length > file.size() {
+                        return Err(SysError::EINVAL);
+                    }
                     // PERF: lazy alloc for mmap
                     let start_va = task.with_mut_memory_space(|m| {
                         m.alloc_mmap_area(length, perm, flags, file, offset)
@@ -143,11 +154,14 @@ impl Syscall<'_> {
             }
             MmapFlags::MAP_PRIVATE => {
                 if flags.contains(MmapFlags::MAP_ANONYMOUS) {
-                    let start_va =
-                        task.with_mut_memory_space(|m| m.alloc_mmap_private_anon(perm, length))?;
+                    let start_va = task
+                        .with_mut_memory_space(|m| m.alloc_mmap_anonymous(perm, flags, length))?;
                     return Ok(start_va.bits());
                 }
                 let file = task.with_fd_table(|table| table.get_file(fd))?;
+                if offset + length > file.size() {
+                    return Err(SysError::EINVAL);
+                }
                 let start_va = task.with_mut_memory_space(|m| {
                     m.alloc_mmap_area(length, perm, flags, file, offset)
                 })?;

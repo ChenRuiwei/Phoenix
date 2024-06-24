@@ -16,7 +16,7 @@ use config::{
 };
 use device_core::BlockDevice;
 use intrusive_collections::LinkedList;
-use memory::{alloc_frame, FrameTracker, PhysPageNum};
+use memory::{alloc_frame_tracker, FrameTracker, PhysPageNum};
 use sync::mutex::SpinNoIrqLock;
 
 use crate::buffer_cache::{BufferHead, BufferHeadAdapter};
@@ -64,7 +64,7 @@ impl Drop for Page {
 impl Page {
     /// Create a `Page` by allocating a frame.
     pub fn new() -> Self {
-        let frame = alloc_frame();
+        let frame = alloc_frame_tracker();
         // frame.clear_page();
         Self {
             frame,

@@ -12,6 +12,7 @@ use config::{
     mm::{PAGE_SIZE_BITS, VIRT_RAM_OFFSET, VIRT_START},
 };
 pub use phys::{PhysAddr, PhysPageNum};
+use riscv::register::satp;
 pub use virt::{VirtAddr, VirtPageNum};
 
 macro_rules! impl_arithmetic_with_usize {
@@ -93,3 +94,13 @@ macro_rules! impl_step {
 pub(self) use impl_arithmetic_with_usize;
 pub(self) use impl_fmt;
 pub(self) use impl_step;
+
+use crate::{page_table, PageTable};
+
+pub fn vaddr_to_paddr(vaddr: VirtAddr) -> PhysAddr {
+    if vaddr.bits() >= VIRT_RAM_OFFSET {
+        (vaddr.bits() - VIRT_RAM_OFFSET).into()
+    } else {
+        PageTable::vaddr_to_paddr(vaddr)
+    }
+}

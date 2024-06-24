@@ -212,7 +212,7 @@ impl dyn File {
     }
 
     /// Read a page at `offset_aligned` without address space.
-    async fn read_page_at(&self, offset_aligned: usize) -> SysResult<Option<Arc<Page>>> {
+    pub async fn read_page_at(&self, offset_aligned: usize) -> SysResult<Option<Arc<Page>>> {
         log::trace!("[File::read_page] read offset {offset_aligned}");
 
         if offset_aligned >= self.size() {
@@ -280,7 +280,7 @@ impl dyn File {
             } else if let Some(page) = self.read_page_at(offset_aligned).await? {
                 page
             } else {
-                log::warn!("[File::write_at] create new page");
+                log::info!("[File::write_at] create new page");
                 let page = Page::new_arc();
                 page.init_block_device(&device);
                 address_space.insert_page(offset_aligned, page.clone());
@@ -289,13 +289,16 @@ impl dyn File {
             let len = (buf_it.len()).min(PAGE_SIZE - offset_in_page);
             page.bytes_array_range(offset_in_page..offset_in_page + len)
                 .copy_from_slice(&buf_it[0..len]);
-            log::trace!("[File::write] read count {len}, buf len {}", buf_it.len());
+            log::trace!("[File::write] write count {len}, buf len {}", buf_it.len());
             offset_it += len;
             buf_it = &buf_it[len..];
         }
 
         if offset_it > self.size() {
-            log::warn!("[File::write_at] write beyond file");
+            log::warn!(
+                "[File::write_at] write beyond file, offset_it:{offset_it}, size:{}",
+                self.size()
+            );
             self.base_write_at(self.size(), &buf[self.size() - offset..])
                 .await?;
             let old_size = self.size();

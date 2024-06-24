@@ -471,6 +471,12 @@ impl VmArea {
                         block_on(async { file.read_at(offset, &mut buf).await })?;
                         unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                     } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
+                        // private anonymous area
+                        page = Page::new();
+                        page.fill_zero();
+                        page_table.map(vpn, page.ppn(), self.map_perm.into());
+                        self.pages.insert(vpn, Arc::new(page));
+                        unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                     }
                 }
                 _ => {}

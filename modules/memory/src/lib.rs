@@ -14,7 +14,7 @@ pub mod heap;
 pub mod page_table;
 pub mod pte;
 
-pub use address::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
-pub use frame::{alloc_frame, alloc_frames, dealloc_frame, FrameTracker};
+pub use address::*;
+pub use frame::*;
 pub use page_table::PageTable;
 pub use pte::PageTableEntry;

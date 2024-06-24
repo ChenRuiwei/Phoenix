@@ -20,6 +20,7 @@ rustversion = "1.0"
 log = "0.4"
 spin = { version = "0.9", features = ["lazy"] }
 virtio-drivers = { version = "0.7" }
+# virtio-drivers = { path = "../crates/virtio-drivers/" }
 async-trait = "0.1"
 fdt = "0.1"
 plic = "0.0.2"

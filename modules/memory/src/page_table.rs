@@ -3,13 +3,14 @@
 use alloc::{string::String, vec, vec::Vec};
 
 use arch::memory::switch_page_table;
-use config::mm::VIRT_RAM_OFFSET;
+use config::mm::{PAGE_MASK, PAGE_SIZE_BITS, PTE_SIZE, VIRT_RAM_OFFSET};
+use riscv::register::satp;
 
 use crate::{
     address::{PhysPageNum, VirtAddr, VirtPageNum},
-    frame::{alloc_frame, FrameTracker},
+    frame::{alloc_frame_tracker, FrameTracker},
     pte::PTEFlags,
-    PageTableEntry,
+    PageTableEntry, PhysAddr,
 };
 
 /// # Safety
@@ -26,7 +27,7 @@ pub struct PageTable {
 impl PageTable {
     /// Create a new empty page table.
     pub fn new() -> Self {
-        let root_frame = alloc_frame();
+        let root_frame = alloc_frame_tracker();
         root_frame.fill_zero();
         PageTable {
             root_ppn: root_frame.ppn,
@@ -41,7 +42,7 @@ impl PageTable {
     ///
     /// There is only mapping from `VIRT_RAM_OFFSET`, but no MMIO mapping.
     pub fn from_kernel(kernel_page_table: &Self) -> Self {
-        let root_frame = alloc_frame();
+        let root_frame = alloc_frame_tracker();
         root_frame.fill_zero();
 
         let kernel_start_vpn: VirtPageNum = VirtAddr::from(VIRT_RAM_OFFSET).into();
@@ -57,6 +58,18 @@ impl PageTable {
             root_ppn: root_frame.ppn,
             frames: vec![root_frame],
         }
+    }
+
+    pub fn vaddr_to_paddr(vaddr: VirtAddr) -> PhysAddr {
+        let satp = satp::read();
+        let ppn = satp.ppn().into();
+        let page_table = Self {
+            root_ppn: ppn,
+            frames: Vec::new(),
+        };
+        let leaf_pte = page_table.find_pte(vaddr.floor()).unwrap();
+        let paddr = (leaf_pte.ppn().bits() << PAGE_SIZE_BITS) + (vaddr.bits() & PAGE_MASK);
+        paddr.into()
     }
 
     /// Switch to this pagetable
@@ -97,7 +110,7 @@ impl PageTable {
                 return pte;
             }
             if !pte.is_valid() {
-                let frame = alloc_frame();
+                let frame = alloc_frame_tracker();
                 frame.fill_zero();
                 *pte = PageTableEntry::new(frame.ppn, PTEFlags::V);
                 self.frames.push(frame);

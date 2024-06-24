@@ -4,6 +4,7 @@
 .idea
 *.dtb
 *.dts
+
 lmbench_all_debug
 .gdbinit
 ltp/
@@ -12,3 +13,6 @@ vendor/
 fs-img/
 sdcard.img
 kernel/src/link_app.asm
+
+lwext4_rust
+virtio-drivers
