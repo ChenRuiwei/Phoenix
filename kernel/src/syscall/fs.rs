@@ -117,6 +117,7 @@ impl Syscall<'_> {
         let task = self.task;
         let file = task.with_fd_table(|table| table.get_file(fd))?;
         let buf = buf.into_slice(&task, len)?;
+        // log::info!("[sys_write] buf {buf:?}");
         let ret = file.write(&buf).await?;
         Ok(ret)
     }

@@ -240,7 +240,7 @@ impl VmArea {
         self.set_perm(perm);
         let pte_flags = perm.into();
         let range_vpn = self.range_vpn();
-        for vpn in range_vpn {
+        for &vpn in self.pages.keys() {
             let pte = page_table.find_pte(vpn).unwrap();
             log::trace!(
                 "[origin pte:{:?}, new_flag:{:?}]",

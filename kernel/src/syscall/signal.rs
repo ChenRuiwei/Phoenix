@@ -38,9 +38,13 @@ impl Syscall<'_> {
             return Err(SysError::EINVAL);
         }
         log::info!(
-        "[sys_rt_sigaction] {signum:?}, new_ptr:{action}, old_ptr:{old_action}, old_sa_type:{:?}",
-        task.with_sig_handlers(|handlers| { handlers.get(signum).atype })
-    );
+            "[sys_rt_sigaction] {signum:?}, new_ptr:{action}, old_ptr:{old_action}, old_sa_type:{:?}",
+            task.with_sig_handlers(|handlers| { handlers.get(signum).atype })
+        );
+        if old_action.not_null() {
+            let old = task.with_sig_handlers(|handlers| handlers.get(signum));
+            old_action.write(&task, old.into())?;
+        }
         if action.not_null() {
             let mut action = action.read(&task)?;
             // 无法在一个信号处理函数执行的时候屏蔽调SIGKILL和SIGSTOP信号
@@ -56,10 +60,6 @@ impl Syscall<'_> {
             };
             log::info!("[sys_rt_sigaction] new:{:?}", new);
             task.with_mut_sig_handlers(|handlers| handlers.update(signum, new));
-        }
-        if old_action.not_null() {
-            let old = task.with_sig_handlers(|handlers| handlers.get(signum));
-            old_action.write(&task, old.into())?;
         }
         Ok(0)
     }
