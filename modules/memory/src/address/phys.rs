@@ -26,6 +26,7 @@ pub struct PhysPageNum(pub usize);
 
 impl_fmt!(PhysAddr, "PA");
 impl_arithmetic_with_usize!(PhysPageNum);
+impl_arithmetic_with_usize!(PhysAddr);
 impl_step!(PhysPageNum);
 impl_fmt!(PhysPageNum, "PPN");
 
@@ -101,6 +102,10 @@ impl From<PhysPageNum> for PhysAddr {
 }
 
 impl PhysPageNum {
+    pub fn bits(&self) -> usize {
+        self.0
+    }
+
     /// Get reference to `PhysPageNum` value
     pub fn get_ref<T>(&self) -> &'static T {
         unsafe { (self.0 as *const T).as_ref().unwrap() }
@@ -146,7 +151,7 @@ impl PhysPageNum {
     }
 
     /// Empty the whole page.
-    pub fn empty_the_page(&self) {
+    pub fn clear_page(&self) {
         let va: VirtAddr = self.to_offset().to_vpn().into();
         unsafe {
             core::slice::from_raw_parts_mut(va.0 as *mut usize, PAGE_SIZE / size_of::<usize>())

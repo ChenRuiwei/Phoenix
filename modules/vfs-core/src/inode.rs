@@ -1,8 +1,9 @@
 use alloc::sync::{Arc, Weak};
 use core::mem::MaybeUninit;
 
+use device_core::DevId;
 use downcast_rs::{impl_downcast, DowncastSync};
-use systype::SysResult;
+use systype::{SysResult, SyscallResult};
 
 use crate::{address_space::AddressSpace, alloc_ino, Mutex, Stat, SuperBlock, TimeSpec};
 
@@ -11,6 +12,7 @@ pub struct InodeMeta {
     pub ino: usize,
     /// mode of inode.
     pub mode: InodeMode,
+    pub dev_id: Option<DevId>,
     pub super_block: Weak<dyn SuperBlock>,
 
     pub address_space: Option<AddressSpace>,
@@ -44,6 +46,7 @@ impl InodeMeta {
             ino: alloc_ino(),
             mode,
             super_block: Arc::downgrade(&super_block),
+            dev_id: None,
             address_space,
             inner: Mutex::new(InodeMetaInner {
                 size,
@@ -60,6 +63,14 @@ pub trait Inode: Send + Sync + DowncastSync {
     fn meta(&self) -> &InodeMeta;
 
     fn get_attr(&self) -> SysResult<Stat>;
+
+    fn base_truncate(&self, len: usize) -> SysResult<()> {
+        todo!()
+    }
+
+    fn base_get_blk_idx(&self, offset: usize) -> SysResult<usize> {
+        todo!()
+    }
 }
 
 impl dyn Inode {
@@ -67,15 +78,16 @@ impl dyn Inode {
         self.meta().ino
     }
 
+    pub fn dev_id(&self) -> DevId {
+        self.meta().dev_id.expect("should own a dev id")
+    }
+
     pub fn itype(&self) -> InodeType {
         self.meta().mode.to_type()
     }
 
     pub fn address_space<'a>(self: &'a Arc<dyn Inode>) -> Option<&'a AddressSpace> {
-        self.meta().address_space.as_ref().map(|a| {
-            a.set_inode(self.clone());
-            a
-        })
+        self.meta().address_space.as_ref()
     }
 
     pub fn size(&self) -> usize {
@@ -92,6 +104,25 @@ impl dyn Inode {
 
     pub fn set_state(&self, state: InodeState) {
         self.meta().inner.lock().state = state;
+    }
+
+    pub fn truncate(&self, len: usize) -> SyscallResult {
+        log::info!(
+            "[Inode::truncate] len:{len:#x}, origin size:{:#x}",
+            self.size()
+        );
+        // if self.size() < len {
+        //     self.address_space()
+        // }
+        self.base_truncate(len).map(|_| 0)
+    }
+
+    pub fn get_blk_idx(&self, offset: usize) -> SysResult<usize> {
+        self.base_get_blk_idx(offset)
+    }
+
+    pub fn super_block(&self) -> Arc<dyn SuperBlock> {
+        self.meta().super_block.upgrade().unwrap()
     }
 }
 

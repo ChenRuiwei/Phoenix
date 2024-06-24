@@ -4,13 +4,12 @@ use alloc::{
 };
 
 use config::mm::PAGE_MASK;
-use memory::page::Page;
+use page::Page;
 use spin::Once;
 
 use crate::{Inode, Mutex};
 
 pub struct AddressSpace {
-    inode: Once<Weak<dyn Inode>>,
     /// Map from aligned file offset to page cache.
     pages: Mutex<BTreeMap<usize, Arc<Page>>>,
 }
@@ -18,23 +17,18 @@ pub struct AddressSpace {
 impl AddressSpace {
     pub fn new() -> Self {
         Self {
-            inode: Once::new(),
             pages: Mutex::new(BTreeMap::new()),
         }
     }
 
-    pub fn set_inode(&self, inode: Arc<dyn Inode>) {
-        self.inode.call_once(|| Arc::downgrade(&inode));
+    pub fn get_page(&self, offset_aligned: usize) -> Option<Arc<Page>> {
+        debug_assert!(is_aligned(offset_aligned));
+        self.pages.lock().get(&offset_aligned).cloned()
     }
 
-    pub fn get_page(&self, offset: usize) -> Option<Arc<Page>> {
-        debug_assert!(is_aligned(offset));
-        self.pages.lock().get(&offset).cloned()
-    }
-
-    pub fn insert_page(&self, offset: usize, page: Page) {
-        debug_assert!(is_aligned(offset));
-        self.pages.lock().insert(offset, Arc::new(page));
+    pub fn insert_page(&self, offset_aligned: usize, page: Arc<Page>) {
+        debug_assert!(is_aligned(offset_aligned));
+        self.pages.lock().insert(offset_aligned, page);
     }
 }
 

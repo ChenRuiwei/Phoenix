@@ -7,7 +7,7 @@ use core::{
 };
 
 use arch::time::get_time_duration;
-use async_utils::{suspend_now, take_waker, yield_now};
+use async_utils::{get_waker, suspend_now, yield_now};
 use timer::timer::{Timer, TIMER_MANAGER};
 
 use super::Task;
@@ -77,7 +77,7 @@ impl<F: Future<Output = ()> + Send + 'static> Future for KernelTaskFuture<F> {
 }
 
 pub async fn task_loop(task: Arc<Task>) {
-    *task.waker() = Some(take_waker().await);
+    *task.waker() = Some(get_waker().await);
     loop {
         trap::user_trap::trap_return(&task);
 

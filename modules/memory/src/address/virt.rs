@@ -84,7 +84,7 @@ impl VirtAddr {
     }
 
     /// `VirtAddr` -> rounded down to a multiple of PAGE_SIZE
-    pub fn rounded_down(&self) -> Self {
+    pub fn round_down(&self) -> Self {
         Self(self.0 & !PAGE_MASK)
     }
 
@@ -94,7 +94,7 @@ impl VirtAddr {
     }
 
     /// `VirtAddr` -> rounded up to a multiple of PAGE_SIZE
-    pub fn rounded_up(&self) -> Self {
+    pub fn round_up(&self) -> Self {
         Self((self.0 + PAGE_MASK) & !PAGE_MASK)
     }
 

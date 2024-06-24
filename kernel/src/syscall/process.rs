@@ -261,6 +261,10 @@ impl Syscall<'_> {
         let mut path = path.read_cstr(&task)?;
 
         let read_2d_cstr = |ptr2d: UserReadPtr<usize>| -> SysResult<Vec<String>> {
+            // NOTE: On Linux, argv and envp can be specified as NULL.
+            if ptr2d.is_null() {
+                return Ok(Vec::new());
+            }
             let ptr_vec: Vec<UserReadPtr<u8>> = ptr2d
                 .read_cvec(&task)?
                 .into_iter()

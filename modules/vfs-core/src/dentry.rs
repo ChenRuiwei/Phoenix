@@ -225,7 +225,10 @@ impl dyn Dentry {
             return Err(SysError::ENOTDIR);
         }
         let child = self.get_child_or_create(name);
-        self.clone().base_create(name, mode)
+        if child.is_negetive() {
+            self.clone().base_create(name, mode)?;
+        }
+        Ok(child)
     }
 
     pub fn remove(self: &Arc<Self>, name: &str) -> SysResult<()> {

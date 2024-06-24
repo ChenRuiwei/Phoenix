@@ -1,6 +1,6 @@
 use arch::memory::sfence_vma_vaddr;
-use config::mm::PAGE_MASK;
-use memory::VirtAddr;
+use config::mm::{is_page_aligned, PAGE_MASK};
+use memory::{page_table, VirtAddr};
 use systype::{SysError, SyscallResult};
 
 use super::Syscall;
@@ -112,9 +112,6 @@ impl Syscall<'_> {
         fd: usize,
         offset: usize,
     ) -> SyscallResult {
-        if length == 0 {
-            return Err(SysError::EINVAL);
-        }
         let task = self.task;
         let flags = MmapFlags::from_bits_truncate(flags);
         let prot = MmapProt::from_bits_truncate(prot);
@@ -122,18 +119,32 @@ impl Syscall<'_> {
 
         log::info!("[sys_mmap] prot:{prot:?}, flags:{flags:?}, perm:{perm:?}");
 
-        if addr.is_null() && flags.contains(MmapFlags::MAP_FIXED) {
+        if length == 0 {
             return Err(SysError::EINVAL);
+        } else if addr.is_null() && flags.contains(MmapFlags::MAP_FIXED) {
+            return Err(SysError::EINVAL);
+        } else if !is_page_aligned(offset) {
+            return Err(SysError::EINVAL);
+        }
+
+        if flags.contains(MmapFlags::MAP_FIXED) {
+            log::error!("not support mmap fixed yet");
         }
 
         match flags.intersection(MmapFlags::MAP_TYPE_MASK) {
             MmapFlags::MAP_SHARED => {
                 if flags.contains(MmapFlags::MAP_ANONYMOUS) {
-                    // TODO: MAP_ANONYMOUS & MAP_SHARED is not supported, May be they share this by
-                    // pointing to the same addr region by parent and child process
+                    // TODO: MAP_SHARED page fault should keep track of all vm areas
                     todo!()
+                    // let start_va = task
+                    //     .with_mut_memory_space(|m|
+                    // m.alloc_mmap_anonymous(perm, flags, length))?;
+                    // Ok(start_va.bits())
                 } else {
                     let file = task.with_fd_table(|table| table.get_file(fd))?;
+                    if offset + length > file.size() {
+                        return Err(SysError::EINVAL);
+                    }
                     // PERF: lazy alloc for mmap
                     let start_va = task.with_mut_memory_space(|m| {
                         m.alloc_mmap_area(length, perm, flags, file, offset)
@@ -143,11 +154,14 @@ impl Syscall<'_> {
             }
             MmapFlags::MAP_PRIVATE => {
                 if flags.contains(MmapFlags::MAP_ANONYMOUS) {
-                    let start_va =
-                        task.with_mut_memory_space(|m| m.alloc_mmap_private_anon(perm, length))?;
+                    let start_va = task
+                        .with_mut_memory_space(|m| m.alloc_mmap_anonymous(perm, flags, length))?;
                     return Ok(start_va.bits());
                 }
                 let file = task.with_fd_table(|table| table.get_file(fd))?;
+                if offset + length > file.size() {
+                    return Err(SysError::EINVAL);
+                }
                 let start_va = task.with_mut_memory_space(|m| {
                     m.alloc_mmap_area(length, perm, flags, file, offset)
                 })?;
@@ -172,14 +186,14 @@ impl Syscall<'_> {
     /// On success, munmap() returns 0. On failure, it returns -1, and errno is
     /// set to indicate the error (probably to EINVAL).
     // TODO:
-    pub fn sys_munmap(&self, _addr: VirtAddr, _length: usize) -> SyscallResult {
-        // if !addr.is_aligned() {
-        //     return Err(SysError::EINVAL);
-        // }
-
-        // let task = self.task;
-        // let range = VirtAddr::from(addr)..VirtAddr::from(addr + length);
-        // task.with_mut_memory_space(|m| m.unmap(range));
+    pub fn sys_munmap(&self, addr: VirtAddr, length: usize) -> SyscallResult {
+        if !addr.is_aligned() {
+            return Err(SysError::EINVAL);
+        }
+        let task = self.task;
+        let end = VirtAddr::from(addr + length).round_up();
+        let range = VirtAddr::from(addr)..end;
+        task.with_mut_memory_space(|m| m.unmap(range));
         Ok(0)
     }
 
@@ -278,7 +292,7 @@ impl Syscall<'_> {
             // value
             return Err(SysError::EINVAL);
         }
-        shm_va = shm_va.rounded_down();
+        shm_va = shm_va.round_down();
         let mut map_perm = MapPerm::RW;
         if shmflg.contains(ShmAtFlags::SHM_EXEC) {
             map_perm.insert(MapPerm::X);
@@ -369,37 +383,7 @@ impl Syscall<'_> {
         log::info!("[sys_mprotect] addr:{addr:?}, len:{len:#x}, prot:{prot:?}");
         let new_range = addr..addr + len;
         let perm: MapPerm = prot.into();
-        task.with_mut_memory_space(|m| {
-            let (old_range, area) = m
-                .areas_mut()
-                .get_key_value_mut(addr)
-                .ok_or(SysError::ENOMEM)?;
-            if new_range == old_range {
-                area.set_perm(perm);
-                let range_vpn = area.range_vpn();
-                let page_table = m.page_table_mut();
-                for vpn in range_vpn {
-                    let pte = page_table.find_pte(vpn).unwrap();
-                    pte.set_flags(pte.flags().union(perm.into()));
-                    unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
-                }
-            } else {
-                // WARN: currently do not support split between areas.
-                debug_assert!(old_range.end > new_range.end);
-                // do split and remap
-                let middle = m.split_area(old_range, new_range);
-                if let Some(mut middle) = middle {
-                    middle.set_perm(perm);
-                    let range_vpn = middle.range_vpn();
-                    let page_table = m.page_table_mut();
-                    for vpn in range_vpn {
-                        let pte = page_table.find_pte(vpn).unwrap();
-                        pte.set_flags(pte.flags().union(perm.into()));
-                        unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
-                    }
-                }
-            }
-            Ok(0)
-        })
+        task.with_mut_memory_space(|m| m.mprotect(new_range, perm))
+            .map(|_| 0)
     }
 }

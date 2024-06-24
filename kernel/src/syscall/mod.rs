@@ -17,6 +17,7 @@ use core::arch;
 
 pub use consts::SyscallNo;
 use fs::*;
+use logging::ColorCode;
 use misc::*;
 pub use mm::MmapFlags;
 use mm::*;
@@ -24,12 +25,13 @@ pub use process::CloneFlags;
 use process::*;
 use resource::*;
 use signal::*;
+use systype::SyscallResult;
 use time::*;
 
 use crate::{syscall::sched::*, task::Task};
 
 #[cfg(feature = "strace")]
-pub const STRACE_COLOR_CODE: u8 = 35; // Purple
+pub const STRACE_COLOR_CODE: ColorCode = ColorCode::BrightMagenta;
 
 /// Syscall trace.
 // TODO: syscall trace with exact args and return value
@@ -46,7 +48,7 @@ macro_rules! strace {
             current_task_ref().pid(),
             current_task_ref().tid(),
             $($args)*),
-            $crate::syscall::STRACE_COLOR_CODE
+            $crate::syscall::STRACE_COLOR_CODE as u8
         );
     }
 }
@@ -73,7 +75,16 @@ impl<'a> Syscall<'a> {
             unimplemented!()
         };
         log::info!("[syscall] handle {syscall_no}");
-        strace!("{}, args: {:?}", syscall_no, args);
+        strace!(
+            "{}, args: [{:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}]",
+            syscall_no,
+            args[0],
+            args[1],
+            args[2],
+            args[3],
+            args[4],
+            args[5]
+        );
         let result = match syscall_no {
             // Process
             EXIT => self.sys_exit(args[0] as _),
@@ -114,6 +125,7 @@ impl<'a> Syscall<'a> {
             ),
             MUNMAP => self.sys_munmap(args[0].into(), args[1]),
             MPROTECT => self.sys_mprotect(args[0].into(), args[1], args[2] as _),
+            MSYNC => self.sys_do_nothing("msync"),
             // Shared Memory
             SHMGET => self.sys_shmget(args[0], args[1], args[2] as _),
             SHMAT => self.sys_shmat(args[0], args[1], args[2] as _),
@@ -256,5 +268,13 @@ impl<'a> Syscall<'a> {
                 -(e as isize) as usize
             }
         }
+    }
+
+    fn sys_do_nothing(&self, name: &str) -> SyscallResult {
+        log::warn!(
+            "Not implemented syscall that specified to do nothing ({})",
+            name
+        );
+        Ok(0)
     }
 }

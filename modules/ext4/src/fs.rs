@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use driver::BlockDevice;
+use device_core::BlockDevice;
 use lwext4_rust::{Ext4BlockWrapper, InodeTypes};
 use systype::SysResult;
 use vfs_core::{

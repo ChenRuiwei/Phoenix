@@ -7,6 +7,7 @@ use arch::{
     time::{get_time_duration, set_next_timer_irq},
 };
 use async_utils::yield_now;
+use executor::has_task;
 use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
@@ -22,14 +23,19 @@ use crate::{mm::PageFaultAccessType, syscall::Syscall, task::Task, trap::set_use
 pub async fn trap_handler(task: &Arc<Task>) {
     unsafe { set_kernel_trap() };
 
-    log::trace!("[trap_handler] user task trap into kernel");
     let mut cx = task.trap_context_mut();
     let stval = stval::read();
     let scause = scause::read();
     let sepc = sepc::read();
     let cause = scause.cause();
-
+    log::trace!("[trap_handler] user task trap into kernel");
+    log::trace!("[trap_handler] sepc:{sepc:#x}, stval:{stval:#x}");
     unsafe { enable_interrupt() };
+
+    if task.time_stat_ref().need_schedule() && has_task() {
+        log::info!("time slice used up, yield now");
+        yield_now().await;
+    }
 
     match cause {
         Trap::Exception(e) => {
@@ -87,8 +93,9 @@ pub async fn trap_handler(task: &Arc<Task>) {
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             // FIXME: user may trap into kernel frequently, as a consequence, this timer
-            // are likely not be triggered in user mode but rather be triggered in
-            // supervisor mode.
+            // are likely not triggered in user mode but rather be triggered in
+            // supervisor mode, which will cause user program running on the cpu for a long
+            // time.
             log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");
             TIMER_MANAGER.check(get_time_duration());
             unsafe { set_next_timer_irq() };

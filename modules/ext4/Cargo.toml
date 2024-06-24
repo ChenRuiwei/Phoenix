@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-config = {path = "../../config/"}
-driver = { path = "../../driver/" }
+config = { path = "../../config/" }
+device-core = { path = "../device-core/" }
 vfs-core = { path = "../vfs-core/" }
 sync = { path = "../sync/" }
 arch = { path = "../../arch/" }
@@ -16,4 +16,5 @@ systype = { path = "../systype/" }
 log = "0.4"
 downcast-rs = { version = "1.2", default-features = false }
 async-trait = "0.1"
-lwext4_rust = { git = "https://github.com/elliott10/lwext4_rust.git" }
+lwext4_rust = { git = "https://github.com/ChenRuiwei/lwext4_rust.git" }
+# lwext4_rust = { path = "../../crates/lwext4_rust/" }

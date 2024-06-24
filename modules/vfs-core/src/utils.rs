@@ -111,26 +111,27 @@ pub struct DirEntry {
 
 bitflags! {
     // Defined in <bits/poll.h>.
+    #[derive(Debug, Clone, Copy)]
     pub struct PollEvents: i16 {
         // Event types that can be polled for. These bits may be set in `events' to
         // indicate the interesting event types; they will appear in `revents' to
         // indicate the status of the file descriptor.
         /// There is data to read.
-        const POLLIN = 0x001;
+        const IN = 0x001;
         /// There is urgent data to read.
-        const POLLPRI = 0x002;
+        const PRI = 0x002;
         ///  Writing now will not block.
-        const POLLOUT = 0x004;
+        const OUT = 0x004;
 
         // Event types always implicitly polled for. These bits need not be set in
         // `events', but they will appear in `revents' to indicate the status of the
         // file descriptor.
         /// Error condition.
-        const POLLERR = 0x008;
+        const ERR = 0x008;
         /// Hang up.
-        const POLLHUP = 0x010;
+        const HUP = 0x010;
         /// Invalid poll request.
-        const POLLNVAL = 0x020;
+        const INVAL = 0x020;
     }
 }
 

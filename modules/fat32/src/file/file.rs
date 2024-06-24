@@ -53,7 +53,8 @@ impl File for FatFileFile {
             InodeType::File => {
                 let mut file = self.file.lock();
                 let size = self.inode().size();
-                // TODO: should we write at offset which is bigger than size
+                // write at offset bigger than size should first fill the area with zero between
+                // size and offset
                 if offset > size {
                     // write empty data to fill area [size, offset)
                     let empty = vec![0; offset - size];

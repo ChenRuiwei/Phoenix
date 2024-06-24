@@ -6,13 +6,22 @@ use core::{
 };
 
 use async_trait::async_trait;
-use config::mm::{PAGE_MASK, PAGE_SIZE};
-use memory::page::Page;
+use config::{
+    board::BLOCK_SIZE,
+    mm::{
+        align_offset_to_page, round_down_to_page, round_up_to_page, MAX_BUFFERS_PER_PAGE,
+        PAGE_MASK, PAGE_SIZE,
+    },
+};
+use driver::qemu::virtio_blk::VirtIOBlkDev;
+use memory::address;
+use page::Page;
 use spin::Mutex;
 use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{
-    Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom, SuperBlock,
+    address_space, inode, AddressSpace, Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags,
+    PollEvents, SeekFrom, SuperBlock,
 };
 
 pub struct FileMeta {
@@ -70,16 +79,18 @@ pub trait File: Send + Sync {
         Err(SysError::ENOTTY)
     }
 
+    /// Given interested events, keep track of these events and return events
+    /// that is ready.
     // TODO:
-    async fn poll(&self, events: PollEvents) -> SysResult<PollEvents> {
+    async fn base_poll(&self, events: PollEvents) -> PollEvents {
         let mut res = PollEvents::empty();
-        if events.contains(PollEvents::POLLIN) {
-            res |= PollEvents::POLLIN;
+        if events.contains(PollEvents::IN) {
+            res |= PollEvents::IN;
         }
-        if events.contains(PollEvents::POLLOUT) {
-            res |= PollEvents::POLLOUT;
+        if events.contains(PollEvents::OUT) {
+            res |= PollEvents::OUT;
         }
-        Ok(res)
+        res
     }
 
     fn inode(&self) -> Arc<dyn Inode> {
@@ -93,6 +104,11 @@ pub trait File: Send + Sync {
     /// Called when the VFS needs to move the file position index.
     ///
     /// Return the result offset.
+    ///
+    /// lseek() allows the file offset to be set beyond the end of the file (but
+    /// this does not change the size of the file). If data is later written at
+    /// this point, subsequent reads of the data in the gap (a "hole") return
+    /// null bytes ('\0') until data is actually written into the gap.
     fn seek(&self, pos: SeekFrom) -> SyscallResult {
         let mut res_pos = self.pos();
         match pos {
@@ -138,17 +154,17 @@ pub trait File: Send + Sync {
     fn size(&self) -> usize {
         self.meta().inode.size()
     }
-}
 
-impl dyn File {
-    pub fn flags(&self) -> OpenFlags {
+    fn flags(&self) -> OpenFlags {
         self.meta().flags.lock().clone()
     }
 
-    pub fn set_flags(&self, flags: OpenFlags) {
+    fn set_flags(&self, flags: OpenFlags) {
         *self.meta().flags.lock() = flags;
     }
+}
 
+impl dyn File {
     /// Read at an `offset`, and will fill `buf` until `buf` is full or eof is
     /// reached. Will not advance offset.
     ///
@@ -159,48 +175,75 @@ impl dyn File {
             self.dentry().path(),
             buf.len()
         );
-        let mut buf = buf;
-        let mut count = 0;
-        let mut offset = offset;
+
         let inode = self.inode();
+
         let Some(address_space) = inode.address_space() else {
             log::debug!("[File::read] read without address_space");
             let count = self.base_read_at(offset, buf).await?;
             return Ok(count);
         };
+
+        let mut buf_it = buf;
+        let mut offset_it = offset;
+
         log::debug!("[File::read] read with address_space");
-        while !buf.is_empty() && offset < self.size() {
-            let offset_aligned = offset & !PAGE_MASK;
-            let offset_in_page = offset - offset_aligned;
-            let len = if let Some(page) = address_space.get_page(offset_aligned) {
-                log::trace!("[File::read] offset {offset_aligned} cached in address space");
-                let len = cmp::min(buf.len(), PAGE_SIZE - offset_in_page).min(self.size() - offset);
-                buf[0..len]
-                    .copy_from_slice(page.bytes_array_range(offset_in_page..offset_in_page + len));
-                len
+        while !buf_it.is_empty() && offset_it < self.size() {
+            let (offset_aligned, offset_in_page) = align_offset_to_page(offset_it);
+            let page = if let Some(page) = address_space.get_page(offset_aligned) {
+                page
+            } else if let Some(page) = self.read_page_at(offset_aligned).await? {
+                page
             } else {
-                log::trace!("[File::read] offset {offset_aligned} not cached in address space");
-                let page = Page::new();
-                let len = self
-                    .base_read_at(offset_aligned, page.bytes_array())
-                    .await?;
-                if len == 0 {
-                    log::warn!("[File::read] reach file end");
-                    break;
-                }
-                let len = cmp::min(buf.len(), len);
-                buf[0..len]
-                    .copy_from_slice(page.bytes_array_range(offset_in_page..offset_in_page + len));
-                address_space.insert_page(offset_aligned, page);
-                len
+                // no page means EOF
+                break;
             };
-            log::trace!("[File::read] read count {len}, buf len {}", buf.len());
-            count += len;
-            offset += len;
-            buf = &mut buf[len..];
+            let len = (buf_it.len())
+                .min(PAGE_SIZE - offset_in_page)
+                .min(self.size() - offset_it);
+            buf_it[0..len]
+                .copy_from_slice(page.bytes_array_range(offset_in_page..offset_in_page + len));
+            log::trace!("[File::read] read count {len}, buf len {}", buf_it.len());
+            offset_it += len;
+            buf_it = &mut buf_it[len..];
         }
-        log::info!("[File::read] read count {count}");
-        Ok(count)
+        log::info!("[File::read] read count {}", offset_it - offset);
+        Ok(offset_it - offset)
+    }
+
+    /// Read a page at `offset_aligned` without address space.
+    pub async fn read_page_at(&self, offset_aligned: usize) -> SysResult<Option<Arc<Page>>> {
+        log::trace!("[File::read_page] read offset {offset_aligned}");
+
+        if offset_aligned >= self.size() {
+            log::warn!("[File::read_page] reach end of file");
+            return Ok(None);
+        }
+
+        let inode = self.inode();
+        let address_space = inode.address_space().unwrap();
+
+        let device = inode.super_block().device();
+        let mut page = Page::new_arc();
+        page.init_block_device(&device);
+        // read a page normally or less than a page when EOF reached
+        let len = self
+            .base_read_at(offset_aligned, page.bytes_array())
+            .await?;
+
+        let virtio_blk = device
+            .downcast_arc::<VirtIOBlkDev>()
+            .unwrap_or_else(|_| unreachable!());
+        let buffer_caches = virtio_blk.cache.lock();
+        for offset in (offset_aligned..offset_aligned + len).step_by(BLOCK_SIZE) {
+            let block_id = inode.get_blk_idx(offset)?;
+            let buffer_head = buffer_caches.get_buffer_head(block_id as usize);
+            page.insert_buffer_head(buffer_head);
+        }
+
+        address_space.insert_page(offset_aligned, page.clone());
+
+        Ok(Some(page))
     }
 
     /// Called by write(2) and related system calls.
@@ -208,7 +251,76 @@ impl dyn File {
     /// On success, the number of bytes written is returned, and the file offset
     /// is incremented by the number of bytes actually written.
     pub async fn write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
-        self.base_write_at(offset, buf).await
+        log::info!(
+            "[File::write] file {}, offset {offset}, buf len {}",
+            self.dentry().path(),
+            buf.len()
+        );
+
+        let inode = self.inode();
+
+        let Some(address_space) = inode.address_space() else {
+            log::debug!("[File::write] write without address_space");
+            let count = self.base_write_at(offset, buf).await?;
+            return Ok(count);
+        };
+
+        if offset > self.size() {
+            todo!("offset greater than size, will create hole");
+        }
+
+        let device = self.super_block().device();
+        let mut buf_it = buf;
+        let mut offset_it = offset;
+
+        while !buf_it.is_empty() {
+            let (offset_aligned, offset_in_page) = align_offset_to_page(offset_it);
+            let page = if let Some(page) = address_space.get_page(offset_aligned) {
+                page
+            } else if let Some(page) = self.read_page_at(offset_aligned).await? {
+                page
+            } else {
+                log::info!("[File::write_at] create new page");
+                let page = Page::new_arc();
+                page.init_block_device(&device);
+                address_space.insert_page(offset_aligned, page.clone());
+                page
+            };
+            let len = (buf_it.len()).min(PAGE_SIZE - offset_in_page);
+            page.bytes_array_range(offset_in_page..offset_in_page + len)
+                .copy_from_slice(&buf_it[0..len]);
+            log::trace!("[File::write] write count {len}, buf len {}", buf_it.len());
+            offset_it += len;
+            buf_it = &buf_it[len..];
+        }
+
+        if offset_it > self.size() {
+            log::warn!(
+                "[File::write_at] write beyond file, offset_it:{offset_it}, size:{}",
+                self.size()
+            );
+            self.base_write_at(self.size(), &buf[self.size() - offset..])
+                .await?;
+            let old_size = self.size();
+            let new_size = offset_it;
+            let virtio_blk = device
+                .downcast_arc::<VirtIOBlkDev>()
+                .unwrap_or_else(|_| unreachable!());
+            let buffer_caches = virtio_blk.cache.lock();
+            for offset_aligned_page in (round_down_to_page(old_size)..new_size).step_by(PAGE_SIZE) {
+                let page = address_space.get_page(offset_aligned_page).unwrap();
+                for i in page.buffer_head_cnts()..MAX_BUFFERS_PER_PAGE {
+                    let offset_aligned_block = offset_aligned_page + i * BLOCK_SIZE;
+                    if offset_aligned_block < new_size {
+                        let blk_idx = inode.get_blk_idx(offset_aligned_block)?;
+                        let buffer_head = buffer_caches.get_buffer_head(blk_idx);
+                        page.insert_buffer_head(buffer_head);
+                    }
+                }
+            }
+            inode.set_size(new_size);
+        }
+        Ok(buf.len())
     }
 
     /// Read from offset in self, and will fill `buf` until `buf` is full or eof
@@ -221,10 +333,21 @@ impl dyn File {
     }
 
     pub async fn write(&self, buf: &[u8]) -> SyscallResult {
+        if self.flags().contains(OpenFlags::O_APPEND) {
+            self.set_pos(self.size());
+        }
         let pos = self.pos();
         let ret = self.write_at(pos, buf).await?;
         self.set_pos(pos + ret);
         Ok(ret)
+    }
+
+    /// Given interested events, keep track of these events and return events
+    /// that is ready.
+    // TODO:
+    pub async fn poll(&self, events: PollEvents) -> PollEvents {
+        log::info!("[File::poll] path:{}", self.dentry().path());
+        self.base_poll(events).await
     }
 
     pub fn load_dir(&self) -> SysResult<()> {

@@ -171,6 +171,7 @@ __try_read_user:
 __try_write_user:
     mv a2, a0
     mv a0, zero
+    lb a1, 0(a2)
     sb a1, 0(a2)
     ret
 

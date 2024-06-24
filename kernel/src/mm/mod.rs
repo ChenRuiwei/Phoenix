@@ -6,7 +6,6 @@
 //!
 //! Every task or process has a memory_space to control its virtual memory.
 
-///
 pub mod memory_space;
 mod user_ptr;
 
@@ -38,8 +37,8 @@ pub fn init() {
 
 /// MMIO in QEMU
 pub const MMIO: &[(usize, usize, MapPerm)] = &[
-    (0x10000000, 0x1000, MapPerm::RW),   // UART
-    (0x10001000, 0x1000, MapPerm::RW),   // VIRTIO
-    (0x02000000, 0x10000, MapPerm::RW),  // CLINT
-    (0x0C000000, 0x400000, MapPerm::RW), // PLIC
+    (0x10000000, 0x100, MapPerm::RW),      // UART
+    (0x10001000, 0x1000, MapPerm::RW),     // VIRTIO
+    (0x02000000, 0x10000, MapPerm::RW),    // CLINT
+    (0x0C00_0000, 0x60_0000, MapPerm::RW), // PLIC
 ];

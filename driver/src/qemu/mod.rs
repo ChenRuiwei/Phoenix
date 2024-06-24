@@ -1,14 +1,13 @@
-pub mod uart;
 pub mod virtio_blk;
 
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
-use memory::{alloc_frames, dealloc_frame, FrameTracker, PhysAddr, PhysPageNum, VirtAddr};
-use sync::mutex::SpinNoIrqLock;
+use memory::{
+    address::vaddr_to_paddr, alloc_frames, dealloc_frame, FrameTracker, PhysAddr, PhysPageNum,
+    VirtAddr,
+};
 use virtio_drivers::BufferDirection;
-
-static QUEUE_FRAMES: SpinNoIrqLock<Vec<FrameTracker>> = SpinNoIrqLock::new(Vec::new());
 
 pub struct VirtioHalImpl;
 
@@ -17,22 +16,15 @@ unsafe impl virtio_drivers::Hal for VirtioHalImpl {
         pages: usize,
         _direction: BufferDirection,
     ) -> (virtio_drivers::PhysAddr, NonNull<u8>) {
-        let mut ppn_base = PhysPageNum(0);
-        // We lock the queue in advance to ensure that we can get a contiguous area
-        let mut queue_frames_locked = QUEUE_FRAMES.lock();
-        // TODO: what does align_log2 mean
-        let mut frames = alloc_frames(pages);
-        for i in 0..pages {
-            let frame = frames.pop().unwrap();
-            if i == pages - 1 {
-                ppn_base = frame.ppn;
-            }
-            queue_frames_locked.push(frame);
+        let mut pa = alloc_frames(pages);
+        let ppn = pa.floor();
+        for ppn in ppn..ppn + pages {
+            ppn.clear_page();
         }
-        let pa: PhysAddr = ppn_base.into();
-        (pa.0, unsafe {
-            NonNull::new_unchecked(pa.to_offset().to_va().as_mut_ptr())
-        })
+        (
+            pa.0,
+            NonNull::new(pa.to_offset().to_va().as_mut_ptr()).unwrap(),
+        )
     }
 
     unsafe fn dma_dealloc(
@@ -48,28 +40,21 @@ unsafe impl virtio_drivers::Hal for VirtioHalImpl {
         0
     }
 
-    unsafe fn mmio_phys_to_virt(
-        paddr: virtio_drivers::PhysAddr,
-        _size: usize,
-    ) -> core::ptr::NonNull<u8> {
-        log::debug!("phy2virt: addr {:#x}", paddr);
-        NonNull::new_unchecked(PhysAddr::from(paddr).to_offset().to_va().as_mut_ptr())
+    unsafe fn mmio_phys_to_virt(paddr: virtio_drivers::PhysAddr, _size: usize) -> NonNull<u8> {
+        NonNull::new(PhysAddr::from(paddr).to_offset().to_va().as_mut_ptr()).unwrap()
     }
 
     unsafe fn share(
-        buffer: core::ptr::NonNull<[u8]>,
-        _direction: virtio_drivers::BufferDirection,
+        buffer: NonNull<[u8]>,
+        _direction: BufferDirection,
     ) -> virtio_drivers::PhysAddr {
-        VirtAddr::from(buffer.as_ptr() as *const usize as usize)
-            .to_offset()
-            .to_pa()
-            .bits()
+        memory::vaddr_to_paddr((buffer.as_ptr() as *const u8 as usize).into()).into()
     }
 
     unsafe fn unshare(
         _paddr: virtio_drivers::PhysAddr,
-        _buffer: core::ptr::NonNull<[u8]>,
-        _direction: virtio_drivers::BufferDirection,
+        _buffer: NonNull<[u8]>,
+        _direction: BufferDirection,
     ) {
     }
 }

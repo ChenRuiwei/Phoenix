@@ -4,19 +4,26 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::{arch::riscv64, ops::Range};
+use core::{
+    arch::riscv64,
+    borrow::Borrow,
+    cell::{RefCell, SyncUnsafeCell, UnsafeCell},
+    ops::Range,
+};
 
 use async_utils::block_on;
 use config::{
     board::MEMORY_END,
     mm::{
-        DL_INTERP_OFFSET, PAGE_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END,
-        U_SEG_HEAP_BEG, U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG,
-        U_SEG_STACK_END, VIRT_RAM_OFFSET,
+        align_offset_to_page, is_page_aligned, DL_INTERP_OFFSET, PAGE_SIZE,
+        USER_STACK_PRE_ALLOC_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG,
+        U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG, U_SEG_STACK_END,
+        VIRT_RAM_OFFSET,
     },
 };
 use log::info;
-use memory::{page::Page, pte::PTEFlags, PageTable, PhysAddr, VirtAddr, VirtPageNum};
+use memory::{page_table, pte::PTEFlags, PageTable, PhysAddr, VirtAddr, VirtPageNum};
+use page::Page;
 use riscv::register::mideleg;
 use spin::Lazy;
 use systype::{SysError, SysResult};
@@ -31,7 +38,7 @@ use crate::{
         user_ptr::UserSlice,
         MMIO,
     },
-    processor::env::SumGuard,
+    processor::env::{within_sum, SumGuard},
     syscall::MmapFlags,
     task::{
         aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR, AT_RANDOM},
@@ -53,11 +60,13 @@ pub unsafe fn switch_kernel_page_table() {
 
 /// Virtual memory space for kernel and user.
 pub struct MemorySpace {
+    // NOTE: The reason why `page_table` and `areas` are `SyncUnsafeCell` is because they both
+    // represent memory region, it is likely to modify the two both.
     /// Page table of this memory space.
-    page_table: PageTable,
+    page_table: SyncUnsafeCell<PageTable>,
     /// Map of `VmArea`s in this memory space.
     /// NOTE: stores range that is lazy allocated
-    areas: RangeMap<VirtAddr, VmArea>,
+    areas: SyncUnsafeCell<RangeMap<VirtAddr, VmArea>>,
     /// Pointes to leader task.
     task: Option<Weak<Task>>,
 }
@@ -66,8 +75,8 @@ impl MemorySpace {
     /// Create an empty `MemorySpace`
     pub fn new() -> Self {
         Self {
-            page_table: PageTable::new(),
-            areas: RangeMap::new(),
+            page_table: SyncUnsafeCell::new(PageTable::new()),
+            areas: SyncUnsafeCell::new(RangeMap::new()),
             task: None,
         }
     }
@@ -75,8 +84,8 @@ impl MemorySpace {
     /// Create a new user memory space that inherits kernel page table.
     pub fn new_user() -> Self {
         Self {
-            page_table: PageTable::from_kernel(&KERNEL_SPACE.page_table),
-            areas: RangeMap::new(),
+            page_table: SyncUnsafeCell::new(PageTable::from_kernel(KERNEL_SPACE.page_table())),
+            areas: SyncUnsafeCell::new(RangeMap::new()),
             task: None,
         }
     }
@@ -195,6 +204,15 @@ impl MemorySpace {
                 VmAreaType::Mmio,
             ));
         }
+
+        let dtb_addr = config::mm::dtb_addr();
+        memory_space.push_vma(VmArea::new(
+            (dtb_addr + VIRT_RAM_OFFSET).into()
+                ..(dtb_addr + PAGE_SIZE * PAGE_SIZE + VIRT_RAM_OFFSET).into(),
+            MapPerm::RW,
+            VmAreaType::Mmio,
+        ));
+
         log::debug!("[kernel] KERNEL SPACE init finished");
         memory_space
     }
@@ -207,26 +225,20 @@ impl MemorySpace {
         self.task.as_ref().unwrap().upgrade().unwrap()
     }
 
-    pub fn areas_mut(&mut self) -> &mut RangeMap<VirtAddr, VmArea> {
-        &mut self.areas
+    pub fn areas(&self) -> &RangeMap<VirtAddr, VmArea> {
+        unsafe { &*self.areas.get() }
     }
 
-    pub fn page_table_mut(&mut self) -> &mut PageTable {
-        &mut self.page_table
+    pub fn areas_mut(&self) -> &mut RangeMap<VirtAddr, VmArea> {
+        unsafe { &mut *self.areas.get() }
     }
 
-    pub fn split_area(
-        &mut self,
-        old_range: Range<VirtAddr>,
-        split_range: Range<VirtAddr>,
-    ) -> Option<&mut VmArea> {
-        let area = self.areas.force_remove_one(old_range);
-        let (mut left, mut middle, mut right) = area.split(split_range);
-        let left_ret = left.map(|left| self.areas.try_insert(left.range_va(), left).unwrap());
-        let right_ret = right.map(|right| self.areas.try_insert(right.range_va(), right).unwrap());
-        let middle_ret =
-            middle.map(|middle| self.areas.try_insert(middle.range_va(), middle).unwrap());
-        middle_ret
+    pub fn page_table(&self) -> &PageTable {
+        unsafe { &*self.page_table.get() }
+    }
+
+    pub fn page_table_mut(&self) -> &mut PageTable {
+        unsafe { &mut *self.page_table.get() }
     }
 
     /// Map the sections in the elf.
@@ -269,7 +281,7 @@ impl MemorySpace {
 
             max_end_vpn = vm_area.end_vpn();
 
-            let map_offset = start_va.0 - start_va.floor().0 * PAGE_SIZE;
+            let map_offset = start_va - start_va.round_down();
 
             log::debug!(
                 "[map_elf] ph offset {:#x}, file size {:#x}, mem size {:#x}",
@@ -331,21 +343,6 @@ impl MemorySpace {
 
         memory_space.alloc_heap_lazily();
 
-        // // guard page
-        // let heap_start_va = user_stack_top + PAGE_SIZE;
-        // let heap_end_va = heap_start_va;
-        // let mut heap_vma = VmArea::new(
-        //     heap_start_va.into(),
-        //     heap_end_va.into(),
-        //     MapPerm::URW,
-        //     VmAreaType::Heap,
-        // );
-        // memory_space.push_vma(heap_vma);
-        // log::info!(
-        //     "[from_elf] map heap: {:#x}, {:#x}",
-        //     heap_start_va,
-        //     heap_end_va
-        // );
         (memory_space, user_stack_top, entry_point, auxv)
     }
 
@@ -448,7 +445,7 @@ impl MemorySpace {
             const SHARED_RANGE: Range<VirtAddr> =
                 VirtAddr::from_usize_range(U_SEG_SHARE_BEG..U_SEG_SHARE_END);
             let range = self
-                .areas
+                .areas()
                 .find_free_range(SHARED_RANGE, size)
                 .expect("no free shared area");
             ret_addr = range.start;
@@ -461,7 +458,7 @@ impl MemorySpace {
         if pages.is_empty() {
             for vpn in vm_area.range_vpn() {
                 let page = Arc::new(Page::new());
-                self.page_table.map(vpn, page.ppn(), map_perm.into());
+                self.page_table_mut().map(vpn, page.ppn(), map_perm.into());
                 pages.push(Arc::downgrade(&page));
                 vm_area.pages.insert(vpn, page);
             }
@@ -470,7 +467,7 @@ impl MemorySpace {
             let mut pages = pages.iter();
             for vpn in vm_area.range_vpn() {
                 let page = pages.next().unwrap().upgrade().unwrap();
-                self.page_table.map(vpn, page.ppn(), map_perm.into());
+                self.page_table_mut().map(vpn, page.ppn(), map_perm.into());
                 vm_area.pages.insert(vpn, page.clone());
             }
         }
@@ -483,7 +480,10 @@ impl MemorySpace {
     /// check should be done at the caller who call `detach_shm`
     pub fn detach_shm(&mut self, shmaddr: VirtAddr) {
         let mut range_to_remove = None;
-        if let Some((range, vm_area)) = self.areas.iter().find(|(range, _)| range.start == shmaddr)
+        if let Some((range, vm_area)) = self
+            .areas()
+            .iter()
+            .find(|(range, _)| range.start == shmaddr)
         {
             if vm_area.vma_type != VmAreaType::Shm {
                 panic!("[detach_shm] 'vm_area.vma_type != VmAreaType::Shm' this won't happen");
@@ -491,13 +491,13 @@ impl MemorySpace {
             log::warn!("[detach_shm] try to remove {:?}", range);
             range_to_remove = Some(range);
             for vpn in vm_area.range_vpn() {
-                self.page_table.unmap(vpn);
+                self.page_table_mut().unmap(vpn);
             }
         } else {
             panic!("[detach_shm] this won't happen");
         }
         if let Some(range) = range_to_remove {
-            self.areas.force_remove_one(range);
+            self.areas_mut().force_remove_one(range);
         } else {
             panic!("[detach_shm] range_to_remove is None! This should never happen");
         }
@@ -508,12 +508,12 @@ impl MemorySpace {
     /// Return the address of the stack top, which is aligned to 16 bytes.
     ///
     /// The stack has a range of [sp - size, sp].
-    pub fn alloc_stack(&mut self, size: usize) -> VirtAddr {
+    pub fn alloc_stack_lazily(&mut self, size: usize) -> VirtAddr {
         const STACK_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize_range(U_SEG_STACK_BEG..U_SEG_STACK_END);
 
         let range = self
-            .areas
+            .areas()
             .find_free_range(STACK_RANGE, size)
             .expect("too many stack!");
 
@@ -521,8 +521,12 @@ impl MemorySpace {
         let sp_init = VirtAddr::from((range.end.bits() - 1) & !0xf);
         log::debug!("[MemorySpace::alloc_stack] stack: {range:x?}, sp_init: {sp_init:x?}");
 
-        let vm_area = VmArea::new(range, MapPerm::URW, VmAreaType::Stack);
-        self.push_vma(vm_area);
+        let mut vm_area = VmArea::new(range.clone(), MapPerm::URW, VmAreaType::Stack);
+        vm_area.map_range(
+            self.page_table_mut(),
+            range.end - USER_STACK_PRE_ALLOC_SIZE..range.end,
+        );
+        self.push_vma_lazily(vm_area);
         sp_init
     }
 
@@ -541,7 +545,7 @@ impl MemorySpace {
     pub fn get_heap_break(&self) -> VirtAddr {
         // HACK: directly get U_SEG_HEAP_BEG instead？
         let (range, _) = self
-            .areas
+            .areas()
             .iter()
             .find(|(_, vma)| vma.vma_type == VmAreaType::Heap)
             .unwrap();
@@ -552,25 +556,25 @@ impl MemorySpace {
     /// success. On failure, the system call returns the current break.
     pub fn reset_heap_break(&mut self, new_brk: VirtAddr) -> VirtAddr {
         let (range, _vma) = self
-            .areas
+            .areas_mut()
             .iter_mut()
             .find(|(_, vma)| vma.vma_type == VmAreaType::Heap)
             .unwrap();
         log::debug!("[MemorySpace::reset_heap_break] heap range: {range:?}, new_brk: {new_brk:?}");
         let result = if new_brk > range.end {
-            let ret = self.areas.extend_back(range.start..new_brk);
+            let ret = self.areas_mut().extend_back(range.start..new_brk);
             if ret.is_ok() {
-                let (range_va, vm_area) = self.areas.get_key_value_mut(range.start).unwrap();
+                let (range_va, vm_area) = self.areas_mut().get_key_value_mut(range.start).unwrap();
                 vm_area.set_range_va(range_va);
             }
             ret
         } else if new_brk < range.end {
-            let ret = self.areas.reduce_back(range.start, new_brk);
+            let ret = self.areas_mut().reduce_back(range.start, new_brk);
             if ret.is_ok() {
-                let (range_va, vm_area) = self.areas.get_key_value_mut(range.start).unwrap();
+                let (range_va, vm_area) = self.areas_mut().get_key_value_mut(range.start).unwrap();
                 vm_area.set_range_va(range_va);
                 let range_vpn: Range<VirtPageNum> = new_brk.ceil()..range.end.ceil();
-                vm_area.unmap(&mut self.page_table, range_vpn);
+                vm_area.unmap(self.page_table_mut(), range_vpn);
             }
             ret
         } else {
@@ -586,15 +590,15 @@ impl MemorySpace {
     /// memory.
     pub fn from_user(user_space: &Self) -> Self {
         let mut memory_space = Self::new_user();
-        for (range, area) in user_space.areas.iter() {
+        for (range, area) in user_space.areas().iter() {
             let new_area = VmArea::from_another(area);
             debug_assert_eq!(range, new_area.range_va());
             memory_space.push_vma(new_area);
             // copy data from another space
             for vpn in area.range_vpn() {
-                if let Some(pte) = user_space.page_table.find_pte(vpn) {
+                if let Some(pte) = user_space.page_table().find_pte(vpn) {
                     let src_ppn = pte.ppn();
-                    let dst_ppn = memory_space.page_table.find_pte(vpn).unwrap().ppn();
+                    let dst_ppn = memory_space.page_table_mut().find_pte(vpn).unwrap().ppn();
                     dst_ppn.bytes_array().copy_from_slice(src_ppn.bytes_array());
                 }
             }
@@ -605,13 +609,13 @@ impl MemorySpace {
     /// Clone a same `MemorySpace` lazily.
     pub fn from_user_lazily(user_space: &mut Self) -> Self {
         let mut memory_space = Self::new_user();
-        for (range, area) in user_space.areas.iter() {
+        for (range, area) in user_space.areas().iter() {
             log::debug!("[MemorySpace::from_user_lazily] cloning {area:?}");
             let mut new_area = area.clone();
             debug_assert_eq!(range, new_area.range_va());
             for vpn in area.range_vpn() {
                 if let Some(page) = area.pages.get(&vpn) {
-                    let pte = user_space.page_table.find_pte(vpn).unwrap();
+                    let pte = user_space.page_table_mut().find_pte(vpn).unwrap();
                     let (pte_flags, ppn) = match area.vma_type {
                         VmAreaType::Shm => {
                             // If shared memory,
@@ -629,7 +633,7 @@ impl MemorySpace {
                             (new_flags, page.ppn())
                         }
                     };
-                    memory_space.page_table.map(vpn, ppn, pte_flags);
+                    memory_space.page_table_mut().map(vpn, ppn, pte_flags);
                 } else {
                     // lazy allocated area
                 }
@@ -641,37 +645,53 @@ impl MemorySpace {
 
     /// Push `VmArea` into `MemorySpace` and map it in page table.
     pub fn push_vma(&mut self, mut vma: VmArea) {
-        vma.map(&mut self.page_table);
-        self.areas.try_insert(vma.range_va(), vma).unwrap();
+        vma.map(self.page_table_mut());
+        self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
     }
 
     /// Push `VmArea` into `MemorySpace` without mapping it in page table.
     pub fn push_vma_lazily(&mut self, vma: VmArea) {
-        self.areas.try_insert(vma.range_va(), vma).unwrap();
+        self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
     }
 
     /// Push `VmArea` into `MemorySpace` and map it in page table, also copy
     /// `data` at `offset` of `vma`.
     pub fn push_vma_with_data(&mut self, mut vma: VmArea, offset: usize, data: &[u8]) {
-        vma.map(&mut self.page_table);
-        vma.copy_data_with_offset(&self.page_table, offset, data);
-        self.areas.try_insert(vma.range_va(), vma).unwrap();
+        vma.map(self.page_table_mut());
+        vma.fill_zero();
+        vma.copy_data_with_offset(self.page_table_mut(), offset, data);
+        self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
     }
 
     pub fn alloc_mmap_private_anon(&mut self, perm: MapPerm, length: usize) -> SysResult<VirtAddr> {
         const MMAP_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
         let range = self
-            .areas
+            .areas()
             .find_free_range(MMAP_RANGE, length)
             .expect("mmap range is full");
         let start = range.start;
         let mut vma = VmArea::new(range, perm, VmAreaType::Mmap);
-        vma.map(&mut self.page_table);
-        let mut buf = Vec::with_capacity(length);
-        buf.fill(0);
-        vma.copy_data_with_offset(&self.page_table, 0, &buf);
-        self.areas.try_insert(vma.range_va(), vma).unwrap();
+        vma.map(self.page_table_mut());
+        self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
+        Ok(start)
+    }
+
+    pub fn alloc_mmap_anonymous(
+        &mut self,
+        perm: MapPerm,
+        flags: MmapFlags,
+        length: usize,
+    ) -> SysResult<VirtAddr> {
+        const MMAP_RANGE: Range<VirtAddr> =
+            VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
+        let range = self
+            .areas()
+            .find_free_range(MMAP_RANGE, length)
+            .expect("mmap range is full");
+        let start = range.start;
+        let mut vma = VmArea::new_mmap(range, perm, flags, None, 0);
+        self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
         Ok(start)
     }
 
@@ -683,20 +703,110 @@ impl MemorySpace {
         file: Arc<dyn File>,
         offset: usize,
     ) -> SysResult<VirtAddr> {
+        debug_assert!(is_page_aligned(offset));
+        debug_assert!(offset + length <= file.size());
+
         const MMAP_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
+
         let range = self
-            .areas
+            .areas_mut()
             .find_free_range(MMAP_RANGE, length)
             .expect("mmap range is full");
         let start = range.start;
+
+        let page_table = self.page_table_mut();
+        let inode = file.inode();
+        let address_space = inode
+            .address_space()
+            .expect("should have address space, and may be no");
         let mut vma = VmArea::new_mmap(range, perm, flags, Some(file.clone()), offset);
-        vma.map(&mut self.page_table);
-        let mut buf = unsafe { UserSlice::new_unchecked(vma.start_va(), length) };
-        block_on(async { file.read_at(offset, &mut buf).await })?;
-        vma.copy_data_with_offset(&self.page_table, 0, &buf);
-        self.areas.try_insert(vma.range_va(), vma).unwrap();
+        let mut range_vpn = vma.range_vpn();
+        for offset_aligned in (offset..offset + length).step_by(PAGE_SIZE) {
+            let page = if let Some(page) = address_space.get_page(offset_aligned) {
+                page
+            } else if let Some(page) = block_on(async { file.read_page_at(offset_aligned).await })?
+            {
+                page
+            } else {
+                // no page means EOF
+                break;
+            };
+            let vpn = range_vpn.next().unwrap();
+            page_table.map(vpn, page.ppn(), perm.into());
+            vma.pages.insert(vpn, page);
+        }
+
+        // let kernel_perm = perm | MapPerm::W;
+        // let mut vma = VmArea::new_mmap(range, kernel_perm, flags, Some(file.clone()),
+        // offset); vma.map(self.page_table_mut());
+        // let mut buf = unsafe { UserSlice::<u8>::new_unchecked(vma.start_va(), length)
+        // }; block_on(async { file.read_at(offset, &mut buf).await })?;
+        // vma.set_perm_and_flush(self.page_table_mut(), perm);
+        // self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
         Ok(start)
+    }
+
+    fn split_area(
+        &self,
+        old_range: Range<VirtAddr>,
+        split_range: Range<VirtAddr>,
+    ) -> (
+        Option<&mut VmArea>,
+        Option<&mut VmArea>,
+        Option<&mut VmArea>,
+    ) {
+        let area = self.areas_mut().force_remove_one(old_range);
+        let (mut left, mut middle, mut right) = area.split(split_range);
+        let left_ret = left.map(|left| self.areas_mut().try_insert(left.range_va(), left).unwrap());
+        let right_ret = right.map(|right| {
+            self.areas_mut()
+                .try_insert(right.range_va(), right)
+                .unwrap()
+        });
+        let middle_ret = middle.map(|middle| {
+            self.areas_mut()
+                .try_insert(middle.range_va(), middle)
+                .unwrap()
+        });
+        (left_ret, middle_ret, right_ret)
+    }
+
+    pub fn unmap(&mut self, range: Range<VirtAddr>) -> SysResult<()> {
+        let (old_range, area) = self
+            .areas_mut()
+            .get_key_value_mut(range.start)
+            .ok_or(SysError::ENOMEM)?;
+        if range == old_range {
+            self.areas_mut().force_remove_one(old_range);
+        } else {
+            // WARN: currently do not support split between areas.
+            debug_assert!(old_range.end > range.end);
+            // do split and unmap
+            let (_, middle, _) = self.split_area(old_range.clone(), range);
+            if let Some(middle) = middle {
+                self.areas_mut().force_remove_one(old_range);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn mprotect(&mut self, range: Range<VirtAddr>, perm: MapPerm) -> SysResult<()> {
+        let (old_range, area) = self
+            .areas_mut()
+            .get_key_value_mut(range.start)
+            .ok_or(SysError::ENOMEM)?;
+        if range == old_range {
+            area.set_perm_and_flush(self.page_table_mut(), perm);
+        } else {
+            debug_assert!(old_range.end > range.end);
+            // do split and remap
+            let (_, middle, _) = self.split_area(old_range, range);
+            if let Some(middle) = middle {
+                middle.set_perm_and_flush(self.page_table_mut(), perm);
+            }
+        }
+        Ok(())
     }
 
     pub fn handle_page_fault(
@@ -705,16 +815,16 @@ impl MemorySpace {
         access_type: PageFaultAccessType,
     ) -> SysResult<()> {
         log::trace!("[MemorySpace::handle_page_fault] {va:?}");
-        let vm_area = self.areas.get_mut(va).ok_or_else(|| {
+        let vm_area = self.areas_mut().get_mut(va).ok_or_else(|| {
             log::error!("[handle_page_fault] no area containing {va:?}");
             SysError::EFAULT
         })?;
-        vm_area.handle_page_fault(&mut self.page_table, va.floor(), access_type)?;
+        vm_area.handle_page_fault(self.page_table_mut(), va.floor(), access_type)?;
         Ok(())
     }
 
     pub unsafe fn switch_page_table(&self) {
-        self.page_table.switch();
+        self.page_table().switch();
     }
 
     /// only for debug
@@ -729,7 +839,7 @@ impl MemorySpace {
         };
         let _sum_guard = SumGuard::new();
         unsafe { set_kernel_user_rw_trap() };
-        for (range, area) in self.areas.iter() {
+        for (range, area) in self.areas().iter() {
             log::warn!(
                 "==== {:?}, {:?}, {:?}, ====",
                 area.vma_type,
@@ -759,7 +869,10 @@ impl MemorySpace {
     }
 
     pub fn va2pa(&self, va: VirtAddr) -> PhysAddr {
-        let pte = self.page_table.find_pte(va.into()).expect("[va2pa] error");
+        let pte = self
+            .page_table()
+            .find_pte(va.into())
+            .expect("[va2pa] error");
         (pte.bits & 0xFFFF_FFFF_FFFF_F000 + va.page_offset()).into()
     }
 }

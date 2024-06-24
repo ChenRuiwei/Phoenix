@@ -1,5 +1,6 @@
 //! Implementation of [`FrameAllocator`] which
 //! controls all the frames in the operating system.
+
 use alloc::vec::Vec;
 use core::fmt::{self, Debug, Formatter};
 
@@ -19,8 +20,13 @@ impl FrameTracker {
     pub fn new(ppn: PhysPageNum) -> Self {
         // page cleaning
         // TODO: may be no need to always clean the page at first
-        ppn.empty_the_page();
+        // ppn.empty_the_page();
         Self { ppn }
+    }
+
+    /// Fill the page with zero.
+    pub fn fill_zero(&self) {
+        self.ppn.clear_page();
     }
 }
 
@@ -57,7 +63,7 @@ pub fn init_frame_allocator(start: PhysPageNum, end: PhysPageNum) {
 }
 
 /// Allocate a frame
-pub fn alloc_frame() -> FrameTracker {
+pub fn alloc_frame_tracker() -> FrameTracker {
     FRAME_ALLOCATOR
         .lock()
         .alloc()
@@ -68,12 +74,19 @@ pub fn alloc_frame() -> FrameTracker {
 /// Allocate contiguous frames
 /// TODO: if this function is hot used, we should change the return type. Return
 /// a vector is not efficient
-pub fn alloc_frames(size: usize) -> Vec<FrameTracker> {
+pub fn alloc_frame_trackers(size: usize) -> Vec<FrameTracker> {
     let first_frame = FRAME_ALLOCATOR.lock().alloc_contiguous(size, 0).unwrap();
 
     (first_frame..first_frame + size)
         .map(|u| FrameTracker::new((u + unsafe { START_PPN.unwrap().0 }).into()))
         .collect()
+}
+
+/// Allocate contiguous frames
+pub fn alloc_frames(size: usize) -> PhysAddr {
+    let ppn =
+        (unsafe { START_PPN.unwrap() }) + FRAME_ALLOCATOR.lock().alloc_contiguous(size, 0).unwrap();
+    ppn.to_pa()
 }
 
 /// Deallocate a frame

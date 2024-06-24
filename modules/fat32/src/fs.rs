@@ -1,5 +1,6 @@
 use alloc::sync::Arc;
 
+use device_core::BlockDevice;
 use vfs_core::{Dentry, FileSystemType, FileSystemTypeMeta, StatFs, SuperBlock, SuperBlockMeta};
 
 use crate::{as_sys_err, dentry::FatDentry, inode::dir::FatDirInode, DiskCursor, FatFs};
@@ -26,7 +27,7 @@ impl FileSystemType for FatFsType {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         _flags: vfs_core::MountFlags,
-        dev: Option<Arc<dyn driver::BlockDevice>>,
+        dev: Option<Arc<dyn BlockDevice>>,
     ) -> systype::SysResult<Arc<dyn vfs_core::Dentry>> {
         debug_assert!(dev.is_some());
         let sb = FatSuperBlock::new(SuperBlockMeta::new(dev, self.clone()));

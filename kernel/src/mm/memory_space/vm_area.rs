@@ -1,10 +1,11 @@
 use alloc::{collections::BTreeMap, sync::Arc};
-use core::ops::Range;
+use core::ops::{Range, RangeBounds};
 
-use arch::memory::sfence_vma_vaddr;
+use arch::{memory::sfence_vma_vaddr, sstatus};
 use async_utils::block_on;
 use config::mm::PAGE_SIZE;
-use memory::{page::Page, pte::PTEFlags, VirtAddr, VirtPageNum};
+use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
+use page::Page;
 use systype::{SysError, SysResult};
 use vfs_core::File;
 
@@ -229,6 +230,35 @@ impl VmArea {
         self.pages.get(&vpn).expect("no page found for vpn")
     }
 
+    pub fn fill_zero(&self) {
+        for page in self.pages.values() {
+            page.fill_zero()
+        }
+    }
+
+    pub fn set_perm_and_flush(&mut self, page_table: &mut PageTable, perm: MapPerm) {
+        self.set_perm(perm);
+        let pte_flags = perm.into();
+        let range_vpn = self.range_vpn();
+        for vpn in range_vpn {
+            let pte = page_table.find_pte(vpn).unwrap();
+            log::trace!(
+                "[origin pte:{:?}, new_flag:{:?}]",
+                pte.flags(),
+                pte.flags().union(pte_flags)
+            );
+            pte.set_flags(pte.flags().union(pte_flags));
+            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+        }
+    }
+
+    pub fn flush(&mut self, page_table: &mut PageTable) {
+        let range_vpn = self.range_vpn();
+        for vpn in range_vpn {
+            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+        }
+    }
+
     /// Map `VmArea` into page table.
     ///
     /// Will alloc new pages for `VmArea` according to `VmAreaType`.
@@ -242,9 +272,21 @@ impl VmArea {
         } else {
             for vpn in self.range_vpn() {
                 let page = Page::new();
+                // page.clear();
                 page_table.map(vpn, page.ppn(), pte_flags);
                 self.pages.insert(vpn, Arc::new(page));
             }
+        }
+    }
+
+    pub fn map_range(&mut self, page_table: &mut PageTable, range: Range<VirtAddr>) {
+        let range_vpn = range.start.into()..range.end.into();
+        assert!(self.start_vpn() <= range_vpn.start && self.end_vpn() >= range_vpn.end);
+        let pte_flags: PTEFlags = self.map_perm.into();
+        for vpn in range_vpn {
+            let page = Page::new();
+            page_table.map(vpn, page.ppn(), pte_flags);
+            self.pages.insert(vpn, Arc::new(page));
         }
     }
 
@@ -261,7 +303,12 @@ impl VmArea {
     ///
     /// Assume that all frames were cleared before.
     // HACK: ugly
-    pub fn copy_data_with_offset(&self, page_table: &PageTable, offset: usize, data: &[u8]) {
+    pub fn copy_data_with_offset(
+        &mut self,
+        page_table: &mut PageTable,
+        offset: usize,
+        data: &[u8],
+    ) {
         // debug_assert_eq!(self.vma_type, VmAreaType::Elf);
         let _sum_guard = SumGuard::new();
 
@@ -408,9 +455,10 @@ impl VmArea {
                 self.vma_type
             );
             match self.vma_type {
-                VmAreaType::Heap => {
+                VmAreaType::Heap | VmAreaType::Stack => {
                     // lazy allcation for heap
                     page = Page::new();
+                    page.fill_zero();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, Arc::new(page));
                     unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
@@ -423,6 +471,12 @@ impl VmArea {
                         block_on(async { file.read_at(offset, &mut buf).await })?;
                         unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                     } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
+                        // private anonymous area
+                        page = Page::new();
+                        page.fill_zero();
+                        page_table.map(vpn, page.ppn(), self.map_perm.into());
+                        self.pages.insert(vpn, Arc::new(page));
+                        unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                     }
                 }
                 _ => {}

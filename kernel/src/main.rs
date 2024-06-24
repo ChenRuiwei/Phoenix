@@ -49,7 +49,7 @@ global_asm!(include_str!("link_app.asm"));
 static FIRST_HART: AtomicBool = AtomicBool::new(true);
 
 #[no_mangle]
-fn rust_main(hart_id: usize) {
+fn rust_main(hart_id: usize, dtb_addr: usize) {
     if FIRST_HART
         .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
@@ -61,10 +61,11 @@ fn rust_main(hart_id: usize) {
         logging::init();
 
         println!("[kernel] ---------- main hart {hart_id} started ---------- ");
+        config::mm::set_dtb_addr(dtb_addr);
 
         mm::init();
         trap::init();
-        driver::init();
+        driver::init(dtb_addr);
         loader::init();
         vfs::init();
         task::spawn_kernel_task(async move {
