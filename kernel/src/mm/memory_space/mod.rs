@@ -572,10 +572,15 @@ impl MemorySpace {
         } else if new_brk < range.end {
             let ret = self.areas_mut().reduce_back(range.start, new_brk);
             if ret.is_ok() {
-                let (range_va, vm_area) = self.areas_mut().get_key_value_mut(range.start).unwrap();
-                vm_area.set_range_va(range_va);
-                let range_vpn: Range<VirtPageNum> = new_brk.ceil()..range.end.ceil();
-                vm_area.unmap(self.page_table_mut(), range_vpn);
+                let (range_va, _) = self.areas_mut().get_key_value(range.start).unwrap();
+                let vma = self.areas_mut().force_remove_one(range_va.clone());
+                let (left, middle, right) = vma.split(range_va);
+                debug_assert!(left.is_none());
+                debug_assert!(middle.is_some());
+                debug_assert!(right.is_some());
+                let mut right_vma = right.unwrap();
+                right_vma.unmap(self.page_table_mut());
+                self.areas_mut().force_remove_one(right_vma.range_va());
             }
             ret
         } else {
@@ -696,6 +701,8 @@ impl MemorySpace {
         Ok(start)
     }
 
+    // NOTE: can not alloc all pages from `AddressSpace`, otherwise lmbench
+    // lat_pagefault will test page fault time as zero.
     pub fn alloc_mmap_area_lazily(
         &mut self,
         length: usize,
@@ -775,7 +782,7 @@ impl MemorySpace {
         if range == old_range {
             log::debug!("[MemorySpace::unmap] remove area {:?}", range.clone());
             let mut vma = self.areas_mut().force_remove_one(old_range);
-            vma.unmap(self.page_table_mut(), vma.range_vpn());
+            vma.unmap(self.page_table_mut());
         } else {
             // WARN: currently do not support split between areas.
             debug_assert!(old_range.end > range.end);
@@ -783,7 +790,7 @@ impl MemorySpace {
             let (_, middle, _) = self.split_area(old_range.clone(), range.clone());
             if let Some(middle) = middle {
                 let mut vma = self.areas_mut().force_remove_one(middle.range_va());
-                vma.unmap(self.page_table_mut(), vma.range_vpn());
+                vma.unmap(self.page_table_mut());
                 log::debug!("[MemorySpace::unmap] split and remove area {range:?}");
             }
         }
