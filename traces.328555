@@ -1,9 +1,0 @@
-rseq(0x7f808036dfe0, 0x20, 0, 0x53053053) = 0
-set_robust_list(0x7f808036d920, 24)     = 0
-rt_sigprocmask(SIG_SETMASK, ~[ILL FPE KILL SEGV STOP RTMIN RT_1], NULL, 8) = 0
-mmap(NULL, 134217728, PROT_NONE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE, -1, 0) = 0x7f8077b6d000
-munmap(0x7f8077b6d000, 4796416)         = 0
-munmap(0x7f807c000000, 62312448)        = 0
-mprotect(0x7f8078000000, 135168, PROT_READ|PROT_WRITE) = 0
-clock_nanosleep(CLOCK_REALTIME, 0, {tv_sec=0, tv_nsec=10000000},  <unfinished ...>) = ?
-+++ exited with 1 +++

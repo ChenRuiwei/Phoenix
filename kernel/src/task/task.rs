@@ -15,7 +15,7 @@ use config::{
     mm::{DL_INTERP_OFFSET, USER_STACK_SIZE},
     process::INIT_PROC_PID,
 };
-use memory::VirtAddr;
+use memory::{vaddr_to_paddr, VirtAddr};
 use signal::{
     action::{SigHandlers, SigPending},
     siginfo::{SigDetails, SigInfo},
@@ -35,7 +35,10 @@ use super::{
 };
 use crate::{
     generate_accessors, generate_atomic_accessors, generate_state_methods, generate_with_methods,
-    ipc::{futex::RobustListHead, shm::SHARED_MEMORY_MANAGER},
+    ipc::{
+        futex::{futex_manager, FutexHashKey, RobustListHead, FUTEX_MANAGER},
+        shm::SHARED_MEMORY_MANAGER,
+    },
     mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
     processor::env::within_sum,
     syscall,
@@ -524,8 +527,10 @@ impl Task {
             UserWritePtr::from(address)
                 .write(self, 0)
                 .expect("tid address write error");
-            // TODO:
-            // self.with_mut_futexes(|futexes| futexes.wake(address, 1));
+            let key = FutexHashKey::Shared {
+                phyaddr: vaddr_to_paddr(address.into()),
+            };
+            futex_manager().wake(&key, 1);
         }
 
         // NOTE: leader will be removed by parent calling `sys_wait4`

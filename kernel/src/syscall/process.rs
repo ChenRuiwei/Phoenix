@@ -324,10 +324,10 @@ impl Syscall<'_> {
         }
         if flags.contains(CloneFlags::CHILD_SETTID) {
             UserWritePtr::from_usize(child_tid.bits()).write(&new_task, new_tid)?;
-            new_task.tid_address().set_child_tid = Some(child_tid);
+            new_task.tid_address().set_child_tid = Some(child_tid.bits());
         }
         if flags.contains(CloneFlags::CHILD_CLEARTID) {
-            new_task.tid_address().clear_child_tid = Some(child_tid);
+            new_task.tid_address().clear_child_tid = Some(child_tid.bits());
         }
         if flags.contains(CloneFlags::SETTLS) {
             new_task.trap_context_mut().set_user_tp(tls.bits());
