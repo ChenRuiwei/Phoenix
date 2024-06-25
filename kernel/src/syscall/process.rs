@@ -306,7 +306,6 @@ impl Syscall<'_> {
         tls: VirtAddr,
         child_tid: VirtAddr,
     ) -> SyscallResult {
-        let _exit_signal = flags & 0xff;
         let flags = CloneFlags::from_bits(flags as u64 & !0xff).ok_or_else(|| {
             log::error!("[sys_clone] unincluded flags {flags:#x}");
             SysError::EINVAL
@@ -315,21 +314,20 @@ impl Syscall<'_> {
             "[sys_clone] flags:{flags:?}, stack:{stack:#x}, tls:{tls:?}, parent_tid:{parent_tid:?}, child_tid:{child_tid:?}"
         );
         let task = self.task;
-        // if flags.contains(CloneFlags::THREAD) {
-        // // EINVAL:
-        // // CLONE_SIGHAND was specified in the flags mask, but CLONE_VM was not.
-        // // CLONE_THREAD was specified in the flags mask, but CLONE_SIGHAND was not.
-        // if !flags.contains(CloneFlags::SIGHAND) || !flags.contains(CloneFlags::VM) {
-        //     return Err(SysError::EINVAL);
-        // }
-        // }
         let stack = if stack != 0 { Some(stack.into()) } else { None };
         let new_task = task.do_clone(flags, stack, child_tid);
         new_task.trap_context_mut().set_user_a0(0);
         let new_tid = new_task.tid();
         log::info!("[sys_clone] clone a new thread, tid {new_tid}, clone flags {flags:?}",);
-        if !parent_tid.is_null() {
+        if flags.contains(CloneFlags::PARENT_SETTID) {
             UserWritePtr::from_usize(parent_tid.bits()).write(task, new_tid)?;
+        }
+        if flags.contains(CloneFlags::CHILD_SETTID) {
+            UserWritePtr::from_usize(child_tid.bits()).write(&new_task, new_tid)?;
+            new_task.tid_address().set_child_tid = Some(child_tid);
+        }
+        if flags.contains(CloneFlags::CHILD_CLEARTID) {
+            new_task.tid_address().clear_child_tid = Some(child_tid);
         }
         if flags.contains(CloneFlags::SETTLS) {
             new_task.trap_context_mut().set_user_tp(tls.bits());
