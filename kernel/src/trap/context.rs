@@ -29,6 +29,8 @@ pub struct TrapContext {
     /// Float regs
     /// TODO: add dirty flag to know whether we should save
     pub user_fx: UserFloatContext,
+
+    pub last_a0: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -178,6 +180,7 @@ impl TrapContext {
             // We will give the right kernel tp in `__return_to_user`
             kernel_tp: 0,
             user_fx: UserFloatContext::new(),
+            last_a0: 0,
         };
         cx.set_user_sp(sp);
         cx
@@ -226,6 +229,14 @@ impl TrapContext {
     pub fn set_user_a0(&mut self, val: usize) {
         // a0 == x10
         self.user_x[10] = val;
+    }
+
+    pub fn save_last_user_a0(&mut self) {
+        self.last_a0 = self.user_x[10];
+    }
+
+    pub fn restore_last_user_a0(&mut self) {
+        self.user_x[10] = self.last_a0;
     }
 
     /// Set entry point

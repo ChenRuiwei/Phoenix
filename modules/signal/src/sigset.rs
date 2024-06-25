@@ -4,7 +4,7 @@ use bitflags::*;
 
 pub const NSIG: usize = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Sig(i32);
 
@@ -70,6 +70,11 @@ impl fmt::Display for Sig {
         write!(f, "{}", self.0)
     }
 }
+impl fmt::Debug for Sig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", SigSet::from(*self))
+    }
+}
 
 impl From<usize> for Sig {
     fn from(item: usize) -> Self {
@@ -78,7 +83,7 @@ impl From<usize> for Sig {
 }
 
 bitflags! {
-    #[derive(Copy, Clone, Default)]
+    #[derive(Copy, Clone, Default, Debug)]
     pub struct SigSet: u64 {
         const SIGHUP    = 1 << 0 ;
         const SIGINT    = 1 << 1 ;
@@ -148,8 +153,8 @@ impl From<Sig> for SigSet {
     }
 }
 
-impl fmt::Debug for SigSet {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#018X}", self.bits())
-    }
-}
+// impl fmt::Debug for SigSet {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "{:#018X}", self.bits())
+//     }
+// }

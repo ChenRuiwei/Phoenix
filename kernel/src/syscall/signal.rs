@@ -331,11 +331,26 @@ impl Syscall<'_> {
         task.set_wake_up_signal(set);
         if timeout.not_null() {
             let timeout = timeout.read(&task)?;
+            if !timeout.is_valid() {
+                return Err(SysError::EINVAL);
+            }
+            log::warn!("[sys_rt_sigtimedwait] {:?}", timeout);
             task.suspend_timeout(timeout.into()).await;
         } else {
             suspend_now().await;
         }
+
         task.set_running();
-        Ok(0)
+        let si = task.with_mut_sig_pending(|pending| pending.dequeue_expect(set));
+        if let Some(si) = si {
+            log::warn!("[sys_rt_sigtimedwait] I'm woken by {:?}", si);
+            if info.not_null() {
+                info.write(&task, si);
+            }
+            Ok(si.sig.raw())
+        } else {
+            log::warn!("[sys_rt_sigtimedwait] I'm woken by timeout");
+            Err(SysError::EAGAIN)
+        }
     }
 }

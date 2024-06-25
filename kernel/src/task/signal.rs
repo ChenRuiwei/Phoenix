@@ -8,12 +8,7 @@ use core::{
 };
 
 use arch::time::get_time_duration;
-use signal::{
-    action::{Action, ActionType, SigActionFlag},
-    siginfo::{self, SigDetails, SigInfo},
-    signal_stack::{MContext, UContext},
-    sigset::{Sig, SigSet},
-};
+use signal::*;
 use systype::SysResult;
 use time::timeval::ITimerVal;
 
@@ -89,10 +84,15 @@ impl Task {
         }
     }
     fn recv(&self, si: SigInfo) {
-        log::info!("[Task::recv] tid {} recv {si:?}", self.tid());
+        log::warn!(
+            "[Task::recv] tid {} recv {si:?} {:?}",
+            self.tid(),
+            self.with_sig_handlers(|h| h.get(si.sig))
+        );
         self.with_mut_sig_pending(|pending| {
             pending.add(si);
             if self.is_interruptable() && pending.should_wake.contain_signal(si.sig) {
+                log::warn!("[Task::recv] tid {} has been woken", { self.tid() });
                 self.wake();
             }
         });
@@ -134,13 +134,19 @@ extern "C" {
 /// Signal dispositions and actions are process-wide: if an unhandled signal is
 /// delivered to a thread, then it will affect (terminate, stop, continue, be
 /// ignored in) all members of the thread group.
-pub fn do_signal(task: &Arc<Task>) -> SysResult<()> {
+pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
     let old_mask = *task.sig_mask();
+    let cx = task.trap_context_mut();
     loop {
         if let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
-            log::info!("[do signal] Handlering signal: {:?}", si);
             let action = task.with_sig_handlers(|handlers| handlers.get(si.sig));
-            log::info!("[do signal] {:?}", action);
+            log::warn!("[do signal] Handlering signal: {:?} {:?}", si, action);
+            if intr && action.flags.contains(SigActionFlag::SA_RESTART) {
+                cx.sepc -= 4;
+                cx.restore_last_user_a0();
+                log::warn!("[do_signal] restart syscall");
+                intr = false;
+            }
             match action.atype {
                 ActionType::Ignore => {}
                 ActionType::Kill => terminate(task, si.sig),
@@ -155,7 +161,6 @@ pub fn do_signal(task: &Arc<Task>) -> SysResult<()> {
                     // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
                     // 这些信息定义在Action的mask字段
                     *task.sig_mask() |= action.mask;
-                    let cx = task.trap_context_mut();
                     cx.user_fx.encounter_signal();
                     let signal_stack = task.sig_stack().take();
                     let sp = match signal_stack {
@@ -199,7 +204,7 @@ pub fn do_signal(task: &Arc<Task>) -> SysResult<()> {
                     // cause a random bug that sometimes user will trap into kernel because of
                     // accessing kernel addrress
                     if action.flags.contains(SigActionFlag::SA_SIGINFO) {
-                        log::error!("[SA_SIGINFO] set ucontext {ucontext:?}");
+                        // log::error!("[SA_SIGINFO] set ucontext {ucontext:?}");
                         // a2
                         cx.user_x[12] = new_sp;
                         #[derive(Default, Copy, Clone)]
@@ -225,7 +230,7 @@ pub fn do_signal(task: &Arc<Task>) -> SysResult<()> {
                     cx.user_x[1] = sigreturn_trampoline as usize;
                     // sp (it will be used later by sys_sigreturn to restore ucontext)
                     cx.user_x[2] = new_sp;
-                    log::error!("{:#x}", new_sp);
+                    // log::error!("{:#x}", new_sp);
                 }
             }
         } else {

@@ -13,14 +13,16 @@ use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
     sepc, stval,
 };
+use systype::SysError;
 use timer::timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
 use crate::{mm::PageFaultAccessType, syscall::Syscall, task::Task, trap::set_user_trap};
 
 /// handle an interrupt, exception, or system call from user space
+/// return if it is syscall and has been interrupted
 #[no_mangle]
-pub async fn trap_handler(task: &Arc<Task>) {
+pub async fn trap_handler(task: &Arc<Task>) -> bool {
     unsafe { set_kernel_trap() };
 
     let mut cx = task.trap_context_mut();
@@ -49,7 +51,11 @@ pub async fn trap_handler(task: &Arc<Task>) {
                         .await;
                     // cx is changed during sys_exec, so we have to call it again
                     cx = task.trap_context_mut();
+                    cx.save_last_user_a0();
                     cx.set_user_a0(ret);
+                    if ret == -(SysError::EINTR as isize) as usize {
+                        return true;
+                    }
                 }
                 Exception::StorePageFault
                 | Exception::InstructionPageFault
@@ -109,6 +115,7 @@ pub async fn trap_handler(task: &Arc<Task>) {
             );
         }
     }
+    false
 }
 
 extern "C" {

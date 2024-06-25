@@ -13,7 +13,7 @@ use timer::timer::{Timer, TIMER_MANAGER};
 use super::Task;
 use crate::{
     processor::{env::EnvContext, hart},
-    task::{signal::do_signal, task::TaskState::*},
+    task::{signal::*, task::TaskState::*},
     trap,
 };
 
@@ -89,7 +89,7 @@ pub async fn task_loop(task: Arc<Task>) {
             _ => {}
         }
 
-        trap::user_trap::trap_handler(&task).await;
+        let intr = trap::user_trap::trap_handler(&task).await;
 
         match task.state() {
             Zombie => break,
@@ -99,7 +99,7 @@ pub async fn task_loop(task: Arc<Task>) {
 
         task.update_itimers();
 
-        do_signal(&task).expect("do signal error");
+        do_signal(&task, intr).expect("do signal error");
     }
 
     log::debug!("thread {} terminated", task.tid());

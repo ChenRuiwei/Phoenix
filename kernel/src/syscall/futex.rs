@@ -1,10 +1,11 @@
 use async_utils::suspend_now;
+use bitflags::Flags;
 use systype::{SysError, SyscallResult};
 use time::timespec::TimeSpec;
 
 use super::Syscall;
 use crate::{
-    ipc::futex::{futex_manager, FutexHashKey, FutexWaiter, RobustListHead},
+    ipc::futex::{futex_manager, FutexHashKey, FutexOp, FutexWaiter, RobustListHead},
     mm::{FutexAddr, UserReadPtr, UserWritePtr},
 };
 
@@ -32,42 +33,12 @@ impl Syscall<'_> {
         uaddr2: usize,
         val3: u32,
     ) -> SyscallResult {
-        /// Tells the kernel that the futex is process-private and not shared
-        /// with another process. This OS doesn't support this flag
-        const FUTEX_PRIVATE_FLAG: i32 = 0x80;
-        // const FUTEX_CLOCK_REALTIME: i32 = 0x100;
-        /// Tests that the value at the futex word pointed to by the address
-        /// uaddr still contains the expected value val, and if so, then
-        /// sleeps waiting for a FUTEX_WAKE operation on the futex word.
-        const FUTEX_WAIT: i32 = 0;
-        /// Wakes at most val of the waiters that are waiting (e.g., inside
-        /// FUTEX_WAIT) on the futex word at the address uaddr.  Most commonly,
-        /// val is specified as either 1 (wake up a single waiter) or
-        /// INT_MAX (wake up all waiters). No guarantee is provided
-        /// about which waiters are awoken
-        const FUTEX_WAKE: i32 = 1;
-        // TODO: need fild descriptor
-        // const FUTEX_FD: i32 = 2;
-        /// Performs the same task as FUTEX_CMP_REQUEUE (see
-        /// below), except that no check is made using the value in val3. (The
-        /// argument val3 is ignored.)
-        const FUTEX_REQUEUE: i32 = 3;
-        /// First checks whether the location uaddr still contains the value
-        /// `val3`. If not, the operation fails with the error EAGAIN.
-        /// Otherwise, the operation wakes up a maximum of `val` waiters
-        /// that are waiting on the futex at `uaddr`. If there are more
-        /// than `val` waiters, then the remaining waiters are removed
-        /// from the wait queue of the source futex at `uaddr` and added
-        /// to the wait queue  of  the  target futex at `uaddr2`.  The
-        /// `val2` argument specifies an upper limit on the
-        /// number of waiters that are requeued to the futex at `uaddr2`.
-        const FUTEX_CMP_REQUEUE: i32 = 4;
-        // const FUTEX_WAKE_OP: i32 = 5;
-        // const FUTEX_WAIT_BITSET: i32 = 9;
-        // const FUTEX_WAKE_BITSET: i32 = 10;
+        let mut futex_op = FutexOp::from_bits_truncate(futex_op);
         let task = self.task;
         uaddr.check(&task)?;
-        let futex_key = if futex_op & FUTEX_PRIVATE_FLAG != 0 {
+        let is_private = futex_op.contains(FutexOp::Private);
+        futex_op.remove(FutexOp::Private);
+        let key = if is_private {
             FutexHashKey::Private {
                 mm: task.raw_mm_pointer(),
                 virtaddr: uaddr.addr,
@@ -76,11 +47,15 @@ impl Syscall<'_> {
             let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr.addr));
             FutexHashKey::Shared { phyaddr }
         };
-        let futex_op = futex_op & !FUTEX_PRIVATE_FLAG;
-        log::warn!("[sys_futex] uaddr:{:#x} key:{:?}", uaddr.raw(), futex_key);
+        log::warn!(
+            "[sys_futex] {:?} uaddr:{:#x} key:{:?}",
+            futex_op,
+            uaddr.raw(),
+            key
+        );
 
         match futex_op {
-            FUTEX_WAIT => {
+            FutexOp::Wait => {
                 let res = uaddr.read();
                 if res != val {
                     log::warn!(
@@ -90,14 +65,15 @@ impl Syscall<'_> {
                     return Err(SysError::EAGAIN);
                 }
                 futex_manager().add_waiter(
-                    &futex_key,
+                    &key,
                     FutexWaiter {
                         tid: task.tid(),
                         waker: task.waker().clone().unwrap(),
                     },
                 );
                 task.set_interruptable();
-                task.set_wake_up_signal(!*task.sig_mask_ref());
+                let wake_up_signal = !*task.sig_mask_ref();
+                task.set_wake_up_signal(wake_up_signal);
                 if timeout == 0 {
                     suspend_now().await;
                 } else {
@@ -108,23 +84,42 @@ impl Syscall<'_> {
                     }
                     let rem = task.suspend_timeout(timeout.into()).await;
                     if rem.is_zero() {
-                        futex_manager().remove_waiter(&futex_key, task.tid());
+                        futex_manager().remove_waiter(&key, task.tid());
                     }
+                }
+                if task.with_sig_pending(|p| p.has_expect_signals(wake_up_signal)) {
+                    log::warn!("[sys_futex] Woken by signal");
+                    futex_manager().remove_waiter(&key, task.tid());
+                    return Err(SysError::EINTR);
                 }
                 log::warn!("[sys_futex] I was woken");
                 task.set_running();
                 Ok(0)
             }
-            FUTEX_WAKE => {
-                let n_wake = futex_manager().wake(&futex_key, val)?;
+            FutexOp::Wake => {
+                let n_wake = futex_manager().wake(&key, val)?;
                 return Ok(n_wake);
             }
-            FUTEX_CMP_REQUEUE => {
+            FutexOp::Requeue => {
+                let n_wake = futex_manager().wake(&key, val)?;
+                let new_key = if is_private {
+                    FutexHashKey::Private {
+                        mm: task.raw_mm_pointer(),
+                        virtaddr: uaddr2.into(),
+                    }
+                } else {
+                    let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr2.into()));
+                    FutexHashKey::Shared { phyaddr }
+                };
+                futex_manager().requeue_waiters(key, new_key, timeout)?;
+                Ok(n_wake)
+            }
+            FutexOp::CmpRequeue => {
                 if uaddr.read() as u32 != val3 {
                     return Err(SysError::EAGAIN);
                 }
-                let n_wake = futex_manager().wake(&futex_key, val)?;
-                let new_key = if futex_op & FUTEX_PRIVATE_FLAG != 0 {
+                let n_wake = futex_manager().wake(&key, val)?;
+                let new_key = if is_private {
                     FutexHashKey::Private {
                         mm: task.raw_mm_pointer(),
                         virtaddr: uaddr2.into(),
@@ -133,23 +128,10 @@ impl Syscall<'_> {
                     let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr2.into()));
                     FutexHashKey::Shared { phyaddr }
                 };
-                futex_manager().requeue_waiters(futex_key, new_key, timeout)?;
+                futex_manager().requeue_waiters(key, new_key, timeout)?;
                 Ok(n_wake)
             }
-            FUTEX_REQUEUE => {
-                let n_wake = futex_manager().wake(&futex_key, val)?;
-                let new_key = if futex_op & FUTEX_PRIVATE_FLAG != 0 {
-                    FutexHashKey::Private {
-                        mm: task.raw_mm_pointer(),
-                        virtaddr: uaddr2.into(),
-                    }
-                } else {
-                    let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr2.into()));
-                    FutexHashKey::Shared { phyaddr }
-                };
-                futex_manager().requeue_waiters(futex_key, new_key, timeout)?;
-                Ok(n_wake)
-            }
+
             _ => panic!("unimplemented futexop {:?}", futex_op),
         }
     }
