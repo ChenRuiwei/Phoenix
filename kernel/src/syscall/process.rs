@@ -331,6 +331,9 @@ impl Syscall<'_> {
         if !parent_tid.is_null() {
             UserWritePtr::from_usize(parent_tid.bits()).write(task, new_tid)?;
         }
+        if flags.contains(CloneFlags::SETTLS) {
+            new_task.trap_context_mut().set_user_tp(tls.bits());
+        }
         spawn_user_task(new_task);
         Ok(new_tid)
     }

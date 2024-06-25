@@ -230,6 +230,8 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
                     cx.user_x[1] = sigreturn_trampoline as usize;
                     // sp (it will be used later by sys_sigreturn to restore ucontext)
                     cx.user_x[2] = new_sp;
+                    cx.user_x[4] = ucontext.uc_mcontext.user_x[4];
+                    cx.user_x[3] = ucontext.uc_mcontext.user_x[3];
                     // log::error!("{:#x}", new_sp);
                 }
             }

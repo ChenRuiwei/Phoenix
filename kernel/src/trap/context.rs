@@ -231,6 +231,11 @@ impl TrapContext {
         self.user_x[10] = val;
     }
 
+    pub fn set_user_tp(&mut self, val: usize) {
+        // tp == x4
+        self.user_x[4] = val;
+    }
+
     pub fn save_last_user_a0(&mut self) {
         self.last_a0 = self.user_x[10];
     }

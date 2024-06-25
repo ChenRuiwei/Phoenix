@@ -870,9 +870,9 @@ impl MemorySpace {
     pub fn va2pa(&self, va: VirtAddr) -> PhysAddr {
         let pte = self
             .page_table()
-            .find_pte(va.into())
+            .find_pte(va.floor())
             .expect("[va2pa] error");
-        (pte.bits & 0xFFFF_FFFF_FFFF_F000 + va.page_offset()).into()
+        pte.ppn().to_pa() + va.page_offset()
     }
 }
 
