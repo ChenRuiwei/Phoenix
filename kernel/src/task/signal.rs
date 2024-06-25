@@ -138,7 +138,7 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
     let old_mask = *task.sig_mask();
     let cx = task.trap_context_mut();
 
-    if let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
+    while let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
         let action = task.with_sig_handlers(|handlers| handlers.get(si.sig));
         log::warn!("[do signal] Handlering signal: {:?} {:?}", si, action);
         if intr && action.flags.contains(SigActionFlag::SA_RESTART) {
@@ -234,6 +234,7 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
                 cx.user_x[4] = ucontext.uc_mcontext.user_x[4];
                 cx.user_x[3] = ucontext.uc_mcontext.user_x[3];
                 // log::error!("{:#x}", new_sp);
+                break;
             }
         }
     }
