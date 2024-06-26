@@ -117,7 +117,7 @@ impl Syscall<'_> {
         // log::error!("[SA_SIGINFO] load ucontext {ucontext:?}");
         *task.sig_mask() = ucontext.uc_sigmask;
         *task.sig_stack() = (ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack);
-        cx.sepc = ucontext.uc_mcontext.sepc;
+        cx.sepc = ucontext.uc_mcontext.user_x[0];
         cx.user_x = ucontext.uc_mcontext.user_x;
         // log::error!("stask after {:#x}", cx.user_x[2]);
         Ok(cx.user_x[10])

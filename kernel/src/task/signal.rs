@@ -137,106 +137,105 @@ extern "C" {
 pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
     let old_mask = *task.sig_mask();
     let cx = task.trap_context_mut();
-    loop {
-        if let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
-            let action = task.with_sig_handlers(|handlers| handlers.get(si.sig));
-            log::info!("[do signal] Handlering signal: {:?} {:?}", si, action);
-            if intr && action.flags.contains(SigActionFlag::SA_RESTART) {
-                cx.sepc -= 4;
-                cx.restore_last_user_a0();
-                log::info!("[do_signal] restart syscall");
-                intr = false;
-            }
-            match action.atype {
-                ActionType::Ignore => {}
-                ActionType::Kill => terminate(task, si.sig),
-                ActionType::Stop => stop(task, si.sig),
-                ActionType::Cont => cont(task, si.sig),
-                ActionType::User { entry } => {
-                    // The signal being delivered is also added to the signal mask, unless
-                    // SA_NODEFER was specified when registering the handler.
-                    if !action.flags.contains(SigActionFlag::SA_NODEFER) {
-                        task.sig_mask().add_signal(si.sig)
-                    };
-                    // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
-                    // 这些信息定义在Action的mask字段
-                    *task.sig_mask() |= action.mask;
-                    cx.user_fx.encounter_signal();
-                    let signal_stack = task.sig_stack().take();
-                    let sp = match signal_stack {
-                        Some(s) => {
-                            log::error!("[sigstack] use user defined signal stack. Unimplemented");
-                            s.get_stack_top()
-                        }
-                        None => {
-                            // 如果进程未定义专门的信号栈，
-                            // 用户自定义的信号处理函数将使用进程的普通栈空间，
-                            // 即和其他普通函数相同的栈。这个栈通常就是进程的主栈，
-                            // 也就是在进程启动时由操作系统自动分配的栈。
-                            cx.user_x[2]
-                        }
-                    };
-                    // extend the signal_stack
-                    // 在栈上压入一个UContext，存储trap frame里的寄存器信息
-                    let mut new_sp = sp - size_of::<UContext>();
-                    let ucontext_ptr: UserWritePtr<UContext> = new_sp.into();
-                    // TODO: should increase the size of the signal_stack? It seams umi doesn't do
-                    // that
-                    let ucontext = UContext {
-                        uc_flags: 0,
-                        uc_link: 0,
-                        uc_sigmask: old_mask,
-                        uc_stack: signal_stack.unwrap_or_default(),
-                        uc_mcontext: MContext {
-                            sepc: cx.sepc,
-                            user_x: cx.user_x,
-                        },
-                    };
-                    log::trace!("[save_context_into_sigstack] ucontext_ptr: {ucontext_ptr:?}");
-                    ucontext_ptr.write(&task, ucontext)?;
-                    task.set_sig_ucontext_ptr(new_sp);
-                    // user defined void (*sa_handler)(int);
-                    cx.user_x[10] = si.sig.raw();
-                    // if sa_flags contains SA_SIGINFO, It means user defined function is
-                    // void (*sa_sigaction)(int, siginfo_t *, void *ucontext); which two more
-                    // parameters
-                    // FIXME: `SigInfo` and `UContext` may not be the exact struct in C, which will
-                    // cause a random bug that sometimes user will trap into kernel because of
-                    // accessing kernel addrress
-                    if action.flags.contains(SigActionFlag::SA_SIGINFO) {
-                        // log::error!("[SA_SIGINFO] set ucontext {ucontext:?}");
-                        // a2
-                        cx.user_x[12] = new_sp;
-                        #[derive(Default, Copy, Clone)]
-                        #[repr(C)]
-                        pub struct LinuxSigInfo {
-                            pub si_signo: i32,
-                            pub si_errno: i32,
-                            pub si_code: i32,
-                            pub _pad: [i32; 29],
-                            _align: [u64; 0],
-                        }
-                        let mut siginfo_v = LinuxSigInfo::default();
-                        siginfo_v.si_signo = si.sig.raw() as _;
-                        siginfo_v.si_code = si.code;
-                        new_sp -= size_of::<LinuxSigInfo>();
-                        let siginfo_ptr: UserWritePtr<LinuxSigInfo> = new_sp.into();
-                        siginfo_ptr.write(&task, siginfo_v)?;
-                        cx.user_x[11] = new_sp;
+
+    while let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
+        let action = task.with_sig_handlers(|handlers| handlers.get(si.sig));
+        log::info!("[do signal] Handlering signal: {:?} {:?}", si, action);
+        if intr && action.flags.contains(SigActionFlag::SA_RESTART) {
+            cx.sepc -= 4;
+            cx.restore_last_user_a0();
+            log::info!("[do_signal] restart syscall");
+            intr = false;
+        }
+        match action.atype {
+            ActionType::Ignore => {}
+            ActionType::Kill => terminate(task, si.sig),
+            ActionType::Stop => stop(task, si.sig),
+            ActionType::Cont => cont(task, si.sig),
+            ActionType::User { entry } => {
+                // The signal being delivered is also added to the signal mask, unless
+                // SA_NODEFER was specified when registering the handler.
+                if !action.flags.contains(SigActionFlag::SA_NODEFER) {
+                    task.sig_mask().add_signal(si.sig)
+                };
+                // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
+                // 这些信息定义在Action的mask字段
+                *task.sig_mask() |= action.mask;
+                cx.user_fx.encounter_signal();
+                let signal_stack = task.sig_stack().take();
+                let sp = match signal_stack {
+                    Some(s) => {
+                        log::error!("[sigstack] use user defined signal stack. Unimplemented");
+                        s.get_stack_top()
                     }
-                    cx.sepc = entry;
-                    // ra (when the sigaction set by user finished,it will return to
-                    // sigreturn_trampoline, which calls sys_sigreturn)
-                    cx.user_x[1] = sigreturn_trampoline as usize;
-                    // sp (it will be used later by sys_sigreturn to restore ucontext)
-                    cx.user_x[2] = new_sp;
-                    cx.user_x[4] = ucontext.uc_mcontext.user_x[4];
-                    cx.user_x[3] = ucontext.uc_mcontext.user_x[3];
-                    // log::error!("{:#x}", new_sp);
+                    None => {
+                        // 如果进程未定义专门的信号栈，
+                        // 用户自定义的信号处理函数将使用进程的普通栈空间，
+                        // 即和其他普通函数相同的栈。这个栈通常就是进程的主栈，
+                        // 也就是在进程启动时由操作系统自动分配的栈。
+                        cx.user_x[2]
+                    }
+                };
+                // extend the signal_stack
+                // 在栈上压入一个UContext，存储trap frame里的寄存器信息
+                let mut new_sp = sp - size_of::<UContext>();
+                let ucontext_ptr: UserWritePtr<UContext> = new_sp.into();
+                // TODO: should increase the size of the signal_stack? It seams umi doesn't do
+                // that
+                let mut ucontext = UContext {
+                    uc_flags: 0,
+                    uc_link: 0,
+                    uc_sigmask: old_mask,
+                    uc_stack: signal_stack.unwrap_or_default(),
+                    uc_mcontext: MContext {
+                        user_x: cx.user_x,
+                        fpstate: [0; 66],
+                    },
+                };
+                ucontext.uc_mcontext.user_x[0] = cx.sepc;
+                log::trace!("[save_context_into_sigstack] ucontext_ptr: {ucontext_ptr:?}");
+                ucontext_ptr.write(&task, ucontext)?;
+                task.set_sig_ucontext_ptr(new_sp);
+                // user defined void (*sa_handler)(int);
+                cx.user_x[10] = si.sig.raw();
+                // if sa_flags contains SA_SIGINFO, It means user defined function is
+                // void (*sa_sigaction)(int, siginfo_t *, void *ucontext); which two more
+                // parameters
+                // FIXME: `SigInfo` and `UContext` may not be the exact struct in C, which will
+                // cause a random bug that sometimes user will trap into kernel because of
+                // accessing kernel addrress
+                if action.flags.contains(SigActionFlag::SA_SIGINFO) {
+                    // log::error!("[SA_SIGINFO] set ucontext {ucontext:?}");
+                    // a2
+                    cx.user_x[12] = new_sp;
+                    #[derive(Default, Copy, Clone)]
+                    #[repr(C)]
+                    pub struct LinuxSigInfo {
+                        pub si_signo: i32,
+                        pub si_errno: i32,
+                        pub si_code: i32,
+                        pub _pad: [i32; 29],
+                        _align: [u64; 0],
+                    }
+                    let mut siginfo_v = LinuxSigInfo::default();
+                    siginfo_v.si_signo = si.sig.raw() as _;
+                    siginfo_v.si_code = si.code;
+                    new_sp -= size_of::<LinuxSigInfo>();
+                    let siginfo_ptr: UserWritePtr<LinuxSigInfo> = new_sp.into();
+                    siginfo_ptr.write(&task, siginfo_v)?;
+                    cx.user_x[11] = new_sp;
                 }
+                cx.sepc = entry;
+                // ra (when the sigaction set by user finished,it will return to
+                // sigreturn_trampoline, which calls sys_sigreturn)
+                cx.user_x[1] = sigreturn_trampoline as usize;
+                // sp (it will be used later by sys_sigreturn to restore ucontext)
+                cx.user_x[2] = new_sp;
+                cx.user_x[4] = ucontext.uc_mcontext.user_x[4];
+                cx.user_x[3] = ucontext.uc_mcontext.user_x[3];
+                // log::error!("{:#x}", new_sp);
+                break;
             }
-        } else {
-            break;
         }
     }
     Ok(())

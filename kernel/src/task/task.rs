@@ -531,6 +531,11 @@ impl Task {
                 phyaddr: vaddr_to_paddr(address.into()),
             };
             futex_manager().wake(&key, 1);
+            let key = FutexHashKey::Private {
+                mm: self.raw_mm_pointer(),
+                virtaddr: address.into(),
+            };
+            futex_manager().wake(&key, 1);
         }
 
         // NOTE: leader will be removed by parent calling `sys_wait4`

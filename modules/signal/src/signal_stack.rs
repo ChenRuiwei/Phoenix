@@ -53,6 +53,6 @@ pub struct UContext {
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct MContext {
-    pub sepc: usize,
     pub user_x: [usize; 32],
+    pub fpstate: [usize; 66],
 }
