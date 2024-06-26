@@ -302,11 +302,11 @@ impl Syscall<'_> {
         Err(SysError::EINTR)
     }
 
-    /// Suspends execution of the calling thread until one of the
-    /// signals in set is pending (If one of the signals in set is already
-    /// pending for the calling thread, sigwaitinfo() will return
-    /// immediately.). It removes the signal from the set of pending signals
-    /// and returns the signal number as its function result.
+    /// Suspends execution of the calling thread until one of the signals in set
+    /// is pending (If one of the signals in set is already pending for the
+    /// calling thread, sigwaitinfo() will return immediately.). It removes the
+    /// signal from the set of pending signals and returns the signal number
+    /// as its function result.
     ///
     /// - `set`: Suspend the execution of the process until a signal in `set`
     ///   that arrives

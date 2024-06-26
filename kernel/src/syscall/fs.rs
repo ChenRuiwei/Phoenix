@@ -18,8 +18,7 @@ use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, InodeType, MountFlags,
-    OpenFlags, Path, PollEvents, RenameFlags, SeekFrom, Stat, StatFs, AT_FDCWD,
-    AT_REMOVEDIR,
+    OpenFlags, Path, PollEvents, RenameFlags, SeekFrom, Stat, StatFs, AT_FDCWD, AT_REMOVEDIR,
 };
 
 use super::Syscall;
@@ -742,6 +741,7 @@ impl Syscall<'_> {
         let task = self.task;
         let file = task.with_fd_table(|table| table.get_file(fd))?;
         let whence = Whence::from_repr(whence).ok_or(SysError::EINVAL)?;
+
         match whence {
             Whence::SeekSet => file.seek(SeekFrom::Start(offset as u64)),
             Whence::SeekCur => file.seek(SeekFrom::Current(offset as i64)),

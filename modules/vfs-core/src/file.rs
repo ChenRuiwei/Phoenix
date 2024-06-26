@@ -144,11 +144,16 @@ pub trait File: Send + Sync {
     /// this does not change the size of the file). If data is later written at
     /// this point, subsequent reads of the data in the gap (a "hole") return
     /// null bytes ('\0') until data is actually written into the gap.
+    // TODO: On Linux, using lseek() on a terminal device fails with the error
+    // ESPIPE. However, many function will use this Seek.
     fn seek(&self, pos: SeekFrom) -> SyscallResult {
         let mut res_pos = self.pos();
         match pos {
             SeekFrom::Current(off) => {
                 if off < 0 {
+                    if res_pos as i64 - off.abs() < 0 {
+                        return Err(SysError::EINVAL);
+                    }
                     res_pos -= off.abs() as usize;
                 } else {
                     res_pos += off as usize;

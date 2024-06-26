@@ -41,11 +41,11 @@ impl Syscall<'_> {
         let key = if is_private {
             FutexHashKey::Private {
                 mm: task.raw_mm_pointer(),
-                virtaddr: uaddr.addr,
+                vaddr: uaddr.addr,
             }
         } else {
             let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr.addr));
-            FutexHashKey::Shared { phyaddr }
+            FutexHashKey::Shared { paddr: phyaddr }
         };
         log::info!(
             "[sys_futex] {:?} uaddr:{:#x} key:{:?}",
@@ -105,11 +105,11 @@ impl Syscall<'_> {
                 let new_key = if is_private {
                     FutexHashKey::Private {
                         mm: task.raw_mm_pointer(),
-                        virtaddr: uaddr2.into(),
+                        vaddr: uaddr2.into(),
                     }
                 } else {
                     let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr2.into()));
-                    FutexHashKey::Shared { phyaddr }
+                    FutexHashKey::Shared { paddr: phyaddr }
                 };
                 futex_manager().requeue_waiters(key, new_key, timeout)?;
                 Ok(n_wake)
@@ -122,11 +122,11 @@ impl Syscall<'_> {
                 let new_key = if is_private {
                     FutexHashKey::Private {
                         mm: task.raw_mm_pointer(),
-                        virtaddr: uaddr2.into(),
+                        vaddr: uaddr2.into(),
                     }
                 } else {
                     let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr2.into()));
-                    FutexHashKey::Shared { phyaddr }
+                    FutexHashKey::Shared { paddr: phyaddr }
                 };
                 futex_manager().requeue_waiters(key, new_key, timeout)?;
                 Ok(n_wake)

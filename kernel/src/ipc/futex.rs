@@ -26,8 +26,8 @@ pub fn futex_manager() -> &'static mut FutexManager {
 
 #[derive(Debug, Hash, PartialEq, PartialOrd, Eq, Copy, Clone)]
 pub enum FutexHashKey {
-    Shared { phyaddr: PhysAddr },
-    Private { mm: usize, virtaddr: VirtAddr },
+    Shared { paddr: PhysAddr },
+    Private { mm: usize, vaddr: VirtAddr },
 }
 
 #[derive(Debug)]

@@ -255,7 +255,11 @@ impl Task {
 
     /// Pid means tgid.
     pub fn pid(self: &Arc<Self>) -> Pid {
-        self.leader().tid()
+        if self.is_leader() {
+            self.tid()
+        } else {
+            self.leader().tid()
+        }
     }
 
     pub fn tid(&self) -> Tid {
@@ -514,12 +518,12 @@ impl Task {
                 .write(self, 0)
                 .expect("tid address write error");
             let key = FutexHashKey::Shared {
-                phyaddr: vaddr_to_paddr(address.into()),
+                paddr: vaddr_to_paddr(address.into()),
             };
             futex_manager().wake(&key, 1);
             let key = FutexHashKey::Private {
                 mm: self.raw_mm_pointer(),
-                virtaddr: address.into(),
+                vaddr: address.into(),
             };
             futex_manager().wake(&key, 1);
         }
