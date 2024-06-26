@@ -705,6 +705,7 @@ impl MemorySpace {
     // lat_pagefault will test page fault time as zero.
     pub fn alloc_mmap_area_lazily(
         &mut self,
+        addr: VirtAddr,
         length: usize,
         perm: MapPerm,
         flags: MmapFlags,
@@ -717,10 +718,14 @@ impl MemorySpace {
         const MMAP_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
 
-        let range = self
-            .areas_mut()
-            .find_free_range(MMAP_RANGE, length)
-            .expect("mmap range is full");
+        let range = if flags.contains(MmapFlags::MAP_FIXED) {
+            self.unmap(addr..addr + length)?;
+            addr..addr + length
+        } else {
+            self.areas_mut()
+                .find_free_range(MMAP_RANGE, length)
+                .expect("mmap range is full")
+        };
         let start = range.start;
 
         let page_table = self.page_table_mut();
@@ -775,37 +780,43 @@ impl MemorySpace {
     }
 
     pub fn unmap(&mut self, range: Range<VirtAddr>) -> SysResult<()> {
-        let (first_range, area) = self
-            .areas_mut()
-            .get_key_value_mut(range.start)
-            .ok_or(SysError::ENOMEM)?;
-        let r_bound = cmp::min(range.end, first_range.end);
-        if first_range.start >= range.start && first_range.end <= range.end {
-            log::debug!("[MemorySpace::unmap] remove area {:?}", range.clone());
-            let mut vma = self.areas_mut().force_remove_one(first_range);
-            vma.unmap(self.page_table_mut());
-            return Ok(());
-        } else {
-            // do split and unmap
-            let (_, middle, _) = self.split_area(first_range, range.start..r_bound);
-            if let Some(middle) = middle {
-                let mut vma = self.areas_mut().force_remove_one(middle.range_va());
+        log::debug!("[MemorySpace::unmap] remove area {:?}", range.clone());
+
+        // First find the left most vm_area containing `range.start`.
+        if let Some((first_range, first_vma)) = self.areas_mut().get_key_value_mut(range.start) {
+            if first_range.start >= range.start && first_range.end <= range.end {
+                log::debug!(
+                    "[MemorySpace::unmap] remove left most area {:?}",
+                    first_range.clone()
+                );
+                let mut vma = self.areas_mut().force_remove_one(first_range);
                 vma.unmap(self.page_table_mut());
-                log::debug!("[MemorySpace::unmap] split and remove area {range:?}");
+            } else {
+                // do split and unmap
+                let split_range = range.start..cmp::min(range.end, first_range.end);
+                log::debug!("[MemorySpace::unmap] split and remove left most vma {first_vma:?} in range {split_range:?}");
+                let (_, middle, _) = self.split_area(first_range, split_range);
+                if let Some(middle) = middle {
+                    let mut vma = self.areas_mut().force_remove_one(middle.range_va());
+                    vma.unmap(self.page_table_mut());
+                }
             }
         }
-        for (r, vma) in self.areas_mut().range_mut(r_bound..range.end) {
+        for (r, vma) in self.areas_mut().range_mut(range.clone()) {
             if r.start >= range.start && r.end <= range.end {
-                log::debug!("[MemorySpace::unmap] remove area {:?}", range.clone());
+                log::debug!("[MemorySpace::unmap] remove area {:?}", r);
                 let mut vma = self.areas_mut().force_remove_one(r);
                 vma.unmap(self.page_table_mut());
             } else if r.end > range.end {
                 // do split and unmap
+                log::debug!(
+                    "[MemorySpace::unmap] split and remove vma {vma:?} in range {:?}",
+                    r.start..range.end
+                );
                 let (_, middle, _) = self.split_area(r.clone(), r.start..range.end);
                 if let Some(middle) = middle {
                     let mut vma = self.areas_mut().force_remove_one(middle.range_va());
                     vma.unmap(self.page_table_mut());
-                    log::debug!("[MemorySpace::unmap] split and remove area {range:?}");
                 }
             }
         }

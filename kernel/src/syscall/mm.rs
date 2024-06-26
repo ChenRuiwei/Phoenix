@@ -127,10 +127,6 @@ impl Syscall<'_> {
             return Err(SysError::EINVAL);
         }
 
-        if flags.contains(MmapFlags::MAP_FIXED) {
-            log::error!("not support mmap fixed yet");
-        }
-
         match flags.intersection(MmapFlags::MAP_TYPE_MASK) {
             MmapFlags::MAP_SHARED => {
                 if flags.contains(MmapFlags::MAP_ANONYMOUS) {
@@ -143,11 +139,10 @@ impl Syscall<'_> {
                 } else {
                     let file = task.with_fd_table(|table| table.get_file(fd))?;
                     if offset + length > file.size() {
-                        return Err(SysError::EINVAL);
+                        log::warn!("offset plus length is bigger than file size");
                     }
-                    // PERF: lazy alloc for mmap
                     let start_va = task.with_mut_memory_space(|m| {
-                        m.alloc_mmap_area_lazily(length, perm, flags, file, offset)
+                        m.alloc_mmap_area_lazily(addr, length, perm, flags, file, offset)
                     })?;
                     Ok(start_va.bits())
                 }
@@ -156,16 +151,19 @@ impl Syscall<'_> {
                 if flags.contains(MmapFlags::MAP_ANONYMOUS) {
                     let start_va = task
                         .with_mut_memory_space(|m| m.alloc_mmap_anonymous(perm, flags, length))?;
-                    return Ok(start_va.bits());
+                    Ok(start_va.bits())
+                } else {
+                    log::warn!("private copy on write mmap is not implemented yet");
+                    let file = task.with_fd_table(|table| table.get_file(fd))?;
+                    if offset + length > file.size() {
+                        log::warn!("offset plus length is bigger than file size");
+                    }
+                    // TODO: private copy on write
+                    let start_va = task.with_mut_memory_space(|m| {
+                        m.alloc_mmap_area_lazily(addr, length, perm, flags, file, offset)
+                    })?;
+                    Ok(start_va.bits())
                 }
-                let file = task.with_fd_table(|table| table.get_file(fd))?;
-                if offset + length > file.size() {
-                    return Err(SysError::EINVAL);
-                }
-                let start_va = task.with_mut_memory_space(|m| {
-                    m.alloc_mmap_area_lazily(length, perm, flags, file, offset)
-                })?;
-                Ok(start_va.bits())
             }
             _ => Err(SysError::EINVAL),
         }
