@@ -126,6 +126,7 @@ impl<'a> Syscall<'a> {
             MUNMAP => self.sys_munmap(args[0].into(), args[1]),
             MPROTECT => self.sys_mprotect(args[0].into(), args[1], args[2] as _),
             MSYNC => self.sys_do_nothing("msync"),
+            MEMBARRIER => self.sys_do_nothing("membarrier"),
             // Shared Memory
             SHMGET => self.sys_shmget(args[0], args[1], args[2] as _),
             SHMAT => self.sys_shmat(args[0], args[1].into(), args[2] as _),

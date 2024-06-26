@@ -39,7 +39,7 @@ use crate::{
         futex::{futex_manager, FutexHashKey, RobustListHead, FUTEX_MANAGER},
         shm::SHARED_MEMORY_MANAGER,
     },
-    mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
+    mm::{memory_space::init_stack, MemorySpace, UserReadPtr, UserWritePtr},
     processor::env::within_sum,
     syscall,
     task::{
@@ -415,13 +415,6 @@ impl Task {
 
         if new.is_leader() {
             new.memory_space.lock().set_task(&new);
-        }
-
-        if flags.contains(CloneFlags::CHILD_SETTID) {
-            log::warn!("CloneFlags::CHILD_SETTID");
-            UserWritePtr::from_usize(child_tid.bits())
-                .write(self, new.tid())
-                .expect("CloneFlags::CHILD_SETTID error");
         }
 
         TASK_MANAGER.add(&new);

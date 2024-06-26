@@ -296,6 +296,7 @@ impl VmArea {
         let vpns: Vec<_> = self.pages.keys().cloned().collect();
         for vpn in vpns {
             page_table.unmap(vpn);
+            unsafe { sfence_vma_vaddr(vpn.into()) };
             self.pages.remove(&vpn);
         }
     }
