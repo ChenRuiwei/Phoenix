@@ -249,7 +249,7 @@ impl Task {
         if self.is_leader() {
             self.clone()
         } else {
-            self.leader.as_ref().cloned().unwrap().upgrade().unwrap()
+            self.leader.as_ref().unwrap().upgrade().unwrap()
         }
     }
 
@@ -508,20 +508,6 @@ impl Task {
             self.trap_context_mut().sepc
         );
 
-        log::debug!("[Task::do_exit] set children to be zombie and reparent them to init");
-        debug_assert_ne!(self.tid(), INIT_PROC_PID);
-        self.with_mut_children(|children| {
-            if children.is_empty() {
-                return;
-            }
-            let init_proc = TASK_MANAGER.init_proc();
-            for c in children.values() {
-                c.set_zombie();
-                *c.parent.lock() = Some(Arc::downgrade(&init_proc));
-            }
-            init_proc.children.lock().extend(children.clone());
-        });
-
         if let Some(address) = self.tid_address_ref().clear_child_tid {
             log::info!("[do_exit] clear_child_tid: {}", address);
             UserWritePtr::from(address)
@@ -538,36 +524,64 @@ impl Task {
             futex_manager().wake(&key, 1);
         }
 
-        // NOTE: leader will be removed by parent calling `sys_wait4`
-        if !self.is_leader() {
-            self.with_mut_thread_group(|tg| tg.remove(self));
-            TASK_MANAGER.remove(self.tid())
-        } else {
-            // TODO: drop most of resource
-            if let Some(parent) = self.parent() {
-                let parent = parent.upgrade().unwrap();
-                parent.receive_siginfo(
-                    SigInfo {
-                        sig: Sig::SIGCHLD,
-                        code: SigInfo::CLD_EXITED,
-                        details: SigDetails::CHLD {
-                            pid: self.pid(),
-                            status: self.exit_code(),
-                            utime: self.time_stat().user_time(),
-                            stime: self.time_stat().sys_time(),
-                        },
-                    },
-                    false,
-                );
+        let is_last = self.with_mut_thread_group(|tg| {
+            tg.remove(self);
+            if tg.len() == 0 {
+                true
+            } else {
+                false
             }
-            // Upon _exit(2), all attached shared memory segments are detached from the
-            // process.
-            self.with_shm_ids(|ids| {
-                for (_, shm_id) in ids.iter() {
-                    SHARED_MEMORY_MANAGER.detach(*shm_id, self.pid());
-                }
-            });
+        });
+
+        if !self.is_leader {
+            // NOTE: leader will be removed by parent calling `sys_wait4`
+            TASK_MANAGER.remove(self.tid());
         }
+
+        if !is_last {
+            return;
+        }
+
+        log::debug!("[Task::do_exit] set children to be zombie and reparent them to init");
+        debug_assert_ne!(self.tid(), INIT_PROC_PID);
+        self.with_mut_children(|children| {
+            if children.is_empty() {
+                return;
+            }
+            let init_proc = TASK_MANAGER.init_proc();
+            for c in children.values() {
+                c.set_zombie();
+                *c.parent.lock() = Some(Arc::downgrade(&init_proc));
+            }
+            init_proc.children.lock().extend(children.clone());
+        });
+
+        // NOTE: leader will be removed by parent calling `sys_wait4`
+        // TODO: drop most of resource
+        if let Some(parent) = self.parent() {
+            let parent = parent.upgrade().unwrap();
+            parent.receive_siginfo(
+                SigInfo {
+                    sig: Sig::SIGCHLD,
+                    code: SigInfo::CLD_EXITED,
+                    details: SigDetails::CHLD {
+                        pid: self.pid(),
+                        status: self.exit_code(),
+                        utime: self.time_stat().user_time(),
+                        stime: self.time_stat().sys_time(),
+                    },
+                },
+                false,
+            );
+        }
+
+        // Upon _exit(2), all attached shared memory segments are detached from the
+        // process.
+        self.with_shm_ids(|ids| {
+            for (_, shm_id) in ids.iter() {
+                SHARED_MEMORY_MANAGER.detach(*shm_id, self.pid());
+            }
+        });
     }
 
     /// The dirfd argument is used in conjunction with the pathname argument as
@@ -617,6 +631,10 @@ impl ThreadGroup {
         Self {
             members: BTreeMap::new(),
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.members.len()
     }
 
     pub fn push(&mut self, task: Arc<Task>) {

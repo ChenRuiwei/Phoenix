@@ -10,6 +10,11 @@ use crate::processor::hart::local_hart;
 fn panic(info: &PanicInfo) -> ! {
     unsafe { disable_interrupt() };
 
+    println!("panic now!!!");
+
+    // NOTE: message below is mostly printed in log, if these messages can not be
+    // printed, it means some of the message will cause panic again, check
+    // `LogIf::print_log`.
     let logging_initialized = unsafe { logging::LOG_INITIALIZED.load(Ordering::SeqCst) };
     if let Some(location) = info.location() {
         if logging_initialized {
