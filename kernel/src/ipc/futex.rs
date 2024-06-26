@@ -50,7 +50,7 @@ impl FutexManager {
         Self(HashMap::new())
     }
     pub fn add_waiter(&mut self, key: &FutexHashKey, waiter: FutexWaiter) {
-        log::warn!("[futex::add_waiter] {:?} in {:?} ", waiter, key);
+        log::info!("[futex::add_waiter] {:?} in {:?} ", waiter, key);
         if let Some(waiters) = self.0.get(key) {
             waiters.lock().push(waiter);
         } else {
@@ -79,16 +79,11 @@ impl FutexManager {
             let n = min(n as usize, waiters.len());
             for _ in 0..n {
                 let waiter = waiters.pop().unwrap();
-                log::warn!("[futex_wake] {:?} has been woken", waiter);
+                log::info!("[futex_wake] {:?} has been woken", waiter);
                 waiter.wake();
             }
-            // for i in 0..n {
-            //     waiters[i].waker.wake_by_ref();
-            //     log::warn!("[futex_wake] {:?} has been woken", waiters[i]);
-            // }
-            // waiters.drain(0..n);
             drop(waiters);
-            log::warn!(
+            log::info!(
                 "[futex_wake] wake {} waiters in key {:?}, expect to wake {} waiters",
                 n,
                 key,
@@ -110,7 +105,7 @@ impl FutexManager {
             .0
             .get(&old)
             .ok_or_else(|| {
-                log::warn!("[futex] no waiters in key {:?}", old);
+                log::info!("[futex] no waiters in key {:?}", old);
                 SysError::EINVAL
             })?
             .lock();

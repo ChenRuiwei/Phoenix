@@ -217,9 +217,12 @@ impl Syscall<'_> {
         bitflags! {
             #[derive(Debug)]
             struct ShmGetFlags: i32 {
-                /// Create a new segment. If this flag is not used, then shmget() will find the segment associated with key and check to see if the user has permission to access the segment.
+                /// Create a new segment. If this flag is not used, then shmget() will
+                /// find the segment associated with key and check to see if the user
+                /// has permission to access the segment.
                 const IPC_CREAT = 0o1000;
-                /// This flag is used with IPC_CREAT to ensure that this call creates the segment.  If the segment already exists, the call fails.
+                /// This flag is used with IPC_CREAT to ensure that this call creates
+                /// the segment.  If the segment already exists, the call fails.
                 const IPC_EXCL = 0o2000;
             }
         }
@@ -308,7 +311,7 @@ impl Syscall<'_> {
                 m.attach_shm(shm.size(), shm_va, map_perm, &mut shm.pages)
             });
             task.with_mut_shm_ids(|ids| {
-                ids.insert(ret_addr.clone(), shmid);
+                ids.insert(ret_addr, shmid);
             });
             return Ok(ret_addr.into());
         } else {

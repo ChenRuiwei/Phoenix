@@ -84,7 +84,7 @@ impl Task {
         }
     }
     fn recv(&self, si: SigInfo) {
-        log::warn!(
+        log::info!(
             "[Task::recv] tid {} recv {si:?} {:?}",
             self.tid(),
             self.with_sig_handlers(|h| h.get(si.sig))
@@ -92,7 +92,7 @@ impl Task {
         self.with_mut_sig_pending(|pending| {
             pending.add(si);
             if self.is_interruptable() && pending.should_wake.contain_signal(si.sig) {
-                log::warn!("[Task::recv] tid {} has been woken", { self.tid() });
+                log::info!("[Task::recv] tid {} has been woken", { self.tid() });
                 self.wake();
             }
         });
@@ -140,11 +140,11 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
     loop {
         if let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
             let action = task.with_sig_handlers(|handlers| handlers.get(si.sig));
-            log::warn!("[do signal] Handlering signal: {:?} {:?}", si, action);
+            log::info!("[do signal] Handlering signal: {:?} {:?}", si, action);
             if intr && action.flags.contains(SigActionFlag::SA_RESTART) {
                 cx.sepc -= 4;
                 cx.restore_last_user_a0();
-                log::warn!("[do_signal] restart syscall");
+                log::info!("[do_signal] restart syscall");
                 intr = false;
             }
             match action.atype {

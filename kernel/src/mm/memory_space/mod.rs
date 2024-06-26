@@ -452,7 +452,7 @@ impl MemorySpace {
             ret_addr = range.start;
             VmArea::new(range, map_perm, VmAreaType::Shm)
         } else {
-            log::warn!("[attach_shm] user defined addr");
+            log::info!("[attach_shm] user defined addr");
             let shm_end = shmaddr + size;
             VmArea::new(shmaddr..shm_end, map_perm, VmAreaType::Shm)
         };
@@ -489,7 +489,7 @@ impl MemorySpace {
             if vm_area.vma_type != VmAreaType::Shm {
                 panic!("[detach_shm] 'vm_area.vma_type != VmAreaType::Shm' this won't happen");
             }
-            log::warn!("[detach_shm] try to remove {:?}", range);
+            log::info!("[detach_shm] try to remove {:?}", range);
             range_to_remove = Some(range);
             for vpn in vm_area.range_vpn() {
                 self.page_table_mut().unmap(vpn);
@@ -780,7 +780,7 @@ impl MemorySpace {
             .get_key_value_mut(range.start)
             .ok_or(SysError::ENOMEM)?;
         let r_bound = cmp::min(range.end, first_range.end);
-        if range == first_range {
+        if first_range.start >= range.start && first_range.end <= range.end {
             log::debug!("[MemorySpace::unmap] remove area {:?}", range.clone());
             let mut vma = self.areas_mut().force_remove_one(first_range);
             vma.unmap(self.page_table_mut());

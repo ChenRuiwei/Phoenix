@@ -345,7 +345,7 @@ impl Syscall<'_> {
         if let Some(si) = si {
             log::warn!("[sys_rt_sigtimedwait] I'm woken by {:?}", si);
             if info.not_null() {
-                info.write(&task, si);
+                info.write(&task, si)?;
             }
             Ok(si.sig.raw())
         } else {

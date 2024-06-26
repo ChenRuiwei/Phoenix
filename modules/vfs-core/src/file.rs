@@ -71,6 +71,41 @@ pub trait File: Send + Sync {
         todo!()
     }
 
+    /// Read a page at `offset_aligned` without address space.
+    async fn read_page_at(&self, offset_aligned: usize) -> SysResult<Option<Arc<Page>>> {
+        log::trace!("[File::read_page] read offset {offset_aligned}");
+
+        if offset_aligned >= self.size() {
+            log::warn!("[File::read_page] reach end of file");
+            return Ok(None);
+        }
+
+        let inode = self.inode();
+        let address_space = inode.address_space().unwrap();
+
+        let device = inode.super_block().device();
+        let mut page = Page::new_arc();
+        page.init_block_device(&device);
+        // read a page normally or less than a page when EOF reached
+        let len = self
+            .base_read_at(offset_aligned, page.bytes_array())
+            .await?;
+
+        let virtio_blk = device
+            .downcast_arc::<VirtIOBlkDev>()
+            .unwrap_or_else(|_| unreachable!());
+        let buffer_caches = virtio_blk.cache.lock();
+        for offset in (offset_aligned..offset_aligned + len).step_by(BLOCK_SIZE) {
+            let block_id = inode.get_blk_idx(offset)?;
+            let buffer_head = buffer_caches.get_buffer_head(block_id as usize);
+            page.insert_buffer_head(buffer_head);
+        }
+
+        address_space.insert_page(offset_aligned, page.clone());
+
+        Ok(Some(page))
+    }
+
     fn flush(&self) -> SysResult<usize> {
         todo!()
     }
@@ -209,41 +244,6 @@ impl dyn File {
         }
         log::info!("[File::read] read count {}", offset_it - offset);
         Ok(offset_it - offset)
-    }
-
-    /// Read a page at `offset_aligned` without address space.
-    pub async fn read_page_at(&self, offset_aligned: usize) -> SysResult<Option<Arc<Page>>> {
-        log::trace!("[File::read_page] read offset {offset_aligned}");
-
-        if offset_aligned >= self.size() {
-            log::warn!("[File::read_page] reach end of file");
-            return Ok(None);
-        }
-
-        let inode = self.inode();
-        let address_space = inode.address_space().unwrap();
-
-        let device = inode.super_block().device();
-        let mut page = Page::new_arc();
-        page.init_block_device(&device);
-        // read a page normally or less than a page when EOF reached
-        let len = self
-            .base_read_at(offset_aligned, page.bytes_array())
-            .await?;
-
-        let virtio_blk = device
-            .downcast_arc::<VirtIOBlkDev>()
-            .unwrap_or_else(|_| unreachable!());
-        let buffer_caches = virtio_blk.cache.lock();
-        for offset in (offset_aligned..offset_aligned + len).step_by(BLOCK_SIZE) {
-            let block_id = inode.get_blk_idx(offset)?;
-            let buffer_head = buffer_caches.get_buffer_head(block_id as usize);
-            page.insert_buffer_head(buffer_head);
-        }
-
-        address_space.insert_page(offset_aligned, page.clone());
-
-        Ok(Some(page))
     }
 
     /// Called by write(2) and related system calls.

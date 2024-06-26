@@ -158,28 +158,15 @@ pub trait Dentry: Send + Sync {
     }
 
     /// Get the path of this dentry.
-    // HACK: code looks ugly and may be has problem
     fn path(&self) -> String {
         if let Some(p) = self.parent() {
-            let path = if self.name() == "/" {
-                String::from("")
+            let p_path = p.path();
+            if p_path == "/" {
+                p_path + self.name()
             } else {
-                String::from("/") + self.name()
-            };
-            let parent_name = p.name();
-            return if parent_name == "/" {
-                if p.parent().is_some() {
-                    // p is a mount point
-                    p.parent().unwrap().path() + path.as_str()
-                } else {
-                    path
-                }
-            } else {
-                // p is not root
-                p.path() + path.as_str()
-            };
+                p_path + "/" + self.name()
+            }
         } else {
-            log::warn!("dentry has no parent");
             String::from("/")
         }
     }
