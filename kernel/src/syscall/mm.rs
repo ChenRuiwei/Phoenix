@@ -227,7 +227,7 @@ impl Syscall<'_> {
             }
         }
         let shmflg = ShmGetFlags::from_bits_truncate(shmflg);
-        log::warn!("[sys_shmget] {key} {size} {:?}", shmflg);
+        log::info!("[sys_shmget] {key} {size} {:?}", shmflg);
 
         // Create a new shared memory. When it is specified, the shmflg is invalid
         const IPC_PRIVATE: usize = 0;
@@ -271,13 +271,13 @@ impl Syscall<'_> {
     ///
     /// On success, sys_shmat() returns an address pointer to the shared memory
     /// segment
-    pub fn sys_shmat(&self, shmid: usize, shmaddr: usize, shmflg: i32) -> SyscallResult {
+    pub fn sys_shmat(&self, shmid: usize, shmaddr: VirtAddr, shmflg: i32) -> SyscallResult {
         bitflags! {
             #[derive(Debug)]
             struct ShmAtFlags: i32 {
                 /// Attach the segment for read-only access.If this flag is not specified,
                 /// the segment is attached for read and write access, and the process
-                /// must have read and write permission for  the  segment.
+                /// must have read and write permission for the segment.
                 const SHM_RDONLY = 0o10000;
                 /// round attach address to SHMLBA boundary
                 const SHM_RND = 0o20000;
@@ -288,16 +288,15 @@ impl Syscall<'_> {
             }
         }
         let shmflg = ShmAtFlags::from_bits_truncate(shmflg as i32);
-        log::warn!("[sys_shmat] {shmid} {shmaddr} {:?}", shmflg);
+        log::info!("[sys_shmat] {shmid} {shmaddr:?} {:?}", shmflg);
 
-        let mut shm_va: VirtAddr = shmaddr.into();
-        if !shm_va.is_aligned() && !shmflg.contains(ShmAtFlags::SHM_RND) {
+        if !shmaddr.is_aligned() && !shmflg.contains(ShmAtFlags::SHM_RND) {
             // unaligned (i.e., not page-aligned and SHM_RND was not specified) shmaddr
             // value
             return Err(SysError::EINVAL);
         }
-        shm_va = shm_va.round_down();
-        let mut map_perm = MapPerm::RW;
+        let shmaddr_aligned = shmaddr.round_down();
+        let mut map_perm = MapPerm::URW;
         if shmflg.contains(ShmAtFlags::SHM_EXEC) {
             map_perm.insert(MapPerm::X);
         }
@@ -308,15 +307,15 @@ impl Syscall<'_> {
         if let Some(shm) = shm_manager.get_mut(&shmid) {
             let task = self.task;
             let ret_addr = task.with_mut_memory_space(|m| {
-                m.attach_shm(shm.size(), shm_va, map_perm, &mut shm.pages)
+                m.attach_shm(shm.size(), shmaddr_aligned, map_perm, &mut shm.pages)
             });
             task.with_mut_shm_ids(|ids| {
                 ids.insert(ret_addr, shmid);
             });
-            return Ok(ret_addr.into());
+            Ok(ret_addr.into())
         } else {
             // Invalid shmid value
-            return Err(SysError::EINVAL);
+            Err(SysError::EINVAL)
         }
     }
 
@@ -333,23 +332,22 @@ impl Syscall<'_> {
     /// from the shared memory block.
     ///
     /// On success, shmdt() returns 0;
-    pub fn sys_shmdt(&self, shmaddr: usize) -> SyscallResult {
-        log::warn!("[sys_shmdt] {:?}", shmaddr);
+    pub fn sys_shmdt(&self, shmaddr: VirtAddr) -> SyscallResult {
+        log::info!("[sys_shmdt] {:?}", shmaddr);
         let task = self.task;
-        let shm_va: VirtAddr = shmaddr.into();
-        if !shm_va.is_aligned() {
+        if !shmaddr.is_aligned() {
             // shmaddr is not aligned on a page boundary
             return Err(SysError::EINVAL);
         }
-        let shm_id = task.with_mut_shm_ids(|ids| ids.remove(&shm_va));
+        let shm_id = task.with_mut_shm_ids(|ids| ids.remove(&shmaddr));
         if let Some(shm_id) = shm_id {
-            task.with_mut_memory_space(|m| m.detach_shm(shm_va));
+            task.with_mut_memory_space(|m| m.detach_shm(shmaddr));
             SHARED_MEMORY_MANAGER.detach(shm_id, task.pid());
+            Ok(0)
         } else {
             // There is no shared memory segment attached at shmaddr;
-            return Err(SysError::EINVAL);
+            Err(SysError::EINVAL)
         }
-        Ok(0)
     }
 
     /// sys_shmctl performs the control operation specified by cmd on the System

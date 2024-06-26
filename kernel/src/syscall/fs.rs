@@ -6,18 +6,20 @@ use core::{
     task::{Context, Poll},
 };
 
+use arch::time::get_time_duration;
 use async_utils::{dyn_future, Async};
 use config::board::BLOCK_SIZE;
 use driver::BLOCK_DEVICE;
 use memory::VirtAddr;
 use strum::FromRepr;
 use systype::{SysError, SysResult, SyscallResult};
-use time::timespec::TimeSpec;
+use time::{timespec::TimeSpec, timeval::TimeVal};
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, InodeType, MountFlags,
-    OpenFlags, Path, PollEvents, RenameFlags, SeekFrom, Stat, StatFs, AT_FDCWD, AT_REMOVEDIR,
+    OpenFlags, Path, PollEvents, RenameFlags, SeekFrom, Stat, StatFs, AT_FDCWD,
+    AT_REMOVEDIR,
 };
 
 use super::Syscall;
@@ -101,12 +103,12 @@ impl Kstat {
             st_blksize: stat.st_blksize as i32,
             _pad1: stat.__pad2 as i32,
             st_blocks: stat.st_blocks as i64,
-            st_atime_sec: stat.st_atime.sec as isize,
-            st_atime_nsec: stat.st_atime.nsec as isize,
-            st_mtime_sec: stat.st_mtime.sec as isize,
-            st_mtime_nsec: stat.st_mtime.nsec as isize,
-            st_ctime_sec: stat.st_ctime.sec as isize,
-            st_ctime_nsec: stat.st_ctime.nsec as isize,
+            st_atime_sec: stat.st_atime.tv_sec as isize,
+            st_atime_nsec: stat.st_atime.tv_nsec as isize,
+            st_mtime_sec: stat.st_mtime.tv_sec as isize,
+            st_mtime_nsec: stat.st_mtime.tv_nsec as isize,
+            st_ctime_sec: stat.st_ctime.tv_sec as isize,
+            st_ctime_nsec: stat.st_ctime.tv_nsec as isize,
         }
     }
 }
@@ -526,7 +528,7 @@ impl Syscall<'_> {
         } else if flags != AT_REMOVEDIR && is_dir {
             return Err(SysError::EISDIR);
         }
-        parent.remove(dentry.name()).map(|_| 0)
+        parent.unlink(dentry.name()).map(|_| 0)
     }
 
     pub fn sys_ioctl(&self, fd: usize, cmd: usize, arg: usize) -> SyscallResult {
@@ -756,31 +758,71 @@ impl Syscall<'_> {
         Ok(0x777)
     }
 
-    // TODO:
-    /// change file timestamps with nanosecond precision
+    /// The utime() system call changes the access and modification times of the
+    /// inode specified by filename to the actime and modtime fields of times
+    /// respectively. The status change time (ctime) will be set to the current
+    /// time, even if the other time stamps don't actually change.
+    ///
+    /// If the tv_nsec field of one of the timespec structures has the special
+    /// value UTIME_NOW, then the corresponding file timestamp is set to the
+    /// current time. If the tv_nsec field of one of the timespec structures has
+    /// the special value UTIME_OMIT, then the corresponding file timestamp
+    /// is left unchanged. In both of these cases, the value of the
+    /// corresponding tv_sec field is ignored.
+    ///
+    /// If times is NULL, then the access and modification times of the file are
+    /// set to the current time.
     pub fn sys_utimensat(
         &self,
         dirfd: AtFd,
         pathname: UserReadPtr<u8>,
-        _times: UserReadPtr<TimeSpec>,
+        times: UserReadPtr<TimeSpec>,
         _flags: u32,
     ) -> SyscallResult {
+        const UTIME_NOW: usize = 0x3fffffff;
+        const UTIME_OMIT: usize = 0x3ffffffe;
+
         let task = self.task;
-        let file = if pathname.not_null() {
+        let inode = if pathname.not_null() {
             let path = pathname.read_cstr(task)?;
-            log::info!("[sys_utimensat], dirfd: {dirfd}, path: {path}",);
+            log::info!("[sys_utimensat] dirfd: {dirfd}, path: {path}");
             let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
-            dentry.inode()?;
+            dentry.inode()?
         } else {
             // NOTE: if `pathname` is NULL, acts as futimens
-            log::info!("[sys_utimensat], fd: {dirfd}",);
+            log::info!("[sys_utimensat] fd: {dirfd}");
             match dirfd {
                 AtFd::FdCwd => return Err(SysError::EINVAL),
                 AtFd::Normal(fd) => {
-                    task.with_fd_table(|table| table.get_file(fd))?;
+                    let file = task.with_fd_table(|table| table.get_file(fd))?;
+                    file.inode()
                 }
             }
         };
+
+        let mut inner = inode.meta().inner.lock();
+        let current_time = TimeSpec::from(get_time_duration());
+        if times.is_null() {
+            log::info!("[sys_utimensat] times is null, update with current time");
+            inner.atime = current_time;
+            inner.mtime = current_time;
+            inner.ctime = current_time;
+        } else {
+            let times = times.into_slice(task, 2)?;
+            log::info!("[sys_utimensat] times {:?}", times);
+            match times[0].tv_nsec {
+                UTIME_NOW => inner.atime = current_time,
+                UTIME_OMIT => {}
+                _ => inner.atime = times[0],
+            };
+            match times[1].tv_nsec {
+                UTIME_NOW => inner.mtime = current_time,
+                UTIME_OMIT => {}
+                _ => inner.mtime = times[1],
+            };
+            inner.ctime = current_time;
+        }
+
         Ok(0)
     }
 

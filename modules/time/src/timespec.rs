@@ -1,11 +1,11 @@
 use core::time::Duration;
 
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
 /// Describes times in seconds and nanoseconds.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
 pub struct TimeSpec {
-    tv_sec: usize,
-    tv_nsec: usize,
+    pub tv_sec: usize,
+    pub tv_nsec: usize,
 }
 
 impl TimeSpec {

@@ -50,7 +50,7 @@ impl Dentry for TtyDentry {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_remove(self: Arc<Self>, _name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SysResult<()> {
         Err(SysError::ENOTDIR)
     }
 }

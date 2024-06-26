@@ -1,4 +1,5 @@
 use alloc::string::String;
+use time::timespec::TimeSpec;
 use core::fmt::Display;
 
 use bitflags::Flags;
@@ -135,13 +136,6 @@ bitflags! {
     }
 }
 
-#[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub struct TimeSpec {
-    pub sec: u64,
-    pub nsec: u64,
-}
-
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 #[repr(C)]
 pub struct Stat {
@@ -161,12 +155,6 @@ pub struct Stat {
     pub st_mtime: TimeSpec,
     pub st_ctime: TimeSpec,
     pub unused: u64,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Time {
-    AccessTime(TimeSpec),
-    ModifiedTime(TimeSpec),
 }
 
 bitflags! {

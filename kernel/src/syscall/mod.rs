@@ -128,8 +128,8 @@ impl<'a> Syscall<'a> {
             MSYNC => self.sys_do_nothing("msync"),
             // Shared Memory
             SHMGET => self.sys_shmget(args[0], args[1], args[2] as _),
-            SHMAT => self.sys_shmat(args[0], args[1], args[2] as _),
-            SHMDT => self.sys_shmdt(args[0]),
+            SHMAT => self.sys_shmat(args[0], args[1].into(), args[2] as _),
+            SHMDT => self.sys_shmdt(args[0].into()),
             SHMCTL => self.sys_shmctl(args[0], args[1] as _, args[2]),
             // File system
             READ => self.sys_read(args[0], args[1].into(), args[2]).await,

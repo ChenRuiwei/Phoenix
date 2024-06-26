@@ -47,7 +47,7 @@ impl Syscall<'_> {
             let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr.addr));
             FutexHashKey::Shared { phyaddr }
         };
-        log::warn!(
+        log::info!(
             "[sys_futex] {:?} uaddr:{:#x} key:{:?}",
             futex_op,
             uaddr.raw(),
@@ -58,7 +58,7 @@ impl Syscall<'_> {
             FutexOp::Wait => {
                 let res = uaddr.read();
                 if res != val {
-                    log::warn!(
+                    log::info!(
                         "[futex_wait] value in {} addr is {res} but expect {val}",
                         uaddr.addr.0
                     );
@@ -78,7 +78,7 @@ impl Syscall<'_> {
                     suspend_now().await;
                 } else {
                     let timeout = UserReadPtr::<TimeSpec>::from(timeout as usize).read(&task)?;
-                    log::warn!("[futex_wait] waiting for {:?}", timeout);
+                    log::info!("[futex_wait] waiting for {:?}", timeout);
                     if !timeout.is_valid() {
                         return Err(SysError::EINVAL);
                     }
@@ -88,11 +88,11 @@ impl Syscall<'_> {
                     }
                 }
                 if task.with_sig_pending(|p| p.has_expect_signals(wake_up_signal)) {
-                    log::warn!("[sys_futex] Woken by signal");
+                    log::info!("[sys_futex] Woken by signal");
                     futex_manager().remove_waiter(&key, task.tid());
                     return Err(SysError::EINTR);
                 }
-                log::warn!("[sys_futex] I was woken");
+                log::info!("[sys_futex] I was woken");
                 task.set_running();
                 Ok(0)
             }

@@ -100,7 +100,7 @@ impl Dentry for Ext4Dentry {
         Ok(sub_dentry)
     }
 
-    fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
         let inode = self
             .inode()?
             .downcast_arc::<Ext4Inode>()

@@ -262,6 +262,9 @@ impl dyn File {
         let Some(address_space) = inode.address_space() else {
             log::debug!("[File::write] write without address_space");
             let count = self.base_write_at(offset, buf).await?;
+            if offset + count > inode.size() {
+                inode.set_size(offset + count);
+            }
             return Ok(count);
         };
 

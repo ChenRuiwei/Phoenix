@@ -84,9 +84,9 @@ pub trait Dentry: Send + Sync {
     /// inode for the negative child and return the child.
     fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>>;
 
-    /// Called by the unlink(2) system call. Delete a file inode in a directory
-    /// inode.
-    fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()>;
+    /// Called by the unlink(2) system call. Reduce an inode ref count in a
+    /// directory inode. Delete the inode when inode ref count is one.
+    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()>;
 
     fn base_rename_to(self: Arc<Self>, new: Arc<dyn Dentry>, flags: RenameFlags) -> SysResult<()> {
         Err(SysError::EINVAL)
@@ -218,13 +218,13 @@ impl dyn Dentry {
         Ok(child)
     }
 
-    pub fn remove(self: &Arc<Self>, name: &str) -> SysResult<()> {
+    pub fn unlink(self: &Arc<Self>, name: &str) -> SysResult<()> {
         if !self.inode()?.itype().is_dir() {
             return Err(SysError::ENOTDIR);
         }
         let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
         sub_dentry.clear_inode();
-        self.clone().base_remove(name)
+        self.clone().base_unlink(name)
     }
 
     pub fn rename_to(self: &Arc<Self>, new: &Arc<Self>, flags: RenameFlags) -> SysResult<()> {
@@ -290,7 +290,7 @@ impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
         todo!()
     }
 
-    fn base_remove(self: Arc<Self>, _name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SysResult<()> {
         todo!()
     }
 

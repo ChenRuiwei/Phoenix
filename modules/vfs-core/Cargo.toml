@@ -13,6 +13,7 @@ config = { path = "../../config/" }
 device-core = { path = "../device-core/" }
 page = { path = "../page/" }
 driver = { path = "../../driver/" }
+time = { path = "../time" }
 
 bitflags = "2.5"
 log = "0.4"

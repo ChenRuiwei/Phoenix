@@ -25,7 +25,7 @@ name = "arch"
 version = "0.1.0"
 dependencies = [
  "bit_field",
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "config",
  "log",
  "riscv",
@@ -77,9 +77,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.5.0"
+version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf4b9d6a944f767f8e5e0db018570623c85f3d925ac718db4e06d0187adb21c1"
+checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
 
 [[package]]
 name = "bitmap-allocator"
@@ -171,7 +171,7 @@ dependencies = [
  "arch",
  "async-trait",
  "async_utils",
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "config",
  "device-core",
  "fdt",
@@ -189,9 +189,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.12.0"
+version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dca9240753cf90908d7e4aac30f630662b02aebaa1b58a3cadabdb23385b58b"
+checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 
 [[package]]
 name = "embedded-hal"
@@ -243,7 +243,7 @@ name = "fatfs"
 version = "0.4.0"
 source = "git+https://github.com/ChenRuiwei/rust-fatfs?branch=smp#1f4c8d9194d13e78252936741fd8d835f48c850b"
 dependencies = [
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "log",
  "spin",
 ]
@@ -295,7 +295,7 @@ dependencies = [
  "arch",
  "async_utils",
  "bit_field",
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "buddy_system_allocator",
  "cfg-if",
  "config",
@@ -395,7 +395,7 @@ name = "memory"
 version = "0.1.0"
 dependencies = [
  "arch",
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "bitmap-allocator",
  "buddy_system_allocator",
  "config",
@@ -525,7 +525,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 name = "signal"
 version = "0.1.0"
 dependencies = [
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "log",
 ]
 
@@ -549,9 +549,9 @@ dependencies = [
 
 [[package]]
 name = "strum"
-version = "0.26.2"
+version = "0.26.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d8cec3501a5194c432b2b7976db6b7d10ec95c253208b45f83f7136aa985e29"
+checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
 dependencies = [
  "strum_macros",
 ]
@@ -571,9 +571,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.67"
+version = "2.0.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff8655ed1d86f3af4ee3fd3263786bc14245ad17c4c7e85ba7187fb3ae028c90"
+checksum = "901fa70d88b9d6c98022e23b4136f9f3e54e4662c3bc1bd1d84a42a9a0f0c1e9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -585,7 +585,7 @@ name = "sync"
 version = "0.1.0"
 dependencies = [
  "async_utils",
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "log",
  "riscv",
 ]
@@ -626,7 +626,7 @@ checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
 name = "user_lib"
 version = "0.1.0"
 dependencies = [
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "buddy_system_allocator",
  "signal",
  "time",
@@ -644,7 +644,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "async_utils",
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "config",
  "device-core",
  "driver",
@@ -665,7 +665,7 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "async-trait",
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "config",
  "device-core",
  "downcast-rs",
@@ -679,13 +679,14 @@ dependencies = [
  "spin",
  "sync",
  "systype",
+ "time",
 ]
 
 [[package]]
 name = "virtio-drivers"
 version = "0.7.3"
 dependencies = [
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "log",
  "zerocopy",
 ]
@@ -696,7 +697,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7f49914233c1d3b612f891e986b0c1e0e8a54d7076a0f2501a5e8a53e7054f"
 dependencies = [
- "bitflags 2.5.0",
+ "bitflags 2.6.0",
  "log",
  "zerocopy",
 ]
