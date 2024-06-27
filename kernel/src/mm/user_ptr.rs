@@ -16,7 +16,7 @@ use systype::{SysError, SysResult};
 
 use super::memory_space::vm_area::MapPerm;
 use crate::{
-    processor::env::SumGuard,
+    processor::{env::SumGuard, hart::current_task_ref},
     task::Task,
     trap::{
         kernel_trap::{set_kernel_user_rw_trap, will_read_fail, will_write_fail},
@@ -386,12 +386,18 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
 
     pub fn write(self, task: &Arc<Task>, val: T) -> SysResult<()> {
         debug_assert!(self.not_null());
+        if !Arc::ptr_eq(task, current_task_ref()) {
+            unsafe { task.switch_page_table() };
+        }
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>(),
             PageFaultAccessType::RW,
         )?;
         unsafe { core::ptr::write(self.ptr, val) };
+        if !Arc::ptr_eq(task, current_task_ref()) {
+            unsafe { current_task_ref().switch_page_table() };
+        }
         Ok(())
     }
 

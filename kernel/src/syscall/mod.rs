@@ -96,7 +96,7 @@ impl<'a> Syscall<'a> {
             SCHED_YIELD => self.sys_sched_yield().await,
             CLONE => self.sys_clone(
                 args[0],
-                args[1],
+                args[1].into(),
                 args[2].into(),
                 args[3].into(),
                 args[4].into(),

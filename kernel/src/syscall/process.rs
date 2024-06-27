@@ -303,7 +303,7 @@ impl Syscall<'_> {
     pub fn sys_clone(
         &self,
         flags: usize,
-        stack: usize,
+        stack: VirtAddr,
         parent_tid: VirtAddr,
         tls: VirtAddr,
         child_tid: VirtAddr,
@@ -316,11 +316,14 @@ impl Syscall<'_> {
             "[sys_clone] flags:{flags:?}, stack:{stack:#x}, tls:{tls:?}, parent_tid:{parent_tid:?}, child_tid:{child_tid:?}"
         );
         let task = self.task;
-        let stack = if stack != 0 { Some(stack.into()) } else { None };
-        let new_task = task.do_clone(flags, stack, child_tid);
+        let new_task = task.do_clone(flags);
         new_task.trap_context_mut().set_user_a0(0);
         let new_tid = new_task.tid();
         log::info!("[sys_clone] clone a new thread, tid {new_tid}, clone flags {flags:?}",);
+
+        if !stack.is_null() {
+            new_task.trap_context_mut().set_user_sp(stack.bits());
+        }
         if flags.contains(CloneFlags::PARENT_SETTID) {
             UserWritePtr::from_usize(parent_tid.bits()).write(task, new_tid)?;
         }

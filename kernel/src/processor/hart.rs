@@ -86,7 +86,6 @@ impl Hart {
         } else {
             // log::warn!("优化了，此时不需要切换页表");
         }
-        unsafe { task.switch_page_table() };
         unsafe { enable_interrupt() };
         log::trace!("[enter_user_task_switch] enter user task");
     }

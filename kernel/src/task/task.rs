@@ -41,7 +41,7 @@ use crate::{
     },
     mm::{memory_space::init_stack, MemorySpace, UserReadPtr, UserWritePtr},
     processor::env::within_sum,
-    syscall,
+    syscall::{self, CloneFlags},
     task::{
         aux::{AuxHeader, AT_BASE},
         manager::TASK_MANAGER,
@@ -301,14 +301,7 @@ impl Task {
         Arc::as_ptr(&self.memory_space) as usize
     }
 
-    // TODO:
-    pub fn do_clone(
-        self: &Arc<Self>,
-        flags: syscall::CloneFlags,
-        stack: Option<VirtAddr>,
-        child_tid: VirtAddr,
-    ) -> Arc<Self> {
-        use syscall::CloneFlags;
+    pub fn do_clone(self: &Arc<Self>, flags: CloneFlags) -> Arc<Self> {
         let tid = alloc_tid();
         let mut trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
@@ -366,19 +359,6 @@ impl Task {
             new_shared(self.fd_table.lock().clone())
         };
 
-        if let Some(sp) = stack {
-            trap_context.get_mut().set_user_sp(sp.bits());
-        }
-        let tid_address = if flags.contains(CloneFlags::CHILD_CLEARTID) {
-            log::warn!("CloneFlags::CHILD_CLEARTID");
-            SyncUnsafeCell::new(TidAddress {
-                set_child_tid: None,
-                clear_child_tid: Some(child_tid.bits()),
-            })
-        } else {
-            SyncUnsafeCell::new(TidAddress::new())
-        };
-
         let new = Arc::new(Self {
             tid,
             leader,
@@ -402,7 +382,7 @@ impl Task {
             sig_ucontext_ptr: AtomicUsize::new(0),
             itimers,
             robust,
-            tid_address,
+            tid_address: SyncUnsafeCell::new(TidAddress::new()),
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
             // After a fork(2), the child inherits the attached shared memory segments.
             shm_ids: self.shm_ids.clone(),
