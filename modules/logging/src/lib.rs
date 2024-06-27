@@ -17,7 +17,7 @@ pub fn init() {
         Some("info") => LevelFilter::Info,
         Some("debug") => LevelFilter::Debug,
         Some("trace") => LevelFilter::Trace,
-        _ => LevelFilter::Error,
+        _ => LevelFilter::Off,
     });
     unsafe { LOG_INITIALIZED.store(true, Ordering::SeqCst) };
 }

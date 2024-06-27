@@ -153,6 +153,10 @@ impl Syscall<'_> {
     /// **RETURN VALUE** :On success (at least one signal was sent), zero is
     /// returned. On error, -1 is returned, and errno is set appropriately
     pub fn sys_kill(&self, pid: isize, signum: i32) -> SyscallResult {
+        if signum == 0 {
+            log::warn!("signum is zero, currently skip the permission check");
+            return Ok(0);
+        }
         let sig = Sig::from_i32(signum);
         if !sig.is_valid() {
             return Err(SysError::EINVAL);

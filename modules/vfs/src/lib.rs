@@ -19,7 +19,7 @@ use driver::BLOCK_DEVICE;
 use procfs::init_procfs;
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
-use vfs_core::{Dentry, FileSystemType, MountFlags};
+use vfs_core::{Dentry, FileSystemType, InodeMode, MountFlags};
 
 use crate::{
     devfs::{init_devfs, DevFsType},
@@ -67,6 +67,13 @@ pub fn init() {
             None,
             MountFlags::empty(),
             Some(BLOCK_DEVICE.get().unwrap().clone()),
+        )
+        .unwrap();
+    // WARN: for "lmbench_all lat_sig -P 1 prot lat_sig" test
+    diskfs_root
+        .create(
+            "lat_sig",
+            InodeMode::FILE | InodeMode::OTHER_MASK | InodeMode::GROUP_MASK | InodeMode::OWNER_MASK,
         )
         .unwrap();
 

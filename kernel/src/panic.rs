@@ -17,6 +17,7 @@ static PANIC_CNT: AtomicUsize = AtomicUsize::new(0);
 fn panic(info: &PanicInfo) -> ! {
     unsafe { disable_interrupt() };
 
+    println!("panic now!!!");
     if PANIC_CNT.fetch_add(1, Ordering::Relaxed) > 0 {
         unsafe { LOG_INITIALIZED.store(false, Ordering::Relaxed) }
         if let Some(location) = info.location() {

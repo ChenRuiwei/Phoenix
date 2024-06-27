@@ -501,23 +501,23 @@ impl Task {
             futex_manager().wake(&key, 1);
         }
 
-        let is_last = self.with_mut_thread_group(|tg| {
-            tg.remove(self);
-            if tg.len() == 0 {
-                true
-            } else {
-                false
-            }
-        });
+        let mut tg = self.thread_group.lock();
 
         if !self.is_leader {
             // NOTE: leader will be removed by parent calling `sys_wait4`
+            tg.remove(self);
             TASK_MANAGER.remove(self.tid());
         }
 
-        if !is_last {
+        if (!self.leader().is_zombie())
+            || (self.is_leader && tg.len() > 1)
+            || (!self.is_leader && tg.len() > 2)
+        {
             return;
         }
+
+        // exit the process, e.g. reparent all children, and send SIGCHLD to parent
+        log::info!("[Task::do_exit] exit the process");
 
         log::debug!("[Task::do_exit] set children to be zombie and reparent them to init");
         debug_assert_ne!(self.tid(), INIT_PROC_PID);

@@ -13,6 +13,7 @@ use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
     sepc, stval,
 };
+use signal::{Sig, SigDetails, SigInfo};
 use systype::SysError;
 use timer::timer::TIMER_MANAGER;
 
@@ -83,7 +84,16 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                     });
                     if let Err(_e) = result {
                         // task.with_memory_space(|m| m.print_all());
-                        task.set_zombie();
+                        log::warn!("bad memory access, send SIGSEGV to task");
+                        task.receive_siginfo(
+                            SigInfo {
+                                sig: Sig::SIGSEGV,
+                                code: SigInfo::KERNEL,
+                                details: SigDetails::None,
+                            },
+                            false,
+                        );
+                        // task.set_zombie();
                     }
                 }
                 Exception::IllegalInstruction => {

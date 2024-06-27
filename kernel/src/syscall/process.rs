@@ -169,7 +169,7 @@ impl Syscall<'_> {
                 .find(|c| c.is_zombie() && c.with_thread_group(|tg| tg.len() == 1)),
             WaitFor::Pid(pid) => {
                 if let Some(child) = children.get(&pid) {
-                    if child.is_zombie() {
+                    if child.is_zombie() && child.with_thread_group(|tg| tg.len() == 1) {
                         Some(child)
                     } else {
                         None

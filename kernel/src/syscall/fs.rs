@@ -479,13 +479,19 @@ impl Syscall<'_> {
     /// A requirement standardizing this behavior was added in POSIX.1-2008
     /// TC2. The Linux-specific pipe2() system call likewise does not modify
     /// pipefd on failure.
-    pub fn sys_pipe2(&self, pipefd: UserWritePtr<[u32; 2]>, _flags: i32) -> SyscallResult {
+    pub fn sys_pipe2(&self, pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
         let task = self.task;
+        let flags = OpenFlags::from_bits(flags)
+            .unwrap_or_else(|| unimplemented!("unknown flags, should add them"));
         let (pipe_read, pipe_write) = new_pipe();
         let pipe = task.with_mut_fd_table(|table| {
             let fd_read = table.alloc(pipe_read)?;
             let fd_write = table.alloc(pipe_write)?;
-            log::debug!("[sys_pipe2] read_fd: {fd_read}, write_fd: {fd_write}");
+            log::info!("[sys_pipe2] read_fd: {fd_read}, write_fd: {fd_write}, flags: {flags:?}");
+            if flags.contains(OpenFlags::O_CLOEXEC) {
+                table.get_mut(fd_read).unwrap().set_close_on_exec();
+                table.get_mut(fd_write).unwrap().set_close_on_exec();
+            }
             Ok([fd_read as u32, fd_write as u32])
         })?;
         pipefd.write(&task, pipe)?;

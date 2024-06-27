@@ -713,7 +713,6 @@ impl MemorySpace {
         offset: usize,
     ) -> SysResult<VirtAddr> {
         debug_assert!(is_page_aligned(offset));
-        debug_assert!(offset + length <= file.size());
 
         const MMAP_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
