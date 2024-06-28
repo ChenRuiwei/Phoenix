@@ -37,9 +37,11 @@ paste = "1.0"
 strum = { version = "0.26", default_features = false, features = ["derive"] }
 numeric-enum-macro = "0.2.0"
 
-
 [build-dependencies]
 config = { path = "../config" }
+
+[profile.release]
+debug = true
 
 [features]
 strace = []

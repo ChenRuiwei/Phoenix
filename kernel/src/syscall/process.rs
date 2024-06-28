@@ -361,7 +361,6 @@ impl Syscall<'_> {
     /// futex wake operation are ignored.
     ///
     /// set_tid_address() always returns the caller's thread ID.
-    // TODO: do the futex wake up at the address when task terminates
     pub fn sys_set_tid_address(&self, tidptr: usize) -> SyscallResult {
         let task = self.task;
         log::info!("[sys_set_tid_address] tidptr:{tidptr:#x}");

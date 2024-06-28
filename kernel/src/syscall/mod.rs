@@ -112,6 +112,7 @@ impl<'a> Syscall<'a> {
             SET_TID_ADDRESS => self.sys_set_tid_address(args[0]),
             GETUID => self.sys_getuid(),
             GETEUID => self.sys_geteuid(),
+            GETEGID => self.sys_do_nothing("getegid"),
             SETPGID => self.sys_setpgid(args[0], args[1]),
             // Memory
             BRK => self.sys_brk(args[0].into()),
@@ -127,6 +128,7 @@ impl<'a> Syscall<'a> {
             MPROTECT => self.sys_mprotect(args[0].into(), args[1], args[2] as _),
             MSYNC => self.sys_do_nothing("msync"),
             MEMBARRIER => self.sys_do_nothing("membarrier"),
+            MADVISE => self.sys_do_nothing("madvise"),
             // Shared Memory
             SHMGET => self.sys_shmget(args[0], args[1], args[2] as _),
             SHMAT => self.sys_shmat(args[0], args[1].into(), args[2] as _),

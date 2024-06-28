@@ -402,7 +402,6 @@ impl Task {
     }
 
     // TODO: figure out what should be reserved across this syscall
-    // TODO: support CLOSE_ON_EXEC flag may be
     pub fn do_execve(self: &Arc<Self>, elf_data: &[u8], argv: Vec<String>, envp: Vec<String>) {
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();
@@ -475,7 +474,6 @@ impl Task {
     // process of the thread group is sent a SIGCHLD (or other termination) signal.
     // WARN: do not call this function directly if a task should be terminated,
     // instead, call `set_zombie`
-    // TODO:
     pub fn do_exit(self: &Arc<Self>) {
         log::info!("thread {} do exit", self.tid());
         assert_ne!(
@@ -503,21 +501,20 @@ impl Task {
 
         let mut tg = self.thread_group.lock();
 
-        if !self.is_leader {
-            // NOTE: leader will be removed by parent calling `sys_wait4`
-            tg.remove(self);
-            TASK_MANAGER.remove(self.tid());
-        }
-
         if (!self.leader().is_zombie())
             || (self.is_leader && tg.len() > 1)
             || (!self.is_leader && tg.len() > 2)
         {
+            if !self.is_leader {
+                // NOTE: leader will be removed by parent calling `sys_wait4`
+                tg.remove(self);
+                TASK_MANAGER.remove(self.tid());
+            }
             return;
         }
 
         // exit the process, e.g. reparent all children, and send SIGCHLD to parent
-        log::info!("[Task::do_exit] exit the process");
+        log::info!("[Task::do_exit] exit the whole process");
 
         log::debug!("[Task::do_exit] set children to be zombie and reparent them to init");
         debug_assert_ne!(self.tid(), INIT_PROC_PID);

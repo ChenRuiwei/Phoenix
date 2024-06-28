@@ -11,7 +11,9 @@ use executor::has_task;
 use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
-    sepc, stval,
+    sepc,
+    sstatus::FS,
+    stval,
 };
 use signal::{Sig, SigDetails, SigInfo};
 use systype::SysError;
@@ -62,8 +64,8 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                 | Exception::InstructionPageFault
                 | Exception::LoadPageFault => {
                     log::info!(
-                "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
-            );
+                        "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
+                    );
                     let access_type = match e {
                         Exception::InstructionPageFault => PageFaultAccessType::RX,
                         Exception::LoadPageFault => PageFaultAccessType::RO,
@@ -119,6 +121,10 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                 yield_now().await;
             }
         }
+        Trap::Interrupt(Interrupt::SupervisorExternal) => {
+            log::info!("[kernel] receive externel interrupt");
+            driver::get_device_manager_mut().handle_irq();
+        }
         _ => {
             panic!(
                 "[trap_handler] Unsupported trap {cause:?}, stval = {stval:#x}!, sepc = {sepc:#x}"
@@ -143,10 +149,20 @@ pub fn trap_return(task: &Arc<Task>) {
         // `UserPtr` implicitly which will change stvec to `__trap_from_kernel`.
     };
     task.time_stat().record_trap_return();
+
+    // Restore the float regs if needed.
+    // Two cases that may need to restore regs:
+    // 1. This task has yielded after last trap
+    // 2. This task encounter a signal handler
+    task.trap_context_mut().user_fx.restore();
+    task.trap_context_mut().sstatus.set_fs(FS::Clean);
     unsafe {
         __return_to_user(task.trap_context_mut());
         // NOTE: next time when user traps into kernel, it will come back here
         // and return to `user_loop` function.
     }
+    task.trap_context_mut()
+        .user_fx
+        .mark_save_if_needed(task.trap_context_mut().sstatus);
     task.time_stat().record_trap();
 }

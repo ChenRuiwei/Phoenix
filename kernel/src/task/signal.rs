@@ -110,6 +110,7 @@ impl Task {
             .flags
             .contains(SigActionFlag::SA_NOCLDSTOP)
         {
+            log::error!("send sigchld to parent called wait4 will cause bug now");
             parent.receive_siginfo(
                 SigInfo {
                     sig: Sig::SIGCHLD,
@@ -262,6 +263,7 @@ fn stop(task: &Arc<Task>, sig: Sig) {
     });
     task.notify_parent(SigInfo::CLD_STOPPED, sig);
 }
+
 /// continue the process if it is currently stopped
 fn cont(task: &Arc<Task>, sig: Sig) {
     log::warn!("[do_signal] task continue");

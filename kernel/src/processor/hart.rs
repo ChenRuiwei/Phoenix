@@ -97,8 +97,10 @@ impl Hart {
         // PERF: no need to switch to kernel page table
         // unsafe { mm::switch_kernel_page_table() };
         core::mem::swap(self.env_mut(), env);
-        self.task().time_stat().record_switch_out();
-        self.last_task_pid = self.task().pid();
+        let task = self.task();
+        task.time_stat().record_switch_out();
+        task.trap_context_mut().user_fx.yield_task();
+        self.last_task_pid = task.pid();
         self.clear_task();
         unsafe { enable_interrupt() };
     }
