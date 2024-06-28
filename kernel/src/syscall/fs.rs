@@ -113,27 +113,57 @@ impl Kstat {
 }
 
 impl Syscall<'_> {
-    // TODO:
-    pub async fn sys_write(&self, fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallResult {
-        let task = self.task;
-        let file = task.with_fd_table(|table| table.get_file(fd))?;
-        let buf = buf.into_slice(&task, len)?;
-        // log::info!("[sys_write] buf {buf:?}");
-        let ret = file.write(&buf).await?;
-        Ok(ret)
-    }
-
     /// read() attempts to read up to count bytes from file descriptor fd into
     /// the buffer starting at buf.
     ///
     /// On success, the number of bytes read is returned (zero indicates end of
     /// file), and the file position is advanced by this number.
-    pub async fn sys_read(&self, fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallResult {
+    pub async fn sys_read(&self, fd: usize, buf: UserWritePtr<u8>, count: usize) -> SyscallResult {
         let task = self.task;
         let file = task.with_fd_table(|table| table.get_file(fd))?;
         log::info!("[sys_read] reading file {}", file.dentry().path());
-        let mut buf = buf.into_mut_slice(&task, len)?;
+        let mut buf = buf.into_mut_slice(&task, count)?;
         let ret = file.read(&mut buf).await?;
+        Ok(ret)
+    }
+
+    pub async fn sys_write(&self, fd: usize, buf: UserReadPtr<u8>, count: usize) -> SyscallResult {
+        let task = self.task;
+        let file = task.with_fd_table(|table| table.get_file(fd))?;
+        log::info!("[sys_write] writing file {}", file.dentry().path());
+        let buf = buf.into_slice(&task, count)?;
+        // log::info!("[sys_write] buf {buf:?}");
+        let ret = file.write(&buf).await?;
+        Ok(ret)
+    }
+
+    pub async fn sys_pread64(
+        &self,
+        fd: usize,
+        buf: UserWritePtr<u8>,
+        count: usize,
+        offset: usize,
+    ) -> SyscallResult {
+        let task = self.task;
+        let file = task.with_fd_table(|table| table.get_file(fd))?;
+        log::info!("[sys_pread64] reading file {}", file.dentry().path());
+        let mut buf = buf.into_mut_slice(&task, count)?;
+        let ret = file.read_at(offset, &mut buf).await?;
+        Ok(ret)
+    }
+
+    pub async fn sys_pwrite64(
+        &self,
+        fd: usize,
+        buf: UserReadPtr<u8>,
+        count: usize,
+        offset: usize,
+    ) -> SyscallResult {
+        let task = self.task;
+        let file = task.with_fd_table(|table| table.get_file(fd))?;
+        log::info!("[sys_pwrite64] writing file {}", file.dentry().path());
+        let buf = buf.into_slice(&task, count)?;
+        let ret = file.write_at(offset, &buf).await?;
         Ok(ret)
     }
 

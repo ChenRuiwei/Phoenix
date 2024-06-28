@@ -69,6 +69,8 @@ pub trait Inode: Send + Sync + DowncastSync {
         todo!()
     }
 
+    /// Calculates the block index on the underlying block device for a given
+    /// file offset.
     fn base_get_blk_idx(&self, offset: usize) -> SysResult<usize> {
         todo!()
     }

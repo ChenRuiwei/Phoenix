@@ -351,6 +351,8 @@ impl Syscall<'_> {
     /// sys_shmctl performs the control operation specified by cmd on the System
     /// V shared memory segment whose identifier is given in shmid.
     pub fn sys_shmctl(&self, shmid: usize, cmd: i32, buf: usize) -> SyscallResult {
+        const IPC_RMID: i32 = 0;
+        const IPC_SET: i32 = 1;
         // Copy information from the kernel data structure associated with `shmid`
         // into the shmid_ds structure pointed to by buf.
         const IPC_STAT: i32 = 2;
@@ -360,18 +362,22 @@ impl Syscall<'_> {
                 if let Some(shm) = shm_manager.get(&shmid) {
                     let buf = UserWritePtr::from_usize(buf);
                     buf.write(&self.task, shm.shmid_ds);
+                    Ok(0)
                 } else {
                     // shmid is not a valid identifier
-                    return Err(SysError::EINVAL);
+                    Err(SysError::EINVAL)
                 }
+            }
+            IPC_RMID => {
+                log::warn!("[sys_shmctl] IPC_RMID, do nothing");
+                Ok(0)
             }
             cmd => {
                 log::error!("[sys_shmctl] unimplemented cmd {cmd}");
                 // cmd is not a valid command
-                return Err(SysError::EINVAL);
+                Err(SysError::EINVAL)
             }
         }
-        Ok(0)
     }
 
     pub fn sys_mprotect(&self, addr: VirtAddr, len: usize, prot: i32) -> SyscallResult {

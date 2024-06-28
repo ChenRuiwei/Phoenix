@@ -137,6 +137,14 @@ impl<'a> Syscall<'a> {
             // File system
             READ => self.sys_read(args[0], args[1].into(), args[2]).await,
             WRITE => self.sys_write(args[0], args[1].into(), args[2]).await,
+            PREAD64 => {
+                self.sys_pread64(args[0], args[1].into(), args[2], args[3])
+                    .await
+            }
+            PWRITE64 => {
+                self.sys_pwrite64(args[0], args[1].into(), args[2], args[3])
+                    .await
+            }
             OPENAT => self.sys_openat(args[0].into(), args[1].into(), args[2] as _, args[3] as _),
             CLOSE => self.sys_close(args[0]),
             MKDIR => self.sys_mkdirat(args[0].into(), args[1].into(), args[2] as _),
@@ -188,6 +196,8 @@ impl<'a> Syscall<'a> {
                 self.sys_readlinkat(args[0].into(), args[1].into(), args[2].into(), args[3])
                     .await
             }
+            SYNC => self.sys_do_nothing("sync"),
+            FSYNC => self.sys_do_nothing("fsync"),
             // IO
             PPOLL => {
                 self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3])

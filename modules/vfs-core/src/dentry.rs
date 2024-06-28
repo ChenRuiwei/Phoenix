@@ -3,7 +3,7 @@ use alloc::{
     string::{String, ToString},
     sync::{Arc, Weak},
 };
-use core::{mem::MaybeUninit, str::FromStr};
+use core::{default, mem::MaybeUninit, str::FromStr};
 
 use sync::mutex::spin_mutex::SpinMutex;
 use systype::{SysError, SysResult, SyscallResult};
@@ -56,9 +56,10 @@ impl DentryMeta {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DentryState {
     /// Either not read from disk or write in memory.
+    #[default]
     UnInit,
     Sync,
     Dirty,
