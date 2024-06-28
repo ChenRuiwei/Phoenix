@@ -20,8 +20,8 @@ use spin::Mutex;
 use systype::{SysError, SysResult, SyscallResult};
 
 use crate::{
-    address_space, inode, AddressSpace, Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags,
-    PollEvents, SeekFrom, SuperBlock,
+    inode, Dentry, DirEntry, Inode, InodeState, InodeType, OpenFlags, PollEvents, SeekFrom,
+    SuperBlock,
 };
 
 pub struct FileMeta {
@@ -81,11 +81,10 @@ pub trait File: Send + Sync {
         }
 
         let inode = self.inode();
-        let address_space = inode.address_space().unwrap();
+        let page_cache = inode.page_cache().unwrap();
 
         let device = inode.super_block().device();
-        let mut page = Page::new_arc();
-        page.init_block_device(&device);
+        let mut page = Page::new_file(&device);
         // read a page normally or less than a page when EOF reached
         let len = self
             .base_read_at(offset_aligned, page.bytes_array())
@@ -101,7 +100,7 @@ pub trait File: Send + Sync {
             page.insert_buffer_head(buffer_head);
         }
 
-        address_space.insert_page(offset_aligned, page.clone());
+        page_cache.insert_page(offset_aligned, page.clone());
 
         Ok(Some(page))
     }
@@ -218,7 +217,7 @@ impl dyn File {
 
         let inode = self.inode();
 
-        let Some(address_space) = inode.address_space() else {
+        let Some(page_cache) = inode.page_cache() else {
             log::debug!("[File::read] read without address_space");
             let count = self.base_read_at(offset, buf).await?;
             return Ok(count);
@@ -230,7 +229,7 @@ impl dyn File {
         log::debug!("[File::read] read with address_space");
         while !buf_it.is_empty() && offset_it < self.size() {
             let (offset_aligned, offset_in_page) = align_offset_to_page(offset_it);
-            let page = if let Some(page) = address_space.get_page(offset_aligned) {
+            let page = if let Some(page) = page_cache.get_page(offset_aligned) {
                 page
             } else if let Some(page) = self.read_page_at(offset_aligned).await? {
                 page
@@ -264,7 +263,7 @@ impl dyn File {
 
         let inode = self.inode();
 
-        let Some(address_space) = inode.address_space() else {
+        let Some(page_cache) = inode.page_cache() else {
             log::debug!("[File::write] write without address_space");
             let count = self.base_write_at(offset, buf).await?;
             if offset + count > inode.size() {
@@ -283,15 +282,14 @@ impl dyn File {
 
         while !buf_it.is_empty() {
             let (offset_aligned, offset_in_page) = align_offset_to_page(offset_it);
-            let page = if let Some(page) = address_space.get_page(offset_aligned) {
+            let page = if let Some(page) = page_cache.get_page(offset_aligned) {
                 page
             } else if let Some(page) = self.read_page_at(offset_aligned).await? {
                 page
             } else {
                 log::info!("[File::write_at] create new page");
-                let page = Page::new_arc();
-                page.init_block_device(&device);
-                address_space.insert_page(offset_aligned, page.clone());
+                let page = Page::new_file(&device);
+                page_cache.insert_page(offset_aligned, page.clone());
                 page
             };
             let len = (buf_it.len()).min(PAGE_SIZE - offset_in_page);
@@ -316,7 +314,7 @@ impl dyn File {
                 .unwrap_or_else(|_| unreachable!());
             let buffer_caches = virtio_blk.cache.lock();
             for offset_aligned_page in (round_down_to_page(old_size)..new_size).step_by(PAGE_SIZE) {
-                let page = address_space.get_page(offset_aligned_page).unwrap();
+                let page = page_cache.get_page(offset_aligned_page).unwrap();
                 for i in page.buffer_head_cnts()..MAX_BUFFERS_PER_PAGE {
                     let offset_aligned_block = offset_aligned_page + i * BLOCK_SIZE;
                     if offset_aligned_block < new_size {

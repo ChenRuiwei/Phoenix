@@ -37,6 +37,7 @@ impl<T, S: MutexSupport> SpinMutex<T, S> {
             data: UnsafeCell::new(user_data),
         }
     }
+
     /// Wait until the lock looks unlocked before retrying
     #[inline(always)]
     fn wait_unlock(&self) {
@@ -79,6 +80,11 @@ impl<T, S: MutexSupport> SpinMutex<T, S> {
     #[inline(always)]
     pub unsafe fn sent_lock(&self) -> impl DerefMut<Target = T> + '_ {
         SendWrapper::new(self.lock())
+    }
+
+    #[inline(always)]
+    pub fn into_inner(self) -> T {
+        self.data.into_inner()
     }
 }
 

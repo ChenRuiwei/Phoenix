@@ -12,27 +12,28 @@ use core::{
 use config::{
     board::BLOCK_SIZE,
     mm::{
-        is_block_aligned, BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE, MAX_BUFFER_PAGES, PAGE_SIZE,
+        block_page_id, is_block_aligned, BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE,
+        MAX_BUFFER_PAGES, PAGE_SIZE,
     },
 };
 use device_core::BlockDevice;
-use intrusive_collections::{intrusive_adapter, LinkedListAtomicLink, LinkedListLink};
+use intrusive_collections::{intrusive_adapter, LinkedListAtomicLink};
 use lru::LruCache;
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 
-use crate::{block_page_id, Page};
+use crate::Page;
 
 pub struct BufferCache {
     device: Option<Weak<dyn BlockDevice>>,
     /// Block page id to `Page`.
-    /// NOTE: These `Page`s are pages without file, only exist for caching pure
-    /// block data.
+    // NOTE: These `Page`s are pages without file, only exist for caching pure
+    // block data.
     pages: LruCache<usize, Arc<Page>>,
     /// Block idx to `BufferHead`.
-    /// NOTE: Stores all access to block device. Some of them will be attached
-    /// to pages above, while others with file related will be attached to pages
-    /// stored in address space.
+    // NOTE: Stores all accesses to block device. Some of them will be attached
+    // to pages above, while others with file related will be attached to pages
+    // stored in address space.
     buffer_heads: BTreeMap<usize, Arc<BufferHead>>,
 }
 
@@ -85,8 +86,7 @@ impl BufferCache {
                     page.insert_buffer_head(buffer_head.clone());
                 } else {
                     log::info!("buffer page init");
-                    let mut page = Page::new_arc();
-                    page.init_block_device(&device);
+                    let mut page = Page::new_file(&device);
                     device.base_read_block(block_id, page.block_bytes_array(block_id));
                     page.insert_buffer_head(buffer_head.clone());
                     self.pages.push(block_page_id(block_id), page);
@@ -112,11 +112,11 @@ impl BufferCache {
 pub struct BufferHead {
     /// Block index on the device.
     block_id: usize,
-    link: LinkedListAtomicLink,
+    page_link: LinkedListAtomicLink,
     inner: SpinNoIrqLock<BufferHeadInner>,
 }
 
-intrusive_adapter!(pub BufferHeadAdapter = Arc<BufferHead>: BufferHead { link: LinkedListLink });
+intrusive_adapter!(pub BufferHeadAdapter = Arc<BufferHead>: BufferHead { page_link: LinkedListAtomicLink });
 
 pub struct BufferHeadInner {
     /// Count of access before cached.
@@ -127,7 +127,6 @@ pub struct BufferHeadInner {
     page: Weak<Page>,
     /// Offset in page, aligned with `BLOCK_SIZE`.
     offset: usize,
-    // NOTE: when `Arc<Page>` gets dropped, Arc will be dropped early
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,7 +141,7 @@ impl BufferHead {
     pub fn new(block_id: usize) -> Self {
         Self {
             block_id,
-            link: LinkedListAtomicLink::new(),
+            page_link: LinkedListAtomicLink::new(),
             inner: SpinNoIrqLock::new(BufferHeadInner {
                 acc_cnt: 0,
                 bstate: BufferState::UnInit,
@@ -216,13 +215,13 @@ impl BufferHead {
         self.inner.lock().bstate != BufferState::UnInit
     }
 
-    pub fn read_block(&self, buf: &mut [u8]) {
-        buf.copy_from_slice(self.bytes_array())
-    }
-
     pub fn bytes_array(&self) -> &'static mut [u8] {
         let offset = self.offset();
         self.page().bytes_array_range(offset..offset + BLOCK_SIZE)
+    }
+
+    pub fn read_block(&self, buf: &mut [u8]) {
+        buf.copy_from_slice(self.bytes_array())
     }
 
     pub fn write_block(&self, buf: &[u8]) {

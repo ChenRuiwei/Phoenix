@@ -276,7 +276,7 @@ impl VmArea {
                 let page = Page::new();
                 // page.clear();
                 page_table.map(vpn, page.ppn(), pte_flags);
-                self.pages.insert(vpn, Arc::new(page));
+                self.pages.insert(vpn, page);
             }
         }
     }
@@ -288,7 +288,7 @@ impl VmArea {
         for vpn in range_vpn {
             let page = Page::new();
             page_table.map(vpn, page.ppn(), pte_flags);
-            self.pages.insert(vpn, Arc::new(page));
+            self.pages.insert(vpn, page);
         }
     }
 
@@ -404,7 +404,7 @@ impl VmArea {
         );
 
         if !access_type.can_access(self.perm()) {
-            log::error!(
+            log::warn!(
                 "[VmArea::handle_page_fault] permission not allowed, perm:{:?}",
                 self.perm()
             );
@@ -433,8 +433,8 @@ impl VmArea {
                 );
 
                 // copy the data
-                page = Page::new_arc();
-                page.copy_data_from_another(&old_page);
+                page = Page::new();
+                page.copy_from_slice(old_page.bytes_array());
 
                 // unmap old page and map new page
                 pte_flags.remove(PTEFlags::COW);
@@ -461,7 +461,7 @@ impl VmArea {
             match self.vma_type {
                 VmAreaType::Heap | VmAreaType::Stack => {
                     // lazy allcation for heap
-                    page = Page::new_arc();
+                    page = Page::new();
                     page.fill_zero();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, page);
@@ -473,11 +473,8 @@ impl VmArea {
                         let offset = self.offset + (vpn - self.start_vpn()) * PAGE_SIZE;
                         let offset_aligned = round_down_to_page(offset);
                         if self.mmap_flags.contains(MmapFlags::MAP_SHARED) {
-                            let page = if let Some(page) = file
-                                .inode()
-                                .address_space()
-                                .unwrap()
-                                .get_page(offset_aligned)
+                            let page = if let Some(page) =
+                                file.inode().page_cache().unwrap().get_page(offset_aligned)
                             {
                                 page
                             } else if let Some(page) =
@@ -496,7 +493,7 @@ impl VmArea {
                         }
                     } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
                         // private anonymous area
-                        page = Page::new_arc();
+                        page = Page::new();
                         page.fill_zero();
                         page_table.map(vpn, page.ppn(), self.map_perm.into());
                         self.pages.insert(vpn, page);

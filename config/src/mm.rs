@@ -110,3 +110,11 @@ pub fn round_down_to_page(offset: usize) -> usize {
 pub fn round_up_to_page(offset: usize) -> usize {
     round_down_to_page(offset) + PAGE_SIZE
 }
+
+pub fn block_page_id(block_id: usize) -> usize {
+    block_id / MAX_BUFFERS_PER_PAGE
+}
+
+pub fn block_page_offset(block_id: usize) -> usize {
+    (block_id % MAX_BUFFERS_PER_PAGE) * BLOCK_SIZE
+}

@@ -458,7 +458,7 @@ impl MemorySpace {
         };
         if pages.is_empty() {
             for vpn in vm_area.range_vpn() {
-                let page = Arc::new(Page::new());
+                let page = Page::new();
                 self.page_table_mut().map(vpn, page.ppn(), map_perm.into());
                 pages.push(Arc::downgrade(&page));
                 vm_area.pages.insert(vpn, page);
@@ -729,14 +729,14 @@ impl MemorySpace {
 
         let page_table = self.page_table_mut();
         let inode = file.inode();
-        let address_space = inode
-            .address_space()
+        let page_cache = inode
+            .page_cache()
             .expect("should have address space, and may be no");
         let mut vma = VmArea::new_mmap(range, perm, flags, Some(file.clone()), offset);
         let mut range_vpn = vma.range_vpn();
         let length = cmp::min(length, MMAP_PRE_ALLOC_PAGES * PAGE_SIZE);
         for offset_aligned in (offset..offset + length).step_by(PAGE_SIZE) {
-            let page = if let Some(page) = address_space.get_page(offset_aligned) {
+            let page = if let Some(page) = page_cache.get_page(offset_aligned) {
                 page
             } else if let Some(page) = block_on(async { file.read_page_at(offset_aligned).await })?
             {

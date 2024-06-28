@@ -110,7 +110,7 @@ pub struct DirEntry {
     pub name: String,
 }
 
-bitflags! {
+bitflags::bitflags! {
     // Defined in <bits/poll.h>.
     #[derive(Debug, Clone, Copy)]
     pub struct PollEvents: i16 {
@@ -157,7 +157,7 @@ pub struct Stat {
     pub unused: u64,
 }
 
-bitflags! {
+bitflags::bitflags! {
     #[derive(Debug)]
     pub struct MountFlags:u32 {
         /// This filesystem is mounted read-only.
@@ -284,7 +284,7 @@ pub const AT_REMOVEDIR: i32 = 0x200;
 /// Follow symbolic links.
 pub const AT_SYMLINK_FOLLOW: i32 = 0x400;
 
-bitflags! {
+bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     // Defined in <stdio.h>.
     pub struct RenameFlags: i32 {

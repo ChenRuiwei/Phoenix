@@ -3,20 +3,21 @@ use core::mem::MaybeUninit;
 
 use device_core::DevId;
 use downcast_rs::{impl_downcast, DowncastSync};
+use page::PageCache;
 use systype::{SysResult, SyscallResult};
 use time::timespec::TimeSpec;
 
-use crate::{address_space::AddressSpace, alloc_ino, Mutex, Stat, SuperBlock};
+use crate::{alloc_ino, Mutex, Stat, SuperBlock};
 
 pub struct InodeMeta {
     /// Inode number.
     pub ino: usize,
-    /// mode of inode.
+    /// Mode of inode.
     pub mode: InodeMode,
     pub dev_id: Option<DevId>,
     pub super_block: Weak<dyn SuperBlock>,
 
-    pub address_space: Option<AddressSpace>,
+    pub page_cache: Option<PageCache>,
     pub inner: Mutex<InodeMetaInner>,
 }
 
@@ -39,7 +40,7 @@ impl InodeMeta {
         let address_space = if (itype.is_file() || itype.is_block_device())
             && (super_block.meta().device.is_some())
         {
-            Some(AddressSpace::new())
+            Some(PageCache::new())
         } else {
             None
         };
@@ -48,7 +49,7 @@ impl InodeMeta {
             mode,
             super_block: Arc::downgrade(&super_block),
             dev_id: None,
-            address_space,
+            page_cache: address_space,
             inner: Mutex::new(InodeMetaInner {
                 size,
                 atime: TimeSpec::default(),
@@ -89,8 +90,8 @@ impl dyn Inode {
         self.meta().mode.to_type()
     }
 
-    pub fn address_space<'a>(self: &'a Arc<dyn Inode>) -> Option<&'a AddressSpace> {
-        self.meta().address_space.as_ref()
+    pub fn page_cache<'a>(self: &'a Arc<dyn Inode>) -> Option<&'a PageCache> {
+        self.meta().page_cache.as_ref()
     }
 
     pub fn size(&self) -> usize {
@@ -145,7 +146,7 @@ pub enum InodeState {
     Synced = 0x5,
 }
 
-bitflags! {
+bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct InodeMode: u32 {
         /// Type.
