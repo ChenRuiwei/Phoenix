@@ -210,7 +210,7 @@ impl Syscall<'_> {
         }
         let file = dentry.open()?;
         file.set_flags(flags);
-        task.with_mut_fd_table(|table| table.alloc(file))
+        task.with_mut_fd_table(|table| table.alloc(file, flags))
     }
 
     /// close() closes a file descriptor, so that it no longer refers to any
@@ -515,13 +515,9 @@ impl Syscall<'_> {
             .unwrap_or_else(|| unimplemented!("unknown flags, should add them"));
         let (pipe_read, pipe_write) = new_pipe();
         let pipe = task.with_mut_fd_table(|table| {
-            let fd_read = table.alloc(pipe_read)?;
-            let fd_write = table.alloc(pipe_write)?;
+            let fd_read = table.alloc(pipe_read, flags)?;
+            let fd_write = table.alloc(pipe_write, flags)?;
             log::info!("[sys_pipe2] read_fd: {fd_read}, write_fd: {fd_write}, flags: {flags:?}");
-            if flags.contains(OpenFlags::O_CLOEXEC) {
-                table.get_mut(fd_read).unwrap().set_close_on_exec();
-                table.get_mut(fd_write).unwrap().set_close_on_exec();
-            }
             Ok([fd_read as u32, fd_write as u32])
         })?;
         pipefd.write(&task, pipe)?;
@@ -592,7 +588,8 @@ impl Syscall<'_> {
                 Ok(fd_info.flags().bits() as usize)
             }),
             FcntlOp::F_SETFD => {
-                let fd_flags = FdFlags::from_bits_truncate(arg as isize);
+                let arg = OpenFlags::from_bits_retain(arg as i32);
+                let fd_flags = FdFlags::from(arg);
                 task.with_mut_fd_table(|table| {
                     let fd_info = table.get_mut(fd)?;
                     fd_info.set_flags(fd_flags);

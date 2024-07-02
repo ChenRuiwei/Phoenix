@@ -182,29 +182,26 @@ impl Syscall<'_> {
 
         log::info!("[sys_pselect6] nfds:{nfds}, readfds:{readfds}, writefds:{writefds}, exceptfds:{exceptfds}, timeout:{timeout:?}, sigmask:{sigmask}");
 
-        let mut zero_read_fdset = FdSet::zero();
-        let mut zero_write_fdset = FdSet::zero();
-        let mut zero_except_fdset = FdSet::zero();
         let mut readfds = if readfds.is_null() {
-            UserMut::new(&mut zero_read_fdset)
+            None
         } else {
             let readfds = readfds.into_mut(task)?;
-            log::info!("readfds: {:?}", &readfds.fds_bits[..nfds]);
-            readfds
+            log::info!("readfds: {:?}", &readfds.fds_bits);
+            Some(readfds)
         };
         let mut writefds = if writefds.is_null() {
-            UserMut::new(&mut zero_write_fdset)
+            None
         } else {
             let writefds = writefds.into_mut(task)?;
-            log::info!("writefds: {:?}", &writefds.fds_bits[..nfds]);
-            writefds
+            log::info!("writefds: {:?}", &writefds.fds_bits);
+            Some(writefds)
         };
         let mut exceptfds = if exceptfds.is_null() {
-            UserMut::new(&mut zero_except_fdset)
+            None
         } else {
             let exceptfds = exceptfds.into_mut(task)?;
-            log::info!("exceptfds: {:?}", &exceptfds.fds_bits[..nfds]);
-            exceptfds
+            log::info!("exceptfds: {:?}", &exceptfds.fds_bits);
+            Some(exceptfds)
         };
 
         // `future` idx in `futures` -> fd
@@ -212,12 +209,16 @@ impl Syscall<'_> {
         let mut polls = Vec::<(PollEvents, Arc<dyn File>)>::with_capacity(nfds as usize);
         for fd in 0..nfds as usize {
             let mut events = PollEvents::empty();
-            if readfds.is_set(fd) {
-                events.insert(PollEvents::IN)
-            }
-            if writefds.is_set(fd) {
-                events.insert(PollEvents::OUT)
-            }
+            readfds.as_ref().map(|fds| {
+                if fds.is_set(fd) {
+                    events.insert(PollEvents::IN)
+                }
+            });
+            writefds.as_ref().map(|fds| {
+                if fds.is_set(fd) {
+                    events.insert(PollEvents::OUT)
+                }
+            });
             if !events.is_empty() {
                 let file = task.with_fd_table(|f| f.get_file(fd))?;
                 log::debug!("fd:{fd}, file path:{}", file.dentry().path());
@@ -226,9 +227,9 @@ impl Syscall<'_> {
             }
         }
 
-        readfds.clear();
-        writefds.clear();
-        exceptfds.clear();
+        readfds.as_mut().map(|fds| fds.clear());
+        writefds.as_mut().map(|fds| fds.clear());
+        exceptfds.as_mut().map(|fds| fds.clear());
 
         let poll_future = PollFuture {
             polls,
@@ -248,13 +249,13 @@ impl Syscall<'_> {
 
         let mut ret = 0;
         for (i, events) in ret_vec {
-            let fd = mapping.remove(&i).unwrap();
+            let &fd = mapping.get(&i).unwrap();
             if events.contains(PollEvents::IN) {
-                readfds.set(fd);
+                readfds.as_mut().map(|fds| fds.set(fd));
                 ret += 1;
             }
             if events.contains(PollEvents::OUT) {
-                writefds.set(fd);
+                writefds.as_mut().map(|fds| fds.set(fd));
                 ret += 1;
             }
         }

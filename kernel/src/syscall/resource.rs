@@ -1,13 +1,10 @@
-use config::mm::USER_STACK_SIZE;
-use systype::{SysError, SyscallResult};
+use config::{mm::USER_STACK_SIZE, processor::HART_NUM};
+use systype::{RLimit, Rusage, SysError, SyscallResult};
 
 use super::Syscall;
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
-    task::{
-        resource::{RLimit, Rusage},
-        TASK_MANAGER,
-    },
+    task::TASK_MANAGER,
 };
 
 impl Syscall<'_> {
@@ -77,18 +74,25 @@ impl Syscall<'_> {
         };
         if old_limit.not_null() {
             let limit = match resource {
-                RLIMIT_CPU => 8,
-                RLIMIT_STACK => USER_STACK_SIZE,
-                RLIMIT_NOFILE => task.with_fd_table(|table| table.limit()),
+                RLIMIT_CPU => RLimit {
+                    rlim_cur: HART_NUM,
+                    rlim_max: HART_NUM,
+                },
+                RLIMIT_STACK => RLimit {
+                    rlim_cur: USER_STACK_SIZE,
+                    rlim_max: USER_STACK_SIZE,
+                },
+                RLIMIT_NOFILE => task.with_fd_table(|table| table.rlimit()),
                 r => panic!("[sys_prlimit64] get old_limit : unimplemented {r}"),
             };
-            old_limit.write(&task, RLimit::new(limit))?;
+            old_limit.write(&task, limit)?;
         }
         if new_limit.not_null() {
             let limit = new_limit.read(&task)?;
+            log::info!("[sys_prlimit64] new_limit: {limit:?}");
             match resource {
                 RLIMIT_NOFILE => {
-                    task.with_mut_fd_table(|table| table.set_limit(limit.rlim_cur));
+                    task.with_mut_fd_table(|table| table.set_rlimit(limit));
                 }
                 RLIMIT_STACK => {}
                 r => panic!("[sys_prlimit64] set new_limit : unimplemented {r}"),

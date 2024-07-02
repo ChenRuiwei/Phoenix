@@ -614,6 +614,7 @@ name = "systype"
 version = "0.1.0"
 dependencies = [
  "strum",
+ "time",
 ]
 
 [[package]]
