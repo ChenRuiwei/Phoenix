@@ -69,9 +69,7 @@ impl FdInfo {
 impl FdTable {
     pub fn new() -> Self {
         let mut table: Vec<Option<FdInfo>> = Vec::with_capacity(MAX_FD_NUM);
-        for _ in 0..MAX_FD_NUM {
-            table.push(None);
-        }
+
         let tty_file = TTY.get().unwrap().clone();
         let stdin = tty_file.clone();
         stdin.set_flags(OpenFlags::empty());
@@ -80,9 +78,9 @@ impl FdTable {
         let stderr = tty_file.clone();
         stderr.set_flags(OpenFlags::O_WRONLY);
 
-        table[0] = Some(FdInfo::new(stdin, FdFlags::empty()));
-        table[1] = Some(FdInfo::new(stdout, FdFlags::empty()));
-        table[2] = Some(FdInfo::new(stderr, FdFlags::empty()));
+        table.push(Some(FdInfo::new(stdin, FdFlags::empty())));
+        table.push(Some(FdInfo::new(stdout, FdFlags::empty())));
+        table.push(Some(FdInfo::new(stderr, FdFlags::empty())));
 
         Self {
             table,
@@ -93,28 +91,61 @@ impl FdTable {
         }
     }
 
-    fn find_free_slot(&self) -> Option<usize> {
-        self.table
+    fn get_free_slot(&mut self) -> Option<usize> {
+        let inner_slot = self
+            .table
             .iter()
             .enumerate()
             .find(|(i, e)| e.is_none())
-            .map(|(i, _)| i)
+            .map(|(i, _)| i);
+        if inner_slot.is_some() {
+            return inner_slot;
+        } else if inner_slot.is_none() && self.table.len() < self.rlimit.rlim_max {
+            self.table.push(None);
+            return Some(self.table.len() - 1);
+        } else {
+            return None;
+        }
     }
 
-    fn find_free_slot_from(&self, start: usize) -> Option<usize> {
-        self.table
+    fn get_free_slot_from(&mut self, start: usize) -> Option<usize> {
+        let inner_slot = self
+            .table
             .iter()
             .enumerate()
             .skip(start)
             .find(|(i, e)| e.is_none())
-            .map(|(i, _)| i)
+            .map(|(i, _)| i);
+        if inner_slot.is_some() {
+            return inner_slot;
+        } else if inner_slot.is_none() && start < self.rlimit.rlim_max {
+            for _ in self.table.len()..start {
+                self.table.push(None);
+            }
+            return Some(self.table.len() - 1);
+        } else {
+            return None;
+        }
+    }
+
+    fn extend_to(&mut self, len: usize) -> SysResult<()> {
+        if len > self.rlimit.rlim_max {
+            return Err(SysError::EMFILE);
+        } else if self.table.len() >= len {
+            return Ok(());
+        } else {
+            for _ in self.table.len()..len {
+                self.table.push(None)
+            }
+            Ok(())
+        }
     }
 
     /// Find the minimium released fd, will alloc a fd if necessary, and insert
     /// the `file` into the table.
     pub fn alloc(&mut self, file: Arc<dyn File>, flags: OpenFlags) -> SysResult<Fd> {
         let fd_info = FdInfo::new(file, flags.into());
-        if let Some(fd) = self.find_free_slot() {
+        if let Some(fd) = self.get_free_slot() {
             self.table[fd] = Some(fd_info);
             Ok(fd)
         } else {
@@ -152,12 +183,9 @@ impl FdTable {
     }
 
     pub fn put(&mut self, fd: Fd, fd_info: FdInfo) -> SysResult<()> {
-        if fd >= self.table.len() {
-            Err(SysError::EMFILE)
-        } else {
-            self.table[fd] = Some(fd_info);
-            Ok(())
-        }
+        self.extend_to(fd)?;
+        self.table[fd] = Some(fd_info);
+        Ok(())
     }
 
     /// Dup with no file descriptor flags.
@@ -181,7 +209,7 @@ impl FdTable {
     ) -> SysResult<Fd> {
         let file = self.get_file(old_fd)?;
         let new_fd = self
-            .find_free_slot_from(lower_bound)
+            .get_free_slot_from(lower_bound)
             .ok_or_else(|| SysError::EMFILE)?;
         let fd_info = FdInfo::new(file, flags.into());
         self.put(new_fd, fd_info)?;
@@ -206,8 +234,6 @@ impl FdTable {
         self.rlimit = rlimit;
         if rlimit.rlim_max <= self.table.len() {
             self.table.truncate(self.rlimit.rlim_max)
-        } else {
-            todo!()
         }
     }
 }

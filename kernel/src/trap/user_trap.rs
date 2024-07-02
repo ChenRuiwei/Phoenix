@@ -87,7 +87,7 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                         m.handle_page_fault(VirtAddr::from(stval), access_type)
                     });
                     if let Err(_e) = result {
-                        backtrace();
+                        // backtrace();
                         // task.with_memory_space(|m| m.print_all());
                         log::warn!("bad memory access, send SIGSEGV to task");
                         task.receive_siginfo(
@@ -113,10 +113,9 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
             }
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            // FIXME: user may trap into kernel frequently, as a consequence, this timer
-            // are likely not triggered in user mode but rather be triggered in
-            // supervisor mode, which will cause user program running on the cpu for a long
-            // time.
+            // NOTE: user may trap into kernel frequently, as a consequence, this timer are
+            // likely not triggered in user mode but rather be triggered in supervisor mode,
+            // which will cause user program running on the cpu for a long time.
             log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");
             TIMER_MANAGER.check(get_time_duration());
             unsafe { set_next_timer_irq() };
