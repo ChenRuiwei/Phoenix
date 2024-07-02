@@ -8,7 +8,7 @@ use core::{default, mem::MaybeUninit, str::FromStr};
 use sync::mutex::spin_mutex::SpinMutex;
 use systype::{SysError, SysResult, SyscallResult};
 
-use crate::{inode::Inode, File, InodeMode, Mutex, RenameFlags, SuperBlock};
+use crate::{inode::Inode, File, InodeMode, InodeState, Mutex, RenameFlags, SuperBlock};
 
 pub struct DentryMeta {
     /// Name of this file or directory.
@@ -224,6 +224,8 @@ impl dyn Dentry {
             return Err(SysError::ENOTDIR);
         }
         let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
+        // TODO: inode ref count
+        sub_dentry.inode()?.set_state(InodeState::Removed);
         sub_dentry.clear_inode();
         self.clone().base_unlink(name)
     }

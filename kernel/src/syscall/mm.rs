@@ -1,5 +1,5 @@
 use arch::memory::sfence_vma_vaddr;
-use config::mm::{is_page_aligned, PAGE_MASK};
+use config::mm::{is_aligned_to_page, PAGE_MASK};
 use memory::{page_table, VirtAddr};
 use systype::{SysError, SyscallResult};
 
@@ -123,7 +123,7 @@ impl Syscall<'_> {
             return Err(SysError::EINVAL);
         } else if addr.is_null() && flags.contains(MmapFlags::MAP_FIXED) {
             return Err(SysError::EINVAL);
-        } else if !is_page_aligned(offset) {
+        } else if !is_aligned_to_page(offset) {
             return Err(SysError::EINVAL);
         }
 

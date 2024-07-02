@@ -262,6 +262,7 @@ impl dyn File {
         );
 
         let inode = self.inode();
+        inode.set_state(InodeState::Dirty);
 
         let Some(page_cache) = inode.page_cache() else {
             log::debug!("[File::write] write without address_space");
@@ -358,9 +359,9 @@ impl dyn File {
 
     pub fn load_dir(&self) -> SysResult<()> {
         let inode = self.inode();
-        if inode.state() == InodeState::Init {
+        if inode.state() == InodeState::UnInit {
             self.base_load_dir()?;
-            inode.set_state(InodeState::Synced)
+            inode.set_state(InodeState::Sync)
         }
         Ok(())
     }

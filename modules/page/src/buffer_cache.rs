@@ -12,7 +12,7 @@ use core::{
 use config::{
     board::BLOCK_SIZE,
     mm::{
-        block_page_id, is_block_aligned, BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE,
+        block_page_id, is_aligned_to_block, BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE,
         MAX_BUFFER_PAGES, PAGE_SIZE,
     },
 };
@@ -86,7 +86,7 @@ impl BufferCache {
                     page.insert_buffer_head(buffer_head.clone());
                 } else {
                     log::info!("buffer page init");
-                    let mut page = Page::new_file(&device);
+                    let mut page = Page::new_block(&device);
                     device.base_read_block(block_id, page.block_bytes_array(block_id));
                     page.insert_buffer_head(buffer_head.clone());
                     self.pages.push(block_page_id(block_id), page);
@@ -163,7 +163,7 @@ impl BufferHead {
                 self.acc_cnt()
             );
         }
-        debug_assert!(is_block_aligned(offset) && offset < PAGE_SIZE);
+        debug_assert!(is_aligned_to_block(offset) && offset < PAGE_SIZE);
         let mut inner = self.inner.lock();
         inner.bstate = BufferState::Sync;
         inner.page = Arc::downgrade(page);

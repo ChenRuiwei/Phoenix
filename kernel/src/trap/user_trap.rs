@@ -20,7 +20,9 @@ use systype::SysError;
 use timer::timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
-use crate::{mm::PageFaultAccessType, syscall::Syscall, task::Task, trap::set_user_trap};
+use crate::{
+    mm::PageFaultAccessType, panic::backtrace, syscall::Syscall, task::Task, trap::set_user_trap,
+};
 
 /// handle an interrupt, exception, or system call from user space
 /// return if it is syscall and has been interrupted
@@ -85,6 +87,7 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                         m.handle_page_fault(VirtAddr::from(stval), access_type)
                     });
                     if let Err(_e) = result {
+                        backtrace();
                         // task.with_memory_space(|m| m.print_all());
                         log::warn!("bad memory access, send SIGSEGV to task");
                         task.receive_siginfo(

@@ -34,6 +34,22 @@ pub struct InodeMetaInner {
     pub state: InodeState,
 }
 
+impl Drop for InodeMeta {
+    fn drop(&mut self) {
+        match self.inner.lock().state {
+            InodeState::UnInit => {}
+            InodeState::Sync => {}
+            InodeState::Dirty => {
+                self.page_cache.as_ref().map(|page_cache| {
+                    log::warn!("[InodeMeta::drop] flush page cache to disk");
+                    page_cache.flush()
+                });
+            }
+            InodeState::Removed => {}
+        }
+    }
+}
+
 impl InodeMeta {
     pub fn new(mode: InodeMode, super_block: Arc<dyn SuperBlock>, size: usize) -> Self {
         let itype = mode.to_type();
@@ -55,7 +71,7 @@ impl InodeMeta {
                 atime: TimeSpec::default(),
                 mtime: TimeSpec::default(),
                 ctime: TimeSpec::default(),
-                state: InodeState::Init,
+                state: InodeState::UnInit,
             }),
         }
     }
@@ -135,15 +151,11 @@ impl_downcast!(sync Inode);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InodeState {
     /// Init state, indicates that this inode is not loaded from disk yet.
-    Init = 0x1,
-    /// inode dirty, data which is pointed to by inode is not dirty
-    DirtyInode = 0x2,
-    /// data already changed but not yet sync (inode not change)
-    DirtyData = 0x3,
-    /// inode and date changed together
-    DirtyAll = 0x4,
+    UnInit,
     /// already sync
-    Synced = 0x5,
+    Sync,
+    Dirty,
+    Removed,
 }
 
 bitflags::bitflags! {

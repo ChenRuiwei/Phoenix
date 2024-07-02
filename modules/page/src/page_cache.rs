@@ -3,11 +3,10 @@ use alloc::{
     sync::{Arc, Weak},
 };
 
-use config::mm::is_page_aligned;
-use device_core::BlockDevice;
+use config::mm::is_aligned_to_page;
 use sync::mutex::SpinNoIrqLock;
 
-use crate::{BufferHeadAdapter, Page};
+use crate::Page;
 
 pub struct PageCache {
     /// Map from aligned file offset to page cache.
@@ -22,12 +21,12 @@ impl PageCache {
     }
 
     pub fn get_page(&self, offset_aligned: usize) -> Option<Arc<Page>> {
-        debug_assert!(is_page_aligned(offset_aligned));
+        debug_assert!(is_aligned_to_page(offset_aligned));
         self.pages.lock().get(&offset_aligned).cloned()
     }
 
     pub fn insert_page(&self, offset_aligned: usize, page: Arc<Page>) {
-        debug_assert!(is_page_aligned(offset_aligned));
+        debug_assert!(is_aligned_to_page(offset_aligned));
         self.pages.lock().insert(offset_aligned, page);
     }
 

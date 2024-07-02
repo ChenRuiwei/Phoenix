@@ -75,7 +75,7 @@ impl Debug for Serial {
 }
 
 impl Device for Serial {
-    fn meta(&self) -> &device_core::DeviceMeta {
+    fn meta(&self) -> &DeviceMeta {
         &self.meta
     }
 

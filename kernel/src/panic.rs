@@ -79,7 +79,7 @@ fn panic(info: &PanicInfo) -> ! {
     shutdown()
 }
 
-fn backtrace() {
+pub fn backtrace() {
     extern "C" {
         fn _stext();
         fn _etext();

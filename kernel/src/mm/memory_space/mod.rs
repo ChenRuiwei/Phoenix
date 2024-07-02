@@ -16,7 +16,7 @@ use async_utils::block_on;
 use config::{
     board::MEMORY_END,
     mm::{
-        align_offset_to_page, is_page_aligned, DL_INTERP_OFFSET, MMAP_PRE_ALLOC_PAGES, PAGE_SIZE,
+        align_offset_to_page, is_aligned_to_page, DL_INTERP_OFFSET, MMAP_PRE_ALLOC_PAGES, PAGE_SIZE,
         USER_STACK_PRE_ALLOC_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG,
         U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG, U_SEG_STACK_END,
         VIRT_RAM_OFFSET,
@@ -712,7 +712,7 @@ impl MemorySpace {
         file: Arc<dyn File>,
         offset: usize,
     ) -> SysResult<VirtAddr> {
-        debug_assert!(is_page_aligned(offset));
+        debug_assert!(is_aligned_to_page(offset));
 
         const MMAP_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
