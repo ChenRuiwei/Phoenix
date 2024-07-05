@@ -11,22 +11,14 @@ mod resource;
 mod sched;
 mod signal;
 mod time;
+mod net;
 
 use alloc::sync::Arc;
-use core::arch;
 
 pub use consts::SyscallNo;
-use fs::*;
-use logging::ColorCode;
-use misc::*;
 pub use mm::MmapFlags;
-use mm::*;
 pub use process::CloneFlags;
-use process::*;
-use resource::*;
-use signal::*;
 use systype::SyscallResult;
-use time::*;
 
 use crate::{syscall::sched::*, task::Task};
 

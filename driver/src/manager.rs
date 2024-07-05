@@ -4,22 +4,35 @@ use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 use arch::interrupts::{disable_interrupt, enable_external_interrupt};
 use config::processor::HART_NUM;
-use device_core::{DevId, Device};
+use device_core::{BaseDeviceOps, DevId};
 use log::{info, warn};
 
 use super::{plic, CharDevice};
 use crate::{
     cpu::{self, CPU},
     plic::PLIC,
+    qemu::virtio_net::{self, NetDevice},
     serial,
 };
+pub enum DeviceEnum {
+    /// Network card device.
+    Net(NetDevice),
+    // Block storage device.
+    // Block(AxBlockDevice),
+    // Display(AxDisplayDevice),
+}
+pub trait DriverProbe {
+    fn probe_mmio(_mmio_base: usize, _mmio_size: usize) -> Option<DeviceEnum> {
+        None
+    }
+}
 
 pub struct DeviceManager {
     plic: Option<PLIC>,
     cpus: Vec<CPU>,
-    devices: BTreeMap<DevId, Arc<dyn Device>>,
+    devices: BTreeMap<DevId, Arc<dyn BaseDeviceOps>>,
     /// irq_no -> device.
-    irq_map: BTreeMap<usize, Arc<dyn Device>>,
+    irq_map: BTreeMap<usize, Arc<dyn BaseDeviceOps>>,
 }
 
 impl DeviceManager {
@@ -38,6 +51,8 @@ impl DeviceManager {
         let char_device = Arc::new(serial::probe().unwrap());
         self.devices
             .insert(char_device.dev_id(), char_device.clone());
+        let net_device = virtio_net::probe();
+
         self.cpus.extend(cpu::probe());
 
         // Add to interrupt map if have interrupts
@@ -57,11 +72,11 @@ impl DeviceManager {
         self.plic.as_ref().unwrap()
     }
 
-    pub fn get(&self, dev_id: &DevId) -> Option<&Arc<dyn Device>> {
+    pub fn get(&self, dev_id: &DevId) -> Option<&Arc<dyn BaseDeviceOps>> {
         self.devices.get(dev_id)
     }
 
-    pub fn devices(&self) -> &BTreeMap<DevId, Arc<dyn Device>> {
+    pub fn devices(&self) -> &BTreeMap<DevId, Arc<dyn BaseDeviceOps>> {
         &self.devices
     }
 

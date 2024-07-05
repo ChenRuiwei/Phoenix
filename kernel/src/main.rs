@@ -13,12 +13,14 @@
 #![feature(map_try_insert)]
 #![feature(format_args_nl)]
 #![allow(clippy::mut_from_ref)]
+#![feature(new_uninit)]
 
 mod boot;
 mod impls;
 mod ipc;
 mod loader;
 mod mm;
+mod net;
 mod panic;
 mod processor;
 mod syscall;

@@ -8,6 +8,7 @@ pub mod fd_table;
 pub mod pipefs;
 pub mod procfs;
 pub mod simplefs;
+pub mod sockfs;
 mod tmpfs;
 
 extern crate alloc;
@@ -17,6 +18,7 @@ use alloc::{collections::BTreeMap, string::String, sync::Arc};
 use devfs::tty;
 use driver::BLOCK_DEVICE;
 use procfs::init_procfs;
+use sockfs::SockFsType;
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 use vfs_core::{Dentry, FileSystemType, MountFlags};
@@ -53,6 +55,9 @@ fn register_all_fs() {
     let tmpfs = TmpFsType::new();
     FS_MANAGER.lock().insert(tmpfs.name_string(), tmpfs);
 
+    let sockfs = SockFsType::new();
+    FS_MANAGER.lock().insert(sockfs.name_string(), sockfs);
+
     log::info!("[vfs] register fs success");
 }
 
@@ -86,6 +91,11 @@ pub fn init() {
     let tmpfs = FS_MANAGER.lock().get("tmpfs").unwrap().clone();
     let tmpfs_dentry = tmpfs
         .mount("tmp", Some(diskfs_root.clone()), MountFlags::empty(), None)
+        .unwrap();
+
+    let sockfs = FS_MANAGER.lock().get("sockfs").unwrap().clone();
+    let sockfs_dentry = sockfs
+        .mount("sock", Some(diskfs_root.clone()), MountFlags::empty(), None)
         .unwrap();
 
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);

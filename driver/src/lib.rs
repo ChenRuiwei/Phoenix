@@ -2,7 +2,11 @@
 #![no_main]
 #![feature(trait_upcasting)]
 #![feature(format_args_nl)]
+#![feature(const_mut_refs)]
+#![feature(const_slice_from_raw_parts_mut)]
+#![feature(associated_type_defaults)]
 
+#[macro_use]
 extern crate alloc;
 
 use alloc::{boxed::Box, collections::BTreeMap, sync::Arc};
@@ -13,7 +17,7 @@ use core::{
 
 use async_trait::async_trait;
 use async_utils::block_on;
-use device_core::{BlockDevice, CharDevice, DevId, Device, DeviceMajor};
+use device_core::{BaseDeviceOps, BlockDevice, CharDevice, DevId, DeviceMajor};
 use manager::DeviceManager;
 use qemu::virtio_blk::VirtIOBlkDev;
 use spin::Once;
@@ -24,6 +28,7 @@ use crate::serial::{Serial, UART0};
 
 mod cpu;
 mod manager;
+pub mod net;
 mod plic;
 pub mod qemu;
 pub mod sbi;

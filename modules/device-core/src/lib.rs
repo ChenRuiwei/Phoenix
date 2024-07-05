@@ -2,6 +2,7 @@
 #![no_main]
 
 extern crate alloc;
+pub mod error;
 
 use alloc::{boxed::Box, string::String, sync::Arc};
 
@@ -22,11 +23,16 @@ pub enum DeviceType {
 pub enum DeviceMajor {
     Serial = 4,
     Block = 8,
+    /// 随便设的值，Linux中网络设备貌似没有主设备号和从设备号
+    Net = 16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DevId {
+    /// Major Device Number
     pub major: DeviceMajor,
+    /// Minor Device Number. It Identifies different device instances of the
+    /// same type
     pub minor: usize,
 }
 
@@ -44,7 +50,7 @@ pub struct DeviceMeta {
     pub dtype: DeviceType,
 }
 
-pub trait Device: Sync + Send + DowncastSync {
+pub trait BaseDeviceOps: Sync + Send + DowncastSync {
     fn meta(&self) -> &DeviceMeta;
 
     fn init(&self);
@@ -76,10 +82,10 @@ pub trait Device: Sync + Send + DowncastSync {
     }
 }
 
-impl_downcast!(sync Device);
+impl_downcast!(sync BaseDeviceOps);
 
 #[async_trait]
-pub trait CharDevice: Send + Sync + Device {
+pub trait CharDevice: Send + Sync + BaseDeviceOps {
     async fn read(&self, buf: &mut [u8]) -> usize;
     async fn write(&self, buf: &[u8]) -> usize;
     async fn poll_in(&self) -> bool;

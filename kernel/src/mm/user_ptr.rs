@@ -7,6 +7,7 @@ use core::{
     fmt::{self, Debug},
     intrinsics::{atomic_load_acquire, size_of},
     marker::PhantomData,
+    mem,
     ops::{self, ControlFlow},
 };
 
@@ -16,6 +17,10 @@ use systype::{SysError, SysResult};
 
 use super::memory_space::vm_area::MapPerm;
 use crate::{
+    net::{
+        socket::{SockAddr, SockAddrIn},
+        SocketAddressFamily,
+    },
     processor::env::SumGuard,
     task::Task,
     trap::{
@@ -603,5 +608,24 @@ impl From<usize> for FutexWord {
             addr: a,
             _guard: SumGuard::new(),
         }
+    }
+}
+
+pub fn audit_sockaddr(addr: usize, addr_len: usize, task: &Arc<Task>) -> SysResult<SockAddr> {
+    task.just_ensure_user_area(addr.into(), addr_len, PageFaultAccessType::RO)?;
+    let family_ptr = addr as *const u16;
+    let family_value = unsafe { *family_ptr };
+    let family =
+        SocketAddressFamily::from_usize(family_value as _).map_err(|_| SysError::EINVAL)?;
+    match family {
+        SocketAddressFamily::AF_UNIX => unimplemented!(),
+        SocketAddressFamily::AF_INET => {
+            if addr_len < mem::size_of::<SockAddrIn>() {
+                return Err(SysError::EINVAL);
+            }
+            let sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
+            Ok(SockAddr::SockAddrIn(sock_addr_in))
+        }
+        SocketAddressFamily::AF_INET6 => unimplemented!(),
     }
 }

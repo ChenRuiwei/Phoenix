@@ -13,6 +13,7 @@ use config::{
         PAGE_MASK, PAGE_SIZE,
     },
 };
+use downcast_rs::{impl_downcast, DowncastSync};
 use driver::qemu::virtio_blk::VirtIOBlkDev;
 use memory::address;
 use page::Page;
@@ -47,7 +48,7 @@ impl FileMeta {
 }
 
 #[async_trait]
-pub trait File: Send + Sync {
+pub trait File: Send + Sync + DowncastSync {
     fn meta(&self) -> &FileMeta;
 
     async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
@@ -390,3 +391,5 @@ impl dyn File {
         Ok(buf)
     }
 }
+
+impl_downcast!(sync File);

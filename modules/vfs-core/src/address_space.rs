@@ -7,7 +7,7 @@ use config::mm::PAGE_MASK;
 use page::Page;
 use spin::Once;
 
-use crate::{Inode, Mutex};
+use crate::Mutex;
 
 pub struct AddressSpace {
     /// Map from aligned file offset to page cache.

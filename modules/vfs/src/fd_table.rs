@@ -92,7 +92,7 @@ impl FdTable {
         (0..self.table.len()).find(|fd| self.table[*fd].is_none())
     }
 
-    fn find_free_slot_and_create(&mut self, lower_bound: usize) -> usize {
+    pub fn find_free_slot_and_create(&mut self, lower_bound: usize) -> usize {
         if lower_bound > self.table.len() {
             for _ in self.table.len()..lower_bound {
                 self.table.push(None)

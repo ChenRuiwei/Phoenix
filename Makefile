@@ -1,10 +1,15 @@
 # Building variables
 DOCKER_NAME = phoenix
 BOARD := qemu
+
+NET ?=y
+
 export TARGET = riscv64gc-unknown-none-elf
 export MODE = debug
 export LOG = error
 
+export Phoenix_IP=$(IP)
+export Phoenix_GW=$(GW)
 
 # Tools
 OBJDUMP = rust-objdump --arch-name=riscv64
@@ -40,7 +45,6 @@ export STRACE :=
 export SMP :=
 export PREEMPT :=
 
-
 # Args
 DISASM_ARGS = -d
 
@@ -71,6 +75,20 @@ DOCKER_RUN_ARGS += -w /mnt
 DOCKER_RUN_ARGS += $(DOCKER_NAME)
 DOCKER_RUN_ARGS += bash
 
+# Net 
+IP ?= 10.0.2.15
+GW ?= 10.0.2.2
+
+ifeq ($(NET),y)
+$(info "enabled qemu net device")
+# 指定该网络设备使用 net0 这个网络后端，使用用户模式网络。
+# 设置端口转发，将主机的 TCP 端口 5555 和 UDP 端口 5555 分别转发到虚拟机的 TCP端口 5555 和 UDP 端口 5555。
+QEMU_ARGS += -device virtio-net-device,netdev=net0 \
+             -netdev user,id=net0,hostfwd=tcp::5555-:5555,hostfwd=udp::5555-:5555
+QEMU_ARGS += -d guest_errors\
+			 -d unimp
+
+endif
 
 # File targets
 $(KERNEL_ASM): $(KERNEL_ELF)

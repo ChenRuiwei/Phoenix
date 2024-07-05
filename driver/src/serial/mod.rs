@@ -13,7 +13,8 @@ use core::{
 use async_trait::async_trait;
 use async_utils::{block_on, get_waker};
 use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
-use device_core::{DevId, Device, DeviceMajor, DeviceMeta, DeviceType};
+use device_core::{DevId, BaseDeviceOps, DeviceMajor, DeviceMeta, DeviceType};
+use fdt::node::FdtNode;
 use ringbuffer::RingBuffer;
 use sync::mutex::SpinNoIrqLock;
 
@@ -74,7 +75,7 @@ impl Debug for Serial {
     }
 }
 
-impl Device for Serial {
+impl BaseDeviceOps for Serial {
     fn meta(&self) -> &device_core::DeviceMeta {
         &self.meta
     }

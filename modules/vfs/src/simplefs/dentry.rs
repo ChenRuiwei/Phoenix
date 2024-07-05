@@ -38,6 +38,7 @@ impl Dentry for SimpleDentry {
         match inode.itype() {
             InodeType::Dir => Ok(SimpleDirFile::new(self.clone(), inode)),
             InodeType::File => Ok(SimpleFileFile::new(self.clone(), inode)),
+            InodeType::Socket => Ok(SimpleFileFile::new(self.clone(), inode)),
             _ => unreachable!(),
         }
     }

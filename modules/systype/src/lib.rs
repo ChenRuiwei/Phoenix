@@ -100,6 +100,10 @@ pub enum SysError {
     ENOTEMPTY = 39,
     /// Transport endpoint is not connected
     ENOTCONN = 107,
+    /// Unsupported
+    EOPNOTSUPP = 95,
+    /// Socket address is already in use
+    EADDRINUSE = 98,
     /// Connection refused
     ECONNREFUSED = 111,
 }
@@ -149,6 +153,8 @@ impl SysError {
             ENOSYS => "Invalid system call number",
             ENOTEMPTY => "Directory not empty",
             ENOTCONN => "Transport endpoint is not connected",
+            EOPNOTSUPP => "Unsupported Error",
+            EADDRINUSE => "Address already in use",
             ECONNREFUSED => "Connection refused",
         }
     }
