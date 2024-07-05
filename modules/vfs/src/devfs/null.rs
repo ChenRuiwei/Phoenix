@@ -50,7 +50,7 @@ impl Dentry for NullDentry {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
         Err(SysError::ENOTDIR)
     }
 }
@@ -63,7 +63,7 @@ impl NullInode {
     pub fn new(super_block: Arc<dyn SuperBlock>) -> Arc<Self> {
         let size = BLOCK_SIZE;
         Arc::new(Self {
-            meta: InodeMeta::new(InodeMode::FILE, super_block, size),
+            meta: InodeMeta::new(InodeMode::CHAR, super_block, size),
         })
     }
 }

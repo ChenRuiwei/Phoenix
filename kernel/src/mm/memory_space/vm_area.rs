@@ -1,9 +1,9 @@
-use alloc::{collections::BTreeMap, sync::Arc};
+use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use core::ops::{Range, RangeBounds};
 
 use arch::{memory::sfence_vma_vaddr, sstatus};
 use async_utils::block_on;
-use config::mm::PAGE_SIZE;
+use config::mm::{align_offset_to_page, round_down_to_page, PAGE_SIZE};
 use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
 use page::Page;
 use systype::{SysError, SysResult};
@@ -240,6 +240,8 @@ impl VmArea {
         self.set_perm(perm);
         let pte_flags = perm.into();
         let range_vpn = self.range_vpn();
+        // NOTE: should flush pages that already been allocated, page fault handler will
+        // handle the permission of those unallocated pages
         for &vpn in self.pages.keys() {
             let pte = page_table.find_pte(vpn).unwrap();
             log::trace!(
@@ -274,7 +276,7 @@ impl VmArea {
                 let page = Page::new();
                 // page.clear();
                 page_table.map(vpn, page.ppn(), pte_flags);
-                self.pages.insert(vpn, Arc::new(page));
+                self.pages.insert(vpn, page);
             }
         }
     }
@@ -286,13 +288,15 @@ impl VmArea {
         for vpn in range_vpn {
             let page = Page::new();
             page_table.map(vpn, page.ppn(), pte_flags);
-            self.pages.insert(vpn, Arc::new(page));
+            self.pages.insert(vpn, page);
         }
     }
 
-    pub fn unmap(&mut self, page_table: &mut PageTable, range_vpn: Range<VirtPageNum>) {
-        for vpn in range_vpn {
+    pub fn unmap(&mut self, page_table: &mut PageTable) {
+        let vpns: Vec<_> = self.pages.keys().cloned().collect();
+        for vpn in vpns {
             page_table.unmap(vpn);
+            unsafe { sfence_vma_vaddr(vpn.into()) };
             self.pages.remove(&vpn);
         }
     }
@@ -400,14 +404,14 @@ impl VmArea {
         );
 
         if !access_type.can_access(self.perm()) {
-            log::error!(
+            log::warn!(
                 "[VmArea::handle_page_fault] permission not allowed, perm:{:?}",
                 self.perm()
             );
             return Err(SysError::EFAULT);
         }
 
-        let page: Page;
+        let page: Arc<Page>;
         let pte = page_table.find_pte(vpn);
         if let Some(pte) = pte {
             // if PTE is valid, then it must be COW
@@ -430,14 +434,14 @@ impl VmArea {
 
                 // copy the data
                 page = Page::new();
-                page.copy_data_from_another(&old_page);
+                page.copy_from_slice(old_page.bytes_array());
 
                 // unmap old page and map new page
                 pte_flags.remove(PTEFlags::COW);
                 pte_flags.insert(PTEFlags::W);
                 page_table.map_force(vpn, page.ppn(), pte_flags);
                 // NOTE: track `Page` with great care
-                self.pages.insert(vpn, Arc::new(page));
+                self.pages.insert(vpn, page);
                 unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
             } else {
                 // not shared
@@ -460,22 +464,39 @@ impl VmArea {
                     page = Page::new();
                     page.fill_zero();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
-                    self.pages.insert(vpn, Arc::new(page));
+                    self.pages.insert(vpn, page);
                     unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                 }
                 VmAreaType::Mmap => {
                     if !self.mmap_flags.contains(MmapFlags::MAP_ANONYMOUS) {
                         let file = self.backed_file.as_ref().unwrap();
                         let offset = self.offset + (vpn - self.start_vpn()) * PAGE_SIZE;
-                        let mut buf = unsafe { UserSlice::new_unchecked(vpn.to_va(), PAGE_SIZE) };
-                        block_on(async { file.read_at(offset, &mut buf).await })?;
-                        unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                        let offset_aligned = round_down_to_page(offset);
+                        if self.mmap_flags.contains(MmapFlags::MAP_SHARED) {
+                            let page = if let Some(page) =
+                                file.inode().page_cache().unwrap().get_page(offset_aligned)
+                            {
+                                page
+                            } else if let Some(page) =
+                                block_on(async { file.read_page_at(offset_aligned).await })?
+                            {
+                                page
+                            } else {
+                                // no page means EOF
+                                unreachable!()
+                            };
+                            page_table.map(vpn, page.ppn(), self.map_perm.into());
+                            self.pages.insert(vpn, page);
+                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                        } else {
+                            todo!()
+                        }
                     } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
                         // private anonymous area
                         page = Page::new();
                         page.fill_zero();
                         page_table.map(vpn, page.ppn(), self.map_perm.into());
-                        self.pages.insert(vpn, Arc::new(page));
+                        self.pages.insert(vpn, page);
                         unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                     }
                 }

@@ -5,6 +5,7 @@
 *.dtb
 *.dts
 
+traces.*
 lmbench_all_debug
 .gdbinit
 ltp/

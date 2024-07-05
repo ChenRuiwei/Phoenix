@@ -15,6 +15,7 @@ use crate::loader::get_app_data_by_name;
 
 pub fn add_init_proc() {
     let elf_data = get_app_data_by_name("init_proc").unwrap();
+    // let elf_data = get_app_data_by_name("futex_test").unwrap();
     Task::spawn_from_elf(elf_data);
 }
 

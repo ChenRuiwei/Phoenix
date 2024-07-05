@@ -14,7 +14,7 @@ pub use memory::page_table::PageTable;
 use memory::{frame, heap, VirtAddr};
 pub use memory_space::{switch_kernel_page_table, MemorySpace};
 pub use user_ptr::{
-    audit_sockaddr, FutexWord, PageFaultAccessType, UserMut, UserRdWrPtr, UserReadPtr, UserRef,
+    audit_sockaddr, FutexAddr, PageFaultAccessType, UserMut, UserRdWrPtr, UserReadPtr, UserRef,
     UserSlice, UserWritePtr,
 };
 

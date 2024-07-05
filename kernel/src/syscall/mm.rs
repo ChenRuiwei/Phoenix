@@ -1,5 +1,5 @@
 use arch::memory::sfence_vma_vaddr;
-use config::mm::{is_page_aligned, PAGE_MASK};
+use config::mm::{is_aligned_to_page, PAGE_MASK};
 use memory::{page_table, VirtAddr};
 use systype::{SysError, SyscallResult};
 
@@ -123,12 +123,8 @@ impl Syscall<'_> {
             return Err(SysError::EINVAL);
         } else if addr.is_null() && flags.contains(MmapFlags::MAP_FIXED) {
             return Err(SysError::EINVAL);
-        } else if !is_page_aligned(offset) {
+        } else if !is_aligned_to_page(offset) {
             return Err(SysError::EINVAL);
-        }
-
-        if flags.contains(MmapFlags::MAP_FIXED) {
-            log::error!("not support mmap fixed yet");
         }
 
         match flags.intersection(MmapFlags::MAP_TYPE_MASK) {
@@ -143,11 +139,10 @@ impl Syscall<'_> {
                 } else {
                     let file = task.with_fd_table(|table| table.get_file(fd))?;
                     if offset + length > file.size() {
-                        return Err(SysError::EINVAL);
+                        log::warn!("offset plus length is bigger than file size");
                     }
-                    // PERF: lazy alloc for mmap
                     let start_va = task.with_mut_memory_space(|m| {
-                        m.alloc_mmap_area_lazily(length, perm, flags, file, offset)
+                        m.alloc_mmap_area_lazily(addr, length, perm, flags, file, offset)
                     })?;
                     Ok(start_va.bits())
                 }
@@ -156,16 +151,19 @@ impl Syscall<'_> {
                 if flags.contains(MmapFlags::MAP_ANONYMOUS) {
                     let start_va = task
                         .with_mut_memory_space(|m| m.alloc_mmap_anonymous(perm, flags, length))?;
-                    return Ok(start_va.bits());
+                    Ok(start_va.bits())
+                } else {
+                    log::warn!("private copy on write mmap is not implemented yet");
+                    let file = task.with_fd_table(|table| table.get_file(fd))?;
+                    if offset + length > file.size() {
+                        log::warn!("offset plus length is bigger than file size");
+                    }
+                    // TODO: private copy on write
+                    let start_va = task.with_mut_memory_space(|m| {
+                        m.alloc_mmap_area_lazily(addr, length, perm, flags, file, offset)
+                    })?;
+                    Ok(start_va.bits())
                 }
-                let file = task.with_fd_table(|table| table.get_file(fd))?;
-                if offset + length > file.size() {
-                    return Err(SysError::EINVAL);
-                }
-                let start_va = task.with_mut_memory_space(|m| {
-                    m.alloc_mmap_area_lazily(length, perm, flags, file, offset)
-                })?;
-                Ok(start_va.bits())
             }
             _ => Err(SysError::EINVAL),
         }
@@ -217,14 +215,17 @@ impl Syscall<'_> {
         bitflags! {
             #[derive(Debug)]
             struct ShmGetFlags: i32 {
-                /// Create a new segment. If this flag is not used, then shmget() will find the segment associated with key and check to see if the user has permission to access the segment.
+                /// Create a new segment. If this flag is not used, then shmget() will
+                /// find the segment associated with key and check to see if the user
+                /// has permission to access the segment.
                 const IPC_CREAT = 0o1000;
-                /// This flag is used with IPC_CREAT to ensure that this call creates the segment.  If the segment already exists, the call fails.
+                /// This flag is used with IPC_CREAT to ensure that this call creates
+                /// the segment.  If the segment already exists, the call fails.
                 const IPC_EXCL = 0o2000;
             }
         }
         let shmflg = ShmGetFlags::from_bits_truncate(shmflg);
-        log::warn!("[sys_shmget] {key} {size} {:?}", shmflg);
+        log::info!("[sys_shmget] {key} {size} {:?}", shmflg);
 
         // Create a new shared memory. When it is specified, the shmflg is invalid
         const IPC_PRIVATE: usize = 0;
@@ -268,13 +269,13 @@ impl Syscall<'_> {
     ///
     /// On success, sys_shmat() returns an address pointer to the shared memory
     /// segment
-    pub fn sys_shmat(&self, shmid: usize, shmaddr: usize, shmflg: i32) -> SyscallResult {
+    pub fn sys_shmat(&self, shmid: usize, shmaddr: VirtAddr, shmflg: i32) -> SyscallResult {
         bitflags! {
             #[derive(Debug)]
             struct ShmAtFlags: i32 {
                 /// Attach the segment for read-only access.If this flag is not specified,
                 /// the segment is attached for read and write access, and the process
-                /// must have read and write permission for  the  segment.
+                /// must have read and write permission for the segment.
                 const SHM_RDONLY = 0o10000;
                 /// round attach address to SHMLBA boundary
                 const SHM_RND = 0o20000;
@@ -285,16 +286,15 @@ impl Syscall<'_> {
             }
         }
         let shmflg = ShmAtFlags::from_bits_truncate(shmflg as i32);
-        log::warn!("[sys_shmat] {shmid} {shmaddr} {:?}", shmflg);
+        log::info!("[sys_shmat] {shmid} {shmaddr:?} {:?}", shmflg);
 
-        let mut shm_va: VirtAddr = shmaddr.into();
-        if !shm_va.is_aligned() && !shmflg.contains(ShmAtFlags::SHM_RND) {
+        if !shmaddr.is_aligned() && !shmflg.contains(ShmAtFlags::SHM_RND) {
             // unaligned (i.e., not page-aligned and SHM_RND was not specified) shmaddr
             // value
             return Err(SysError::EINVAL);
         }
-        shm_va = shm_va.round_down();
-        let mut map_perm = MapPerm::RW;
+        let shmaddr_aligned = shmaddr.round_down();
+        let mut map_perm = MapPerm::URW;
         if shmflg.contains(ShmAtFlags::SHM_EXEC) {
             map_perm.insert(MapPerm::X);
         }
@@ -305,15 +305,15 @@ impl Syscall<'_> {
         if let Some(shm) = shm_manager.get_mut(&shmid) {
             let task = self.task;
             let ret_addr = task.with_mut_memory_space(|m| {
-                m.attach_shm(shm.size(), shm_va, map_perm, &mut shm.pages)
+                m.attach_shm(shm.size(), shmaddr_aligned, map_perm, &mut shm.pages)
             });
             task.with_mut_shm_ids(|ids| {
-                ids.insert(ret_addr.clone(), shmid);
+                ids.insert(ret_addr, shmid);
             });
-            return Ok(ret_addr.into());
+            Ok(ret_addr.into())
         } else {
             // Invalid shmid value
-            return Err(SysError::EINVAL);
+            Err(SysError::EINVAL)
         }
     }
 
@@ -330,28 +330,29 @@ impl Syscall<'_> {
     /// from the shared memory block.
     ///
     /// On success, shmdt() returns 0;
-    pub fn sys_shmdt(&self, shmaddr: usize) -> SyscallResult {
-        log::warn!("[sys_shmdt] {:?}", shmaddr);
+    pub fn sys_shmdt(&self, shmaddr: VirtAddr) -> SyscallResult {
+        log::info!("[sys_shmdt] {:?}", shmaddr);
         let task = self.task;
-        let shm_va: VirtAddr = shmaddr.into();
-        if !shm_va.is_aligned() {
+        if !shmaddr.is_aligned() {
             // shmaddr is not aligned on a page boundary
             return Err(SysError::EINVAL);
         }
-        let shm_id = task.with_mut_shm_ids(|ids| ids.remove(&shm_va));
+        let shm_id = task.with_mut_shm_ids(|ids| ids.remove(&shmaddr));
         if let Some(shm_id) = shm_id {
-            task.with_mut_memory_space(|m| m.detach_shm(shm_va));
+            task.with_mut_memory_space(|m| m.detach_shm(shmaddr));
             SHARED_MEMORY_MANAGER.detach(shm_id, task.pid());
+            Ok(0)
         } else {
             // There is no shared memory segment attached at shmaddr;
-            return Err(SysError::EINVAL);
+            Err(SysError::EINVAL)
         }
-        Ok(0)
     }
 
     /// sys_shmctl performs the control operation specified by cmd on the System
     /// V shared memory segment whose identifier is given in shmid.
     pub fn sys_shmctl(&self, shmid: usize, cmd: i32, buf: usize) -> SyscallResult {
+        const IPC_RMID: i32 = 0;
+        const IPC_SET: i32 = 1;
         // Copy information from the kernel data structure associated with `shmid`
         // into the shmid_ds structure pointed to by buf.
         const IPC_STAT: i32 = 2;
@@ -361,18 +362,22 @@ impl Syscall<'_> {
                 if let Some(shm) = shm_manager.get(&shmid) {
                     let buf = UserWritePtr::from_usize(buf);
                     buf.write(&self.task, shm.shmid_ds);
+                    Ok(0)
                 } else {
                     // shmid is not a valid identifier
-                    return Err(SysError::EINVAL);
+                    Err(SysError::EINVAL)
                 }
+            }
+            IPC_RMID => {
+                log::warn!("[sys_shmctl] IPC_RMID, do nothing");
+                Ok(0)
             }
             cmd => {
                 log::error!("[sys_shmctl] unimplemented cmd {cmd}");
                 // cmd is not a valid command
-                return Err(SysError::EINVAL);
+                Err(SysError::EINVAL)
             }
         }
-        Ok(0)
     }
 
     pub fn sys_mprotect(&self, addr: VirtAddr, len: usize, prot: i32) -> SyscallResult {

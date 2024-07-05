@@ -1,11 +1,11 @@
 use core::time::Duration;
 
-#[derive(Clone, Copy)]
-#[repr(C)]
 /// Describes times in seconds and nanoseconds.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
 pub struct TimeSpec {
-    tv_sec: usize,
-    tv_nsec: usize,
+    pub tv_sec: usize,
+    pub tv_nsec: usize,
 }
 
 impl TimeSpec {
@@ -21,7 +21,9 @@ impl TimeSpec {
     }
 
     pub fn is_valid(&self) -> bool {
-        (self.tv_sec as isize > 0) && (self.tv_nsec as isize > 0) && (self.tv_nsec < 1_000_000_000)
+        (self.tv_sec as isize >= 0)
+            && (self.tv_nsec as isize >= 0)
+            && (self.tv_nsec < 1_000_000_000)
     }
 }
 

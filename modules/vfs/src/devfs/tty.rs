@@ -12,7 +12,7 @@ use sync::mutex::{SleepLock, SpinNoIrqLock};
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
     Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Path, PollEvents,
-    Stat, SuperBlock,
+    SeekFrom, Stat, SuperBlock,
 };
 
 use crate::sys_root_dentry;
@@ -50,7 +50,7 @@ impl Dentry for TtyDentry {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_remove(self: Arc<Self>, _name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SysResult<()> {
         Err(SysError::ENOTDIR)
     }
 }

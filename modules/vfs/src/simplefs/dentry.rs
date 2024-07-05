@@ -56,7 +56,7 @@ impl Dentry for SimpleDentry {
         Ok(sub_dentry)
     }
 
-    fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
         self.remove_child(name).ok_or(SysError::ENOENT).map(|_| ())
     }
 

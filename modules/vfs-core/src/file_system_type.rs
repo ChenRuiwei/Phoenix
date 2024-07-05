@@ -79,7 +79,7 @@ impl dyn FileSystemType {
     }
 }
 
-bitflags! {
+bitflags::bitflags! {
     pub struct FileSystemFlags:u32{
         /// The file system requires a device.
         const REQUIRES_DEV = 0x1;
@@ -96,6 +96,6 @@ bitflags! {
         /// FS uses multigrain timestamps
         const MGTIME = 0x40;
         /// The file systen will handle `d_move` during `rename` internally.
-        const RENAME_DOES_D_MOVE = 0x8000; //32768
+        const RENAME_DOES_D_MOVE = 0x8000;
     }
 }

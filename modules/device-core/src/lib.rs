@@ -37,6 +37,7 @@ pub struct DevId {
 }
 
 pub struct DeviceMeta {
+    /// Device id.
     pub dev_id: DevId,
     /// Name of the device.
     pub name: String,

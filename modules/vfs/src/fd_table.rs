@@ -1,25 +1,26 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{
+    sync::Arc,
+    vec::{self, Vec},
+};
 
-use systype::{SysError, SysResult};
+use config::fs::MAX_FD_NUM;
+use systype::{RLimit, SysError, SysResult};
 use vfs_core::{File, OpenFlags};
 
 use crate::devfs::{stdio, tty::TTY};
 
 pub type Fd = usize;
 
-const MAX_FD_NUM_DEFAULT: usize = 1024;
-
 #[derive(Clone)]
 pub struct FdTable {
     table: Vec<Option<FdInfo>>,
-    // TODO: add code for making sure tha FdTable length is less than `limit`
-    limit: usize,
+    rlimit: RLimit,
 }
 
 bitflags::bitflags! {
     // Defined in <bits/fcntl-linux.h>.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct FdFlags: isize {
+    pub struct FdFlags: u8 {
         const CLOEXEC = 1;
     }
 }
@@ -44,11 +45,8 @@ pub struct FdInfo {
 }
 
 impl FdInfo {
-    pub fn new(file: Arc<dyn File>) -> Self {
-        Self {
-            flags: FdFlags::empty(),
-            file,
-        }
+    pub fn new(file: Arc<dyn File>, flags: FdFlags) -> Self {
+        Self { flags, file }
     }
 
     pub fn file(&self) -> Arc<dyn File> {
@@ -70,7 +68,8 @@ impl FdInfo {
 
 impl FdTable {
     pub fn new() -> Self {
-        let mut vec: Vec<Option<FdInfo>> = Vec::new();
+        let mut table: Vec<Option<FdInfo>> = Vec::with_capacity(MAX_FD_NUM);
+
         let tty_file = TTY.get().unwrap().clone();
         let stdin = tty_file.clone();
         stdin.set_flags(OpenFlags::empty());
@@ -79,51 +78,79 @@ impl FdTable {
         let stderr = tty_file.clone();
         stderr.set_flags(OpenFlags::O_WRONLY);
 
-        vec.push(Some(FdInfo::new(stdin)));
-        vec.push(Some(FdInfo::new(stdout)));
-        vec.push(Some(FdInfo::new(stderr)));
+        table.push(Some(FdInfo::new(stdin, FdFlags::empty())));
+        table.push(Some(FdInfo::new(stdout, FdFlags::empty())));
+        table.push(Some(FdInfo::new(stderr, FdFlags::empty())));
+
         Self {
-            table: vec,
-            limit: MAX_FD_NUM_DEFAULT,
+            table,
+            rlimit: RLimit {
+                rlim_cur: MAX_FD_NUM,
+                rlim_max: MAX_FD_NUM,
+            },
         }
     }
 
-    fn find_free_slot(&self) -> Option<usize> {
-        (0..self.table.len()).find(|fd| self.table[*fd].is_none())
+    fn get_free_slot(&mut self) -> Option<usize> {
+        let inner_slot = self
+            .table
+            .iter()
+            .enumerate()
+            .find(|(i, e)| e.is_none())
+            .map(|(i, _)| i);
+        if inner_slot.is_some() {
+            return inner_slot;
+        } else if inner_slot.is_none() && self.table.len() < self.rlimit.rlim_max {
+            self.table.push(None);
+            return Some(self.table.len() - 1);
+        } else {
+            return None;
+        }
     }
 
-    pub fn find_free_slot_and_create(&mut self, lower_bound: usize) -> usize {
-        if lower_bound > self.table.len() {
-            for _ in self.table.len()..lower_bound {
+    fn get_free_slot_from(&mut self, start: usize) -> Option<usize> {
+        let inner_slot = self
+            .table
+            .iter()
+            .enumerate()
+            .skip(start)
+            .find(|(i, e)| e.is_none())
+            .map(|(i, _)| i);
+        if inner_slot.is_some() {
+            return inner_slot;
+        } else if inner_slot.is_none() && start < self.rlimit.rlim_max {
+            for _ in self.table.len()..start {
+                self.table.push(None);
+            }
+            return Some(self.table.len() - 1);
+        } else {
+            return None;
+        }
+    }
+
+    fn extend_to(&mut self, len: usize) -> SysResult<()> {
+        if len > self.rlimit.rlim_max {
+            return Err(SysError::EMFILE);
+        } else if self.table.len() >= len {
+            return Ok(());
+        } else {
+            for _ in self.table.len()..len {
                 self.table.push(None)
             }
-            lower_bound
-        } else {
-            for idx in lower_bound..self.table.len() {
-                if self.table[idx].is_none() {
-                    return idx;
-                }
-            }
-            self.table.push(None);
-            self.table.len()
+            Ok(())
         }
     }
 
     /// Find the minimium released fd, will alloc a fd if necessary, and insert
     /// the `file` into the table.
-    pub fn alloc(&mut self, file: Arc<dyn File>) -> SysResult<Fd> {
-        let fd_info = FdInfo::new(file);
-        if let Some(fd) = self.find_free_slot() {
+    pub fn alloc(&mut self, file: Arc<dyn File>, flags: OpenFlags) -> SysResult<Fd> {
+        let fd_info = FdInfo::new(file, flags.into());
+        if let Some(fd) = self.get_free_slot() {
             self.table[fd] = Some(fd_info);
             Ok(fd)
         } else {
-            self.table.push(Some(fd_info));
-            Ok(self.table.len() - 1)
+            Err(SysError::EMFILE)
         }
-    }
-
-    pub fn get_file(&self, fd: Fd) -> SysResult<Arc<dyn File>> {
-        Ok(self.get(fd)?.file())
     }
 
     pub fn get(&self, fd: Fd) -> SysResult<&FdInfo> {
@@ -142,6 +169,10 @@ impl FdTable {
         }
     }
 
+    pub fn get_file(&self, fd: Fd) -> SysResult<Arc<dyn File>> {
+        Ok(self.get(fd)?.file())
+    }
+
     pub fn remove(&mut self, fd: Fd) -> SysResult<()> {
         if fd >= self.table.len() {
             Err(SysError::EBADF)
@@ -151,32 +182,22 @@ impl FdTable {
         }
     }
 
-    pub fn insert(&mut self, fd: Fd, file: Arc<dyn File>) -> SysResult<()> {
-        let fd_info = FdInfo::new(file);
-        if fd >= self.table.len() {
-            for _ in self.table.len()..fd {
-                self.table.push(None)
-            }
-            self.table.push(Some(fd_info));
-            Ok(())
-        } else {
-            self.table[fd] = Some(fd_info);
-            Ok(())
-        }
+    pub fn put(&mut self, fd: Fd, fd_info: FdInfo) -> SysResult<()> {
+        self.extend_to(fd)?;
+        self.table[fd] = Some(fd_info);
+        Ok(())
     }
 
     /// Dup with no file descriptor flags.
     pub fn dup(&mut self, old_fd: Fd) -> SysResult<Fd> {
         let file = self.get_file(old_fd)?;
-        self.alloc(file)
+        self.alloc(file, OpenFlags::empty())
     }
 
     pub fn dup3(&mut self, old_fd: Fd, new_fd: Fd, flags: OpenFlags) -> SysResult<Fd> {
         let file = self.get_file(old_fd)?;
-        self.insert(new_fd, file)?;
-        if flags.contains(OpenFlags::O_CLOEXEC) {
-            self.table[new_fd].as_mut().unwrap().set_close_on_exec();
-        }
+        let fd_info = FdInfo::new(file, flags.into());
+        self.put(new_fd, fd_info)?;
         Ok(new_fd)
     }
 
@@ -187,11 +208,11 @@ impl FdTable {
         flags: OpenFlags,
     ) -> SysResult<Fd> {
         let file = self.get_file(old_fd)?;
-        let new_fd = self.find_free_slot_and_create(lower_bound);
-        self.insert(new_fd, file)?;
-        if flags.contains(OpenFlags::O_CLOEXEC) {
-            self.table[new_fd].as_mut().unwrap().set_close_on_exec();
-        }
+        let new_fd = self
+            .get_free_slot_from(lower_bound)
+            .ok_or_else(|| SysError::EMFILE)?;
+        let fd_info = FdInfo::new(file, flags.into());
+        self.put(new_fd, fd_info)?;
         Ok(new_fd)
     }
 
@@ -205,15 +226,14 @@ impl FdTable {
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.table.len()
+    pub fn rlimit(&self) -> RLimit {
+        self.rlimit
     }
 
-    pub fn limit(&self) -> usize {
-        self.limit
-    }
-
-    pub fn set_limit(&mut self, limit: usize) {
-        self.limit = limit;
+    pub fn set_rlimit(&mut self, rlimit: RLimit) {
+        self.rlimit = rlimit;
+        if rlimit.rlim_max <= self.table.len() {
+            self.table.truncate(self.rlimit.rlim_max)
+        }
     }
 }

@@ -13,6 +13,7 @@ use memory::VirtAddr;
 use systype::{SysError, SysResult, SyscallResult};
 use time::timespec::TimeSpec;
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
+use vfs::fd_table::Fd;
 use vfs_core::{File, PollEvents};
 
 use super::Syscall;
@@ -66,12 +67,11 @@ impl FdSet {
     }
 }
 
-pub struct PollFuture {
+pub struct PPollFuture {
     polls: Vec<(PollEvents, Arc<dyn File>)>,
-    ready_cnt: usize,
 }
 
-impl Future for PollFuture {
+impl Future for PPollFuture {
     type Output = Vec<(usize, PollEvents)>;
 
     /// Return vec of futures that are ready. Return `Poll::Pending` if
@@ -85,13 +85,43 @@ impl Future for PollFuture {
                 Poll::Pending => unreachable!(),
                 Poll::Ready(result) => {
                     if !result.is_empty() {
-                        this.ready_cnt += 1;
                         ret_vec.push((i, result))
                     }
                 }
             }
         }
-        if this.ready_cnt > 0 {
+        if ret_vec.len() > 0 {
+            Poll::Ready(ret_vec)
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+pub struct PSelectFuture {
+    polls: Vec<(Fd, PollEvents, Arc<dyn File>)>,
+}
+
+impl Future for PSelectFuture {
+    type Output = Vec<(Fd, PollEvents)>;
+
+    /// Return vec of futures that are ready. Return `Poll::Pending` if
+    /// no futures are ready.
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        let mut ret_vec = Vec::with_capacity(this.polls.len());
+        for (fd, events, file) in this.polls.iter() {
+            let result = unsafe { Pin::new_unchecked(&mut file.poll(*events)).poll(cx) };
+            match result {
+                Poll::Pending => unreachable!(),
+                Poll::Ready(result) => {
+                    if !result.is_empty() {
+                        ret_vec.push((*fd, result))
+                    }
+                }
+            }
+        }
+        if ret_vec.len() > 0 {
             Poll::Ready(ret_vec)
         } else {
             Poll::Pending
@@ -127,10 +157,7 @@ impl Syscall<'_> {
             polls.push((events, file));
         }
 
-        let poll_future = PollFuture {
-            polls,
-            ready_cnt: 0,
-        };
+        let poll_future = PPollFuture { polls };
 
         let mut poll_fds_slice = unsafe { UserSlice::<PollFd>::new_unchecked(fds_va, nfds) };
 
@@ -182,60 +209,55 @@ impl Syscall<'_> {
 
         log::info!("[sys_pselect6] nfds:{nfds}, readfds:{readfds}, writefds:{writefds}, exceptfds:{exceptfds}, timeout:{timeout:?}, sigmask:{sigmask}");
 
-        let mut zero_read_fdset = FdSet::zero();
-        let mut zero_write_fdset = FdSet::zero();
-        let mut zero_except_fdset = FdSet::zero();
         let mut readfds = if readfds.is_null() {
-            UserMut::new(&mut zero_read_fdset)
+            None
         } else {
             let readfds = readfds.into_mut(task)?;
-            log::info!("readfds: {:?}", &readfds.fds_bits[..nfds]);
-            readfds
+            log::info!("readfds: {:?}", &readfds.fds_bits);
+            Some(readfds)
         };
         let mut writefds = if writefds.is_null() {
-            UserMut::new(&mut zero_write_fdset)
+            None
         } else {
             let writefds = writefds.into_mut(task)?;
-            log::info!("writefds: {:?}", &writefds.fds_bits[..nfds]);
-            writefds
+            log::info!("writefds: {:?}", &writefds.fds_bits);
+            Some(writefds)
         };
         let mut exceptfds = if exceptfds.is_null() {
-            UserMut::new(&mut zero_except_fdset)
+            None
         } else {
             let exceptfds = exceptfds.into_mut(task)?;
-            log::info!("exceptfds: {:?}", &exceptfds.fds_bits[..nfds]);
-            exceptfds
+            log::info!("exceptfds: {:?}", &exceptfds.fds_bits);
+            Some(exceptfds)
         };
 
-        // `future` idx in `futures` -> fd
-        let mut mapping = BTreeMap::<usize, usize>::new();
-        let mut polls = Vec::<(PollEvents, Arc<dyn File>)>::with_capacity(nfds as usize);
+        let mut polls = Vec::<(Fd, PollEvents, Arc<dyn File>)>::with_capacity(nfds as usize);
         for fd in 0..nfds as usize {
             let mut events = PollEvents::empty();
-            if readfds.is_set(fd) {
-                events.insert(PollEvents::IN)
-            }
-            if writefds.is_set(fd) {
-                events.insert(PollEvents::OUT)
-            }
+            readfds.as_ref().map(|fds| {
+                if fds.is_set(fd) {
+                    events.insert(PollEvents::IN)
+                }
+            });
+            writefds.as_ref().map(|fds| {
+                if fds.is_set(fd) {
+                    events.insert(PollEvents::OUT)
+                }
+            });
             if !events.is_empty() {
                 let file = task.with_fd_table(|f| f.get_file(fd))?;
                 log::debug!("fd:{fd}, file path:{}", file.dentry().path());
-                polls.push((events, file));
-                mapping.insert(polls.len() - 1, fd);
+                polls.push((fd, events, file));
             }
         }
 
-        readfds.clear();
-        writefds.clear();
-        exceptfds.clear();
+        readfds.as_mut().map(|fds| fds.clear());
+        writefds.as_mut().map(|fds| fds.clear());
+        exceptfds.as_mut().map(|fds| fds.clear());
 
-        let poll_future = PollFuture {
-            polls,
-            ready_cnt: 0,
-        };
+        let pselect_future = PSelectFuture { polls };
         let ret_vec = if let Some(timeout) = timeout {
-            match TimeLimitedTaskFuture::new(timeout, poll_future).await {
+            match TimeLimitedTaskFuture::new(timeout, pselect_future).await {
                 TimeLimitedTaskOutput::Ok(ret_vec) => ret_vec,
                 TimeLimitedTaskOutput::TimeOut => {
                     log::debug!("[sys_pselect6]: timeout");
@@ -243,18 +265,17 @@ impl Syscall<'_> {
                 }
             }
         } else {
-            poll_future.await
+            pselect_future.await
         };
 
         let mut ret = 0;
-        for (i, events) in ret_vec {
-            let fd = mapping.remove(&i).unwrap();
+        for (fd, events) in ret_vec {
             if events.contains(PollEvents::IN) {
-                readfds.set(fd);
+                readfds.as_mut().map(|fds| fds.set(fd));
                 ret += 1;
             }
             if events.contains(PollEvents::OUT) {
-                writefds.set(fd);
+                writefds.as_mut().map(|fds| fds.set(fd));
                 ret += 1;
             }
         }

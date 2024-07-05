@@ -115,7 +115,7 @@ impl Dentry for FatDentry {
         }
     }
 
-    fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
         let inode = self
             .inode()?
             .downcast_arc::<FatDirInode>()

@@ -111,14 +111,15 @@ impl Syscall<'_> {
     pub fn sys_rt_sigreturn(&self) -> SyscallResult {
         let task = self.task;
         let cx = task.trap_context_mut();
-        let ucontext_ptr = UserReadPtr::<UContext>::from(task.sig_ucontext_ptr());
-        log::trace!("[sys_rt_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
+        let ucontext_ptr: UserReadPtr<UContext> = (task.sig_ucontext_ptr()).into();
+        // log::trace!("[sys_rt_sigreturn] ucontext_ptr: {ucontext_ptr:?}");
         let ucontext = ucontext_ptr.read(&task)?;
+        // log::error!("[SA_SIGINFO] load ucontext {ucontext:?}");
         *task.sig_mask() = ucontext.uc_sigmask;
         *task.sig_stack() = (ucontext.uc_stack.ss_size != 0).then_some(ucontext.uc_stack);
-        cx.sepc = ucontext.uc_mcontext.sepc;
+        cx.sepc = ucontext.uc_mcontext.user_x[0];
         cx.user_x = ucontext.uc_mcontext.user_x;
-        log::error!("stask after {:#x}", cx.user_x[2]);
+        // log::error!("stask after {:#x}", cx.user_x[2]);
         Ok(cx.user_x[10])
     }
 
@@ -152,6 +153,10 @@ impl Syscall<'_> {
     /// **RETURN VALUE** :On success (at least one signal was sent), zero is
     /// returned. On error, -1 is returned, and errno is set appropriately
     pub fn sys_kill(&self, pid: isize, signum: i32) -> SyscallResult {
+        if signum == 0 {
+            log::warn!("signum is zero, currently skip the permission check");
+            return Ok(0);
+        }
         let sig = Sig::from_i32(signum);
         if !sig.is_valid() {
             return Err(SysError::EINVAL);
@@ -294,17 +299,18 @@ impl Syscall<'_> {
         let oldmask = mem::replace(task.sig_mask(), mask);
         let invoke_signal = task.with_sig_handlers(|handlers| handlers.bitmap());
         task.set_interruptable();
-        suspend_now().await;
         task.set_wake_up_signal(mask | invoke_signal);
+        suspend_now().await;
         *task.sig_mask() = oldmask;
+        task.set_running();
         Err(SysError::EINTR)
     }
 
-    /// Suspends execution of the calling thread until one of the
-    /// signals in set is pending (If one of the signals in set is already
-    /// pending for the calling thread, sigwaitinfo() will return
-    /// immediately.). It removes the signal from the set of pending signals
-    /// and returns the signal number as its function result.
+    /// Suspends execution of the calling thread until one of the signals in set
+    /// is pending (If one of the signals in set is already pending for the
+    /// calling thread, sigwaitinfo() will return immediately.). It removes the
+    /// signal from the set of pending signals and returns the signal number
+    /// as its function result.
     ///
     /// - `set`: Suspend the execution of the process until a signal in `set`
     ///   that arrives
@@ -329,10 +335,26 @@ impl Syscall<'_> {
         task.set_wake_up_signal(set);
         if timeout.not_null() {
             let timeout = timeout.read(&task)?;
+            if !timeout.is_valid() {
+                return Err(SysError::EINVAL);
+            }
+            log::warn!("[sys_rt_sigtimedwait] {:?}", timeout);
             task.suspend_timeout(timeout.into()).await;
+        } else {
+            suspend_now().await;
         }
-        suspend_now().await;
 
-        Ok(0)
+        task.set_running();
+        let si = task.with_mut_sig_pending(|pending| pending.dequeue_expect(set));
+        if let Some(si) = si {
+            log::warn!("[sys_rt_sigtimedwait] I'm woken by {:?}", si);
+            if info.not_null() {
+                info.write(&task, si)?;
+            }
+            Ok(si.sig.raw())
+        } else {
+            log::warn!("[sys_rt_sigtimedwait] I'm woken by timeout");
+            Err(SysError::EAGAIN)
+        }
     }
 }

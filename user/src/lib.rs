@@ -17,6 +17,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
+use bitflags::Flags;
 use buddy_system_allocator::LockedHeap;
 pub use error::SyscallErr;
 use syscall::*;
@@ -93,6 +94,10 @@ macro_rules! wexitstatus {
 //     sys_uname(buf)
 // }
 
+pub fn futex(uaddd: usize, op: i32, val: u32, timeout: usize, uaddr2: usize, val3: u32) {
+    sys_futex(uaddd, op, val, timeout, uaddr2, val3);
+}
+
 //************file system***************/
 pub fn dup(fd: usize) -> isize {
     sys_dup(fd)
@@ -148,6 +153,12 @@ pub fn getpid() -> isize {
 pub fn fork() -> isize {
     sys_fork()
 }
+
+pub fn create_thread(flags: CloneFlags) -> isize {
+    let mut stack: [usize; 1024] = [0; 1024];
+    sys_clone(flags.bits() as _, stack.as_mut_ptr() as usize, 0, 0)
+}
+
 pub fn kill(pid: isize, sig: Sig) -> isize {
     sys_kill(pid as usize, sig.raw() as i32)
 }

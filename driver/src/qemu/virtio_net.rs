@@ -142,7 +142,9 @@ impl BaseDeviceOps for VirtIoNet {
         todo!()
     }
 }
-pub fn probe() -> Option<VirtIoNet> {None}
+pub fn probe() -> Option<VirtIoNet> {
+    None
+}
 
 impl<H: Hal, T: Transport, const QS: usize> NetDriverOps for VirtIoNetDev<H, T, QS> {
     #[inline]

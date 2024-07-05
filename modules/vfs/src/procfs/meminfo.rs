@@ -115,7 +115,7 @@ impl Dentry for MemInfoDentry {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
         Err(SysError::ENOTDIR)
     }
 }

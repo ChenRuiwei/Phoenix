@@ -6,13 +6,14 @@ use core::{
     task::{Context, Poll},
 };
 
+use arch::time::get_time_duration;
 use async_utils::{dyn_future, Async};
 use config::board::BLOCK_SIZE;
 use driver::BLOCK_DEVICE;
 use memory::VirtAddr;
 use strum::FromRepr;
 use systype::{SysError, SysResult, SyscallResult};
-use time::timespec::TimeSpec;
+use time::{timespec::TimeSpec, timeval::TimeVal};
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
@@ -101,38 +102,68 @@ impl Kstat {
             st_blksize: stat.st_blksize as i32,
             _pad1: stat.__pad2 as i32,
             st_blocks: stat.st_blocks as i64,
-            st_atime_sec: stat.st_atime.sec as isize,
-            st_atime_nsec: stat.st_atime.nsec as isize,
-            st_mtime_sec: stat.st_mtime.sec as isize,
-            st_mtime_nsec: stat.st_mtime.nsec as isize,
-            st_ctime_sec: stat.st_ctime.sec as isize,
-            st_ctime_nsec: stat.st_ctime.nsec as isize,
+            st_atime_sec: stat.st_atime.tv_sec as isize,
+            st_atime_nsec: stat.st_atime.tv_nsec as isize,
+            st_mtime_sec: stat.st_mtime.tv_sec as isize,
+            st_mtime_nsec: stat.st_mtime.tv_nsec as isize,
+            st_ctime_sec: stat.st_ctime.tv_sec as isize,
+            st_ctime_nsec: stat.st_ctime.tv_nsec as isize,
         }
     }
 }
 
 impl Syscall<'_> {
-    // TODO:
-    pub async fn sys_write(&self, fd: usize, buf: UserReadPtr<u8>, len: usize) -> SyscallResult {
-        let task = self.task;
-        let file = task.with_fd_table(|table| table.get_file(fd))?;
-        let buf = buf.into_slice(&task, len)?;
-        // log::info!("[sys_write] buf {buf:?}");
-        let ret = file.write(&buf).await?;
-        Ok(ret)
-    }
-
     /// read() attempts to read up to count bytes from file descriptor fd into
     /// the buffer starting at buf.
     ///
     /// On success, the number of bytes read is returned (zero indicates end of
     /// file), and the file position is advanced by this number.
-    pub async fn sys_read(&self, fd: usize, buf: UserWritePtr<u8>, len: usize) -> SyscallResult {
+    pub async fn sys_read(&self, fd: usize, buf: UserWritePtr<u8>, count: usize) -> SyscallResult {
         let task = self.task;
         let file = task.with_fd_table(|table| table.get_file(fd))?;
         log::info!("[sys_read] reading file {}", file.dentry().path());
-        let mut buf = buf.into_mut_slice(&task, len)?;
+        let mut buf = buf.into_mut_slice(&task, count)?;
         let ret = file.read(&mut buf).await?;
+        Ok(ret)
+    }
+
+    pub async fn sys_write(&self, fd: usize, buf: UserReadPtr<u8>, count: usize) -> SyscallResult {
+        let task = self.task;
+        let file = task.with_fd_table(|table| table.get_file(fd))?;
+        log::info!("[sys_write] writing file {}", file.dentry().path());
+        let buf = buf.into_slice(&task, count)?;
+        // log::info!("[sys_write] buf {buf:?}");
+        let ret = file.write(&buf).await?;
+        Ok(ret)
+    }
+
+    pub async fn sys_pread64(
+        &self,
+        fd: usize,
+        buf: UserWritePtr<u8>,
+        count: usize,
+        offset: usize,
+    ) -> SyscallResult {
+        let task = self.task;
+        let file = task.with_fd_table(|table| table.get_file(fd))?;
+        log::info!("[sys_pread64] reading file {}", file.dentry().path());
+        let mut buf = buf.into_mut_slice(&task, count)?;
+        let ret = file.read_at(offset, &mut buf).await?;
+        Ok(ret)
+    }
+
+    pub async fn sys_pwrite64(
+        &self,
+        fd: usize,
+        buf: UserReadPtr<u8>,
+        count: usize,
+        offset: usize,
+    ) -> SyscallResult {
+        let task = self.task;
+        let file = task.with_fd_table(|table| table.get_file(fd))?;
+        log::info!("[sys_pwrite64] writing file {}", file.dentry().path());
+        let buf = buf.into_slice(&task, count)?;
+        let ret = file.write_at(offset, &buf).await?;
         Ok(ret)
     }
 
@@ -179,7 +210,7 @@ impl Syscall<'_> {
         }
         let file = dentry.open()?;
         file.set_flags(flags);
-        task.with_mut_fd_table(|table| table.alloc(file))
+        task.with_mut_fd_table(|table| table.alloc(file, flags))
     }
 
     /// close() closes a file descriptor, so that it no longer refers to any
@@ -478,13 +509,15 @@ impl Syscall<'_> {
     /// A requirement standardizing this behavior was added in POSIX.1-2008
     /// TC2. The Linux-specific pipe2() system call likewise does not modify
     /// pipefd on failure.
-    pub fn sys_pipe2(&self, pipefd: UserWritePtr<[u32; 2]>, _flags: i32) -> SyscallResult {
+    pub fn sys_pipe2(&self, pipefd: UserWritePtr<[u32; 2]>, flags: i32) -> SyscallResult {
         let task = self.task;
+        let flags = OpenFlags::from_bits(flags)
+            .unwrap_or_else(|| unimplemented!("unknown flags, should add them"));
         let (pipe_read, pipe_write) = new_pipe();
         let pipe = task.with_mut_fd_table(|table| {
-            let fd_read = table.alloc(pipe_read)?;
-            let fd_write = table.alloc(pipe_write)?;
-            log::debug!("[sys_pipe2] read_fd: {fd_read}, write_fd: {fd_write}");
+            let fd_read = table.alloc(pipe_read, flags)?;
+            let fd_write = table.alloc(pipe_write, flags)?;
+            log::info!("[sys_pipe2] read_fd: {fd_read}, write_fd: {fd_write}, flags: {flags:?}");
             Ok([fd_read as u32, fd_write as u32])
         })?;
         pipefd.write(&task, pipe)?;
@@ -526,7 +559,7 @@ impl Syscall<'_> {
         } else if flags != AT_REMOVEDIR && is_dir {
             return Err(SysError::EISDIR);
         }
-        parent.remove(dentry.name()).map(|_| 0)
+        parent.unlink(dentry.name()).map(|_| 0)
     }
 
     pub fn sys_ioctl(&self, fd: usize, cmd: usize, arg: usize) -> SyscallResult {
@@ -555,7 +588,8 @@ impl Syscall<'_> {
                 Ok(fd_info.flags().bits() as usize)
             }),
             FcntlOp::F_SETFD => {
-                let fd_flags = FdFlags::from_bits_truncate(arg as isize);
+                let arg = OpenFlags::from_bits_retain(arg as i32);
+                let fd_flags = FdFlags::from(arg);
                 task.with_mut_fd_table(|table| {
                     let fd_info = table.get_mut(fd)?;
                     fd_info.set_flags(fd_flags);
@@ -740,6 +774,7 @@ impl Syscall<'_> {
         let task = self.task;
         let file = task.with_fd_table(|table| table.get_file(fd))?;
         let whence = Whence::from_repr(whence).ok_or(SysError::EINVAL)?;
+
         match whence {
             Whence::SeekSet => file.seek(SeekFrom::Start(offset as u64)),
             Whence::SeekCur => file.seek(SeekFrom::Current(offset as i64)),
@@ -756,31 +791,71 @@ impl Syscall<'_> {
         Ok(0x777)
     }
 
-    // TODO:
-    /// change file timestamps with nanosecond precision
+    /// The utime() system call changes the access and modification times of the
+    /// inode specified by filename to the actime and modtime fields of times
+    /// respectively. The status change time (ctime) will be set to the current
+    /// time, even if the other time stamps don't actually change.
+    ///
+    /// If the tv_nsec field of one of the timespec structures has the special
+    /// value UTIME_NOW, then the corresponding file timestamp is set to the
+    /// current time. If the tv_nsec field of one of the timespec structures has
+    /// the special value UTIME_OMIT, then the corresponding file timestamp
+    /// is left unchanged. In both of these cases, the value of the
+    /// corresponding tv_sec field is ignored.
+    ///
+    /// If times is NULL, then the access and modification times of the file are
+    /// set to the current time.
     pub fn sys_utimensat(
         &self,
         dirfd: AtFd,
         pathname: UserReadPtr<u8>,
-        _times: UserReadPtr<TimeSpec>,
+        times: UserReadPtr<TimeSpec>,
         _flags: u32,
     ) -> SyscallResult {
+        const UTIME_NOW: usize = 0x3fffffff;
+        const UTIME_OMIT: usize = 0x3ffffffe;
+
         let task = self.task;
-        let file = if pathname.not_null() {
+        let inode = if pathname.not_null() {
             let path = pathname.read_cstr(task)?;
-            log::info!("[sys_utimensat], dirfd: {dirfd}, path: {path}",);
+            log::info!("[sys_utimensat] dirfd: {dirfd}, path: {path}");
             let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
-            dentry.inode()?;
+            dentry.inode()?
         } else {
             // NOTE: if `pathname` is NULL, acts as futimens
-            log::info!("[sys_utimensat], fd: {dirfd}",);
+            log::info!("[sys_utimensat] fd: {dirfd}");
             match dirfd {
                 AtFd::FdCwd => return Err(SysError::EINVAL),
                 AtFd::Normal(fd) => {
-                    task.with_fd_table(|table| table.get_file(fd))?;
+                    let file = task.with_fd_table(|table| table.get_file(fd))?;
+                    file.inode()
                 }
             }
         };
+
+        let mut inner = inode.meta().inner.lock();
+        let current_time = TimeSpec::from(get_time_duration());
+        if times.is_null() {
+            log::info!("[sys_utimensat] times is null, update with current time");
+            inner.atime = current_time;
+            inner.mtime = current_time;
+            inner.ctime = current_time;
+        } else {
+            let times = times.into_slice(task, 2)?;
+            log::info!("[sys_utimensat] times {:?}", times);
+            match times[0].tv_nsec {
+                UTIME_NOW => inner.atime = current_time,
+                UTIME_OMIT => {}
+                _ => inner.atime = times[0],
+            };
+            match times[1].tv_nsec {
+                UTIME_NOW => inner.mtime = current_time,
+                UTIME_OMIT => {}
+                _ => inner.mtime = times[1],
+            };
+            inner.ctime = current_time;
+        }
+
         Ok(0)
     }
 

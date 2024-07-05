@@ -3,12 +3,12 @@ use alloc::{
     string::{String, ToString},
     sync::{Arc, Weak},
 };
-use core::{mem::MaybeUninit, str::FromStr};
+use core::{default, mem::MaybeUninit, str::FromStr};
 
 use sync::mutex::spin_mutex::SpinMutex;
 use systype::{SysError, SysResult, SyscallResult};
 
-use crate::{inode::Inode, File, InodeMode, Mutex, RenameFlags, SuperBlock};
+use crate::{inode::Inode, File, InodeMode, InodeState, Mutex, RenameFlags, SuperBlock};
 
 pub struct DentryMeta {
     /// Name of this file or directory.
@@ -56,9 +56,10 @@ impl DentryMeta {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DentryState {
     /// Either not read from disk or write in memory.
+    #[default]
     UnInit,
     Sync,
     Dirty,
@@ -84,9 +85,9 @@ pub trait Dentry: Send + Sync {
     /// inode for the negative child and return the child.
     fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>>;
 
-    /// Called by the unlink(2) system call. Delete a file inode in a directory
-    /// inode.
-    fn base_remove(self: Arc<Self>, name: &str) -> SysResult<()>;
+    /// Called by the unlink(2) system call. Reduce an inode ref count in a
+    /// directory inode. Delete the inode when inode ref count is one.
+    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()>;
 
     fn base_rename_to(self: Arc<Self>, new: Arc<dyn Dentry>, flags: RenameFlags) -> SysResult<()> {
         Err(SysError::EINVAL)
@@ -158,28 +159,15 @@ pub trait Dentry: Send + Sync {
     }
 
     /// Get the path of this dentry.
-    // HACK: code looks ugly and may be has problem
     fn path(&self) -> String {
         if let Some(p) = self.parent() {
-            let path = if self.name() == "/" {
-                String::from("")
+            let p_path = p.path();
+            if p_path == "/" {
+                p_path + self.name()
             } else {
-                String::from("/") + self.name()
-            };
-            let parent_name = p.name();
-            return if parent_name == "/" {
-                if p.parent().is_some() {
-                    // p is a mount point
-                    p.parent().unwrap().path() + path.as_str()
-                } else {
-                    path
-                }
-            } else {
-                // p is not root
-                p.path() + path.as_str()
-            };
+                p_path + "/" + self.name()
+            }
         } else {
-            log::warn!("dentry has no parent");
             String::from("/")
         }
     }
@@ -231,13 +219,15 @@ impl dyn Dentry {
         Ok(child)
     }
 
-    pub fn remove(self: &Arc<Self>, name: &str) -> SysResult<()> {
+    pub fn unlink(self: &Arc<Self>, name: &str) -> SysResult<()> {
         if !self.inode()?.itype().is_dir() {
             return Err(SysError::ENOTDIR);
         }
         let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
+        // TODO: inode ref count
+        sub_dentry.inode()?.set_state(InodeState::Removed);
         sub_dentry.clear_inode();
-        self.clone().base_remove(name)
+        self.clone().base_unlink(name)
     }
 
     pub fn rename_to(self: &Arc<Self>, new: &Arc<Self>, flags: RenameFlags) -> SysResult<()> {
@@ -303,7 +293,7 @@ impl<T: Send + Sync + 'static> Dentry for MaybeUninit<T> {
         todo!()
     }
 
-    fn base_remove(self: Arc<Self>, _name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SysResult<()> {
         todo!()
     }
 

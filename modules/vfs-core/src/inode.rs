@@ -3,19 +3,21 @@ use core::mem::MaybeUninit;
 
 use device_core::DevId;
 use downcast_rs::{impl_downcast, DowncastSync};
+use page::PageCache;
 use systype::{SysResult, SyscallResult};
+use time::timespec::TimeSpec;
 
-use crate::{address_space::AddressSpace, alloc_ino, Mutex, Stat, SuperBlock, TimeSpec};
+use crate::{alloc_ino, Mutex, Stat, SuperBlock};
 
 pub struct InodeMeta {
     /// Inode number.
     pub ino: usize,
-    /// mode of inode.
+    /// Mode of inode.
     pub mode: InodeMode,
     pub dev_id: Option<DevId>,
     pub super_block: Weak<dyn SuperBlock>,
 
-    pub address_space: Option<AddressSpace>,
+    pub page_cache: Option<PageCache>,
     pub inner: Mutex<InodeMetaInner>,
 }
 
@@ -32,13 +34,29 @@ pub struct InodeMetaInner {
     pub state: InodeState,
 }
 
+impl Drop for InodeMeta {
+    fn drop(&mut self) {
+        match self.inner.lock().state {
+            InodeState::UnInit => {}
+            InodeState::Sync => {}
+            InodeState::Dirty => {
+                self.page_cache.as_ref().map(|page_cache| {
+                    log::warn!("[InodeMeta::drop] flush page cache to disk");
+                    page_cache.flush()
+                });
+            }
+            InodeState::Removed => {}
+        }
+    }
+}
+
 impl InodeMeta {
     pub fn new(mode: InodeMode, super_block: Arc<dyn SuperBlock>, size: usize) -> Self {
         let itype = mode.to_type();
         let address_space = if (itype.is_file() || itype.is_block_device())
             && (super_block.meta().device.is_some())
         {
-            Some(AddressSpace::new())
+            Some(PageCache::new())
         } else {
             None
         };
@@ -47,13 +65,13 @@ impl InodeMeta {
             mode,
             super_block: Arc::downgrade(&super_block),
             dev_id: None,
-            address_space,
+            page_cache: address_space,
             inner: Mutex::new(InodeMetaInner {
                 size,
                 atime: TimeSpec::default(),
                 mtime: TimeSpec::default(),
                 ctime: TimeSpec::default(),
-                state: InodeState::Init,
+                state: InodeState::UnInit,
             }),
         }
     }
@@ -68,6 +86,8 @@ pub trait Inode: Send + Sync + DowncastSync {
         todo!()
     }
 
+    /// Calculates the block index on the underlying block device for a given
+    /// file offset.
     fn base_get_blk_idx(&self, offset: usize) -> SysResult<usize> {
         todo!()
     }
@@ -86,8 +106,8 @@ impl dyn Inode {
         self.meta().mode.to_type()
     }
 
-    pub fn address_space<'a>(self: &'a Arc<dyn Inode>) -> Option<&'a AddressSpace> {
-        self.meta().address_space.as_ref()
+    pub fn page_cache<'a>(self: &'a Arc<dyn Inode>) -> Option<&'a PageCache> {
+        self.meta().page_cache.as_ref()
     }
 
     pub fn size(&self) -> usize {
@@ -131,18 +151,14 @@ impl_downcast!(sync Inode);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InodeState {
     /// Init state, indicates that this inode is not loaded from disk yet.
-    Init = 0x1,
-    /// inode dirty, data which is pointed to by inode is not dirty
-    DirtyInode = 0x2,
-    /// data already changed but not yet sync (inode not change)
-    DirtyData = 0x3,
-    /// inode and date changed together
-    DirtyAll = 0x4,
+    UnInit,
     /// already sync
-    Synced = 0x5,
+    Sync,
+    Dirty,
+    Removed,
 }
 
-bitflags! {
+bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, Eq, PartialEq)]
     pub struct InodeMode: u32 {
         /// Type.

@@ -14,7 +14,6 @@ pub struct TidHandle(pub Tid);
 
 impl Drop for TidHandle {
     fn drop(&mut self) {
-        log::debug!("drop tid {}", self.0);
         TID_ALLOCATOR.lock().dealloc(self.0);
     }
 }

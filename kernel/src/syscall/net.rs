@@ -20,8 +20,9 @@ impl Syscall<'_> {
         let task = self.task;
         let socket = Socket::new(domain, types);
         // TODO:其他标志位
-        let fd = task.with_mut_fd_table(|table| table.alloc(Arc::new(socket)))?;
-        Ok(fd)
+        // let fd = task.with_mut_fd_table(|table| table.alloc(Arc::new(socket)))?;
+        // Ok(fd)
+        Ok(0)
     }
 
     /// When a socket is created with socket(2), it exists in a name space

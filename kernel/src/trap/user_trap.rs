@@ -11,16 +11,23 @@ use executor::has_task;
 use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
-    sepc, stval,
+    sepc,
+    sstatus::FS,
+    stval,
 };
+use signal::{Sig, SigDetails, SigInfo};
+use systype::SysError;
 use timer::timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
-use crate::{mm::PageFaultAccessType, syscall::Syscall, task::Task, trap::set_user_trap};
+use crate::{
+    mm::PageFaultAccessType, panic::backtrace, syscall::Syscall, task::Task, trap::set_user_trap,
+};
 
 /// handle an interrupt, exception, or system call from user space
+/// return if it is syscall and has been interrupted
 #[no_mangle]
-pub async fn trap_handler(task: &Arc<Task>) {
+pub async fn trap_handler(task: &Arc<Task>) -> bool {
     unsafe { set_kernel_trap() };
 
     let mut cx = task.trap_context_mut();
@@ -49,14 +56,18 @@ pub async fn trap_handler(task: &Arc<Task>) {
                         .await;
                     // cx is changed during sys_exec, so we have to call it again
                     cx = task.trap_context_mut();
+                    cx.save_last_user_a0();
                     cx.set_user_a0(ret);
+                    if ret == -(SysError::EINTR as isize) as usize {
+                        return true;
+                    }
                 }
                 Exception::StorePageFault
                 | Exception::InstructionPageFault
                 | Exception::LoadPageFault => {
                     log::info!(
-                "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
-            );
+                        "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
+                    );
                     let access_type = match e {
                         Exception::InstructionPageFault => PageFaultAccessType::RX,
                         Exception::LoadPageFault => PageFaultAccessType::RO,
@@ -76,8 +87,18 @@ pub async fn trap_handler(task: &Arc<Task>) {
                         m.handle_page_fault(VirtAddr::from(stval), access_type)
                     });
                     if let Err(_e) = result {
+                        // backtrace();
                         // task.with_memory_space(|m| m.print_all());
-                        task.set_zombie();
+                        log::warn!("bad memory access, send SIGSEGV to task");
+                        task.receive_siginfo(
+                            SigInfo {
+                                sig: Sig::SIGSEGV,
+                                code: SigInfo::KERNEL,
+                                details: SigDetails::None,
+                            },
+                            false,
+                        );
+                        // task.set_zombie();
                     }
                 }
                 Exception::IllegalInstruction => {
@@ -92,10 +113,9 @@ pub async fn trap_handler(task: &Arc<Task>) {
             }
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            // FIXME: user may trap into kernel frequently, as a consequence, this timer
-            // are likely not triggered in user mode but rather be triggered in
-            // supervisor mode, which will cause user program running on the cpu for a long
-            // time.
+            // NOTE: user may trap into kernel frequently, as a consequence, this timer are
+            // likely not triggered in user mode but rather be triggered in supervisor mode,
+            // which will cause user program running on the cpu for a long time.
             log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");
             TIMER_MANAGER.check(get_time_duration());
             unsafe { set_next_timer_irq() };
@@ -103,12 +123,17 @@ pub async fn trap_handler(task: &Arc<Task>) {
                 yield_now().await;
             }
         }
+        Trap::Interrupt(Interrupt::SupervisorExternal) => {
+            log::info!("[kernel] receive externel interrupt");
+            driver::get_device_manager_mut().handle_irq();
+        }
         _ => {
             panic!(
                 "[trap_handler] Unsupported trap {cause:?}, stval = {stval:#x}!, sepc = {sepc:#x}"
             );
         }
     }
+    false
 }
 
 extern "C" {
@@ -126,10 +151,20 @@ pub fn trap_return(task: &Arc<Task>) {
         // `UserPtr` implicitly which will change stvec to `__trap_from_kernel`.
     };
     task.time_stat().record_trap_return();
+
+    // Restore the float regs if needed.
+    // Two cases that may need to restore regs:
+    // 1. This task has yielded after last trap
+    // 2. This task encounter a signal handler
+    task.trap_context_mut().user_fx.restore();
+    task.trap_context_mut().sstatus.set_fs(FS::Clean);
     unsafe {
         __return_to_user(task.trap_context_mut());
         // NOTE: next time when user traps into kernel, it will come back here
         // and return to `user_loop` function.
     }
+    task.trap_context_mut()
+        .user_fx
+        .mark_save_if_needed(task.trap_context_mut().sstatus);
     task.time_stat().record_trap();
 }

@@ -2,6 +2,7 @@ use alloc::string::String;
 use core::fmt::Display;
 
 use bitflags::Flags;
+use time::timespec::TimeSpec;
 
 use crate::InodeType;
 
@@ -109,7 +110,7 @@ pub struct DirEntry {
     pub name: String,
 }
 
-bitflags! {
+bitflags::bitflags! {
     // Defined in <bits/poll.h>.
     #[derive(Debug, Clone, Copy)]
     pub struct PollEvents: i16 {
@@ -135,13 +136,6 @@ bitflags! {
     }
 }
 
-#[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub struct TimeSpec {
-    pub sec: u64,
-    pub nsec: u64,
-}
-
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 #[repr(C)]
 pub struct Stat {
@@ -163,13 +157,7 @@ pub struct Stat {
     pub unused: u64,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Time {
-    AccessTime(TimeSpec),
-    ModifiedTime(TimeSpec),
-}
-
-bitflags! {
+bitflags::bitflags! {
     #[derive(Debug)]
     pub struct MountFlags:u32 {
         /// This filesystem is mounted read-only.
@@ -296,7 +284,7 @@ pub const AT_REMOVEDIR: i32 = 0x200;
 /// Follow symbolic links.
 pub const AT_SYMLINK_FOLLOW: i32 = 0x400;
 
-bitflags! {
+bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     // Defined in <stdio.h>.
     pub struct RenameFlags: i32 {

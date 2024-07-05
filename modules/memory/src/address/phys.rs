@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// Physical address
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct PhysAddr(pub usize);
 
 /// Physical page number

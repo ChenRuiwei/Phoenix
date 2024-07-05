@@ -164,10 +164,12 @@ impl Syscall<'_> {
             return Err(SysError::ECHILD);
         }
         let res_task = match target {
-            WaitFor::AnyChild => children.values().find(|c| c.is_zombie()),
+            WaitFor::AnyChild => children
+                .values()
+                .find(|c| c.is_zombie() && c.with_thread_group(|tg| tg.len() == 1)),
             WaitFor::Pid(pid) => {
                 if let Some(child) = children.get(&pid) {
-                    if child.is_zombie() {
+                    if child.is_zombie() && child.with_thread_group(|tg| tg.len() == 1) {
                         Some(child)
                     } else {
                         None
@@ -203,8 +205,9 @@ impl Syscall<'_> {
                 task.set_interruptable();
                 task.set_wake_up_signal(!*task.sig_mask_ref() | SigSet::SIGCHLD);
                 suspend_now().await;
+                task.set_running();
                 let si =
-                    task.with_mut_sig_pending(|pending| pending.dequeue_except(SigSet::SIGCHLD));
+                    task.with_mut_sig_pending(|pending| pending.dequeue_expect(SigSet::SIGCHLD));
                 if let Some(info) = si {
                     if let SigDetails::CHLD {
                         pid,
@@ -300,12 +303,11 @@ impl Syscall<'_> {
     pub fn sys_clone(
         &self,
         flags: usize,
-        stack: usize,
+        stack: VirtAddr,
         parent_tid: VirtAddr,
         tls: VirtAddr,
         child_tid: VirtAddr,
     ) -> SyscallResult {
-        let _exit_signal = flags & 0xff;
         let flags = CloneFlags::from_bits(flags as u64 & !0xff).ok_or_else(|| {
             log::error!("[sys_clone] unincluded flags {flags:#x}");
             SysError::EINVAL
@@ -314,21 +316,26 @@ impl Syscall<'_> {
             "[sys_clone] flags:{flags:?}, stack:{stack:#x}, tls:{tls:?}, parent_tid:{parent_tid:?}, child_tid:{child_tid:?}"
         );
         let task = self.task;
-        // if flags.contains(CloneFlags::THREAD) {
-        // // EINVAL:
-        // // CLONE_SIGHAND was specified in the flags mask, but CLONE_VM was not.
-        // // CLONE_THREAD was specified in the flags mask, but CLONE_SIGHAND was not.
-        // if !flags.contains(CloneFlags::SIGHAND) || !flags.contains(CloneFlags::VM) {
-        //     return Err(SysError::EINVAL);
-        // }
-        // }
-        let stack = if stack != 0 { Some(stack.into()) } else { None };
-        let new_task = task.do_clone(flags, stack, child_tid);
+        let new_task = task.do_clone(flags);
         new_task.trap_context_mut().set_user_a0(0);
         let new_tid = new_task.tid();
         log::info!("[sys_clone] clone a new thread, tid {new_tid}, clone flags {flags:?}",);
-        if !parent_tid.is_null() {
+
+        if !stack.is_null() {
+            new_task.trap_context_mut().set_user_sp(stack.bits());
+        }
+        if flags.contains(CloneFlags::PARENT_SETTID) {
             UserWritePtr::from_usize(parent_tid.bits()).write(task, new_tid)?;
+        }
+        if flags.contains(CloneFlags::CHILD_SETTID) {
+            UserWritePtr::from_usize(child_tid.bits()).write(&new_task, new_tid)?;
+            new_task.tid_address().set_child_tid = Some(child_tid.bits());
+        }
+        if flags.contains(CloneFlags::CHILD_CLEARTID) {
+            new_task.tid_address().clear_child_tid = Some(child_tid.bits());
+        }
+        if flags.contains(CloneFlags::SETTLS) {
+            new_task.trap_context_mut().set_user_tp(tls.bits());
         }
         spawn_user_task(new_task);
         Ok(new_tid)
@@ -354,7 +361,6 @@ impl Syscall<'_> {
     /// futex wake operation are ignored.
     ///
     /// set_tid_address() always returns the caller's thread ID.
-    // TODO: do the futex wake up at the address when task terminates
     pub fn sys_set_tid_address(&self, tidptr: usize) -> SyscallResult {
         let task = self.task;
         log::info!("[sys_set_tid_address] tidptr:{tidptr:#x}");

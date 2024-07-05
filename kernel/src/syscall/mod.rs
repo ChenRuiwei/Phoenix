@@ -6,12 +6,12 @@ pub mod futex;
 mod io;
 mod misc;
 mod mm;
+mod net;
 mod process;
 mod resource;
 mod sched;
 mod signal;
 mod time;
-mod net;
 
 use alloc::sync::Arc;
 
@@ -88,7 +88,7 @@ impl<'a> Syscall<'a> {
             SCHED_YIELD => self.sys_sched_yield().await,
             CLONE => self.sys_clone(
                 args[0],
-                args[1],
+                args[1].into(),
                 args[2].into(),
                 args[3].into(),
                 args[4].into(),
@@ -104,6 +104,7 @@ impl<'a> Syscall<'a> {
             SET_TID_ADDRESS => self.sys_set_tid_address(args[0]),
             GETUID => self.sys_getuid(),
             GETEUID => self.sys_geteuid(),
+            GETEGID => self.sys_do_nothing("getegid"),
             SETPGID => self.sys_setpgid(args[0], args[1]),
             // Memory
             BRK => self.sys_brk(args[0].into()),
@@ -118,14 +119,24 @@ impl<'a> Syscall<'a> {
             MUNMAP => self.sys_munmap(args[0].into(), args[1]),
             MPROTECT => self.sys_mprotect(args[0].into(), args[1], args[2] as _),
             MSYNC => self.sys_do_nothing("msync"),
+            MEMBARRIER => self.sys_do_nothing("membarrier"),
+            MADVISE => self.sys_do_nothing("madvise"),
             // Shared Memory
             SHMGET => self.sys_shmget(args[0], args[1], args[2] as _),
-            SHMAT => self.sys_shmat(args[0], args[1], args[2] as _),
-            SHMDT => self.sys_shmdt(args[0]),
+            SHMAT => self.sys_shmat(args[0], args[1].into(), args[2] as _),
+            SHMDT => self.sys_shmdt(args[0].into()),
             SHMCTL => self.sys_shmctl(args[0], args[1] as _, args[2]),
             // File system
             READ => self.sys_read(args[0], args[1].into(), args[2]).await,
             WRITE => self.sys_write(args[0], args[1].into(), args[2]).await,
+            PREAD64 => {
+                self.sys_pread64(args[0], args[1].into(), args[2], args[3])
+                    .await
+            }
+            PWRITE64 => {
+                self.sys_pwrite64(args[0], args[1].into(), args[2], args[3])
+                    .await
+            }
             OPENAT => self.sys_openat(args[0].into(), args[1].into(), args[2] as _, args[3] as _),
             CLOSE => self.sys_close(args[0]),
             MKDIR => self.sys_mkdirat(args[0].into(), args[1].into(), args[2] as _),
@@ -177,6 +188,8 @@ impl<'a> Syscall<'a> {
                 self.sys_readlinkat(args[0].into(), args[1].into(), args[2].into(), args[3])
                     .await
             }
+            SYNC => self.sys_do_nothing("sync"),
+            FSYNC => self.sys_do_nothing("fsync"),
             // IO
             PPOLL => {
                 self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3])
