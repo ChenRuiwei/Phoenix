@@ -12,8 +12,8 @@ use device_core::{
 use fdt::node::FdtNode;
 use log::warn;
 use memory::{
-    address::vaddr_to_paddr, alloc_frames, dealloc_frame, FrameTracker, PhysAddr, PhysPageNum,
-    VirtAddr,
+    address::vaddr_to_paddr, alloc_frames, dealloc_frame, pte::PTEFlags, FrameTracker, PhysAddr,
+    PhysPageNum, VirtAddr,
 };
 use virtio_blk::VirtIOBlkDev;
 use virtio_drivers::{
@@ -26,7 +26,7 @@ use virtio_drivers::{
 };
 use virtio_net::VirtIoNet;
 
-use crate::{manager::DeviceManager, BLOCK_DEVICE};
+use crate::{kernel_page_table, manager::DeviceManager, BLOCK_DEVICE};
 
 pub struct VirtioHalImpl;
 
@@ -104,6 +104,10 @@ impl DeviceManager {
         let base_vaddr = base_paddr + VIRT_RAM_OFFSET;
         let irq_no = node.property("interrupts").unwrap().as_usize().unwrap();
         let header = NonNull::new(base_vaddr as *mut VirtIOHeader).unwrap();
+        kernel_page_table().map_kernel_region(
+            base_vaddr.into()..(base_vaddr + size).into(),
+            PTEFlags::R | PTEFlags::W,
+        );
         match unsafe { MmioTransport::new(header) } {
             Ok(transport) => match transport.device_type() {
                 VirtIoDevType::Block => {
@@ -130,6 +134,6 @@ impl DeviceManager {
                     reg
                 );
             }
-        }
+        };
     }
 }

@@ -2,10 +2,15 @@
 
 use alloc::{fmt, string::ToString};
 
+use driver::KernelPageTableIf;
 use log::Level;
 use logging::{level_to_color_code, ColorCode, LogIf};
+use memory::PageTable;
 
-use crate::processor::hart::{current_task_ref, local_hart};
+use crate::{
+    mm::memory_space::KERNEL_PAGE_TABLE,
+    processor::hart::{current_task_ref, local_hart},
+};
 
 /// Print msg with color
 pub fn print_in_color(args: fmt::Arguments, color_code: u8) {
@@ -54,5 +59,14 @@ impl LogIf for LogIfImpl {
             with_color!(ColorCode::BrightBlue, "[H{},P{},T{}]", hid, pid, tid),
             with_color!(args_color, "{}", args),
         ));
+    }
+}
+
+struct KernelPageTableIfImpl;
+
+#[crate_interface::impl_interface]
+impl KernelPageTableIf for KernelPageTableIfImpl {
+    fn kernel_page_table() -> &'static mut PageTable {
+        unsafe { &mut *(KERNEL_PAGE_TABLE.get()) }
     }
 }

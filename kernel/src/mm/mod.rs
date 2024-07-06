@@ -35,10 +35,10 @@ pub fn init() {
     log::info!("KERNEL SPACE activated");
 }
 
-/// MMIO in QEMU
-pub const MMIO: &[(usize, usize, MapPerm)] = &[
-    (0x10000000, 0x100, MapPerm::RW),      // UART
-    (0x10001000, 0x1000, MapPerm::RW),     // VIRTIO
-    (0x02000000, 0x10000, MapPerm::RW),    // CLINT
-    (0x0C00_0000, 0x60_0000, MapPerm::RW), // PLIC
-];
+// MMIO in QEMU
+// pub const MMIO: &[(usize, usize, MapPerm)] = &[
+//     (0x10000000, 0x100, MapPerm::RW),      // UART
+//     (0x10001000, 0x1000, MapPerm::RW),     // VIRTIO
+//     (0x02000000, 0x10000, MapPerm::RW),    // CLINT
+//     (0x0C00_0000, 0x60_0000, MapPerm::RW), // PLIC
+// ];

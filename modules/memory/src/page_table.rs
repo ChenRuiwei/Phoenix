@@ -1,9 +1,13 @@
 //! Implementation of [`PageTable`].
 
 use alloc::{string::String, vec, vec::Vec};
+use core::ops::Range;
 
 use arch::memory::switch_page_table;
-use config::mm::{PAGE_MASK, PAGE_SIZE_BITS, PTE_SIZE, VIRT_RAM_OFFSET};
+use config::{
+    board::MEMORY_END,
+    mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PTE_SIZE, VIRT_RAM_OFFSET},
+};
 use riscv::register::satp;
 
 use crate::{
@@ -33,6 +37,122 @@ impl PageTable {
             root_ppn: root_frame.ppn,
             frames: vec![root_frame],
         }
+    }
+
+    /// create a new kernel page table. Only use once at initialization
+    pub fn new_kernel() -> Self {
+        extern "C" {
+            fn _stext();
+            fn _strampoline();
+            fn sigreturn_trampoline();
+            fn _etrampoline();
+            fn _etext();
+            fn _srodata();
+            fn _erodata();
+            fn _sdata();
+            fn _edata();
+            fn _sstack();
+            fn _estack();
+            fn _sbss();
+            fn _ebss();
+            fn _ekernel();
+        }
+        let mut pt = PageTable::new();
+        log::debug!("[kernel] trampoline {:#x}", sigreturn_trampoline as usize);
+        log::debug!(
+            "[kernel] .text [{:#x}, {:#x}) [{:#x}, {:#x})",
+            _stext as usize,
+            _strampoline as usize,
+            _etrampoline as usize,
+            _etext as usize
+        );
+        log::debug!(
+            "[kernel] .text.trampoline [{:#x}, {:#x})",
+            _strampoline as usize,
+            _etrampoline as usize,
+        );
+        log::debug!(
+            "[kernel] .rodata [{:#x}, {:#x})",
+            _srodata as usize,
+            _erodata as usize
+        );
+        log::debug!(
+            "[kernel] .data [{:#x}, {:#x})",
+            _sdata as usize,
+            _edata as usize
+        );
+        log::debug!(
+            "[kernel] .stack [{:#x}, {:#x})",
+            _sstack as usize,
+            _estack as usize
+        );
+        log::debug!(
+            "[kernel] .bss [{:#x}, {:#x})",
+            _sbss as usize,
+            _ebss as usize
+        );
+        log::debug!(
+            "[kernel] physical mem [{:#x}, {:#x})",
+            _ekernel as usize,
+            MEMORY_END
+        );
+        log::debug!("[kernel] mapping .text section");
+        pt.map_kernel_region(
+            (_stext as usize).into()..(_strampoline as usize).into(),
+            PTEFlags::R | PTEFlags::X,
+        );
+        log::debug!("[kernel] mapping signal-return trampoline");
+        pt.map_kernel_region(
+            (_strampoline as usize).into()..(_etrampoline as usize).into(),
+            PTEFlags::U | PTEFlags::R | PTEFlags::X,
+        );
+        pt.map_kernel_region(
+            (_etrampoline as usize).into()..(_etext as usize).into(),
+            PTEFlags::R | PTEFlags::X,
+        );
+        log::debug!("[kernel] mapping .rodata section");
+        pt.map_kernel_region(
+            (_srodata as usize).into()..(_erodata as usize).into(),
+            PTEFlags::R,
+        );
+        log::debug!("[kernel] mapping .data section");
+        pt.map_kernel_region(
+            (_sdata as usize).into()..(_edata as usize).into(),
+            PTEFlags::R | PTEFlags::W,
+        );
+        log::debug!("[kernel] mapping .stack section");
+        pt.map_kernel_region(
+            (_sstack as usize).into()..(_estack as usize).into(),
+            PTEFlags::R | PTEFlags::W,
+        );
+        log::debug!("[kernel] mapping .bss section");
+        pt.map_kernel_region(
+            (_sbss as usize).into()..(_ebss as usize).into(),
+            PTEFlags::R | PTEFlags::W,
+        );
+        log::debug!("[kernel] mapping physical memory");
+        pt.map_kernel_region(
+            (_ekernel as usize).into()..MEMORY_END.into(),
+            PTEFlags::R | PTEFlags::W,
+        );
+        log::debug!("[kernel] mapping mmio registers");
+        // for pair in MMIO {
+        //     memory_space.push_vma(VmArea::new(
+        //         (pair.0 + VIRT_RAM_OFFSET).into()..(pair.0 + pair.1 +
+        // VIRT_RAM_OFFSET).into(),         pair.2,
+        //         VmAreaType::Mmio,
+        //     ));
+        // }
+
+        let dtb_addr = config::mm::dtb_addr();
+        pt.map_kernel_region(
+            (dtb_addr + VIRT_RAM_OFFSET).into()
+                ..(dtb_addr + PAGE_SIZE * PAGE_SIZE + VIRT_RAM_OFFSET).into(),
+            PTEFlags::R | PTEFlags::W,
+        );
+
+        log::debug!("[kernel] KERNEL SPACE init finished");
+        pt
     }
 
     /// Create a page table that inherits kernel page table by shallow copying
@@ -151,6 +271,20 @@ impl PageTable {
         let pte = self.find_pte(vpn).expect("leaf pte is not valid");
         debug_assert!(pte.is_valid(), "vpn {vpn:?} is invalid before unmapping",);
         *pte = PageTableEntry::empty();
+    }
+
+    pub fn map_kernel_region(&mut self, virt_reg: Range<VirtAddr>, flags: PTEFlags) {
+        let range_vpn = virt_reg.start.into()..virt_reg.end.into();
+        for vpn in range_vpn {
+            self.map(vpn, vpn.to_offset().to_ppn(), flags);
+        }
+    }
+
+    pub fn unmap_kernel_region(&mut self, virt_reg: Range<VirtAddr>) {
+        let range_vpn = virt_reg.start.into()..virt_reg.end.into();
+        for vpn in range_vpn {
+            self.unmap(vpn);
+        }
     }
 
     /// Force mapping `VirtPageNum` to `PhysPageNum` with `PTEFlags`.

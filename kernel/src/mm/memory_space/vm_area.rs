@@ -267,17 +267,12 @@ impl VmArea {
     pub fn map(&mut self, page_table: &mut PageTable) {
         // NOTE: set pte flag with global mapping for kernel memory
         let pte_flags: PTEFlags = self.map_perm.into();
-        if self.vma_type == VmAreaType::Physical || self.vma_type == VmAreaType::Mmio {
-            for vpn in self.range_vpn() {
-                page_table.map(vpn, vpn.to_offset().to_ppn(), pte_flags)
-            }
-        } else {
-            for vpn in self.range_vpn() {
-                let page = Page::new();
-                // page.clear();
-                page_table.map(vpn, page.ppn(), pte_flags);
-                self.pages.insert(vpn, page);
-            }
+
+        for vpn in self.range_vpn() {
+            let page = Page::new();
+            // page.clear();
+            page_table.map(vpn, page.ppn(), pte_flags);
+            self.pages.insert(vpn, page);
         }
     }
 

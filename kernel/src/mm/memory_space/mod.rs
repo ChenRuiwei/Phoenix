@@ -37,7 +37,6 @@ use crate::{
     mm::{
         memory_space::vm_area::{MapPerm, VmAreaType},
         user_ptr::UserSlice,
-        MMIO,
     },
     processor::env::{within_sum, SumGuard},
     syscall::MmapFlags,
@@ -52,11 +51,12 @@ pub mod vm_area;
 
 /// Kernel space for all processes.
 ///
-/// There is no need to lock `KERNEL_SPACE` since it won't be changed.
-static KERNEL_SPACE: Lazy<MemorySpace> = Lazy::new(MemorySpace::new_kernel);
+/// There is no need to lock `KERNEL_PAGE_TABLE` since it won't be changed.
+pub static KERNEL_PAGE_TABLE: Lazy<SyncUnsafeCell<PageTable>> =
+    Lazy::new(|| SyncUnsafeCell::new(PageTable::new_kernel()));
 
 pub unsafe fn switch_kernel_page_table() {
-    KERNEL_SPACE.switch_page_table();
+    &(*KERNEL_PAGE_TABLE.get()).switch();
 }
 
 /// Virtual memory space for kernel and user.
@@ -85,137 +85,12 @@ impl MemorySpace {
     /// Create a new user memory space that inherits kernel page table.
     pub fn new_user() -> Self {
         Self {
-            page_table: SyncUnsafeCell::new(PageTable::from_kernel(KERNEL_SPACE.page_table())),
+            page_table: SyncUnsafeCell::new(PageTable::from_kernel(
+                (unsafe { &*KERNEL_PAGE_TABLE.get() }),
+            )),
             areas: SyncUnsafeCell::new(RangeMap::new()),
             task: None,
         }
-    }
-
-    /// Create a kernel space.
-    pub fn new_kernel() -> Self {
-        extern "C" {
-            fn _stext();
-            fn _strampoline();
-            fn sigreturn_trampoline();
-            fn _etrampoline();
-            fn _etext();
-            fn _srodata();
-            fn _erodata();
-            fn _sdata();
-            fn _edata();
-            fn _sstack();
-            fn _estack();
-            fn _sbss();
-            fn _ebss();
-            fn _ekernel();
-        }
-
-        log::debug!("[kernel] trampoline {:#x}", sigreturn_trampoline as usize);
-        log::debug!(
-            "[kernel] .text [{:#x}, {:#x}) [{:#x}, {:#x})",
-            _stext as usize,
-            _strampoline as usize,
-            _etrampoline as usize,
-            _etext as usize
-        );
-        log::debug!(
-            "[kernel] .text.trampoline [{:#x}, {:#x})",
-            _strampoline as usize,
-            _etrampoline as usize,
-        );
-        log::debug!(
-            "[kernel] .rodata [{:#x}, {:#x})",
-            _srodata as usize,
-            _erodata as usize
-        );
-        log::debug!(
-            "[kernel] .data [{:#x}, {:#x})",
-            _sdata as usize,
-            _edata as usize
-        );
-        log::debug!(
-            "[kernel] .stack [{:#x}, {:#x})",
-            _sstack as usize,
-            _estack as usize
-        );
-        log::debug!(
-            "[kernel] .bss [{:#x}, {:#x})",
-            _sbss as usize,
-            _ebss as usize
-        );
-        log::debug!(
-            "[kernel] physical mem [{:#x}, {:#x})",
-            _ekernel as usize,
-            MEMORY_END
-        );
-
-        let mut memory_space = Self::new();
-        log::debug!("[kernel] mapping .text section");
-        memory_space.push_vma(VmArea::new(
-            (_stext as usize).into()..(_strampoline as usize).into(),
-            MapPerm::RX,
-            VmAreaType::Physical,
-        ));
-        log::debug!("[kernel] mapping signal-return trampoline");
-        memory_space.push_vma(VmArea::new(
-            (_strampoline as usize).into()..(_etrampoline as usize).into(),
-            MapPerm::URX,
-            VmAreaType::Physical,
-        ));
-        memory_space.push_vma(VmArea::new(
-            (_etrampoline as usize).into()..(_etext as usize).into(),
-            MapPerm::RX,
-            VmAreaType::Physical,
-        ));
-        log::debug!("[kernel] mapping .rodata section");
-        memory_space.push_vma(VmArea::new(
-            (_srodata as usize).into()..(_erodata as usize).into(),
-            MapPerm::R,
-            VmAreaType::Physical,
-        ));
-        log::debug!("[kernel] mapping .data section");
-        memory_space.push_vma(VmArea::new(
-            (_sdata as usize).into()..(_edata as usize).into(),
-            MapPerm::RW,
-            VmAreaType::Physical,
-        ));
-        log::debug!("[kernel] mapping .stack section");
-        memory_space.push_vma(VmArea::new(
-            (_sstack as usize).into()..(_estack as usize).into(),
-            MapPerm::RW,
-            VmAreaType::Physical,
-        ));
-        log::debug!("[kernel] mapping .bss section");
-        memory_space.push_vma(VmArea::new(
-            (_sbss as usize).into()..(_ebss as usize).into(),
-            MapPerm::RW,
-            VmAreaType::Physical,
-        ));
-        log::debug!("[kernel] mapping physical memory");
-        memory_space.push_vma(VmArea::new(
-            (_ekernel as usize).into()..MEMORY_END.into(),
-            MapPerm::RW,
-            VmAreaType::Physical,
-        ));
-        log::debug!("[kernel] mapping mmio registers");
-        for pair in MMIO {
-            memory_space.push_vma(VmArea::new(
-                (pair.0 + VIRT_RAM_OFFSET).into()..(pair.0 + pair.1 + VIRT_RAM_OFFSET).into(),
-                pair.2,
-                VmAreaType::Mmio,
-            ));
-        }
-
-        let dtb_addr = config::mm::dtb_addr();
-        memory_space.push_vma(VmArea::new(
-            (dtb_addr + VIRT_RAM_OFFSET).into()
-                ..(dtb_addr + PAGE_SIZE * PAGE_SIZE + VIRT_RAM_OFFSET).into(),
-            MapPerm::RW,
-            VmAreaType::Mmio,
-        ));
-
-        log::debug!("[kernel] KERNEL SPACE init finished");
-        memory_space
     }
 
     pub fn set_task(&mut self, task: &Arc<Task>) {

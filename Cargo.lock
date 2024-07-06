@@ -214,6 +214,7 @@ dependencies = [
  "async_utils",
  "bitflags 2.6.0",
  "config",
+ "crate_interface",
  "device-core",
  "fdt",
  "log",

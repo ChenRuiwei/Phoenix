@@ -18,8 +18,10 @@ use core::{
 use async_trait::async_trait;
 use async_utils::block_on;
 use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
+use crate_interface::call_interface;
 use device_core::{BaseDeviceOps, BlockDevice, CharDevice, DevId, DeviceMajor};
 use manager::DeviceManager;
+use memory::PageTable;
 use qemu::virtio_blk::VirtIOBlkDev;
 use spin::Once;
 use sync::mutex::{SpinLock, SpinNoIrqLock};
@@ -82,6 +84,15 @@ pub fn init_device_manager() {
     unsafe {
         DEVICE_MANAGER = Some(DeviceManager::new());
     }
+}
+
+#[crate_interface::def_interface]
+pub trait KernelPageTableIf: Send + Sync {
+    fn kernel_page_table() -> &'static mut PageTable;
+}
+
+pub(crate) fn kernel_page_table() -> &'static mut PageTable {
+    call_interface!(KernelPageTableIf::kernel_page_table())
 }
 
 struct Stdout;
