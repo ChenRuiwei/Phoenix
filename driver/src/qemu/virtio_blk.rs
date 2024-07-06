@@ -1,7 +1,8 @@
-use alloc::sync::Arc;
+use alloc::{string::ToString, sync::Arc};
 
 use config::{board::BLOCK_SIZE, mm::VIRT_RAM_OFFSET};
-use device_core::BlockDevice;
+use device_core::{BaseDeviceOps, BlockDevice, DevId, DeviceMajor, DeviceMeta, DeviceType};
+use log::error;
 use page::BufferCache;
 use sync::mutex::SpinNoIrqLock;
 use virtio_drivers::{
@@ -12,6 +13,7 @@ use virtio_drivers::{
 use super::VirtioHalImpl;
 
 pub struct VirtIOBlkDev {
+    meta: DeviceMeta,
     device: SpinNoIrqLock<VirtIOBlk<VirtioHalImpl, MmioTransport>>,
     pub cache: SpinNoIrqLock<BufferCache>,
 }
@@ -57,22 +59,58 @@ impl BlockDevice for VirtIOBlkDev {
 }
 
 impl VirtIOBlkDev {
-    pub fn new() -> Arc<Self> {
-        const VIRTIO0: usize = 0x10001000 + VIRT_RAM_OFFSET;
-        let device = unsafe {
-            let header = &mut *(VIRTIO0 as *mut VirtIOHeader);
-            SpinNoIrqLock::new(
-                VirtIOBlk::<VirtioHalImpl, MmioTransport>::new(
-                    MmioTransport::new(header.into()).unwrap(),
-                )
-                .unwrap(),
-            )
-        };
-        let blk_dev = Arc::new(Self {
-            device,
-            cache: SpinNoIrqLock::new(BufferCache::new()),
-        });
-        blk_dev.cache.lock().init_device(blk_dev.clone());
-        blk_dev
+    pub fn try_new(
+        mmio_base: usize,
+        mmio_size: usize,
+        irq_no: usize,
+        transport: MmioTransport,
+    ) -> Option<Arc<Self>> {
+        // const VIRTIO0: usize = 0x10001000 + VIRT_RAM_OFFSET;
+        match VirtIOBlk::<VirtioHalImpl, MmioTransport>::new(transport) {
+            Ok(virtio_blk) => {
+                let device = SpinNoIrqLock::new(virtio_blk);
+                let meta = DeviceMeta {
+                    dev_id: DevId {
+                        major: DeviceMajor::Block,
+                        minor: 0,
+                    },
+                    name: "virtio-blk".to_string(),
+                    mmio_base,
+                    mmio_size,
+                    irq_no: Some(irq_no),
+                    dtype: DeviceType::Block,
+                };
+                let blk_dev = Arc::new(Self {
+                    meta,
+                    device,
+                    cache: SpinNoIrqLock::new(BufferCache::new()),
+                });
+                blk_dev.cache.lock().init_device(blk_dev.clone());
+                Some(blk_dev)
+            }
+            Err(e) => {
+                error!(
+                    "[virtio-blk] failed to initialize MMIO device at [PA:{:#x}, PA:{:#x}), {e:?}",
+                    mmio_base,
+                    mmio_base + mmio_size
+                );
+                None
+            }
+        }
+    }
+}
+
+impl BaseDeviceOps for VirtIOBlkDev {
+    fn meta(&self) -> &device_core::DeviceMeta {
+        &self.meta
+    }
+
+    fn init(&self) {
+        // let transport = unsafe { MmioTransport::new(header) }.ok()?;
+        // self.device.try_new(transport);
+    }
+
+    fn handle_irq(&self) {
+        // todo!()
     }
 }

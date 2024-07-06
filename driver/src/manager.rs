@@ -3,36 +3,36 @@
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 use arch::interrupts::{disable_interrupt, enable_external_interrupt};
-use config::processor::HART_NUM;
+use config::{
+    mm::{DTB_ADDR, VIRT_RAM_OFFSET},
+    processor::HART_NUM,
+};
 use device_core::{BaseDeviceOps, DevId};
 use log::{info, warn};
+use spin::Once;
 
 use super::{plic, CharDevice};
 use crate::{
     cpu::{self, CPU},
     plic::PLIC,
-    qemu::virtio_net::{self, NetDevice},
+    qemu::virtio_net::{self, NetDevice, VirtIoNet},
     serial,
 };
-pub enum DeviceEnum {
-    /// Network card device.
-    Net(NetDevice),
-    // Block storage device.
-    // Block(AxBlockDevice),
-    // Display(AxDisplayDevice),
-}
-pub trait DriverProbe {
-    fn probe_mmio(_mmio_base: usize, _mmio_size: usize) -> Option<DeviceEnum> {
-        None
-    }
-}
+
+// pub enum DeviceEnum {
+//     /// Network card device.
+//     Net(VirtIoNet),
+//     // Block storage device.
+//     // Block(AxBlockDevice),
+//     // Display(AxDisplayDevice),
+// }
 
 pub struct DeviceManager {
     plic: Option<PLIC>,
     cpus: Vec<CPU>,
-    devices: BTreeMap<DevId, Arc<dyn BaseDeviceOps>>,
+    pub devices: BTreeMap<DevId, Arc<dyn BaseDeviceOps>>,
     /// irq_no -> device.
-    irq_map: BTreeMap<usize, Arc<dyn BaseDeviceOps>>,
+    pub irq_map: BTreeMap<usize, Arc<dyn BaseDeviceOps>>,
 }
 
 impl DeviceManager {
@@ -46,15 +46,20 @@ impl DeviceManager {
     }
 
     pub fn probe(&mut self) {
+        let device_tree = unsafe {
+            fdt::Fdt::from_ptr((DTB_ADDR + VIRT_RAM_OFFSET) as _).expect("Parse DTB failed")
+        };
         // Probe PLIC
         self.plic = Some(plic::probe());
         let char_device = Arc::new(serial::probe().unwrap());
         self.devices
             .insert(char_device.dev_id(), char_device.clone());
-        let net_device = virtio_net::probe();
 
         self.cpus.extend(cpu::probe());
-
+        let nodes = device_tree.find_all_nodes("/soc/virtio_mmio");
+        for node in nodes {
+            self.init_virtio_device(&node);
+        }
         // Add to interrupt map if have interrupts
         for dev in self.devices.values() {
             if let Some(irq) = dev.irq_no() {

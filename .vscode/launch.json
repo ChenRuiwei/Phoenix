@@ -7,7 +7,7 @@
             "request": "launch",
             "program": "target/riscv64gc-unknown-none-elf/debug/kernel",
             "args": [],
-            "stopAtEntry": true,
+            "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": false,
@@ -17,6 +17,16 @@
                 {
                     "description": "Enable pretty-printing for gdb",
                     "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Disable stopping on all exceptions",
+                    "text": "handle all nostop",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Continue execution on all exceptions",
+                    "text": "handle all pass",
                     "ignoreFailures": true
                 }
             ],

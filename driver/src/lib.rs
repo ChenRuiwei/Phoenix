@@ -17,6 +17,7 @@ use core::{
 
 use async_trait::async_trait;
 use async_utils::block_on;
+use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
 use device_core::{BaseDeviceOps, BlockDevice, CharDevice, DevId, DeviceMajor};
 use manager::DeviceManager;
 use qemu::virtio_blk::VirtIOBlkDev;
@@ -37,7 +38,7 @@ pub mod serial;
 type Mutex<T> = SpinLock<T>;
 
 pub fn init(dtb_addr: usize) {
-    init_block_device();
+    // init_block_device();
     init_device_manager();
     let manager = get_device_manager_mut();
     manager.probe();
@@ -63,9 +64,9 @@ pub fn init(dtb_addr: usize) {
 
 pub static BLOCK_DEVICE: Once<Arc<dyn BlockDevice>> = Once::new();
 
-fn init_block_device() {
-    BLOCK_DEVICE.call_once(|| VirtIOBlkDev::new());
-}
+// fn init_block_device() {
+//     BLOCK_DEVICE.call_once(|| VirtIOBlkDev::new());
+// }
 
 static mut DEVICE_MANAGER: Option<DeviceManager> = None;
 

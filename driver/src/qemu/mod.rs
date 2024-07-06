@@ -1,17 +1,32 @@
 pub mod virtio_blk;
 pub mod virtio_net;
 
-use alloc::vec::Vec;
+use alloc::{sync::Arc, vec::Vec};
 use core::{marker::PhantomData, ptr::NonNull};
 
-use device_core::{error::DevResult, BaseDeviceOps, DeviceType};
+use config::mm::VIRT_RAM_OFFSET;
+use device_core::{
+    error::{DevError, DevResult},
+    BaseDeviceOps, DeviceType,
+};
+use fdt::node::FdtNode;
+use log::warn;
 use memory::{
     address::vaddr_to_paddr, alloc_frames, dealloc_frame, FrameTracker, PhysAddr, PhysPageNum,
     VirtAddr,
 };
-use virtio_drivers::{transport::mmio::MmioTransport, BufferDirection};
+use virtio_blk::VirtIOBlkDev;
+use virtio_drivers::{
+    transport::{
+        self,
+        mmio::{MmioTransport, VirtIOHeader},
+        DeviceType as VirtIoDevType, Transport,
+    },
+    BufferDirection,
+};
+use virtio_net::VirtIoNet;
 
-use crate::manager::{DeviceEnum, DriverProbe};
+use crate::{manager::DeviceManager, BLOCK_DEVICE};
 
 pub struct VirtioHalImpl;
 
@@ -64,40 +79,57 @@ unsafe impl virtio_drivers::Hal for VirtioHalImpl {
     }
 }
 
-/// A trait for VirtIO device meta information.
-pub trait VirtIoDevMeta {
-    const DEVICE_TYPE: DeviceType;
-
-    type Device: BaseDeviceOps;
-    type Driver = VirtIoDriver<Self>;
-
-    fn try_new(transport: MmioTransport) -> DevResult<DeviceEnum>;
+const fn as_dev_err(e: virtio_drivers::Error) -> DevError {
+    use virtio_drivers::Error::*;
+    match e {
+        QueueFull => DevError::BadState,
+        NotReady => DevError::Again,
+        WrongToken => DevError::BadState,
+        AlreadyUsed => DevError::AlreadyExists,
+        InvalidParam => DevError::InvalidParam,
+        DmaError => DevError::NoMemory,
+        IoError => DevError::Io,
+        Unsupported => DevError::Unsupported,
+        ConfigSpaceTooSmall => DevError::BadState,
+        ConfigSpaceMissing => DevError::BadState,
+        _ => DevError::BadState,
+    }
 }
 
-/// A common driver for all VirtIO devices that implements [`DriverProbe`].
-pub struct VirtIoDriver<D: VirtIoDevMeta + ?Sized>(PhantomData<D>);
-
-// impl<D: VirtIoDevMeta> DriverProbe for VirtIoDriver<D> {
-//     fn probe_mmio(mmio_base: usize, mmio_size: usize) -> Option<DeviceEnum> {
-//         let base_vaddr = phys_to_virt(mmio_base.into());
-//         if let Some((ty, transport)) =
-//             driver_virtio::probe_mmio_device(base_vaddr.as_mut_ptr(),
-// mmio_size)         {
-//             if ty == D::DEVICE_TYPE {
-//                 match D::try_new(transport) {
-//                     Ok(dev) => return Some(dev),
-//                     Err(e) => {
-//                         warn!(
-//                             "failed to initialize MMIO device at [PA:{:#x},
-// PA:{:#x}): {:?}",                             mmio_base,
-//                             mmio_base + mmio_size,
-//                             e
-//                         );
-//                         return None;
-//                     }
-//                 }
-//             }
-//         }
-//         None
-//     }
-// }
+impl DeviceManager {
+    pub fn init_virtio_device(&mut self, node: &FdtNode) {
+        let reg = node.reg().unwrap().next().unwrap();
+        let base_paddr = reg.starting_address as usize;
+        let size = reg.size.unwrap();
+        let base_vaddr = base_paddr + VIRT_RAM_OFFSET;
+        let irq_no = node.property("interrupts").unwrap().as_usize().unwrap();
+        let header = NonNull::new(base_vaddr as *mut VirtIOHeader).unwrap();
+        match unsafe { MmioTransport::new(header) } {
+            Ok(transport) => match transport.device_type() {
+                VirtIoDevType::Block => {
+                    if let Some(blk) = VirtIOBlkDev::try_new(base_paddr, size, irq_no, transport) {
+                        BLOCK_DEVICE.call_once(|| blk.clone());
+                        self.devices.insert(blk.dev_id(), blk);
+                    }
+                }
+                VirtIoDevType::Network => {
+                    if let Some(net) = VirtIoNet::try_new(base_paddr, size, irq_no, transport) {
+                        self.devices.insert(net.dev_id(), net);
+                    }
+                }
+                _ => {
+                    warn!(
+                        "Unsupported VirtIO device type: {:?}",
+                        transport.device_type()
+                    );
+                }
+            },
+            Err(e) => {
+                log::warn!(
+                    "[init_virtio_device] Err {e:?} Can't initialize MmioTransport with {:?}",
+                    reg
+                );
+            }
+        }
+    }
+}

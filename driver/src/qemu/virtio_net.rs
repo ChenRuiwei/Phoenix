@@ -15,6 +15,7 @@ use fdt::{
     node::{FdtNode, NodeProperty},
     Fdt,
 };
+use log::error;
 use virtio_drivers::{
     device::net::VirtIONetRaw,
     transport::{
@@ -24,7 +25,7 @@ use virtio_drivers::{
     Hal,
 };
 
-use super::VirtioHalImpl;
+use super::{as_dev_err, VirtioHalImpl};
 use crate::{
     net::{EthernetAddress, NetBuf, NetBufBox, NetBufPool, NetBufPtr, NetDriverOps},
     print, println,
@@ -36,11 +37,16 @@ pub type NetDevice = VirtIoNetDev<VirtioHalImpl, MmioTransport, 64>;
 
 pub struct VirtIoNet {
     meta: DeviceMeta,
-    device: NetDevice,
+    inner: NetDevice,
 }
 
 impl VirtIoNet {
-    pub fn try_new(mmio_base: usize, mmio_size: usize, irq_no: usize) -> Option<Self> {
+    pub fn try_new(
+        mmio_base: usize,
+        mmio_size: usize,
+        irq_no: usize,
+        transport: MmioTransport,
+    ) -> Option<Arc<Self>> {
         let meta = DeviceMeta {
             dev_id: DevId {
                 major: DeviceMajor::Net,
@@ -52,12 +58,14 @@ impl VirtIoNet {
             irq_no: Some(irq_no),
             dtype: DeviceType::Net,
         };
-        let header = NonNull::new(mmio_base as *mut VirtIOHeader).unwrap();
-        let transport = unsafe { MmioTransport::new(header) }.ok().unwrap();
         match NetDevice::try_new(transport) {
-            Ok(device) => Some(Self { meta, device }),
+            Ok(inner) => Some(Arc::new(Self { meta, inner })),
             Err(e) => {
-                log::error!("[virtio-net] failed to load virtio net {e:?}");
+                error!(
+                    "[virtio-net] failed to initialize MMIO device at [PA:{:#x}, PA:{:#x}), {e:?}",
+                    mmio_base,
+                    mmio_base + mmio_size
+                );
                 None
             }
         }
@@ -139,7 +147,7 @@ impl BaseDeviceOps for VirtIoNet {
     }
 
     fn handle_irq(&self) {
-        todo!()
+        // todo!()
     }
 }
 pub fn probe() -> Option<VirtIoNet> {
@@ -253,22 +261,5 @@ impl<H: Hal, T: Transport, const QS: usize> NetDriverOps for VirtIoNetDev<H, T, 
 
         // 2. Return the buffer.
         Ok(net_buf.into_buf_ptr())
-    }
-}
-
-const fn as_dev_err(e: virtio_drivers::Error) -> DevError {
-    use virtio_drivers::Error::*;
-    match e {
-        QueueFull => DevError::BadState,
-        NotReady => DevError::Again,
-        WrongToken => DevError::BadState,
-        AlreadyUsed => DevError::AlreadyExists,
-        InvalidParam => DevError::InvalidParam,
-        DmaError => DevError::NoMemory,
-        IoError => DevError::Io,
-        Unsupported => DevError::Unsupported,
-        ConfigSpaceTooSmall => DevError::BadState,
-        ConfigSpaceMissing => DevError::BadState,
-        _ => DevError::BadState,
     }
 }
