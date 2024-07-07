@@ -33,7 +33,7 @@ use crate::{
 
 const NET_BUF_LEN: usize = 1526;
 
-pub type NetDevice = VirtIoNetDev<VirtioHalImpl, MmioTransport, 64>;
+pub type NetDevice = VirtIoNetDev<VirtioHalImpl, MmioTransport, 32>;
 
 pub struct VirtIoNet {
     meta: DeviceMeta,

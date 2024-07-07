@@ -14,12 +14,12 @@ use async_trait::async_trait;
 use async_utils::{block_on, get_waker};
 use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
 use device_core::{BaseDeviceOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
-use fdt::node::FdtNode;
+use fdt::{node::FdtNode, Fdt};
 use ringbuffer::RingBuffer;
 use sync::mutex::SpinNoIrqLock;
 
 use super::CharDevice;
-use crate::{println, serial::uart8250::Uart};
+use crate::{manager::DeviceManager, println, serial::uart8250::Uart};
 
 pub static mut UART0: SpinNoIrqLock<Option<Arc<Serial>>> = SpinNoIrqLock::new(None);
 
@@ -154,53 +154,50 @@ impl CharDevice for Serial {
     }
 }
 
-pub fn probe() -> Option<Serial> {
-    let device_tree =
-        unsafe { fdt::Fdt::from_ptr((DTB_ADDR + VIRT_RAM_OFFSET) as _).expect("Parse DTB failed") };
-    let chosen = device_tree.chosen();
-    if let Some(bootargs) = chosen.bootargs() {
-        println!("Bootargs: {:?}", bootargs);
-    }
-
-    println!("Device: {}", device_tree.root().model());
-
-    // Serial
-    let mut stdout = chosen.stdout();
-    if stdout.is_none() {
-        println!("Non-standard stdout device, trying to workaround");
-        let chosen = device_tree.find_node("/chosen").expect("No chosen node");
-        let stdout_path = chosen
-            .properties()
-            .find(|n| n.name == "stdout-path")
-            .and_then(|n| {
-                let bytes = unsafe {
-                    core::slice::from_raw_parts_mut((n.value.as_ptr()) as *mut u8, n.value.len())
-                };
-                let mut len = 0;
-                for byte in bytes.iter() {
-                    if *byte == b':' {
-                        return core::str::from_utf8(&n.value[..len]).ok();
+impl DeviceManager {
+    pub fn probe_char_device(&self, root: &Fdt) -> Option<Serial> {
+        let chosen = root.chosen();
+        // Serial
+        let mut stdout = chosen.stdout();
+        if stdout.is_none() {
+            println!("Non-standard stdout device, trying to workaround");
+            let chosen = root.find_node("/chosen").expect("No chosen node");
+            let stdout_path = chosen
+                .properties()
+                .find(|n| n.name == "stdout-path")
+                .and_then(|n| {
+                    let bytes = unsafe {
+                        core::slice::from_raw_parts_mut(
+                            (n.value.as_ptr()) as *mut u8,
+                            n.value.len(),
+                        )
+                    };
+                    let mut len = 0;
+                    for byte in bytes.iter() {
+                        if *byte == b':' {
+                            return core::str::from_utf8(&n.value[..len]).ok();
+                        }
+                        len += 1;
                     }
-                    len += 1;
-                }
-                core::str::from_utf8(&n.value[..n.value.len() - 1]).ok()
-            })
-            .unwrap();
-        println!("Searching stdout: {}", stdout_path);
-        stdout = device_tree.find_node(stdout_path);
-    }
-    if stdout.is_none() {
-        println!("Unable to parse /chosen, choosing first serial device");
-        stdout = device_tree.find_compatible(&[
-            "ns16550a",
-            "snps,dw-apb-uart", // C910, VF2
-            "sifive,uart0",     // sifive_u QEMU (FU540)
-        ])
-    }
-    let stdout = stdout.expect("Still unable to get stdout device");
-    println!("Stdout: {}", stdout.name);
+                    core::str::from_utf8(&n.value[..n.value.len() - 1]).ok()
+                })
+                .unwrap();
+            println!("Searching stdout: {}", stdout_path);
+            stdout = root.find_node(stdout_path);
+        }
+        if stdout.is_none() {
+            println!("Unable to parse /chosen, choosing first serial device");
+            stdout = root.find_compatible(&[
+                "ns16550a",
+                "snps,dw-apb-uart", // C910, VF2
+                "sifive,uart0",     // sifive_u QEMU (FU540)
+            ])
+        }
+        let stdout = stdout.expect("Still unable to get stdout device");
+        println!("Stdout: {}", stdout.name);
 
-    Some(probe_serial_console(&stdout))
+        Some(probe_serial_console(&stdout))
+    }
 }
 
 /// This guarantees to return a Serial device

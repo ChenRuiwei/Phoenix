@@ -3,6 +3,7 @@
 //! Controller setup helper
 
 use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET, VIRT_START};
+use fdt::{node::FdtNode, Fdt};
 
 pub struct PLIC {
     /// MMIO base address.
@@ -51,27 +52,16 @@ impl PLIC {
 }
 
 /// Guaranteed to have a PLIC
-pub fn probe() -> PLIC {
-    let device_tree = unsafe {
-        fdt::Fdt::from_ptr((DTB_ADDR + VIRT_RAM_OFFSET) as _).expect(
-            "Parse
-    DTB failed",
-        )
-    };
-    let plic_reg = device_tree
-        .find_compatible(&["riscv,plic0", "sifive,plic-1.0.0"])
-        .unwrap()
-        .reg()
-        .unwrap()
-        .next()
-        .unwrap();
-    let mmio_base = plic_reg.starting_address as usize;
-    let mmio_size = plic_reg.size.unwrap();
-
-    log::info!("plic base_address:{mmio_base:#x}, size:{mmio_size:#x}");
-    PLIC {
-        mmio_base,
-        mmio_size,
+pub fn probe(root: &Fdt) -> Option<PLIC> {
+    if let Some(plic_node) = root.find_compatible(&["riscv,plic0", "sifive,plic-1.0.0"]) {
+        let plic_reg = plic_node.reg().unwrap().next().unwrap();
+        let mmio_base = plic_reg.starting_address as usize;
+        let mmio_size = plic_reg.size.unwrap();
+        log::info!("plic base_address:{mmio_base:#x}, size:{mmio_size:#x}");
+        Some(PLIC::new(mmio_base, mmio_size))
+    } else {
+        log::error!("[PLIC probe] faild to find plic");
+        None
     }
 }
 

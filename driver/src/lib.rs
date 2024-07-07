@@ -44,7 +44,9 @@ pub fn init(dtb_addr: usize) {
     init_device_manager();
     let manager = get_device_manager_mut();
     manager.probe();
+    manager.map_devices();
     manager.init_devices();
+
     log::info!("Device initialization complete");
     manager.enable_device_interrupts();
     log::info!("External interrupts enabled");

@@ -9,12 +9,15 @@ use config::{
 };
 use device_core::{BaseDeviceOps, DevId};
 use log::{info, warn};
+use memory::pte::PTEFlags;
 use spin::Once;
 
 use super::{plic, CharDevice};
 use crate::{
     cpu::{self, CPU},
+    kernel_page_table,
     plic::PLIC,
+    println,
     qemu::virtio_net::{self, NetDevice, VirtIoNet},
     serial,
 };
@@ -30,6 +33,8 @@ use crate::{
 pub struct DeviceManager {
     plic: Option<PLIC>,
     cpus: Vec<CPU>,
+    // blk: Vec<Arc<BlockDevice>>,
+    // net: Vec<Arc<NetDriverOps>>,
     pub devices: BTreeMap<DevId, Arc<dyn BaseDeviceOps>>,
     /// irq_no -> device.
     pub irq_map: BTreeMap<usize, Arc<dyn BaseDeviceOps>>,
@@ -49,17 +54,24 @@ impl DeviceManager {
         let device_tree = unsafe {
             fdt::Fdt::from_ptr((DTB_ADDR + VIRT_RAM_OFFSET) as _).expect("Parse DTB failed")
         };
+        let chosen = device_tree.chosen();
+        if let Some(bootargs) = chosen.bootargs() {
+            println!("Bootargs: {:?}", bootargs);
+        }
+        println!("Device: {}", device_tree.root().model());
+
         // Probe PLIC
-        self.plic = Some(plic::probe());
-        let char_device = Arc::new(serial::probe().unwrap());
+        self.plic = plic::probe(&device_tree);
+
+        // Probe serial console
+        let char_device = Arc::new(self.probe_char_device(&device_tree).unwrap());
         self.devices
             .insert(char_device.dev_id(), char_device.clone());
 
         self.cpus.extend(cpu::probe());
-        let nodes = device_tree.find_all_nodes("/soc/virtio_mmio");
-        for node in nodes {
-            self.init_virtio_device(&node);
-        }
+
+        self.probe_virtio_device(&device_tree);
+
         // Add to interrupt map if have interrupts
         for dev in self.devices.values() {
             if let Some(irq) = dev.irq_no() {
@@ -71,6 +83,15 @@ impl DeviceManager {
         for dev in self.devices.values() {
             dev.init();
         }
+    }
+
+    pub fn map_devices(&self) {
+        let kpt = kernel_page_table();
+        for dev in self.devices.values() {
+            kpt.ioremap(dev.mmio_base(), dev.mmio_size(), PTEFlags::R | PTEFlags::W);
+        }
+        let plic = self.plic();
+        kpt.ioremap(plic.mmio_base, plic.mmio_size, PTEFlags::R | PTEFlags::W)
     }
 
     fn plic(&self) -> &PLIC {

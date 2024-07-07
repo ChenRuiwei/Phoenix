@@ -9,7 +9,7 @@ use device_core::{
     error::{DevError, DevResult},
     BaseDeviceOps, DeviceType,
 };
-use fdt::node::FdtNode;
+use fdt::{node::FdtNode, Fdt};
 use log::warn;
 use memory::{
     address::vaddr_to_paddr, alloc_frames, dealloc_frame, pte::PTEFlags, FrameTracker, PhysAddr,
@@ -97,43 +97,55 @@ const fn as_dev_err(e: virtio_drivers::Error) -> DevError {
 }
 
 impl DeviceManager {
-    pub fn init_virtio_device(&mut self, node: &FdtNode) {
-        let reg = node.reg().unwrap().next().unwrap();
-        let base_paddr = reg.starting_address as usize;
-        let size = reg.size.unwrap();
-        let base_vaddr = base_paddr + VIRT_RAM_OFFSET;
-        let irq_no = node.property("interrupts").unwrap().as_usize().unwrap();
-        let header = NonNull::new(base_vaddr as *mut VirtIOHeader).unwrap();
-        kernel_page_table().map_kernel_region(
-            base_vaddr.into()..(base_vaddr + size).into(),
-            PTEFlags::R | PTEFlags::W,
-        );
-        match unsafe { MmioTransport::new(header) } {
-            Ok(transport) => match transport.device_type() {
-                VirtIoDevType::Block => {
-                    if let Some(blk) = VirtIOBlkDev::try_new(base_paddr, size, irq_no, transport) {
-                        BLOCK_DEVICE.call_once(|| blk.clone());
-                        self.devices.insert(blk.dev_id(), blk);
+    pub fn probe_virtio_device(&mut self, root: &Fdt) {
+        let nodes = root.find_all_nodes("/soc/virtio_mmio");
+        let mut reg;
+        let mut base_paddr;
+        let mut size;
+        let mut irq_no;
+        let mut base_vaddr;
+        let mut header;
+
+        for node in nodes {
+            reg = node.reg().unwrap().next().unwrap();
+            base_paddr = reg.starting_address as usize;
+            size = reg.size.unwrap();
+            irq_no = node.property("interrupts").unwrap().as_usize().unwrap();
+            base_vaddr = base_paddr + VIRT_RAM_OFFSET;
+            header = NonNull::new(base_vaddr as *mut VirtIOHeader).unwrap();
+
+            // First map mmio memory since we need to read header.
+            kernel_page_table().ioremap(base_paddr, size, PTEFlags::R | PTEFlags::W);
+            match unsafe { MmioTransport::new(header) } {
+                Ok(transport) => match transport.device_type() {
+                    VirtIoDevType::Block => {
+                        if let Some(blk) =
+                            VirtIOBlkDev::try_new(base_paddr, size, irq_no, transport)
+                        {
+                            BLOCK_DEVICE.call_once(|| blk.clone());
+                            self.devices.insert(blk.dev_id(), blk);
+                        }
                     }
-                }
-                VirtIoDevType::Network => {
-                    if let Some(net) = VirtIoNet::try_new(base_paddr, size, irq_no, transport) {
-                        self.devices.insert(net.dev_id(), net);
+                    VirtIoDevType::Network => {
+                        if let Some(net) = VirtIoNet::try_new(base_paddr, size, irq_no, transport) {
+                            self.devices.insert(net.dev_id(), net);
+                        }
                     }
-                }
-                _ => {
-                    warn!(
-                        "Unsupported VirtIO device type: {:?}",
-                        transport.device_type()
+                    _ => {
+                        warn!(
+                            "Unsupported VirtIO device type: {:?}",
+                            transport.device_type()
+                        );
+                    }
+                },
+                Err(e) => {
+                    log::info!(
+                        "[init_virtio_device] Err {e:?} Can't initialize MmioTransport with {:?}",
+                        reg
                     );
                 }
-            },
-            Err(e) => {
-                log::warn!(
-                    "[init_virtio_device] Err {e:?} Can't initialize MmioTransport with {:?}",
-                    reg
-                );
-            }
-        };
+            };
+            kernel_page_table().iounmap(base_vaddr, size);
+        }
     }
 }

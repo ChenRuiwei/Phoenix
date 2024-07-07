@@ -8,6 +8,7 @@ use config::{
     board::MEMORY_END,
     mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PTE_SIZE, VIRT_RAM_OFFSET},
 };
+use log::trace;
 use riscv::register::satp;
 
 use crate::{
@@ -274,16 +275,36 @@ impl PageTable {
     }
 
     pub fn map_kernel_region(&mut self, virt_reg: Range<VirtAddr>, flags: PTEFlags) {
-        let range_vpn = virt_reg.start.into()..virt_reg.end.into();
+        let range_vpn = virt_reg.start.floor().into()..virt_reg.end.ceil().into();
         for vpn in range_vpn {
             self.map(vpn, vpn.to_offset().to_ppn(), flags);
         }
     }
 
-    pub fn unmap_kernel_region(&mut self, virt_reg: Range<VirtAddr>) {
-        let range_vpn = virt_reg.start.into()..virt_reg.end.into();
-        for vpn in range_vpn {
+    /// Map the physical addresses of I/O memory resources to core virtual
+    /// addresses
+    ///
+    /// Linux also has this function
+    pub fn ioremap(&mut self, phys_addr: usize, size: usize, flags: PTEFlags) {
+        let mut vpn = VirtAddr::from(phys_addr + VIRT_RAM_OFFSET).floor();
+        let mut ppn = vpn.to_offset().to_ppn();
+        let mut size = size as isize;
+        while size > 0 {
+            self.map(vpn, ppn, flags);
+            vpn += 1;
+            ppn += 1;
+            size -= PAGE_SIZE as isize;
+        }
+    }
+
+    /// Cancel the mapping made by ioremap()
+    pub fn iounmap(&mut self, virt_addr: usize, size: usize) {
+        let mut vpn = VirtAddr::from(virt_addr).floor();
+        let mut size = size as isize;
+        while size > 0 {
             self.unmap(vpn);
+            vpn += 1;
+            size -= PAGE_SIZE as isize;
         }
     }
 

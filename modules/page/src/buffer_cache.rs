@@ -86,7 +86,7 @@ impl BufferCache {
                     page.insert_buffer_head(buffer_head.clone());
                 } else {
                     log::info!("buffer page init");
-                    let mut page = Page::new_block(&device);
+                    let page = Page::new_block(&device);
                     device.base_read_block(block_id, page.block_bytes_array(block_id));
                     page.insert_buffer_head(buffer_head.clone());
                     self.pages.push(block_page_id(block_id), page);
@@ -94,9 +94,9 @@ impl BufferCache {
             }
             buffer_head.clone()
         } else {
-            log::trace!(
-                "[BufferCache::get_buffer_head_from_disk] init buffer_head for blk idx {block_id}"
-            );
+            // log::trace!(
+            //     "[BufferCache::get_buffer_head_from_disk] init buffer_head for blk idx
+            // {block_id}" );
             let buffer_head = BufferHead::new_arc(block_id);
             buffer_head.inc_acc_cnt();
             self.buffer_heads.insert(block_id, buffer_head.clone());
