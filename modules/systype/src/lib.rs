@@ -19,6 +19,7 @@ pub type ASysResult<'a, T> = SysFuture<'a, SysResult<T>>;
 /// Linux specific error codes defined in `errno.h`.
 /// Defined in <asm-generic/errno-base.h> and <asm-generic/errno.h>.
 /// https://www.man7.org/linux/man-pages/man3/errno.3.html
+/// https://elixir.bootlin.com/linux/v6.8.9/source/include/uapi/asm-generic/errno.h#L71
 #[derive(FromRepr, Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(i32)]
 pub enum SysError {
@@ -100,7 +101,8 @@ pub enum SysError {
     ENOSYS = 38,
     /// Directory not empty
     ENOTEMPTY = 39,
-
+    /// Socket operation on non-socket
+    ENOTSOCK = 88,
     /// Unsupported
     EOPNOTSUPP = 95,
     /// Socket address is already in use
@@ -159,6 +161,7 @@ impl SysError {
             ENOLCK => "No record locks available",
             ENOSYS => "Invalid system call number",
             ENOTEMPTY => "Directory not empty",
+            ENOTSOCK => "Socket operation on non-socket",
             ENOTCONN => "Transport endpoint is not connected",
             EOPNOTSUPP => "Unsupported Error",
             EADDRNOTAVAIL => "Address not available",

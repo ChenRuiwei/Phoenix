@@ -24,7 +24,12 @@ impl ProtoOps for UdpSock {
     fn bind(&self, myaddr: SockAddr) -> SysResult<()> {
         self.udp.bind(myaddr.into())
     }
+
     async fn connect(&self, vaddr: SockAddr) -> SysResult<()> {
         self.udp.connect(vaddr.into())
+    }
+
+    fn peer_addr(&self) -> SysResult<SockAddr> {
+        self.udp.peer_addr().map(|addr| addr.into())
     }
 }

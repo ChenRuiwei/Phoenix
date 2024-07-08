@@ -1,4 +1,5 @@
 use alloc::sync::Arc;
+use core::mem;
 
 use log::info;
 use socket::*;
@@ -7,7 +8,7 @@ use vfs_core::OpenFlags;
 
 use super::Syscall;
 use crate::{
-    mm::{audit_sockaddr, UserReadPtr},
+    mm::{audit_sockaddr, UserRdWrPtr, UserReadPtr, UserWritePtr},
     net::*,
     task::Task,
 };
@@ -44,15 +45,18 @@ impl Syscall<'_> {
     pub fn sys_bind(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
         let task = self.task;
         let sockaddr = audit_sockaddr(addr, addrlen, task)?;
-        let socketfd = task.socketfd(sockfd)?;
-        socketfd.sk.bind(sockaddr)?;
+        let socket = task.sockfd_lookup(sockfd)?;
+        socket.sk.bind(sockaddr)?;
         info!("[sys_bind] bind {sockfd} to {sockaddr:?}");
         Ok(0)
     }
 
-    /// 将文件描述符 sockfd 引用的流 socket 标记为被动。这个 socket
-    /// 后面会被用来接受来自其他（主动的）socket的连接
+    /// Mark the stream socket referenced by the file descriptor `sockfd` as
+    /// passive. This socket will be used later to accept connections from other
+    /// (active) sockets
     pub fn sys_listen(&self, sockfd: usize, _backlog: usize) -> SyscallResult {
+        let socket = self.task.sockfd_lookup(sockfd)?;
+        socket.sk.listen()?;
         Ok(0)
     }
 
@@ -61,24 +65,62 @@ impl Syscall<'_> {
     pub async fn sys_connect(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
         let task = self.task;
         let sockaddr = audit_sockaddr(addr, addrlen, task)?;
-        let socketfd = task.socketfd(sockfd)?;
-        socketfd.sk.connect(sockaddr).await;
+        let socket = task.sockfd_lookup(sockfd)?;
+        socket.sk.connect(sockaddr).await?;
         Ok(0)
     }
 
-    /// Only SOCK_STREAM can use sys_accept
-    /// accept()系统调用在文件描述符sockfd引用的监听流socket上接受一个接入连接。
-    /// 如果在调用accept()时不存在未决的连接，
-    /// 那么调用就会阻塞直到有连接请求到达为止。
-    pub fn sys_accept(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
-        Ok(0)
+    /// The accept() system call accepts an incoming connection on a listening
+    /// stream socket referred to by the file descriptor `sockfd`. If there are
+    /// no pending connections at the time of the accept() call, the call
+    /// will block until a connection request arrives. Both `addr` and
+    /// `addrlen` are pointers representing peer socket address. if the addrlen
+    /// pointer is not zero, it will be assigned to the actual size of the
+    /// peer address.
+    ///
+    /// On success, the call returns the file descriptor of the newly connected
+    /// socket.
+    pub async fn sys_accept(
+        &self,
+        sockfd: usize,
+        addr: usize,
+        addrlen: UserRdWrPtr<usize>,
+    ) -> SyscallResult {
+        let task = self.task;
+        let socket = task.sockfd_lookup(sockfd)?;
+        let sk = socket.sk.accept().await?;
+        if addr != 0 {
+            let peer_addr = sk.peer_addr()?;
+            if addrlen.is_null() {
+                return Err(SysError::EINVAL);
+            }
+            let len = addrlen.read(&task)?;
+            match peer_addr {
+                SockAddr::SockAddrIn(v4) => {
+                    if len < mem::size_of::<SockAddrIn>() {
+                        return Err(SysError::EINVAL);
+                    }
+                    UserWritePtr::<SockAddrIn>::from(addr).write(&task, v4)?
+                }
+                SockAddr::SockAddrIn6(v6) => {
+                    if len < mem::size_of::<SockAddrIn6>() {
+                        return Err(SysError::EINVAL);
+                    }
+                    UserWritePtr::<SockAddrIn6>::from(addr).write(&task, v6)?
+                }
+                SockAddr::SockAddrUn(_) => unimplemented!(),
+            }
+        }
+        let new_socket = Arc::new(Socket::from_another(&socket, sk));
+        let fd = task.with_mut_fd_table(|table| table.alloc(new_socket, OpenFlags::empty()))?;
+        Ok(fd)
     }
 }
 
 impl Task {
-    fn socketfd(&self, sockfd: usize) -> SysResult<Arc<Socket>> {
+    fn sockfd_lookup(&self, sockfd: usize) -> SysResult<Arc<Socket>> {
         self.with_fd_table(|table| table.get_file(sockfd))?
             .downcast_arc::<Socket>()
-            .map_err(|_| SysError::EBADF)
+            .map_err(|_| SysError::ENOTSOCK)
     }
 }

@@ -1,4 +1,4 @@
-use alloc::boxed::Box;
+use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
 use net::tcp::TcpSocket;
@@ -25,7 +25,20 @@ impl ProtoOps for TcpSock {
         self.tcp.bind(myaddr.into())
     }
 
+    fn listen(&self) -> SysResult<()> {
+        self.tcp.listen()
+    }
+
+    async fn accept(&self) -> SysResult<Arc<dyn ProtoOps>> {
+        let tcp = self.tcp.accept().await?;
+        Ok(Arc::new(Self { tcp }))
+    }
+
     async fn connect(&self, vaddr: SockAddr) -> SysResult<()> {
         self.tcp.connect(vaddr.into()).await
+    }
+
+    fn peer_addr(&self) -> SysResult<SockAddr> {
+        self.tcp.peer_addr().map(|addr| addr.into())
     }
 }

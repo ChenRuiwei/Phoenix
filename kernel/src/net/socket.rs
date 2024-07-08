@@ -1,6 +1,5 @@
 use alloc::{boxed::Box, sync::Arc};
 use core::{
-    mem::MaybeUninit,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ptr,
 };
@@ -45,6 +44,10 @@ pub struct SockAddrUn {
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
+/// `SockAddr` is a superset of `SocketAddr` in `core::net` since it also
+/// includes the address for socket communication between Unix processes. And it
+/// is a user oriented program with a C language structure layout, used for
+/// system calls to interact with users
 pub enum SockAddr {
     SockAddrIn(SockAddrIn),
     SockAddrIn6(SockAddrIn6),
@@ -64,12 +67,40 @@ impl Into<SocketAddr> for SockAddr {
         }
     }
 }
+
+impl From<SocketAddr> for SockAddr {
+    fn from(value: SocketAddr) -> Self {
+        match value {
+            SocketAddr::V4(v4) => SockAddr::SockAddrIn(SockAddrIn {
+                family: SocketAddressFamily::AF_INET as _,
+                port: v4.port(),
+                addr: *v4.ip(),
+                zero: [0; 8],
+            }),
+            SocketAddr::V6(v6) => SockAddr::SockAddrIn6(SockAddrIn6 {
+                family: SocketAddressFamily::AF_INET6 as _,
+                port: v6.port(),
+                flowinfo: v6.flowinfo(),
+                addr: *v6.ip(),
+                scope: v6.scope_id(),
+            }),
+        }
+    }
+}
+
 #[async_trait]
 pub trait ProtoOps: Sync + Send {
-    fn bind(&self, _myaddr: SockAddr) -> SysResult<()> {
+    fn bind(&self, _myaddr: SockAddr) -> SysResult<()>;
+    fn listen(&self) -> SysResult<()> {
+        Err(SysError::EOPNOTSUPP)
+    }
+    async fn accept(&self) -> SysResult<Arc<dyn ProtoOps>> {
         Err(SysError::EOPNOTSUPP)
     }
     async fn connect(&self, _vaddr: SockAddr) -> SysResult<()> {
+        Err(SysError::EOPNOTSUPP)
+    }
+    fn peer_addr(&self) -> SysResult<SockAddr> {
         Err(SysError::EOPNOTSUPP)
     }
 }
@@ -109,6 +140,14 @@ impl Socket {
 
         Self {
             types,
+            sk,
+            file: unsafe { Arc::from_raw(ptr::null_mut()) },
+        }
+    }
+
+    pub fn from_another(another: &Self, sk: Arc<dyn ProtoOps>) -> Self {
+        Self {
+            types: another.types,
             sk,
             file: unsafe { Arc::from_raw(ptr::null_mut()) },
         }

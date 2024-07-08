@@ -259,7 +259,7 @@ impl<'a> Syscall<'a> {
             BIND => self.sys_bind(args[0], args[1], args[2]),
             CONNECT => self.sys_connect(args[0], args[1], args[2]).await,
             LISTEN => self.sys_listen(args[0], args[1]),
-            ACCEPT => self.sys_accept(args[0], args[1].into(), args[2].into()),
+            ACCEPT => self.sys_accept(args[0], args[1], args[2].into()).await,
             // GETSOCKNAME => self.sys_getsockname(args[0], args[1].into(), args[2].into()),
             // GETPEERNAME => self.
             // Miscellaneous
