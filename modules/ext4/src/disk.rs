@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 
 use config::board::BLOCK_SIZE;
-use device_core::BlockDevice;
+use device_core::BlockDriverOps;
 use lwext4_rust::{
     bindings::{SEEK_CUR, SEEK_END, SEEK_SET},
     KernelDevOp,
@@ -12,12 +12,12 @@ use systype::SysResult;
 pub struct Disk {
     block_id: usize,
     offset: usize,
-    dev: Arc<dyn BlockDevice>,
+    dev: Arc<dyn BlockDriverOps>,
 }
 
 impl Disk {
     /// Create a new disk.
-    pub fn new(dev: Arc<dyn BlockDevice>) -> Self {
+    pub fn new(dev: Arc<dyn BlockDriverOps>) -> Self {
         assert_eq!(BLOCK_SIZE, dev.block_size());
         Self {
             block_id: 0,

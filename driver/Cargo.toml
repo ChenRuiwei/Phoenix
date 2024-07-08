@@ -14,6 +14,7 @@ memory = { path = "../modules/memory/" }
 systype = { path = "../modules/systype/" }
 page = { path = "../modules/page/" }
 device-core = { path = "../modules/device-core/" }
+net = { path = "../modules/net/" }
 
 bitflags = "2.5"
 rustversion = "1.0"

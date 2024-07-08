@@ -1,95 +1,41 @@
-use alloc::{
-    collections::BTreeSet,
-    string::{String, ToString},
-    sync::Arc,
-    vec::{self, Vec},
-};
-use core::ptr::NonNull;
+use alloc::{boxed::Box, string::ToString, sync::Arc, vec::Vec};
 
-use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
 use device_core::{
     error::{DevError, DevResult},
-    BaseDeviceOps, DevId, DeviceMajor, DeviceMeta, DeviceType,
-};
-use fdt::{
-    node::{FdtNode, NodeProperty},
-    Fdt,
+    BaseDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType, EthernetAddress, NetBufPtr,
+    NetDriverOps,
 };
 use log::error;
 use virtio_drivers::{
     device::net::VirtIONetRaw,
-    transport::{
-        mmio::{MmioTransport, VirtIOHeader},
-        Transport,
-    },
-    Hal,
+    transport::{mmio::MmioTransport, Transport},
 };
 
 use super::{as_dev_err, VirtioHalImpl};
-use crate::{
-    net::{EthernetAddress, NetBuf, NetBufBox, NetBufPool, NetBufPtr, NetDriverOps},
-    print, println,
-};
+use crate::net::{NetBuf, NetBufBox, NetBufPool};
 
 const NET_BUF_LEN: usize = 1526;
 
-pub type NetDevice = VirtIoNetDev<VirtioHalImpl, MmioTransport, 32>;
-
-pub struct VirtIoNet {
-    meta: DeviceMeta,
-    inner: NetDevice,
-}
-
-impl VirtIoNet {
-    pub fn try_new(
-        mmio_base: usize,
-        mmio_size: usize,
-        irq_no: usize,
-        transport: MmioTransport,
-    ) -> Option<Arc<Self>> {
-        let meta = DeviceMeta {
-            dev_id: DevId {
-                major: DeviceMajor::Net,
-                minor: 0,
-            },
-            name: "virtio-net".to_string(),
-            mmio_base,
-            mmio_size,
-            irq_no: Some(irq_no),
-            dtype: DeviceType::Net,
-        };
-        match NetDevice::try_new(transport) {
-            Ok(inner) => Some(Arc::new(Self { meta, inner })),
-            Err(e) => {
-                error!(
-                    "[virtio-net] failed to initialize MMIO device at [PA:{:#x}, PA:{:#x}), {e:?}",
-                    mmio_base,
-                    mmio_base + mmio_size
-                );
-                None
-            }
-        }
-    }
-}
+pub type NetDevice = VirtIoNetDev<MmioTransport, 32>;
 
 /// The VirtIO network device driver.
 ///
 /// `QS` is the VirtIO queue size.
-pub struct VirtIoNetDev<H: Hal, T: Transport, const QS: usize> {
+pub struct VirtIoNetDev<T: Transport, const QS: usize> {
     rx_buffers: [Option<NetBufBox>; QS],
     tx_buffers: [Option<NetBufBox>; QS],
     free_tx_bufs: Vec<NetBufBox>,
     buf_pool: Arc<NetBufPool>,
-    inner: VirtIONetRaw<H, T, QS>,
+    inner: VirtIONetRaw<VirtioHalImpl, T, QS>,
 }
 
-unsafe impl<H: Hal, T: Transport, const QS: usize> Send for VirtIoNetDev<H, T, QS> {}
-unsafe impl<H: Hal, T: Transport, const QS: usize> Sync for VirtIoNetDev<H, T, QS> {}
+unsafe impl<T: Transport, const QS: usize> Send for VirtIoNetDev<T, QS> {}
+unsafe impl<T: Transport, const QS: usize> Sync for VirtIoNetDev<T, QS> {}
 
-impl<H: Hal, T: Transport, const QS: usize> VirtIoNetDev<H, T, QS> {
+impl<T: Transport, const QS: usize> VirtIoNetDev<T, QS> {
     /// Creates a new driver instance and initializes the device, or returns
     /// an error if any step fails.
-    pub fn try_new(transport: T) -> DevResult<Self> {
+    pub fn try_new(transport: T) -> DevResult<Box<Self>> {
         // 0. Create a new driver instance.
         const NONE_BUF: Option<NetBufBox> = None;
         let inner = VirtIONetRaw::new(transport).map_err(as_dev_err)?;
@@ -132,29 +78,11 @@ impl<H: Hal, T: Transport, const QS: usize> VirtIoNetDev<H, T, QS> {
         }
 
         // 3. Return the driver instance.
-        Ok(dev)
+        Ok(Box::new(dev))
     }
 }
 
-impl BaseDeviceOps for VirtIoNet {
-    fn meta(&self) -> &device_core::DeviceMeta {
-        &self.meta
-    }
-
-    fn init(&self) {
-        // let transport = unsafe { MmioTransport::new(header) }.ok()?;
-        // self.device.try_new(transport);
-    }
-
-    fn handle_irq(&self) {
-        // todo!()
-    }
-}
-pub fn probe() -> Option<VirtIoNet> {
-    None
-}
-
-impl<H: Hal, T: Transport, const QS: usize> NetDriverOps for VirtIoNetDev<H, T, QS> {
+impl<T: Transport + 'static, const QS: usize> NetDriverOps for VirtIoNetDev<T, QS> {
     #[inline]
     fn mac_address(&self) -> EthernetAddress {
         EthernetAddress(self.inner.mac_address())

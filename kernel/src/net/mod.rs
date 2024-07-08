@@ -7,6 +7,7 @@ pub const AF_UNIX: usize = 1;
 pub const AF_INET: usize = 2;
 
 #[repr(u16)]
+#[derive(Debug, Clone, Copy)]
 #[allow(non_camel_case_types)]
 pub enum SocketAddressFamily {
     AF_UNIX = 1,
@@ -19,7 +20,10 @@ impl SocketAddressFamily {
         match value {
             1 => Ok(SocketAddressFamily::AF_UNIX),
             2 => Ok(SocketAddressFamily::AF_INET),
-            10 => Ok(SocketAddressFamily::AF_INET6),
+            10 => {
+                log::error!("[AF_INET6] unsupported socket address family");
+                Ok(SocketAddressFamily::AF_INET6)
+            }
             _ => Err(value),
         }
     }

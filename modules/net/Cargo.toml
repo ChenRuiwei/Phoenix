@@ -11,8 +11,11 @@ default = ["smoltcp"]
 [dependencies]
 systype = { path = "../systype/" }
 sync = { path = "../sync/" }
-driver = { path = "../../driver" }
-spin = "0.9.8"
+arch = { path = "../../arch/" }
+device-core = { path = "../device-core/" }
+async_utils = { path = "../../crates/async_utils/" }
+
+spin = "0.9"
 log = "0.4"
 
 [dependencies.smoltcp]

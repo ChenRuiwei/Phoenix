@@ -16,7 +16,7 @@ use config::{
         MAX_BUFFER_PAGES, PAGE_SIZE,
     },
 };
-use device_core::BlockDevice;
+use device_core::BlockDriverOps;
 use intrusive_collections::{intrusive_adapter, LinkedListAtomicLink};
 use lru::LruCache;
 use spin::Once;
@@ -25,7 +25,7 @@ use sync::mutex::SpinNoIrqLock;
 use crate::Page;
 
 pub struct BufferCache {
-    device: Option<Weak<dyn BlockDevice>>,
+    device: Option<Weak<dyn BlockDriverOps>>,
     /// Block page id to `Page`.
     // NOTE: These `Page`s are pages without file, only exist for caching pure
     // block data.
@@ -46,11 +46,11 @@ impl BufferCache {
         }
     }
 
-    pub fn init_device(&mut self, device: Arc<dyn BlockDevice>) {
+    pub fn init_device(&mut self, device: Arc<dyn BlockDriverOps>) {
         self.device = Some(Arc::downgrade(&device))
     }
 
-    pub fn device(&self) -> Arc<dyn BlockDevice> {
+    pub fn device(&self) -> Arc<dyn BlockDriverOps> {
         self.device.as_ref().unwrap().upgrade().unwrap()
     }
 

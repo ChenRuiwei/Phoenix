@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use device_core::BlockDevice;
+use device_core::BlockDriverOps;
 use lwext4_rust::{Ext4BlockWrapper, InodeTypes};
 use systype::SysResult;
 use vfs_core::{
@@ -31,7 +31,7 @@ impl FileSystemType for Ext4FsType {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         _flags: MountFlags,
-        dev: Option<Arc<dyn BlockDevice>>,
+        dev: Option<Arc<dyn BlockDriverOps>>,
     ) -> SysResult<Arc<dyn Dentry>> {
         debug_assert!(dev.is_some());
         let sb = Ext4SuperBlock::new(SuperBlockMeta::new(dev, self.clone()));

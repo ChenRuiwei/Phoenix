@@ -254,6 +254,14 @@ impl<'a> Syscall<'a> {
             // Resource
             GETRUSAGE => self.sys_getrusage(args[0] as _, args[1].into()),
             PRLIMIT64 => self.sys_prlimit64(args[0], args[1] as _, args[2].into(), args[3].into()),
+            // Net
+            SOCKET => self.sys_socket(args[0], args[1] as _, args[2]),
+            BIND => self.sys_bind(args[0], args[1], args[2]),
+            CONNECT => self.sys_connect(args[0], args[1], args[2]).await,
+            LISTEN => self.sys_listen(args[0], args[1]),
+            ACCEPT => self.sys_accept(args[0], args[1].into(), args[2].into()),
+            // GETSOCKNAME => self.sys_getsockname(args[0], args[1].into(), args[2].into()),
+            // GETPEERNAME => self.
             // Miscellaneous
             UNAME => self.sys_uname(args[0].into()),
             SYSLOG => self.sys_syslog(args[0], args[1].into(), args[2]),

@@ -1,11 +1,13 @@
 //! TODO：重要：参考arce-os实现的，为了避免查重，应该写成一个外部库然后打包压缩
 #![no_std]
 #![no_main]
+#![feature(new_uninit)]
 extern crate alloc;
-use alloc::vec;
-use core::cell::RefCell;
+use alloc::{boxed::Box, sync::Arc, vec};
+use core::{cell::RefCell, ops::DerefMut};
 
-use driver::qemu::virtio_net::NetDevice;
+use arch::time::get_time_us;
+use device_core::{error::DevError, NetBufPtr, NetDriverOps};
 use listen_table::*;
 use log::*;
 use smoltcp::{
@@ -18,6 +20,7 @@ use smoltcp::{
 use spin::{Lazy, Once};
 use sync::mutex::SpinNoIrqLock;
 pub mod addr;
+pub mod bench;
 pub mod listen_table;
 pub mod tcp;
 pub mod udp;
@@ -53,11 +56,17 @@ static LISTEN_TABLE: Lazy<ListenTable> = Lazy::new(ListenTable::new);
 static SOCKET_SET: Lazy<SocketSetWrapper> = Lazy::new(SocketSetWrapper::new);
 static ETH0: Once<InterfaceWrapper> = Once::new();
 
+/// SocketSet is a collection of sockets that contain multiple different types
+/// of sockets (such as TCP, UDP, ICMP, etc.). It provides a mechanism to manage
+/// and operate these sockets, including polling socket status, processing data
+/// transmission and reception, etc. It is similar to `FdTable` and
+/// `SocketHandle` is similar to `fd`
 struct SocketSetWrapper<'a>(Mutex<SocketSet<'a>>);
 
 struct DeviceWrapper {
-    inner: RefCell<NetDevice>, /* use `RefCell` is enough since it's wrapped in `Mutex` in
-                                * `InterfaceWrapper`. */
+    inner: RefCell<Box<dyn NetDriverOps>>, /* use `RefCell` is enough since it's wrapped in
+                                            * `Mutex` in
+                                            * `InterfaceWrapper`. */
 }
 
 struct InterfaceWrapper {
@@ -72,12 +81,14 @@ impl<'a> SocketSetWrapper<'a> {
         Self(Mutex::new(SocketSet::new(vec![])))
     }
 
+    /// return a `tcp::Socket` defined in `smoltcp`
     pub fn new_tcp_socket() -> socket::tcp::Socket<'a> {
         let tcp_rx_buffer = socket::tcp::SocketBuffer::new(vec![0; TCP_RX_BUF_LEN]);
         let tcp_tx_buffer = socket::tcp::SocketBuffer::new(vec![0; TCP_TX_BUF_LEN]);
         socket::tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer)
     }
 
+    /// return a `udp::Socket` defined in `smoltcp`
     pub fn new_udp_socket() -> socket::udp::Socket<'a> {
         let udp_rx_buffer = socket::udp::PacketBuffer::new(
             vec![socket::udp::PacketMetadata::EMPTY; 8],
@@ -95,6 +106,8 @@ impl<'a> SocketSetWrapper<'a> {
         socket::dns::Socket::new(&[server_addr], vec![])
     }
 
+    /// return `SocketHandle`, which is Similar to file descriptors in the
+    /// operating system
     pub fn add<T: AnySocket<'a>>(&self, socket: T) -> SocketHandle {
         let handle = self.0.lock().add(socket);
         debug!("socket {}: created", handle);
@@ -120,7 +133,7 @@ impl<'a> SocketSetWrapper<'a> {
     }
 
     pub fn poll_interfaces(&self) {
-        ETH0.poll(&self.0);
+        ETH0.get().unwrap().poll(&self.0);
     }
 
     pub fn remove(&self, handle: SocketHandle) {
@@ -130,7 +143,7 @@ impl<'a> SocketSetWrapper<'a> {
 }
 
 impl InterfaceWrapper {
-    fn new(name: &'static str, dev: AxNetDevice, ether_addr: EthernetAddress) -> Self {
+    fn new(name: &'static str, dev: Box<dyn NetDriverOps>, ether_addr: EthernetAddress) -> Self {
         let mut config = Config::new(HardwareAddress::Ethernet(ether_addr));
         config.random_seed = RANDOM_SEED;
 
@@ -145,7 +158,7 @@ impl InterfaceWrapper {
     }
 
     fn current_time() -> Instant {
-        Instant::from_micros_const((current_time_nanos() / NANOS_PER_MICROS) as i64)
+        Instant::from_micros_const(get_time_us() as i64)
     }
 
     pub fn name(&self) -> &str {
@@ -170,6 +183,8 @@ impl InterfaceWrapper {
         };
     }
 
+    /// handling the sending and receiving of network packets and updating the
+    /// protocol stack status.
     pub fn poll(&self, sockets: &Mutex<SocketSet>) {
         let mut dev = self.dev.lock();
         let mut iface = self.iface.lock();
@@ -180,7 +195,7 @@ impl InterfaceWrapper {
 }
 
 impl DeviceWrapper {
-    fn new(inner: AxNetDevice) -> Self {
+    fn new(inner: Box<dyn NetDriverOps>) -> Self {
         Self {
             inner: RefCell::new(inner),
         }
@@ -188,8 +203,8 @@ impl DeviceWrapper {
 }
 
 impl Device for DeviceWrapper {
-    type RxToken<'a> = AxNetRxToken<'a> where Self: 'a;
-    type TxToken<'a> = AxNetTxToken<'a> where Self: 'a;
+    type RxToken<'a> = NetRxToken<'a> where Self: 'a;
+    type TxToken<'a> = NetTxToken<'a> where Self: 'a;
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         let mut dev = self.inner.borrow_mut();
@@ -210,7 +225,7 @@ impl Device for DeviceWrapper {
                 return None;
             }
         };
-        Some((AxNetRxToken(&self.inner, rx_buf), AxNetTxToken(&self.inner)))
+        Some((NetRxToken(&self.inner, rx_buf), NetTxToken(&self.inner)))
     }
 
     fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
@@ -220,7 +235,7 @@ impl Device for DeviceWrapper {
             return None;
         }
         if dev.can_transmit() {
-            Some(AxNetTxToken(&self.inner))
+            Some(NetTxToken(&self.inner))
         } else {
             None
         }
@@ -235,10 +250,10 @@ impl Device for DeviceWrapper {
     }
 }
 
-struct AxNetRxToken<'a>(&'a RefCell<AxNetDevice>, NetBufPtr);
-struct AxNetTxToken<'a>(&'a RefCell<AxNetDevice>);
+struct NetRxToken<'a>(&'a RefCell<Box<dyn NetDriverOps>>, NetBufPtr);
+struct NetTxToken<'a>(&'a RefCell<Box<dyn NetDriverOps>>);
 
-impl<'a> RxToken for AxNetRxToken<'a> {
+impl<'a> RxToken for NetRxToken<'a> {
     fn preprocess(&self, sockets: &mut SocketSet<'_>) {
         snoop_tcp_packet(self.1.packet(), sockets).ok();
     }
@@ -259,7 +274,7 @@ impl<'a> RxToken for AxNetRxToken<'a> {
     }
 }
 
-impl<'a> TxToken for AxNetTxToken<'a> {
+impl<'a> TxToken for NetTxToken<'a> {
     fn consume<R, F>(self, len: usize, f: F) -> R
     where
         F: FnOnce(&mut [u8]) -> R,
@@ -293,6 +308,15 @@ fn snoop_tcp_packet(buf: &[u8], sockets: &mut SocketSet<'_>) -> Result<(), smolt
     Ok(())
 }
 
+/// net poll results.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NetPollState {
+    /// Object can be read now.
+    pub readable: bool,
+    /// Object can be writen now.
+    pub writable: bool,
+}
+
 /// Poll the network stack.
 ///
 /// It may receive packets from the NIC and process them, and transmit queued
@@ -303,15 +327,16 @@ pub fn poll_interfaces() {
 
 /// Benchmark raw socket transmit bandwidth.
 pub fn bench_transmit() {
-    ETH0.dev.lock().bench_transmit_bandwidth();
+    ETH0.get().unwrap().dev.lock().bench_transmit_bandwidth();
 }
 
 /// Benchmark raw socket receive bandwidth.
 pub fn bench_receive() {
-    ETH0.dev.lock().bench_receive_bandwidth();
+    ETH0.get().unwrap().dev.lock().bench_receive_bandwidth();
 }
 
-pub(crate) fn init(net_dev: AxNetDevice) {
+pub fn init_network(net_dev: Box<dyn NetDriverOps>) {
+    info!("Initialize network subsystem...");
     let ether_addr = EthernetAddress(net_dev.mac_address().0);
     let eth0 = InterfaceWrapper::new("eth0", net_dev, ether_addr);
 
@@ -320,12 +345,10 @@ pub(crate) fn init(net_dev: AxNetDevice) {
     eth0.setup_ip_addr(ip, IP_PREFIX);
     eth0.setup_gateway(gateway);
 
-    ETH0.init_by(eth0);
-    SOCKET_SET.init_by(SocketSetWrapper::new());
-    LISTEN_TABLE.init_by(ListenTable::new());
+    ETH0.call_once(|| eth0);
 
-    info!("created net interface {:?}:", ETH0.name());
-    info!("  ether:    {}", ETH0.ethernet_address());
+    info!("created net interface {:?}:", ETH0.get().unwrap().name());
+    info!("  ether:    {}", ETH0.get().unwrap().ethernet_address());
     info!("  ip:       {}/{}", ip, IP_PREFIX);
     info!("  gateway:  {}", gateway);
 }

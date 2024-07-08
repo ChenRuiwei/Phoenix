@@ -17,7 +17,8 @@ pub type ASyscallResult<'a> = SysFuture<'a, SyscallResult>;
 pub type ASysResult<'a, T> = SysFuture<'a, SysResult<T>>;
 
 /// Linux specific error codes defined in `errno.h`.
-// Defined in <asm-generic/errno-base.h> and <asm-generic/errno.h>.
+/// Defined in <asm-generic/errno-base.h> and <asm-generic/errno.h>.
+/// https://www.man7.org/linux/man-pages/man3/errno.3.html
 #[derive(FromRepr, Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(i32)]
 pub enum SysError {
@@ -41,7 +42,7 @@ pub enum SysError {
     EBADF = 9,
     /// No child processes
     ECHILD = 10,
-    /// Try again
+    /// Resource temporarily unavailable
     EAGAIN = 11,
     /// Out of memory
     ENOMEM = 12,
@@ -99,12 +100,17 @@ pub enum SysError {
     ENOSYS = 38,
     /// Directory not empty
     ENOTEMPTY = 39,
-    /// Transport endpoint is not connected
-    ENOTCONN = 107,
+
     /// Unsupported
     EOPNOTSUPP = 95,
     /// Socket address is already in use
     EADDRINUSE = 98,
+    /// Address not available
+    EADDRNOTAVAIL = 99,
+    /// Connection reset
+    ECONNRESET = 104,
+    /// The socket is not connected
+    ENOTCONN = 107,
     /// Connection refused
     ECONNREFUSED = 111,
 }
@@ -155,7 +161,9 @@ impl SysError {
             ENOTEMPTY => "Directory not empty",
             ENOTCONN => "Transport endpoint is not connected",
             EOPNOTSUPP => "Unsupported Error",
+            EADDRNOTAVAIL => "Address not available",
             EADDRINUSE => "Address already in use",
+            ECONNRESET => "Connection reset",
             ECONNREFUSED => "Connection refused",
         }
     }

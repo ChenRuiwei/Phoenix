@@ -4,7 +4,7 @@ use alloc::{
 };
 use core::mem::MaybeUninit;
 
-use device_core::BlockDevice;
+use device_core::BlockDriverOps;
 use spin::Once;
 use systype::SysResult;
 
@@ -13,7 +13,7 @@ use crate::{Dentry, FileSystemType, Inode, Mutex, StatFs};
 pub struct SuperBlockMeta {
     /// Block device that hold this file system.
     // TODO: dyn file for device?
-    pub device: Option<Arc<dyn BlockDevice>>,
+    pub device: Option<Arc<dyn BlockDriverOps>>,
     /// File system type.
     pub fs_type: Weak<dyn FileSystemType>,
     /// Root dentry points to the mount point.
@@ -25,7 +25,7 @@ pub struct SuperBlockMeta {
 }
 
 impl SuperBlockMeta {
-    pub fn new(device: Option<Arc<dyn BlockDevice>>, fs_type: Arc<dyn FileSystemType>) -> Self {
+    pub fn new(device: Option<Arc<dyn BlockDriverOps>>, fs_type: Arc<dyn FileSystemType>) -> Self {
         Self {
             device,
             root_dentry: Once::new(),
@@ -67,7 +67,7 @@ impl dyn SuperBlock {
         // self.meta().inodes.lock().push(inode)
     }
 
-    pub fn device(&self) -> Arc<dyn BlockDevice> {
+    pub fn device(&self) -> Arc<dyn BlockDriverOps> {
         self.meta().device.as_ref().cloned().unwrap()
     }
 }

@@ -90,11 +90,12 @@ impl ListenTable {
         *self.tcp[port as usize].lock() = None;
     }
 
-    pub fn can_accept(&self, port: u16) -> AxResult<bool> {
+    pub fn can_accept(&self, port: u16) -> SysResult<bool> {
         if let Some(entry) = self.tcp[port as usize].lock().deref() {
             Ok(entry.syn_queue.iter().any(|&handle| is_connected(handle)))
         } else {
-            ax_err!(InvalidInput, "socket accept() failed: not listen")
+            warn!("socket accept() failed: not listen");
+            Err(SysError::EINVAL)
         }
     }
 

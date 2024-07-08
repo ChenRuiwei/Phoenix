@@ -1,12 +1,15 @@
 use alloc::sync::Arc;
 
+use log::info;
 use socket::*;
-use systype::{SysError, SyscallResult};
+use systype::{SysError, SysResult, SyscallResult};
+use vfs_core::OpenFlags;
 
 use super::Syscall;
 use crate::{
     mm::{audit_sockaddr, UserReadPtr},
     net::*,
+    task::Task,
 };
 impl Syscall<'_> {
     /// creates an endpoint for communication and returns a file descriptor that
@@ -14,15 +17,22 @@ impl Syscall<'_> {
     /// call will be the lowest-numbered file descriptor not currently open
     /// for the process.
     pub fn sys_socket(&self, domain: usize, types: i32, protocal: usize) -> SyscallResult {
-        // log::info!()
         let domain = SocketAddressFamily::from_usize(domain).map_err(|_| SysError::EINVAL)?;
         let types = SocketType::from_bits_truncate(types);
-        let task = self.task;
+
+        log::info!("[sys_socket] {domain:?} {types:?}");
+        let mut flags = OpenFlags::empty();
+        if types.contains(SocketType::NONBLOCK) {
+            flags |= OpenFlags::O_NONBLOCK;
+        }
+        if types.contains(SocketType::CLOEXEC) {
+            flags |= OpenFlags::O_CLOEXEC;
+        }
         let socket = Socket::new(domain, types);
-        // TODO:其他标志位
-        // let fd = task.with_mut_fd_table(|table| table.alloc(Arc::new(socket)))?;
-        // Ok(fd)
-        Ok(0)
+        let fd = self
+            .task
+            .with_mut_fd_table(|table| table.alloc(Arc::new(socket), flags))?;
+        Ok(fd)
     }
 
     /// When a socket is created with socket(2), it exists in a name space
@@ -31,14 +41,12 @@ impl Syscall<'_> {
     /// descriptor sockfd.  addrlen specifies the size, in  bytes,  of the
     /// address structure pointed to by addr.  Traditionally, this operation is
     /// called “assigning a name to a socket”.
-    pub fn sys_bind(&self, socketfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
+    pub fn sys_bind(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
         let task = self.task;
-        let socketfd = task
-            .with_fd_table(|table| table.get_file(socketfd))?
-            .downcast_arc::<Socket>()
-            .map_err(|_| SysError::EINVAL)?;
-        let sockaddr = audit_sockaddr(addr, addrlen, &task)?;
-
+        let sockaddr = audit_sockaddr(addr, addrlen, task)?;
+        let socketfd = task.socketfd(sockfd)?;
+        socketfd.sk.bind(sockaddr)?;
+        info!("[sys_bind] bind {sockfd} to {sockaddr:?}");
         Ok(0)
     }
 
@@ -48,8 +56,13 @@ impl Syscall<'_> {
         Ok(0)
     }
 
-    /// connect()系统调用将文件描述符sockfd引用的主动socket连接到地址通过addr和addrlen指定的监听socket上。
-    pub fn sys_connect(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
+    /// Connect the active socket referenced by the file descriptor `sockfd` to
+    /// the listening socket specified by `addr` and `addrlen` at the address
+    pub async fn sys_connect(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
+        let task = self.task;
+        let sockaddr = audit_sockaddr(addr, addrlen, task)?;
+        let socketfd = task.socketfd(sockfd)?;
+        socketfd.sk.connect(sockaddr).await;
         Ok(0)
     }
 
@@ -59,5 +72,13 @@ impl Syscall<'_> {
     /// 那么调用就会阻塞直到有连接请求到达为止。
     pub fn sys_accept(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
         Ok(0)
+    }
+}
+
+impl Task {
+    fn socketfd(&self, sockfd: usize) -> SysResult<Arc<Socket>> {
+        self.with_fd_table(|table| table.get_file(sockfd))?
+            .downcast_arc::<Socket>()
+            .map_err(|_| SysError::EBADF)
     }
 }

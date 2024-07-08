@@ -19,12 +19,12 @@ use async_trait::async_trait;
 use async_utils::block_on;
 use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
 use crate_interface::call_interface;
-use device_core::{BaseDeviceOps, BlockDevice, CharDevice, DevId, DeviceMajor};
+use device_core::{BaseDriverOps, BlockDriverOps, CharDevice, DevId, DeviceMajor, NetDriverOps};
 use manager::DeviceManager;
 use memory::PageTable;
-use qemu::virtio_blk::VirtIOBlkDev;
 use spin::Once;
 use sync::mutex::{SpinLock, SpinNoIrqLock};
+use virtio::virtio_blk::VirtIoBlkDev;
 
 use self::sbi::console_putchar;
 use crate::serial::{Serial, UART0};
@@ -33,9 +33,9 @@ mod cpu;
 mod manager;
 pub mod net;
 mod plic;
-pub mod qemu;
 pub mod sbi;
 pub mod serial;
+pub mod virtio;
 
 type Mutex<T> = SpinLock<T>;
 
@@ -44,7 +44,6 @@ pub fn init(dtb_addr: usize) {
     init_device_manager();
     let manager = get_device_manager_mut();
     manager.probe();
-    manager.map_devices();
     manager.init_devices();
 
     log::info!("Device initialization complete");
@@ -66,7 +65,7 @@ pub fn init(dtb_addr: usize) {
     // CHAR_DEVICE.call_once(|| manager.char_device[0].clone());
 }
 
-pub static BLOCK_DEVICE: Once<Arc<dyn BlockDevice>> = Once::new();
+pub static BLOCK_DEVICE: Once<Arc<dyn BlockDriverOps>> = Once::new();
 
 // fn init_block_device() {
 //     BLOCK_DEVICE.call_once(|| VirtIOBlkDev::new());

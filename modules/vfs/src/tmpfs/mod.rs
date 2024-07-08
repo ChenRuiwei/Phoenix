@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use device_core::BlockDevice;
+use device_core::BlockDriverOps;
 use systype::SysResult;
 use vfs_core::{
     Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, MountFlags, Stat, StatFs, SuperBlock,
@@ -31,7 +31,7 @@ impl FileSystemType for TmpFsType {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         flags: MountFlags,
-        dev: Option<Arc<dyn BlockDevice>>,
+        dev: Option<Arc<dyn BlockDriverOps>>,
     ) -> SysResult<Arc<dyn Dentry>> {
         let sb = TmpSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
@@ -55,7 +55,7 @@ pub struct TmpSuperBlock {
 
 impl TmpSuperBlock {
     pub fn new(
-        device: Option<Arc<dyn BlockDevice>>,
+        device: Option<Arc<dyn BlockDriverOps>>,
         fs_type: Arc<dyn FileSystemType>,
     ) -> Arc<Self> {
         Arc::new(Self {

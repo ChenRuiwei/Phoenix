@@ -219,6 +219,7 @@ dependencies = [
  "fdt",
  "log",
  "memory",
+ "net",
  "page",
  "plic",
  "ringbuffer",
@@ -389,6 +390,7 @@ dependencies = [
  "log",
  "logging",
  "memory",
+ "net",
  "numeric-enum-macro",
  "page",
  "paste",
@@ -498,7 +500,9 @@ dependencies = [
 name = "net"
 version = "0.1.0"
 dependencies = [
- "driver",
+ "arch",
+ "async_utils",
+ "device-core",
  "log",
  "smoltcp",
  "spin",

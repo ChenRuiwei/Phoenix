@@ -1,30 +1,23 @@
 pub mod virtio_blk;
 pub mod virtio_net;
 
-use alloc::{sync::Arc, vec::Vec};
-use core::{marker::PhantomData, ptr::NonNull};
+use core::ptr::NonNull;
 
 use config::mm::VIRT_RAM_OFFSET;
-use device_core::{
-    error::{DevError, DevResult},
-    BaseDeviceOps, DeviceType,
-};
-use fdt::{node::FdtNode, Fdt};
-use log::warn;
-use memory::{
-    address::vaddr_to_paddr, alloc_frames, dealloc_frame, pte::PTEFlags, FrameTracker, PhysAddr,
-    PhysPageNum, VirtAddr,
-};
-use virtio_blk::VirtIOBlkDev;
+use device_core::{error::DevError, BaseDriverOps};
+use fdt::Fdt;
+use log::{error, warn};
+use memory::{alloc_frames, dealloc_frame, pte::PTEFlags, PhysAddr, PhysPageNum};
+use net::init_network;
+use virtio_blk::VirtIoBlkDev;
 use virtio_drivers::{
     transport::{
-        self,
         mmio::{MmioTransport, VirtIOHeader},
         DeviceType as VirtIoDevType, Transport,
     },
     BufferDirection,
 };
-use virtio_net::VirtIoNet;
+use virtio_net::NetDevice;
 
 use crate::{kernel_page_table, manager::DeviceManager, BLOCK_DEVICE};
 
@@ -120,16 +113,26 @@ impl DeviceManager {
                 Ok(transport) => match transport.device_type() {
                     VirtIoDevType::Block => {
                         if let Some(blk) =
-                            VirtIOBlkDev::try_new(base_paddr, size, irq_no, transport)
+                            VirtIoBlkDev::try_new(base_paddr, size, irq_no, transport)
                         {
                             BLOCK_DEVICE.call_once(|| blk.clone());
                             self.devices.insert(blk.dev_id(), blk);
+                            continue;
                         }
                     }
                     VirtIoDevType::Network => {
-                        if let Some(net) = VirtIoNet::try_new(base_paddr, size, irq_no, transport) {
-                            self.devices.insert(net.dev_id(), net);
-                        }
+                        match NetDevice::try_new(transport){
+                            Ok(net) =>{
+                                init_network(net);
+                                continue;
+                            },
+                            Err(e) =>
+                            error!(
+                                "[virtio-net] failed to initialize MMIO device at [PA:{:#x}, PA:{:#x}), {e:?}",
+                                base_paddr,
+                                base_paddr + size
+                            )
+                        };
                     }
                     _ => {
                         warn!(

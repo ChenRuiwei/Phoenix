@@ -1,7 +1,7 @@
 use alloc::{string::ToString, sync::Arc};
 
 use config::{board::BLOCK_SIZE, mm::VIRT_RAM_OFFSET};
-use device_core::{BaseDeviceOps, BlockDevice, DevId, DeviceMajor, DeviceMeta, DeviceType};
+use device_core::{BaseDriverOps, BlockDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
 use log::error;
 use page::BufferCache;
 use sync::mutex::SpinNoIrqLock;
@@ -12,16 +12,18 @@ use virtio_drivers::{
 
 use super::VirtioHalImpl;
 
-pub struct VirtIOBlkDev {
+pub type BlockDevice = VirtIoBlkDev;
+
+pub struct VirtIoBlkDev {
     meta: DeviceMeta,
     device: SpinNoIrqLock<VirtIOBlk<VirtioHalImpl, MmioTransport>>,
     pub cache: SpinNoIrqLock<BufferCache>,
 }
 
-unsafe impl Send for VirtIOBlkDev {}
-unsafe impl Sync for VirtIOBlkDev {}
+unsafe impl Send for VirtIoBlkDev {}
+unsafe impl Sync for VirtIoBlkDev {}
 
-impl BlockDevice for VirtIOBlkDev {
+impl BlockDriverOps for VirtIoBlkDev {
     // TODO: cached size value
     fn size(&self) -> u64 {
         self.device.lock().capacity() * (BLOCK_SIZE as u64)
@@ -58,7 +60,7 @@ impl BlockDevice for VirtIOBlkDev {
     }
 }
 
-impl VirtIOBlkDev {
+impl VirtIoBlkDev {
     pub fn try_new(
         mmio_base: usize,
         mmio_size: usize,
@@ -100,7 +102,7 @@ impl VirtIOBlkDev {
     }
 }
 
-impl BaseDeviceOps for VirtIOBlkDev {
+impl BaseDriverOps for VirtIoBlkDev {
     fn meta(&self) -> &device_core::DeviceMeta {
         &self.meta
     }

@@ -2,8 +2,11 @@
 //!
 //! Controller setup helper
 
-use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET, VIRT_START};
-use fdt::{node::FdtNode, Fdt};
+use config::mm::VIRT_RAM_OFFSET;
+use fdt::Fdt;
+use memory::pte::PTEFlags;
+
+use crate::{kernel_page_table, manager::DeviceManager};
 
 pub struct PLIC {
     /// MMIO base address.
@@ -12,7 +15,7 @@ pub struct PLIC {
     pub mmio_size: usize,
 }
 
-const PLIC_ADDR: usize = 0xc00_0000 + VIRT_RAM_OFFSET;
+// const PLIC_ADDR: usize = 0xc00_0000 + VIRT_RAM_OFFSET;
 
 impl PLIC {
     pub fn new(mmio_base: usize, mmio_size: usize) -> PLIC {
@@ -52,16 +55,18 @@ impl PLIC {
 }
 
 /// Guaranteed to have a PLIC
-pub fn probe(root: &Fdt) -> Option<PLIC> {
-    if let Some(plic_node) = root.find_compatible(&["riscv,plic0", "sifive,plic-1.0.0"]) {
-        let plic_reg = plic_node.reg().unwrap().next().unwrap();
-        let mmio_base = plic_reg.starting_address as usize;
-        let mmio_size = plic_reg.size.unwrap();
-        log::info!("plic base_address:{mmio_base:#x}, size:{mmio_size:#x}");
-        Some(PLIC::new(mmio_base, mmio_size))
-    } else {
-        log::error!("[PLIC probe] faild to find plic");
-        None
+impl DeviceManager {
+    pub fn probe_plic(&mut self, root: &Fdt) {
+        if let Some(plic_node) = root.find_compatible(&["riscv,plic0", "sifive,plic-1.0.0"]) {
+            let plic_reg = plic_node.reg().unwrap().next().unwrap();
+            let mmio_base = plic_reg.starting_address as usize;
+            let mmio_size = plic_reg.size.unwrap();
+            log::info!("plic base_address:{mmio_base:#x}, size:{mmio_size:#x}");
+            kernel_page_table().ioremap(mmio_base, mmio_size, PTEFlags::R | PTEFlags::W);
+            self.plic = Some(PLIC::new(mmio_base, mmio_size));
+        } else {
+            log::error!("[PLIC probe] faild to find plic");
+        }
     }
 }
 

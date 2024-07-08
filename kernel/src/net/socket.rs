@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, sync::Arc};
 use core::{
     mem::MaybeUninit,
-    net::{Ipv4Addr, Ipv6Addr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ptr,
 };
 
@@ -51,11 +51,25 @@ pub enum SockAddr {
     SockAddrUn(SockAddrUn),
 }
 
-pub trait ProtoOps {
-    fn bind(&self, myaddr: SockAddr) -> SysResult<()> {
+impl Into<SocketAddr> for SockAddr {
+    fn into(self) -> SocketAddr {
+        match self {
+            SockAddr::SockAddrIn(v4) => SocketAddr::V4(SocketAddrV4::new(v4.addr, v4.port)),
+            SockAddr::SockAddrIn6(v6) => {
+                SocketAddr::V6(SocketAddrV6::new(v6.addr, v6.port, v6.flowinfo, v6.scope))
+            }
+            SockAddr::SockAddrUn(_) => {
+                panic!("unix addr isn't Internet. You shouldn't convert to SocketAddr")
+            }
+        }
+    }
+}
+#[async_trait]
+pub trait ProtoOps: Sync + Send {
+    fn bind(&self, _myaddr: SockAddr) -> SysResult<()> {
         Err(SysError::EOPNOTSUPP)
     }
-    fn connect(&self, vaddr: SockAddr) -> SysResult<()> {
+    async fn connect(&self, _vaddr: SockAddr) -> SysResult<()> {
         Err(SysError::EOPNOTSUPP)
     }
 }
@@ -63,11 +77,11 @@ pub trait ProtoOps {
 /// linux中，socket面向用户空间，sock面向内核空间
 pub struct Socket {
     /// socket类型
-    types: SocketType,
+    pub types: SocketType,
     /// 套接字的核心，面向底层网络具体协议
-    sk: Arc<dyn ProtoOps>,
+    pub sk: Arc<dyn ProtoOps>,
     /// TODO:
-    file: Arc<SocketFile>,
+    pub file: Arc<SocketFile>,
 }
 
 unsafe impl Sync for Socket {}
@@ -75,13 +89,19 @@ unsafe impl Send for Socket {}
 
 impl Socket {
     pub fn new(domain: SocketAddressFamily, types: SocketType) -> Self {
+        let mut nonblock = false;
+        if types.contains(SocketType::NONBLOCK) {
+            nonblock = true;
+        }
         let sk: Arc<dyn ProtoOps> = match domain {
             SocketAddressFamily::AF_UNIX => Arc::new(UnixSock {}),
             SocketAddressFamily::AF_INET => {
                 if types.contains(SocketType::STREAM) {
-                    Arc::new(TcpSock {})
+                    Arc::new(TcpSock::new(nonblock))
+                } else if types.contains(SocketType::DGRAM) {
+                    Arc::new(UdpSock::new(nonblock))
                 } else {
-                    Arc::new(UdpSock {})
+                    unimplemented!()
                 }
             }
             SocketAddressFamily::AF_INET6 => unimplemented!(),

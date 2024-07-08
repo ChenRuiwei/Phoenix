@@ -32,6 +32,8 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use ::net::init_network;
+
 use crate::processor::hart;
 
 extern crate alloc;

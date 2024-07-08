@@ -7,6 +7,7 @@ pub fn get_time() -> usize {
     time::read()
 }
 
+/// milliseconds 毫秒
 pub fn get_time_ms() -> usize {
     time::read() / (CLOCK_FREQ / 1_000)
 }
@@ -15,6 +16,7 @@ pub fn get_time_sec() -> usize {
     time::read() / CLOCK_FREQ
 }
 
+/// microseconds 微秒
 pub fn get_time_us() -> usize {
     time::read() / (CLOCK_FREQ / 1_000_000)
 }

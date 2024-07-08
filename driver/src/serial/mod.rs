@@ -13,13 +13,14 @@ use core::{
 use async_trait::async_trait;
 use async_utils::{block_on, get_waker};
 use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
-use device_core::{BaseDeviceOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
+use device_core::{BaseDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
 use fdt::{node::FdtNode, Fdt};
+use memory::pte::PTEFlags;
 use ringbuffer::RingBuffer;
 use sync::mutex::SpinNoIrqLock;
 
 use super::CharDevice;
-use crate::{manager::DeviceManager, println, serial::uart8250::Uart};
+use crate::{kernel_page_table, manager::DeviceManager, println, serial::uart8250::Uart};
 
 pub static mut UART0: SpinNoIrqLock<Option<Arc<Serial>>> = SpinNoIrqLock::new(None);
 
@@ -75,7 +76,7 @@ impl Debug for Serial {
     }
 }
 
-impl BaseDeviceOps for Serial {
+impl BaseDriverOps for Serial {
     fn meta(&self) -> &DeviceMeta {
         &self.meta
     }
@@ -155,7 +156,7 @@ impl CharDevice for Serial {
 }
 
 impl DeviceManager {
-    pub fn probe_char_device(&self, root: &Fdt) -> Option<Serial> {
+    pub fn probe_char_device(&mut self, root: &Fdt) {
         let chosen = root.chosen();
         // Serial
         let mut stdout = chosen.stdout();
@@ -196,7 +197,13 @@ impl DeviceManager {
         let stdout = stdout.expect("Still unable to get stdout device");
         println!("Stdout: {}", stdout.name);
 
-        Some(probe_serial_console(&stdout))
+        let serial = probe_serial_console(&stdout);
+        kernel_page_table().ioremap(
+            serial.mmio_base(),
+            serial.mmio_size(),
+            PTEFlags::R | PTEFlags::W,
+        );
+        self.devices.insert(serial.dev_id(), Arc::new(serial));
     }
 }
 
