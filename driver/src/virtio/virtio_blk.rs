@@ -1,14 +1,11 @@
 use alloc::{string::ToString, sync::Arc};
 
-use config::{board::BLOCK_SIZE, mm::VIRT_RAM_OFFSET};
+use config::board::BLOCK_SIZE;
 use device_core::{BaseDriverOps, BlockDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
 use log::error;
 use page::BufferCache;
 use sync::mutex::SpinNoIrqLock;
-use virtio_drivers::{
-    device::blk::VirtIOBlk,
-    transport::mmio::{MmioTransport, VirtIOHeader},
-};
+use virtio_drivers::{device::blk::VirtIOBlk, transport::mmio::MmioTransport};
 
 use super::VirtioHalImpl;
 

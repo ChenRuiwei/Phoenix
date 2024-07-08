@@ -69,7 +69,7 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
 
         mm::init();
         trap::init();
-        driver::init(dtb_addr);
+        driver::init();
         loader::init();
         vfs::init();
         task::spawn_kernel_task(async move {

@@ -2,7 +2,6 @@
 
 use alloc::vec::Vec;
 
-use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
 use fdt::Fdt;
 use log::info;
 

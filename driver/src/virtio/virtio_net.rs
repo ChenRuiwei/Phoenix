@@ -1,11 +1,9 @@
-use alloc::{boxed::Box, string::ToString, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 
 use device_core::{
     error::{DevError, DevResult},
-    BaseDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType, EthernetAddress, NetBufPtr,
-    NetDriverOps,
+    EthernetAddress, NetBufPtr, NetDriverOps,
 };
-use log::error;
 use virtio_drivers::{
     device::net::VirtIONetRaw,
     transport::{mmio::MmioTransport, Transport},

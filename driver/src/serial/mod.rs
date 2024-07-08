@@ -5,16 +5,14 @@ use core::{
     cell::UnsafeCell,
     cmp,
     fmt::{self, Debug, Write},
-    future::Future,
-    pin::Pin,
-    task::{Poll, Waker},
+    task::Waker,
 };
 
 use async_trait::async_trait;
 use async_utils::{block_on, get_waker};
-use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
+use config::mm::VIRT_RAM_OFFSET;
 use device_core::{BaseDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
-use fdt::{node::FdtNode, Fdt};
+use fdt::Fdt;
 use memory::pte::PTEFlags;
 use ringbuffer::RingBuffer;
 use sync::mutex::SpinNoIrqLock;

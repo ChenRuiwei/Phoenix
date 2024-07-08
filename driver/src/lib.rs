@@ -6,25 +6,18 @@
 #![feature(const_slice_from_raw_parts_mut)]
 #![feature(associated_type_defaults)]
 
-#[macro_use]
 extern crate alloc;
 
-use alloc::{boxed::Box, collections::BTreeMap, sync::Arc};
-use core::{
-    fmt::{self, Write},
-    task::Waker,
-};
+use alloc::sync::Arc;
+use core::fmt::{self, Write};
 
-use async_trait::async_trait;
 use async_utils::block_on;
-use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
 use crate_interface::call_interface;
-use device_core::{BaseDriverOps, BlockDriverOps, CharDevice, DevId, DeviceMajor, NetDriverOps};
+use device_core::{BlockDriverOps, CharDevice, DeviceMajor};
 use manager::DeviceManager;
 use memory::PageTable;
 use spin::Once;
-use sync::mutex::{SpinLock, SpinNoIrqLock};
-use virtio::virtio_blk::VirtIoBlkDev;
+use sync::mutex::SpinLock;
 
 use self::sbi::console_putchar;
 use crate::serial::{Serial, UART0};
@@ -39,8 +32,7 @@ pub mod virtio;
 
 type Mutex<T> = SpinLock<T>;
 
-pub fn init(dtb_addr: usize) {
-    // init_block_device();
+pub fn init() {
     init_device_manager();
     let manager = get_device_manager_mut();
     manager.probe();
@@ -52,7 +44,7 @@ pub fn init(dtb_addr: usize) {
     let serial = manager
         .devices()
         .iter()
-        .filter(|(dev_id, device)| dev_id.major == DeviceMajor::Serial)
+        .filter(|(dev_id, _)| dev_id.major == DeviceMajor::Serial)
         .map(|(_, device)| {
             device
                 .clone()

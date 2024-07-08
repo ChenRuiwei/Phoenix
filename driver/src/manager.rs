@@ -7,26 +7,10 @@ use config::{
     mm::{DTB_ADDR, VIRT_RAM_OFFSET},
     processor::HART_NUM,
 };
-use device_core::{BaseDriverOps, BlockDriverOps, DevId};
+use device_core::{BaseDriverOps, DevId};
 use log::{info, warn};
-use memory::pte::PTEFlags;
-use spin::Once;
 
-use super::{plic, CharDevice};
-use crate::{
-    cpu::{self, CPU},
-    kernel_page_table,
-    plic::PLIC,
-    println,
-};
-
-// pub enum DeviceEnum {
-//     /// Network card device.
-//     Net(VirtIoNet),
-//     // Block storage device.
-//     // Block(AxBlockDevice),
-//     // Display(AxDisplayDevice),
-// }
+use crate::{cpu::CPU, plic::PLIC, println};
 
 pub struct DeviceManager {
     pub plic: Option<PLIC>,
