@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use net::tcp::TcpSocket;
 use systype::SysResult;
 
-use super::socket::{ProtoOps, SockAddr};
+use super::{socket::ProtoOps, SockAddr};
 pub struct TcpSock {
     tcp: TcpSocket,
 }
@@ -40,5 +40,20 @@ impl ProtoOps for TcpSock {
 
     fn peer_addr(&self) -> SysResult<SockAddr> {
         self.tcp.peer_addr().map(|addr| addr.into())
+    }
+
+    fn local_addr(&self) -> SysResult<SockAddr> {
+        self.tcp.local_addr().map(|addr| addr.into())
+    }
+
+    /// since TCP has already connected, we needn't remote addr
+    async fn sendto(&self, buf: &[u8], _vaddr: Option<SockAddr>) -> SysResult<usize> {
+        self.tcp.send(buf).await
+    }
+
+    async fn recvfrom(&self, buf: &mut [u8]) -> SysResult<(usize, SockAddr)> {
+        let bytes = self.tcp.recv(buf).await?;
+        let peer_addr = self.peer_addr()?;
+        Ok((bytes, peer_addr))
     }
 }

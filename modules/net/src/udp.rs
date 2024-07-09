@@ -240,10 +240,13 @@ impl UdpSocket {
                     socket
                         .send_slice(buf, remote_endpoint)
                         .map_err(|e| match e {
-                            SendError::BufferFull => SysError::EAGAIN,
+                            SendError::BufferFull => {
+                                warn!("socket send() failed, {e:?}");
+                                SysError::EAGAIN
+                            }
                             SendError::Unaddressable => {
-                                warn!("socket send() failed");
-                                return SysError::ECONNREFUSED;
+                                warn!("socket send() failed, {e:?}");
+                                SysError::ECONNREFUSED
                             }
                         })?;
                     Ok(buf.len())

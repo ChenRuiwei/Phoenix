@@ -347,13 +347,14 @@ impl TcpSocket {
             SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
                 if !socket.is_active() || !socket.may_send() {
                     // closed by remote
-                    warn!("socket send() failed");
+                    warn!("socket send() failed, ECONNRESET");
                     Err(SysError::ECONNRESET)
                 } else if socket.can_send() {
                     // connected, and the tx buffer is not full
                     // TODO: use socket.send(|buf| {...})
-                    let len = socket.send_slice(buf).map_err(|_| {
-                        warn!("socket recv() failed: bad state");
+                    let len = socket.send_slice(buf).map_err(|e| {
+                        error!("socket recv() failed: bad state, {e:?}");
+                        // TODO: Not sure what error should it be
                         SysError::EBADF
                     })?;
                     Ok(len)

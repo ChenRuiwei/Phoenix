@@ -85,9 +85,9 @@ impl MemorySpace {
     /// Create a new user memory space that inherits kernel page table.
     pub fn new_user() -> Self {
         Self {
-            page_table: SyncUnsafeCell::new(PageTable::from_kernel(
-                (unsafe { &*KERNEL_PAGE_TABLE.get() }),
-            )),
+            page_table: SyncUnsafeCell::new(PageTable::from_kernel(unsafe {
+                &*KERNEL_PAGE_TABLE.get()
+            })),
             areas: SyncUnsafeCell::new(RangeMap::new()),
             task: None,
         }

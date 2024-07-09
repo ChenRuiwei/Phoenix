@@ -257,11 +257,19 @@ impl<'a> Syscall<'a> {
             // Net
             SOCKET => self.sys_socket(args[0], args[1] as _, args[2]),
             BIND => self.sys_bind(args[0], args[1], args[2]),
-            CONNECT => self.sys_connect(args[0], args[1], args[2]).await,
             LISTEN => self.sys_listen(args[0], args[1]),
             ACCEPT => self.sys_accept(args[0], args[1], args[2].into()).await,
-            // GETSOCKNAME => self.sys_getsockname(args[0], args[1].into(), args[2].into()),
-            // GETPEERNAME => self.
+            CONNECT => self.sys_connect(args[0], args[1], args[2]).await,
+            GETSOCKNAME => self.sys_getsockname(args[0], args[1], args[2]),
+            GETPEERNAME => self.sys_getpeername(args[0], args[1], args[2].into()),
+            SENDTO => {
+                self.sys_sendto(args[0], args[1].into(), args[2], args[3], args[4], args[5])
+                    .await
+            }
+            RECVFROM => {
+                self.sys_recvfrom(args[0], args[1].into(), args[2], args[3], args[4], args[5])
+                    .await
+            }
             // Miscellaneous
             UNAME => self.sys_uname(args[0].into()),
             SYSLOG => self.sys_syslog(args[0], args[1].into(), args[2]),

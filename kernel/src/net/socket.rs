@@ -1,10 +1,8 @@
 use alloc::{boxed::Box, sync::Arc};
-use core::{
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    ptr,
-};
+use core::{any::Any, ptr};
 
 use async_trait::async_trait;
+use downcast_rs::{impl_downcast, DowncastSync};
 use systype::{SysError, SysResult, SyscallResult};
 use tcp::TcpSock;
 use udp::UdpSock;
@@ -13,83 +11,8 @@ use vfs_core::*;
 
 use super::*;
 
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-/// IPv4 address
-pub struct SockAddrIn {
-    pub family: u16,
-    pub port: u16,
-    pub addr: Ipv4Addr,
-    pub zero: [u8; 8],
-}
-
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-/// IPv6 address
-pub struct SockAddrIn6 {
-    pub family: u16,
-    pub port: u16,
-    pub flowinfo: u32,
-    pub addr: Ipv6Addr,
-    pub scope: u32,
-}
-
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-/// Unix domain socket address
-pub struct SockAddrUn {
-    pub family: u16,
-    pub path: [u8; 108],
-}
-
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-/// `SockAddr` is a superset of `SocketAddr` in `core::net` since it also
-/// includes the address for socket communication between Unix processes. And it
-/// is a user oriented program with a C language structure layout, used for
-/// system calls to interact with users
-pub enum SockAddr {
-    SockAddrIn(SockAddrIn),
-    SockAddrIn6(SockAddrIn6),
-    SockAddrUn(SockAddrUn),
-}
-
-impl Into<SocketAddr> for SockAddr {
-    fn into(self) -> SocketAddr {
-        match self {
-            SockAddr::SockAddrIn(v4) => SocketAddr::V4(SocketAddrV4::new(v4.addr, v4.port)),
-            SockAddr::SockAddrIn6(v6) => {
-                SocketAddr::V6(SocketAddrV6::new(v6.addr, v6.port, v6.flowinfo, v6.scope))
-            }
-            SockAddr::SockAddrUn(_) => {
-                panic!("unix addr isn't Internet. You shouldn't convert to SocketAddr")
-            }
-        }
-    }
-}
-
-impl From<SocketAddr> for SockAddr {
-    fn from(value: SocketAddr) -> Self {
-        match value {
-            SocketAddr::V4(v4) => SockAddr::SockAddrIn(SockAddrIn {
-                family: SocketAddressFamily::AF_INET as _,
-                port: v4.port(),
-                addr: *v4.ip(),
-                zero: [0; 8],
-            }),
-            SocketAddr::V6(v6) => SockAddr::SockAddrIn6(SockAddrIn6 {
-                family: SocketAddressFamily::AF_INET6 as _,
-                port: v6.port(),
-                flowinfo: v6.flowinfo(),
-                addr: *v6.ip(),
-                scope: v6.scope_id(),
-            }),
-        }
-    }
-}
-
 #[async_trait]
-pub trait ProtoOps: Sync + Send {
+pub trait ProtoOps: Sync + Send + Any + DowncastSync {
     fn bind(&self, _myaddr: SockAddr) -> SysResult<()>;
     fn listen(&self) -> SysResult<()> {
         Err(SysError::EOPNOTSUPP)
@@ -103,8 +26,19 @@ pub trait ProtoOps: Sync + Send {
     fn peer_addr(&self) -> SysResult<SockAddr> {
         Err(SysError::EOPNOTSUPP)
     }
+    fn local_addr(&self) -> SysResult<SockAddr> {
+        Err(SysError::EOPNOTSUPP)
+    }
+    async fn sendto(&self, _buf: &[u8], _vaddr: Option<SockAddr>) -> SysResult<usize> {
+        Err(SysError::EOPNOTSUPP)
+    }
+    async fn recvfrom(&self, _buf: &mut [u8]) -> SysResult<(usize, SockAddr)> {
+        Err(SysError::EOPNOTSUPP)
+    }
 }
 
+// Todo: Maybe it needn't
+impl_downcast!(sync ProtoOps);
 /// linux中，socket面向用户空间，sock面向内核空间
 pub struct Socket {
     /// socket类型
@@ -119,23 +53,15 @@ unsafe impl Sync for Socket {}
 unsafe impl Send for Socket {}
 
 impl Socket {
-    pub fn new(domain: SocketAddressFamily, types: SocketType) -> Self {
-        let mut nonblock = false;
-        if types.contains(SocketType::NONBLOCK) {
-            nonblock = true;
-        }
+    pub fn new(domain: SaFamily, types: SocketType, nonblock: bool) -> Self {
         let sk: Arc<dyn ProtoOps> = match domain {
-            SocketAddressFamily::AF_UNIX => Arc::new(UnixSock {}),
-            SocketAddressFamily::AF_INET => {
-                if types.contains(SocketType::STREAM) {
-                    Arc::new(TcpSock::new(nonblock))
-                } else if types.contains(SocketType::DGRAM) {
-                    Arc::new(UdpSock::new(nonblock))
-                } else {
-                    unimplemented!()
-                }
-            }
-            SocketAddressFamily::AF_INET6 => unimplemented!(),
+            SaFamily::AF_UNIX => Arc::new(UnixSock {}),
+            SaFamily::AF_INET => match types {
+                SocketType::STREAM => Arc::new(TcpSock::new(nonblock)),
+                SocketType::DGRAM => Arc::new(UdpSock::new(nonblock)),
+                _ => unimplemented!(),
+            },
+            SaFamily::AF_INET6 => unimplemented!(),
         };
 
         Self {
@@ -152,10 +78,6 @@ impl Socket {
             file: unsafe { Arc::from_raw(ptr::null_mut()) },
         }
     }
-
-    // pub fn bind(&self, addr: SockAddr) {
-    //     self.sk.bind(myaddr)
-    // }
 }
 
 /// sockfs是虚拟文件系统，所以在磁盘上不存在inode的表示，在内核中有struct

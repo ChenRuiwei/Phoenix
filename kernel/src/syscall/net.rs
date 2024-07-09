@@ -1,9 +1,13 @@
-use alloc::sync::Arc;
-use core::mem;
+use alloc::{
+    sync::Arc,
+    vec::{self, Vec},
+};
+use core::mem::{self, MaybeUninit};
 
 use log::info;
 use socket::*;
 use systype::{SysError, SysResult, SyscallResult};
+use tcp::TcpSock;
 use vfs_core::OpenFlags;
 
 use super::Syscall;
@@ -17,19 +21,22 @@ impl Syscall<'_> {
     /// refers to that endpoint. The file descriptor returned by a successful
     /// call will be the lowest-numbered file descriptor not currently open
     /// for the process.
-    pub fn sys_socket(&self, domain: usize, types: i32, protocal: usize) -> SyscallResult {
-        let domain = SocketAddressFamily::from_usize(domain).map_err(|_| SysError::EINVAL)?;
-        let types = SocketType::from_bits_truncate(types);
-
-        log::info!("[sys_socket] {domain:?} {types:?}");
+    pub fn sys_socket(&self, domain: usize, types: i32, _protocal: usize) -> SyscallResult {
+        let domain = SaFamily::try_from(domain)?;
+        let mut types = types;
         let mut flags = OpenFlags::empty();
-        if types.contains(SocketType::NONBLOCK) {
+        let mut nonblock = false;
+        if types & NONBLOCK != 0 {
+            nonblock = true;
+            types &= !NONBLOCK;
             flags |= OpenFlags::O_NONBLOCK;
         }
-        if types.contains(SocketType::CLOEXEC) {
+        if types & CLOEXEC != 0 {
+            types &= !CLOEXEC;
             flags |= OpenFlags::O_CLOEXEC;
         }
-        let socket = Socket::new(domain, types);
+        let types = SocketType::try_from(types)?;
+        let socket = Socket::new(domain, types, nonblock);
         let fd = self
             .task
             .with_mut_fd_table(|table| table.alloc(Arc::new(socket), flags))?;
@@ -88,32 +95,170 @@ impl Syscall<'_> {
     ) -> SyscallResult {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
-        let sk = socket.sk.accept().await?;
+        let new_sk = socket.sk.accept().await?;
+        let mut addrlen = addrlen.into_mut(&task)?;
         if addr != 0 {
-            let peer_addr = sk.peer_addr()?;
-            if addrlen.is_null() {
-                return Err(SysError::EINVAL);
-            }
-            let len = addrlen.read(&task)?;
+            let peer_addr = new_sk.peer_addr()?;
+            let len = *addrlen;
+            let new_len;
             match peer_addr {
                 SockAddr::SockAddrIn(v4) => {
-                    if len < mem::size_of::<SockAddrIn>() {
+                    new_len = mem::size_of::<SockAddrIn>();
+                    if len < new_len {
                         return Err(SysError::EINVAL);
                     }
-                    UserWritePtr::<SockAddrIn>::from(addr).write(&task, v4)?
+                    UserWritePtr::<SockAddrIn>::from(addr).write(&task, v4)?;
                 }
                 SockAddr::SockAddrIn6(v6) => {
-                    if len < mem::size_of::<SockAddrIn6>() {
+                    new_len = mem::size_of::<SockAddrIn6>();
+                    if len < new_len {
                         return Err(SysError::EINVAL);
                     }
-                    UserWritePtr::<SockAddrIn6>::from(addr).write(&task, v6)?
+                    UserWritePtr::<SockAddrIn6>::from(addr).write(&task, v6)?;
                 }
                 SockAddr::SockAddrUn(_) => unimplemented!(),
             }
+            *addrlen = new_len;
         }
-        let new_socket = Arc::new(Socket::from_another(&socket, sk));
+        let new_socket = Arc::new(Socket::from_another(&socket, new_sk));
         let fd = task.with_mut_fd_table(|table| table.alloc(new_socket, OpenFlags::empty()))?;
         Ok(fd)
+    }
+
+    /// Returns the local address of the Socket corresponding to `sockfd`. The
+    /// parameters `addr` and `addrlen` are both pointers.
+    /// In Linux, if `addrlen` is too small, the written `addr` should be
+    /// truncated. However, this is not currently done
+    pub fn sys_getsockname(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
+        let task = self.task;
+        let socket = task.sockfd_lookup(sockfd)?;
+        let local_addr = socket.sk.local_addr()?;
+        log::info!("[sys_getpeername] peer addr: {local_addr:?}");
+        let new_len;
+        match local_addr {
+            SockAddr::SockAddrIn(v4) => {
+                new_len = mem::size_of::<SockAddrIn>();
+                UserWritePtr::<SockAddrIn>::from(addr).write(&task, v4)?;
+            }
+            SockAddr::SockAddrIn6(v6) => {
+                new_len = mem::size_of::<SockAddrIn6>();
+                UserWritePtr::<SockAddrIn6>::from(addr).write(&task, v6)?;
+            }
+            SockAddr::SockAddrUn(_) => unimplemented!(),
+        }
+        UserWritePtr::<usize>::from(addrlen).write(&task, new_len)?;
+        Ok(0)
+    }
+
+    /// Similar to `sys_getsockname`
+    pub fn sys_getpeername(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
+        let task = self.task;
+        let socket = task.sockfd_lookup(sockfd)?;
+        let peer_addr = socket.sk.peer_addr()?;
+        log::info!("[sys_getpeername] peer addr: {peer_addr:?}");
+        let new_len;
+        match peer_addr {
+            SockAddr::SockAddrIn(v4) => {
+                new_len = mem::size_of::<SockAddrIn>();
+                UserWritePtr::<SockAddrIn>::from(addr).write(&task, v4)?;
+            }
+            SockAddr::SockAddrIn6(v6) => {
+                new_len = mem::size_of::<SockAddrIn6>();
+                UserWritePtr::<SockAddrIn6>::from(addr).write(&task, v6)?;
+            }
+            SockAddr::SockAddrUn(_) => unimplemented!(),
+        }
+        UserWritePtr::<usize>::from(addrlen).write(&task, new_len)?;
+        Ok(0)
+    }
+
+    /// Usually used for sending UDP datagrams. If using `sys_sendto` for STEAM,
+    /// `dest_addr` and `addrlen` will be ignored.
+    ///
+    /// On success returns the number of bytes sent
+    pub async fn sys_sendto(
+        &self,
+        sockfd: usize,
+        buf: UserReadPtr<u8>,
+        len: usize,
+        flags: usize,
+        dest_addr: usize,
+        addrlen: usize,
+    ) -> SyscallResult {
+        debug_assert!(flags == 0, "unsupported flags");
+        let task = self.task;
+        let buf = buf.into_slice(&task, len)?;
+        let socket = task.sockfd_lookup(sockfd)?;
+        let bytes = match socket.types {
+            SocketType::STREAM => {
+                if dest_addr != 0 {
+                    return Err(SysError::EISCONN);
+                }
+                socket.sk.sendto(&buf, None).await?
+            }
+            SocketType::DGRAM => {
+                let sockaddr = audit_sockaddr(dest_addr, addrlen, &task)?;
+                socket.sk.sendto(&buf, Some(sockaddr)).await?
+            }
+            _ => unimplemented!(),
+        };
+        Ok(bytes)
+    }
+
+    /// - `sockfd`: Socket descriptor, created through socket system calls.
+    /// - `buf`: A pointer to a buffer used to store received data.
+    /// - `len`: The length of the buffer, which is the maximum number of data
+    ///   bytes received.
+    /// - `flags`: Currently ignored
+    /// - `src_addr`: A pointer to the sockaddr structure used to store the
+    ///   sender's address information. Can be `NULL`, if the sender address is
+    ///   notrequired.
+    /// - `adddrlen`: A pointer to the socklen_t variable, used to store the
+    ///   size of src_addr. When calling, it should be set to the size of the
+    ///   src_addr structure, which will include the actual address size after
+    ///   the call. Can be `NULL`, if src_addr is `NULL`.
+    ///
+    /// Return the number of bytes received
+    pub async fn sys_recvfrom(
+        &self,
+        sockfd: usize,
+        buf: UserWritePtr<u8>,
+        len: usize,
+        flags: usize,
+        src_addr: usize,
+        addrlen: usize,
+    ) -> SyscallResult {
+        debug_assert!(flags == 0, "unsupported flags");
+        let task = self.task;
+        let socket = task.sockfd_lookup(sockfd)?;
+        info!(
+            "recvfrom: {:?}, local_addr: {:?}",
+            socket.sk.peer_addr(),
+            socket.sk.local_addr()
+        );
+        let mut temp = Vec::with_capacity(len);
+        unsafe { temp.set_len(len) };
+        // TODO: not sure if `len` is enough when call `socket.recvfrom`
+        let (bytes, sockaddr) = socket.sk.recvfrom(&mut temp).await?;
+        let mut buf = buf.into_mut_slice(&task, bytes)?;
+        buf[..bytes].copy_from_slice(&temp[..bytes]);
+        if src_addr != 0 {
+            match sockaddr {
+                SockAddr::SockAddrIn(v4) => {
+                    UserWritePtr::<SockAddrIn>::from(src_addr).write(&task, v4)?;
+                    UserWritePtr::<usize>::from(addrlen)
+                        .write(&task, mem::size_of::<SockAddrIn>())?;
+                }
+                SockAddr::SockAddrIn6(v6) => {
+                    UserWritePtr::<SockAddrIn6>::from(src_addr).write(&task, v6)?;
+                    UserWritePtr::<usize>::from(addrlen)
+                        .write(&task, mem::size_of::<SockAddrIn6>())?;
+                }
+                SockAddr::SockAddrUn(_) => todo!(),
+            }
+        }
+
+        Ok(bytes)
     }
 }
 

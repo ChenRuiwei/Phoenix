@@ -1,6 +1,6 @@
 use systype::SysResult;
 
-use super::socket::{ProtoOps, SockAddr};
+use super::{socket::ProtoOps, SockAddr};
 
 pub struct UnixSock {}
 

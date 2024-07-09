@@ -18,7 +18,6 @@ pub type ASysResult<'a, T> = SysFuture<'a, SysResult<T>>;
 
 /// Linux specific error codes defined in `errno.h`.
 /// Defined in <asm-generic/errno-base.h> and <asm-generic/errno.h>.
-/// https://www.man7.org/linux/man-pages/man3/errno.3.html
 /// https://elixir.bootlin.com/linux/v6.8.9/source/include/uapi/asm-generic/errno.h#L71
 #[derive(FromRepr, Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(i32)]
@@ -111,6 +110,8 @@ pub enum SysError {
     EADDRNOTAVAIL = 99,
     /// Connection reset
     ECONNRESET = 104,
+    /// Transport endpoint is already connected
+    EISCONN = 106,
     /// The socket is not connected
     ENOTCONN = 107,
     /// Connection refused
@@ -166,6 +167,7 @@ impl SysError {
             EOPNOTSUPP => "Unsupported Error",
             EADDRNOTAVAIL => "Address not available",
             EADDRINUSE => "Address already in use",
+            EISCONN => "Transport endpoint is already connected",
             ECONNRESET => "Connection reset",
             ECONNREFUSED => "Connection refused",
         }
