@@ -1,9 +1,8 @@
-//! TODO：重要：参考arce-os实现的，为了避免查重，应该写成一个外部库然后打包压缩
 #![no_std]
 #![no_main]
 #![feature(new_uninit)]
 extern crate alloc;
-use alloc::{boxed::Box, sync::Arc, vec};
+use alloc::{boxed::Box, vec};
 use core::{cell::RefCell, ops::DerefMut};
 
 use arch::time::get_time_us;

@@ -203,18 +203,16 @@ impl UdpSocket {
     }
 
     /// Whether the socket is readable or writable.
-    pub fn poll(&self) -> SysResult<NetPollState> {
+    pub fn poll(&self) -> NetPollState {
         if self.local_addr.read().is_none() {
-            return Ok(NetPollState {
+            return NetPollState {
                 readable: false,
                 writable: false,
-            });
+            };
         }
-        SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
-            Ok(NetPollState {
-                readable: socket.can_recv(),
-                writable: socket.can_send(),
-            })
+        SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| NetPollState {
+            readable: socket.can_recv(),
+            writable: socket.can_send(),
         })
     }
 }

@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
-use net::tcp::TcpSocket;
+use net::{tcp::TcpSocket, NetPollState};
 use systype::SysResult;
 
 use super::{socket::ProtoOps, SockAddr};
@@ -55,5 +55,9 @@ impl ProtoOps for TcpSock {
         let bytes = self.tcp.recv(buf).await?;
         let peer_addr = self.peer_addr()?;
         Ok((bytes, peer_addr))
+    }
+
+    fn poll(&self) -> NetPollState {
+        self.tcp.poll()
     }
 }

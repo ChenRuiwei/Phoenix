@@ -613,6 +613,7 @@ impl From<usize> for FutexAddr {
 /// structure, it determines which variant of the `SockAddr` enum the
 /// user-provided parameter corresponds to.
 pub fn audit_sockaddr(addr: usize, addrlen: usize, task: &Arc<Task>) -> SysResult<SockAddr> {
+    let _guard = SumGuard::new();
     task.just_ensure_user_area(addr.into(), addrlen, PageFaultAccessType::RO)?;
     let family_ptr = addr as *const u16;
     let family_value = unsafe { *family_ptr };

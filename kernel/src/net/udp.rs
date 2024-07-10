@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 
 use async_trait::async_trait;
-use net::udp::UdpSocket;
+use net::{udp::UdpSocket, NetPollState};
 use systype::{SysError, SysResult};
 
 use super::{socket::ProtoOps, SockAddr};
@@ -49,5 +49,9 @@ impl ProtoOps for UdpSock {
             .recv_from(buf)
             .await
             .map(|(len, addr)| (len, addr.into()))
+    }
+
+    fn poll(&self) -> NetPollState {
+        self.udp.poll()
     }
 }

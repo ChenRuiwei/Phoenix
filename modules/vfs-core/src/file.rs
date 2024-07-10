@@ -51,11 +51,11 @@ impl FileMeta {
 pub trait File: Send + Sync + DowncastSync {
     fn meta(&self) -> &FileMeta;
 
-    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SyscallResult {
         todo!()
     }
 
-    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
         todo!()
     }
 

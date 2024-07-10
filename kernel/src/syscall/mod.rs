@@ -192,7 +192,7 @@ impl<'a> Syscall<'a> {
             FSYNC => self.sys_do_nothing("fsync"),
             // IO
             PPOLL => {
-                self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3])
+                self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3].into())
                     .await
             }
             PSELECT6 => {

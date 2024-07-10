@@ -40,6 +40,7 @@ impl Syscall<'_> {
         let fd = self
             .task
             .with_mut_fd_table(|table| table.alloc(Arc::new(socket), flags))?;
+        log::info!("[sys_socket] create a new socket {types:?} {flags:?} in fd {fd}");
         Ok(fd)
     }
 

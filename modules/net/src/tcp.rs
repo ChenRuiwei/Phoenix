@@ -177,7 +177,7 @@ impl TcpSocket {
             Err(SysError::EAGAIN)
         } else {
             self.block_on(|| {
-                let NetPollState { writable, .. } = self.poll_connect()?;
+                let NetPollState { writable, .. } = self.poll_connect();
                 if !writable {
                     warn!("socket connect() failed: invalid state");
                     Err(SysError::EAGAIN)
@@ -368,15 +368,15 @@ impl TcpSocket {
     }
 
     /// Whether the socket is readable or writable.
-    pub fn poll(&self) -> SysResult<NetPollState> {
+    pub fn poll(&self) -> NetPollState {
         match self.get_state() {
             STATE_CONNECTING => self.poll_connect(),
             STATE_CONNECTED => self.poll_stream(),
             STATE_LISTENING => self.poll_listener(),
-            _ => Ok(NetPollState {
+            _ => NetPollState {
                 readable: false,
                 writable: false,
-            }),
+            },
         }
     }
 }
@@ -464,7 +464,7 @@ impl TcpSocket {
     ///
     /// Returning `true` indicates that the socket has entered a stable
     /// state(connected or failed) and can proceed to the next step
-    fn poll_connect(&self) -> SysResult<NetPollState> {
+    fn poll_connect(&self) -> NetPollState {
         // SAFETY: `self.handle` should be initialized above.
         let handle = unsafe { self.handle.get().read().unwrap() };
         let writable =
@@ -489,30 +489,34 @@ impl TcpSocket {
                     true
                 }
             });
-        Ok(NetPollState {
+        NetPollState {
             readable: false,
             writable,
-        })
+        }
     }
 
-    fn poll_stream(&self) -> SysResult<NetPollState> {
+    fn poll_stream(&self) -> NetPollState {
         // SAFETY: `self.handle` should be initialized in a connected socket.
         let handle = unsafe { self.handle.get().read().unwrap() };
         SOCKET_SET.with_socket::<tcp::Socket, _, _>(handle, |socket| {
-            Ok(NetPollState {
+            NetPollState {
+                // readable 本质上是是否应该继续阻塞，因此为 true 时的条件可以理解为：
+                // 1. 套接字已经关闭接收：在这种情况下，即使没有新数据到达，读取操作也不会阻塞，
+                //    因为读取会立即返回
+                // 2. 套接字中有数据可读：这是最常见的可读情况，表示可以从套接字中读取到数据
                 readable: !socket.may_recv() || socket.can_recv(),
                 writable: !socket.may_send() || socket.can_send(),
-            })
+            }
         })
     }
 
-    fn poll_listener(&self) -> SysResult<NetPollState> {
+    fn poll_listener(&self) -> NetPollState {
         // SAFETY: `self.local_addr` should be initialized in a listening socket.
         let local_addr = unsafe { self.local_addr.get().read() };
-        Ok(NetPollState {
-            readable: LISTEN_TABLE.can_accept(local_addr.port)?,
+        NetPollState {
+            readable: LISTEN_TABLE.can_accept(local_addr.port),
             writable: false,
-        })
+        }
     }
 
     /// Block the current thread until the given function completes or fails.

@@ -3,6 +3,8 @@ use core::{any::Any, ptr};
 
 use async_trait::async_trait;
 use downcast_rs::{impl_downcast, DowncastSync};
+use log::warn;
+use net::NetPollState;
 use systype::{SysError, SysResult, SyscallResult};
 use tcp::TcpSock;
 use udp::UdpSock;
@@ -34,6 +36,13 @@ pub trait ProtoOps: Sync + Send + Any + DowncastSync {
     }
     async fn recvfrom(&self, _buf: &mut [u8]) -> SysResult<(usize, SockAddr)> {
         Err(SysError::EOPNOTSUPP)
+    }
+    fn poll(&self) -> NetPollState {
+        log::error!("[net poll] unimplemented");
+        NetPollState {
+            readable: false,
+            writable: false,
+        }
     }
 }
 
@@ -80,12 +89,59 @@ impl Socket {
     }
 }
 
+pub struct SocketFile {
+    meta: FileMeta,
+}
+
+#[async_trait]
+impl File for Socket {
+    fn meta(&self) -> &FileMeta {
+        &self.file.meta
+    }
+
+    async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
+        if buf.len() == 0 {
+            return Ok(0);
+        }
+        let bytes = self.sk.recvfrom(buf).await.map(|e| e.0)?;
+        warn!("[socket read] expect: {:?} exact: {bytes}", buf.len());
+        Ok(bytes)
+    }
+
+    async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
+        if buf.len() == 0 {
+            return Ok(0);
+        }
+        let bytes = self.sk.sendto(buf, None).await?;
+        warn!("[socket write] expect: {:?} exact: {bytes}", buf.len());
+        Ok(bytes)
+    }
+
+    async fn base_poll(&self, events: PollEvents) -> PollEvents {
+        let mut res = PollEvents::empty();
+        let netstate = self.sk.poll();
+        if events.contains(PollEvents::IN) {
+            if netstate.readable {
+                res |= PollEvents::IN;
+            }
+        }
+        if events.contains(PollEvents::OUT) {
+            if netstate.writable {
+                res |= PollEvents::OUT;
+            }
+        }
+        log::info!("[Socket::base_poll] ret events:{res:?} {netstate:?}");
+        res
+    }
+}
+
 /// sockfs是虚拟文件系统，所以在磁盘上不存在inode的表示，在内核中有struct
 /// socket_alloc来表示内存中sockfs文件系统inode的相关结构体
-// pub struct SocketAlloc {
-//     socket: Socket,
-//     meta: InodeMeta,
-// }
+#[allow(dead_code)]
+pub struct SocketAlloc {
+    socket: Socket,
+    meta: InodeMeta,
+}
 
 // impl SocketAlloc {
 //     pub fn new(types: SocketType) -> Self {
@@ -107,57 +163,3 @@ impl Socket {
 //         }
 //     }
 // }
-
-pub struct SocketFile {
-    meta: FileMeta,
-}
-
-#[async_trait]
-impl File for Socket {
-    fn meta(&self) -> &FileMeta {
-        &self.file.meta
-    }
-
-    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SyscallResult {
-        // log::debug!("[TtyFile::base_read_at] buf len {}", buf.len());
-        // let char_dev = &self
-        //     .inode()
-        //     .downcast_arc::<TtyInode>()
-        //     .unwrap_or_else(|_| unreachable!())
-        //     .char_dev;
-        // let len = char_dev.read(buf).await;
-        Ok(0)
-    }
-
-    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
-        // let utf8_buf: Vec<u8> = buf.iter().filter(|c| c.is_ascii()).map(|c|
-        // *c).collect(); let char_dev = &self
-        //     .inode()
-        //     .downcast_arc::<TtyInode>()
-        //     .unwrap_or_else(|_| unreachable!())
-        //     .char_dev;
-        // let len = char_dev.write(buf).await;
-        Ok(0)
-    }
-
-    // async fn base_poll(&self, events: PollEvents) -> PollEvents {
-    //     let mut res = PollEvents::empty();
-    //     let char_dev = &self
-    //         .inode()
-    //         .downcast_arc::<TtyInode>()
-    //         .unwrap_or_else(|_| unreachable!())
-    //         .char_dev;
-    //     if events.contains(PollEvents::IN) {
-    //         if char_dev.poll_in().await {
-    //             res |= PollEvents::IN;
-    //         }
-    //     }
-    //     if events.contains(PollEvents::OUT) {
-    //         if char_dev.poll_out().await {
-    //             res |= PollEvents::OUT;
-    //         }
-    //     }
-    //     log::debug!("[TtyFile::base_poll] ret events:{res:?}");
-    //     res
-    // }
-}
