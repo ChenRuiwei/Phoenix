@@ -44,7 +44,7 @@ impl Disk {
 
     /// Read within one block, returns the number of bytes read.
     pub fn read_one(&mut self, buf: &mut [u8]) -> SysResult<usize> {
-        // info!("block id: {}", self.block_id);
+        // trace!("block id: {}", self.block_id);
         let read_size = if self.offset == 0 && buf.len() >= BLOCK_SIZE {
             // whole block
             self.dev.read_block(self.block_id, &mut buf[0..BLOCK_SIZE]);
@@ -56,7 +56,7 @@ impl Disk {
             let start = self.offset;
             let count = buf.len().min(BLOCK_SIZE - self.offset);
             if start > BLOCK_SIZE {
-                log::info!("block size: {} start {}", BLOCK_SIZE, start);
+                log::trace!("block size: {} start {}", BLOCK_SIZE, start);
             }
 
             self.dev.read_block(self.block_id, &mut data);

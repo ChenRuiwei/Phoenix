@@ -41,7 +41,7 @@ TEST_DIR := ./testcase/$(TEST)
 # TEST_DIR := ./testcase/24/preliminary/
 
 # Crate features
-export STRACE :=
+export STRACE := 
 export SMP :=
 export PREEMPT :=
 

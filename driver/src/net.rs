@@ -1,12 +1,9 @@
 use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
 use core::ptr::NonNull;
 
-use device_core::{
-    error::{DevError, DevResult},
-    NetBufPtr,
-};
+use device_core::error::{DevError, DevResult};
 
-use crate::Mutex;
+use crate::{virtio::virtio_net::NetBufPtr, Mutex};
 
 /// TODO：或许这个应该写在device-core中比较好？
 
@@ -111,14 +108,14 @@ impl NetBuf {
     }
 
     /// Converts the buffer into a [`NetBufPtr`].
-    pub fn into_buf_ptr(mut self: Box<Self>) -> NetBufPtr {
+    pub fn into_buf_ptr(mut self: Box<Self>) -> Box<NetBufPtr> {
         let buf_ptr = self.packet_mut().as_mut_ptr();
         let len = self.packet_len;
-        NetBufPtr::new(
+        Box::new(NetBufPtr::new(
             NonNull::new(Box::into_raw(self) as *mut u8).unwrap(),
             NonNull::new(buf_ptr).unwrap(),
             len,
-        )
+        ))
     }
 
     /// Restore [`NetBuf`] struct from a raw pointer.
@@ -127,8 +124,8 @@ impl NetBuf {
     ///
     /// This function is unsafe because it may cause some memory issues,
     /// so we must ensure that it is called after calling `into_buf_ptr`.
-    pub unsafe fn from_buf_ptr(ptr: NetBufPtr) -> Box<Self> {
-        Box::from_raw(ptr.raw_ptr::<Self>())
+    pub unsafe fn from_buf_ptr(ptr: Box<NetBufPtr>) -> Box<Self> {
+        Box::from_raw(ptr.raw_ptr.as_ptr() as *mut Self)
     }
 }
 
@@ -139,6 +136,7 @@ impl Drop for NetBuf {
     }
 }
 
+pub const NET_BUF_LEN: usize = 1526;
 /// A pool of [`NetBuf`]s to speed up buffer allocation.
 ///
 /// It divides a large memory into several equal parts for each buffer.

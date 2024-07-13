@@ -93,11 +93,11 @@ impl DeviceManager {
     pub fn handle_irq(&mut self) {
         unsafe { disable_interrupt() }
 
-        log::info!("Handling interrupt");
+        log::trace!("Handling interrupt");
         // First clain interrupt from PLIC
         if let Some(irq_number) = self.plic().claim_irq(self.irq_context()) {
             if let Some(dev) = self.irq_map.get(&irq_number) {
-                info!(
+                log::trace!(
                     "Handling interrupt from device: {:?}, irq: {}",
                     dev.name(),
                     irq_number
@@ -108,9 +108,9 @@ impl DeviceManager {
                 return;
             }
             warn!("Unknown interrupt: {}", irq_number);
-            return;
+        } else {
+            warn!("No interrupt available");
         }
-        warn!("No interrupt available");
     }
 
     // Calculate the interrupt context from current hart id

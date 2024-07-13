@@ -1,10 +1,11 @@
 use alloc::{boxed::Box, sync::Arc};
-use core::{any::Any, ptr};
+use core::any::Any;
 
 use async_trait::async_trait;
 use downcast_rs::{impl_downcast, DowncastSync};
 use log::warn;
-use net::NetPollState;
+use net::{poll_interfaces, NetPollState};
+use spin::Mutex;
 use systype::{SysError, SysResult, SyscallResult};
 use tcp::TcpSock;
 use udp::UdpSock;
@@ -55,7 +56,7 @@ pub struct Socket {
     /// 套接字的核心，面向底层网络具体协议
     pub sk: Arc<dyn ProtoOps>,
     /// TODO:
-    pub file: Arc<SocketFile>,
+    pub meta: FileMeta,
 }
 
 unsafe impl Sync for Socket {}
@@ -76,7 +77,12 @@ impl Socket {
         Self {
             types,
             sk,
-            file: unsafe { Arc::from_raw(ptr::null_mut()) },
+            meta: FileMeta {
+                dentry: Arc::<usize>::new_zeroed(),
+                inode: Arc::<usize>::new_zeroed(),
+                pos: 0.into(),
+                flags: Mutex::new(OpenFlags::O_RDWR),
+            },
         }
     }
 
@@ -84,25 +90,28 @@ impl Socket {
         Self {
             types: another.types,
             sk,
-            file: unsafe { Arc::from_raw(ptr::null_mut()) },
+            meta: FileMeta {
+                dentry: Arc::<usize>::new_zeroed(),
+                inode: Arc::<usize>::new_zeroed(),
+                pos: 0.into(),
+                flags: Mutex::new(OpenFlags::O_RDWR),
+            },
         }
     }
-}
-
-pub struct SocketFile {
-    meta: FileMeta,
 }
 
 #[async_trait]
 impl File for Socket {
     fn meta(&self) -> &FileMeta {
-        &self.file.meta
+        &self.meta
     }
 
     async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
         if buf.len() == 0 {
             return Ok(0);
         }
+        // TODO: should add this?
+        poll_interfaces();
         let bytes = self.sk.recvfrom(buf).await.map(|e| e.0)?;
         warn!("[socket read] expect: {:?} exact: {bytes}", buf.len());
         Ok(bytes)
@@ -112,6 +121,8 @@ impl File for Socket {
         if buf.len() == 0 {
             return Ok(0);
         }
+        // TODO: should add this?
+        poll_interfaces();
         let bytes = self.sk.sendto(buf, None).await?;
         warn!("[socket write] expect: {:?} exact: {bytes}", buf.len());
         Ok(bytes)

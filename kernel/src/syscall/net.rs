@@ -1,13 +1,9 @@
-use alloc::{
-    sync::Arc,
-    vec::{self, Vec},
-};
-use core::mem::{self, MaybeUninit};
+use alloc::{sync::Arc, vec::Vec};
+use core::mem::{self};
 
 use log::info;
 use socket::*;
 use systype::{SysError, SysResult, SyscallResult};
-use tcp::TcpSock;
 use vfs_core::OpenFlags;
 
 use super::Syscall;
@@ -40,7 +36,7 @@ impl Syscall<'_> {
         let fd = self
             .task
             .with_mut_fd_table(|table| table.alloc(Arc::new(socket), flags))?;
-        log::info!("[sys_socket] create a new socket {types:?} {flags:?} in fd {fd}");
+        log::info!("[sys_socket] new socket {domain:?} {types:?} {flags:?} in fd {fd}, nonblock:{nonblock}");
         Ok(fd)
     }
 
@@ -134,7 +130,7 @@ impl Syscall<'_> {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
         let local_addr = socket.sk.local_addr()?;
-        log::info!("[sys_getpeername] peer addr: {local_addr:?}");
+        log::info!("[sys_getsockname] local addr: {local_addr:?}");
         let new_len;
         match local_addr {
             SockAddr::SockAddrIn(v4) => {
@@ -198,8 +194,12 @@ impl Syscall<'_> {
                 socket.sk.sendto(&buf, None).await?
             }
             SocketType::DGRAM => {
-                let sockaddr = audit_sockaddr(dest_addr, addrlen, &task)?;
-                socket.sk.sendto(&buf, Some(sockaddr)).await?
+                let sockaddr = if dest_addr != 0 {
+                    Some(audit_sockaddr(dest_addr, addrlen, &task)?)
+                } else {
+                    None
+                };
+                socket.sk.sendto(&buf, sockaddr).await?
             }
             _ => unimplemented!(),
         };
@@ -260,6 +260,69 @@ impl Syscall<'_> {
         }
 
         Ok(bytes)
+    }
+
+    /// Allow users to configure sockets
+    /// But since these configurations are too detailed, they are currently not
+    /// supported
+    pub fn sys_setsockopt(
+        &self,
+        sockfd: usize,
+        level: usize,
+        optname: usize,
+        optval: usize,
+        optlen: usize,
+    ) -> SyscallResult {
+        // let task = self.task;
+        // let socket = task.sockfd_lookup(sockfd)?;
+        log::info!(
+            "[sys_setsockopt] fd{sockfd} {:?} {:?} optval:{} optlen:{optlen}",
+            SocketLevel::try_from(level)?,
+            SocketOpt::try_from(optname)?,
+            UserReadPtr::<usize>::from(optval).read(self.task)?
+        );
+        Ok(0)
+    }
+
+    pub fn sys_getsockopt(
+        &self,
+        _sockfd: usize,
+        level: usize,
+        optname: usize,
+        optval: usize,
+        optlen: usize,
+    ) -> SyscallResult {
+        let task = self.task;
+        let optval = UserWritePtr::<usize>::from(optval);
+        match SocketLevel::try_from(level)? {
+            SocketLevel::SOL_SOCKET => {
+                const SEND_BUFFER_SIZE: usize = 64 * 1024;
+                const RECV_BUFFER_SIZE: usize = 64 * 1024;
+                match SocketOpt::try_from(optname)? {
+                    SocketOpt::RCVBUF => optval.write(&task, RECV_BUFFER_SIZE)?,
+                    SocketOpt::SNDBUF => optval.write(&task, SEND_BUFFER_SIZE)?,
+                    SocketOpt::ERROR => optval.write(&task, 0)?,
+                    opt => {
+                        log::error!(
+                            "[sys_getsockopt] unsupported SOL_SOCKET opt {opt:?} optlen:{optlen}"
+                        )
+                    }
+                };
+            }
+            SocketLevel::IPPROTO_TCP => {
+                const MAX_SEGMENT_SIZE: usize = 1460;
+                match TcpSocketOpt::try_from(optname)? {
+                    TcpSocketOpt::MAXSEG => optval.write(&task, MAX_SEGMENT_SIZE)?,
+                    TcpSocketOpt::NODELAY => optval.write(&task, 0)?,
+                    opt => {
+                        log::error!(
+                            "[sys_getsockopt] unsupported IPPROTO_TCP opt {opt:?} optlen:{optlen}"
+                        )
+                    }
+                };
+            }
+        }
+        Ok(0)
     }
 }
 

@@ -1,3 +1,4 @@
+pub mod loopback;
 pub mod virtio_blk;
 pub mod virtio_net;
 
@@ -7,6 +8,7 @@ use config::mm::VIRT_RAM_OFFSET;
 use device_core::{error::DevError, BaseDriverOps};
 use fdt::Fdt;
 use log::{error, warn};
+use loopback::LoopbackDev;
 use memory::{alloc_frames, dealloc_frame, pte::PTEFlags, PhysAddr, PhysPageNum};
 use net::init_network;
 use virtio_blk::VirtIoBlkDev;
@@ -91,6 +93,7 @@ const fn as_dev_err(e: virtio_drivers::Error) -> DevError {
 
 impl DeviceManager {
     pub fn probe_virtio_device(&mut self, root: &Fdt) {
+        let mut init_net: bool = false;
         let nodes = root.find_all_nodes("/soc/virtio_mmio");
         let mut reg;
         let mut base_paddr;
@@ -124,6 +127,7 @@ impl DeviceManager {
                         match NetDevice::try_new(transport){
                             Ok(net) =>{
                                 init_network(net);
+                                init_net = true;
                                 continue;
                             },
                             Err(e) =>
@@ -133,6 +137,7 @@ impl DeviceManager {
                                 base_paddr + size
                             )
                         };
+                        init_net = true;
                     }
                     _ => {
                         warn!(
@@ -149,6 +154,11 @@ impl DeviceManager {
                 }
             };
             kernel_page_table().iounmap(base_vaddr, size);
+        }
+
+        if !init_net {
+            log::error!("[init_net] can't find qemu virtio-net. use LoopbackDev to test");
+            init_network(LoopbackDev::new());
         }
     }
 }

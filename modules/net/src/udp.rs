@@ -17,7 +17,7 @@ use super::{
     addr::{from_core_sockaddr, into_core_sockaddr, is_unspecified, UNSPECIFIED_ENDPOINT},
     SocketSetWrapper, SOCKET_SET,
 };
-use crate::{Mutex, NetPollState};
+use crate::{addr::LOCAL_ENDPOINT, Mutex, NetPollState};
 
 /// A UDP socket that provides POSIX-like APIs.
 pub struct UdpSocket {
@@ -125,8 +125,8 @@ impl UdpSocket {
     pub async fn recv_from(&self, buf: &mut [u8]) -> SysResult<(usize, SocketAddr)> {
         self.recv_impl(|socket| match socket.recv_slice(buf) {
             Ok((len, meta)) => Ok((len, into_core_sockaddr(meta.endpoint))),
-            Err(_) => {
-                warn!("socket recv_from() failed");
+            Err(e) => {
+                warn!("[udp::recv_from] socket {} failed {e:?}", self.handle);
                 Err(SysError::EAGAIN)
             }
         })
@@ -228,33 +228,40 @@ impl UdpSocket {
 
     async fn send_impl(&self, buf: &[u8], remote_endpoint: IpEndpoint) -> SysResult<usize> {
         if self.local_addr.read().is_none() {
-            warn!("socket send() failed");
-            return Err(SysError::ENOTCONN);
+            warn!(
+                "[send_impl] UDP socket {}: not bound. Use 0.0.0.0",
+                self.handle
+            );
+            // TODO: UNSPECIFIED_ENDPOINT or LOCAL_ENDPOINT?
+            self.bind(into_core_sockaddr(UNSPECIFIED_ENDPOINT))?;
         }
 
-        self.block_on(|| {
-            SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
-                if socket.can_send() {
-                    socket
-                        .send_slice(buf, remote_endpoint)
-                        .map_err(|e| match e {
-                            SendError::BufferFull => {
-                                warn!("socket send() failed, {e:?}");
-                                SysError::EAGAIN
-                            }
-                            SendError::Unaddressable => {
-                                warn!("socket send() failed, {e:?}");
-                                SysError::ECONNREFUSED
-                            }
-                        })?;
-                    Ok(buf.len())
-                } else {
-                    // tx buffer is full
-                    Err(SysError::EAGAIN)
-                }
+        let bytes = self
+            .block_on(|| {
+                SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
+                    if socket.can_send() {
+                        socket
+                            .send_slice(buf, remote_endpoint)
+                            .map_err(|e| match e {
+                                SendError::BufferFull => {
+                                    warn!("socket send() failed, {e:?}");
+                                    SysError::EAGAIN
+                                }
+                                SendError::Unaddressable => {
+                                    warn!("socket send() failed, {e:?}");
+                                    SysError::ECONNREFUSED
+                                }
+                            })?;
+                        Ok(buf.len())
+                    } else {
+                        // tx buffer is full
+                        Err(SysError::EAGAIN)
+                    }
+                })
             })
-        })
-        .await
+            .await?;
+        log::info!("[udp::send_impl] send {bytes}bytes to {remote_endpoint:?}");
+        Ok(bytes)
     }
 
     async fn recv_impl<F, T>(&self, mut op: F) -> SysResult<T>
@@ -271,8 +278,13 @@ impl UdpSocket {
                 if socket.can_recv() {
                     // data available
                     op(socket)
+                } else if !socket.is_open() {
+                    // TODO: I suppose that this would't happen
+                    warn!("UDP socket {}: recv() failed: not connected", self.handle);
+                    Err(SysError::ENOTCONN)
                 } else {
                     // no more data
+                    log::info!("[recv_impl] no more data");
                     Err(SysError::EAGAIN)
                 }
             })
@@ -291,7 +303,10 @@ impl UdpSocket {
                 SOCKET_SET.poll_interfaces();
                 match f() {
                     Ok(t) => return Ok(t),
-                    Err(SysError::EAGAIN) => yield_now().await,
+                    Err(SysError::EAGAIN) => {
+                        // TODO:判断是否有信号
+                        yield_now().await
+                    }
                     Err(e) => return Err(e),
                 }
             }

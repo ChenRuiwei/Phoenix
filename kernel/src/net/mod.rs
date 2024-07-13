@@ -7,9 +7,6 @@ pub mod tcp;
 pub mod udp;
 mod unix;
 
-pub const AF_UNIX: usize = 1;
-pub const AF_INET: usize = 2;
-
 #[repr(u16)]
 #[derive(Debug, Clone, Copy)]
 #[allow(non_camel_case_types)]
@@ -27,10 +24,10 @@ impl TryFrom<usize> for SaFamily {
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         match value {
-            1 => Ok(SaFamily::AF_UNIX),
-            2 => Ok(SaFamily::AF_INET),
-            10 => Ok(SaFamily::AF_INET6),
-            _ => Err(SysError::EINVAL),
+            1 => Ok(Self::AF_UNIX),
+            2 => Ok(Self::AF_INET),
+            10 => Ok(Self::AF_INET6),
+            _ => Err(Self::Error::EINVAL),
         }
     }
 }
@@ -53,14 +50,14 @@ impl TryFrom<i32> for SocketType {
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
-            1 => Ok(SocketType::STREAM),
-            2 => Ok(SocketType::DGRAM),
-            3 => Ok(SocketType::RAW),
-            4 => Ok(SocketType::RDM),
-            5 => Ok(SocketType::SEQPACKET),
-            6 => Ok(SocketType::DCCP),
-            10 => Ok(SocketType::PACKET),
-            _ => Err(SysError::EINVAL),
+            1 => Ok(Self::STREAM),
+            2 => Ok(Self::DGRAM),
+            3 => Ok(Self::RAW),
+            4 => Ok(Self::RDM),
+            5 => Ok(Self::SEQPACKET),
+            6 => Ok(Self::DCCP),
+            10 => Ok(Self::PACKET),
+            _ => Err(Self::Error::EINVAL),
         }
     }
 }
@@ -74,8 +71,11 @@ pub const CLOEXEC: i32 = 0x80000;
 #[repr(C)]
 /// IPv4 address
 pub struct SockAddrIn {
+    /// always set to `AF_INET`
     pub family: u16,
+    /// port in network byte order
     pub port: u16,
+    /// contains the host interface address in network byte order
     pub addr: Ipv4Addr,
     pub zero: [u8; 8],
 }
@@ -141,6 +141,121 @@ impl From<SocketAddr> for SockAddr {
                 addr: *v6.ip(),
                 scope: v6.scope_id(),
             }),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[allow(non_camel_case_types)]
+/// used in `sys_setsockopt` and `sys_getsockopt`
+pub enum SocketLevel {
+    SOL_SOCKET = 1,
+    IPPROTO_TCP = 6,
+}
+
+impl TryFrom<usize> for SocketLevel {
+    type Error = SysError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::SOL_SOCKET),
+            6 => Ok(Self::IPPROTO_TCP),
+            level => {
+                log::warn!("[SocketLevel] unsupported level: {level}");
+                Err(Self::Error::EINVAL)
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[allow(non_camel_case_types)]
+/// used in `sys_setsockopt` and `sys_getsockopt`
+/// https://www.cnblogs.com/cthon/p/9270778.html
+pub enum SocketOpt {
+    DEBUG = 1,
+    REUSEADDR = 2,
+    TYPE = 3,
+    ERROR = 4,
+    DONTROUTE = 5,
+    BROADCAST = 6,
+    SNDBUF = 7,
+    RCVBUF = 8,
+    KEEPALIVE = 9,
+    OOBINLINE = 10,
+    NO_CHECK = 11,
+    PRIORITY = 12,
+    LINGER = 13,
+    BSDCOMPAT = 14,
+    REUSEPORT = 15,
+    PASSCRED = 16,
+    PEERCRED = 17,
+    RCVLOWAT = 18,
+    SNDLOWAT = 19,
+    RCVTIMEO_OLD = 20,
+    SNDTIMEO_OLD = 21,
+    SNDBUFFORCE = 32,
+    RCVBUFFORCE = 33,
+}
+
+impl TryFrom<usize> for SocketOpt {
+    type Error = SysError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::DEBUG),
+            2 => Ok(Self::REUSEADDR),
+            3 => Ok(Self::TYPE),
+            4 => Ok(Self::ERROR),
+            5 => Ok(Self::DONTROUTE),
+            6 => Ok(Self::BROADCAST),
+            7 => Ok(Self::SNDBUF),
+            8 => Ok(Self::RCVBUF),
+            9 => Ok(Self::KEEPALIVE),
+            10 => Ok(Self::OOBINLINE),
+            11 => Ok(Self::NO_CHECK),
+            12 => Ok(Self::PRIORITY),
+            13 => Ok(Self::LINGER),
+            14 => Ok(Self::BSDCOMPAT),
+            15 => Ok(Self::REUSEPORT),
+            16 => Ok(Self::PASSCRED),
+            17 => Ok(Self::PEERCRED),
+            18 => Ok(Self::RCVLOWAT),
+            19 => Ok(Self::SNDLOWAT),
+            20 => Ok(Self::RCVTIMEO_OLD),
+            21 => Ok(Self::SNDTIMEO_OLD),
+            32 => Ok(Self::SNDBUFFORCE),
+            33 => Ok(Self::RCVBUFFORCE),
+            level => {
+                log::warn!("[SocketOpt] unsupported option: {level}");
+                Err(Self::Error::EINVAL)
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[allow(non_camel_case_types)]
+pub enum TcpSocketOpt {
+    NODELAY = 1, // disable nagle algorithm and flush
+    MAXSEG = 2,
+    INFO = 11,
+    CONGESTION = 13,
+}
+
+impl TryFrom<usize> for TcpSocketOpt {
+    type Error = SysError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(TcpSocketOpt::NODELAY),
+            2 => Ok(TcpSocketOpt::MAXSEG),
+            11 => Ok(TcpSocketOpt::INFO),
+            13 => Ok(TcpSocketOpt::CONGESTION),
+            level => {
+                log::warn!("[TcpSocketOpt] unsupported option: {level}");
+                Err(Self::Error::EINVAL)
+            }
         }
     }
 }

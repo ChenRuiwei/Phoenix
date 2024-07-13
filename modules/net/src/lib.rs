@@ -3,10 +3,10 @@
 #![feature(new_uninit)]
 extern crate alloc;
 use alloc::{boxed::Box, vec};
-use core::{cell::RefCell, ops::DerefMut};
+use core::{cell::RefCell, ops::DerefMut, panic};
 
 use arch::time::get_time_us;
-use device_core::{error::DevError, NetBufPtr, NetDriverOps};
+use device_core::{error::DevError, NetBufPtrOps, NetDriverOps};
 use listen_table::*;
 use log::*;
 use smoltcp::{
@@ -109,7 +109,7 @@ impl<'a> SocketSetWrapper<'a> {
     /// operating system
     pub fn add<T: AnySocket<'a>>(&self, socket: T) -> SocketHandle {
         let handle = self.0.lock().add(socket);
-        debug!("socket {}: created", handle);
+        debug!("[net::SocketSetWrapper] sockethandle {}: created", handle);
         handle
     }
 
@@ -143,7 +143,18 @@ impl<'a> SocketSetWrapper<'a> {
 
 impl InterfaceWrapper {
     fn new(name: &'static str, dev: Box<dyn NetDriverOps>, ether_addr: EthernetAddress) -> Self {
-        let mut config = Config::new(HardwareAddress::Ethernet(ether_addr));
+        // let mut config = Config::new(HardwareAddress::Ethernet(ether_addr));
+        // let mut config = if ether_addr == EthernetAddress([0, 0, 0, 0, 0, 0]) {
+        //     log::error!("[InterfaceWrapper] use HardwareAddress::Ip");
+        //     Config::new(HardwareAddress::Ip)
+        // } else {
+        //     Config::new(HardwareAddress::Ethernet(ether_addr))
+        // };
+        let mut config = match dev.medium() {
+            Medium::Ethernet => Config::new(HardwareAddress::Ethernet(ether_addr)),
+            Medium::Ip => Config::new(HardwareAddress::Ip),
+            _ => panic!(),
+        };
         config.random_seed = RANDOM_SEED;
 
         let mut dev = DeviceWrapper::new(dev);
@@ -179,6 +190,7 @@ impl InterfaceWrapper {
         let mut iface = self.iface.lock();
         match gateway {
             IpAddress::Ipv4(v4) => iface.routes_mut().add_default_ipv4_route(v4).unwrap(),
+            IpAddress::Ipv6(_) => unimplemented!(),
         };
     }
 
@@ -189,7 +201,8 @@ impl InterfaceWrapper {
         let mut iface = self.iface.lock();
         let mut sockets = sockets.lock();
         let timestamp = Self::current_time();
-        iface.poll(timestamp, dev.deref_mut(), &mut sockets);
+        let result = iface.poll(timestamp, dev.deref_mut(), &mut sockets);
+        log::warn!("[net::poll] does something have been changed? {result:?}")
     }
 }
 
@@ -244,26 +257,29 @@ impl Device for DeviceWrapper {
         let mut caps = DeviceCapabilities::default();
         caps.max_transmission_unit = 1514;
         caps.max_burst_size = None;
-        caps.medium = Medium::Ethernet;
+        caps.medium = self.inner.borrow().medium();
         caps
     }
 }
 
-struct NetRxToken<'a>(&'a RefCell<Box<dyn NetDriverOps>>, NetBufPtr);
+struct NetRxToken<'a>(&'a RefCell<Box<dyn NetDriverOps>>, Box<dyn NetBufPtrOps>);
 struct NetTxToken<'a>(&'a RefCell<Box<dyn NetDriverOps>>);
 
 impl<'a> RxToken for NetRxToken<'a> {
     fn preprocess(&self, sockets: &mut SocketSet<'_>) {
-        snoop_tcp_packet(self.1.packet(), sockets).ok();
+        let medium = self.0.borrow().medium();
+        let is_ethernet = medium == Medium::Ethernet;
+        snoop_tcp_packet(self.1.packet(), sockets, is_ethernet).ok();
     }
 
+    /// 此方法接收数据包，然后以原始数据包字节作为参数调用给定的闭包f。
     fn consume<R, F>(self, f: F) -> R
     where
         F: FnOnce(&mut [u8]) -> R,
     {
         let mut rx_buf = self.1;
-        trace!(
-            "RECV {} bytes: {:02X?}",
+        warn!(
+            "[RxToken::consume] RECV {} bytes: {:02X?}",
             rx_buf.packet_len(),
             rx_buf.packet()
         );
@@ -274,6 +290,10 @@ impl<'a> RxToken for NetRxToken<'a> {
 }
 
 impl<'a> TxToken for NetTxToken<'a> {
+    /// 构造一个大小为len的传输缓冲区，
+    /// 并使用对该缓冲区的可变引用调用传递的闭包f。
+    /// 闭包应在缓冲区中构造一个有效的网络数据包（例如以太网数据包）。
+    /// 当闭包返回时，传输缓冲区被发送出去。
     fn consume<R, F>(self, len: usize, f: F) -> R
     where
         F: FnOnce(&mut [u8]) -> R,
@@ -281,18 +301,31 @@ impl<'a> TxToken for NetTxToken<'a> {
         let mut dev = self.0.borrow_mut();
         let mut tx_buf = dev.alloc_tx_buffer(len).unwrap();
         let ret = f(tx_buf.packet_mut());
-        trace!("SEND {} bytes: {:02X?}", len, tx_buf.packet());
+        warn!(
+            "[TxToken::consume] SEND {} bytes: {:02X?}",
+            len,
+            tx_buf.packet()
+        );
         dev.transmit(tx_buf).unwrap();
         ret
     }
 }
 
-fn snoop_tcp_packet(buf: &[u8], sockets: &mut SocketSet<'_>) -> Result<(), smoltcp::wire::Error> {
+fn snoop_tcp_packet(
+    buf: &[u8],
+    sockets: &mut SocketSet<'_>,
+    is_ethernet: bool,
+) -> Result<(), smoltcp::wire::Error> {
     use smoltcp::wire::{EthernetFrame, IpProtocol, Ipv4Packet, TcpPacket};
 
-    let ether_frame = EthernetFrame::new_checked(buf)?;
-    let ipv4_packet = Ipv4Packet::new_checked(ether_frame.payload())?;
-
+    // let ether_frame = EthernetFrame::new_checked(buf)?;
+    // let ipv4_packet = Ipv4Packet::new_checked(ether_frame.payload())?;
+    let ipv4_packet = if is_ethernet {
+        let ether_frame = EthernetFrame::new_checked(buf)?;
+        Ipv4Packet::new_checked(ether_frame.payload())?
+    } else {
+        Ipv4Packet::new_checked(buf)?
+    };
     if ipv4_packet.next_header() == IpProtocol::Tcp {
         let tcp_packet = TcpPacket::new_checked(ipv4_packet.payload())?;
         let src_addr = (ipv4_packet.src_addr(), tcp_packet.src_port()).into();

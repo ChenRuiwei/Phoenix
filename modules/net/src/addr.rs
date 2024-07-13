@@ -1,11 +1,11 @@
-use core::net::{IpAddr, Ipv4Addr, SocketAddr};
+use core::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use smoltcp::wire::{IpAddress, IpEndpoint, Ipv4Address};
 
 pub const fn from_core_ipaddr(ip: IpAddr) -> IpAddress {
     match ip {
         IpAddr::V4(ipv4) => IpAddress::Ipv4(Ipv4Address(ipv4.octets())),
-        _ => panic!("IPv6 not supported"),
+        IpAddr::V6(_) => panic!("IPv6 not supported"),
     }
 }
 
@@ -13,7 +13,8 @@ pub const fn into_core_ipaddr(ip: IpAddress) -> IpAddr {
     match ip {
         IpAddress::Ipv4(ipv4) => {
             IpAddr::V4(unsafe { core::mem::transmute::<[u8; 4], Ipv4Addr>(ipv4.0) })
-        } // _ => panic!("IPv6 not supported"),
+        }
+        IpAddress::Ipv6(_) => unimplemented!(), // _ => panic!("IPv6 not supported"),
     }
 }
 
@@ -34,3 +35,5 @@ pub fn is_unspecified(ip: IpAddress) -> bool {
 
 pub const UNSPECIFIED_IP: IpAddress = IpAddress::v4(0, 0, 0, 0);
 pub const UNSPECIFIED_ENDPOINT: IpEndpoint = IpEndpoint::new(UNSPECIFIED_IP, 0);
+pub const LOCAL_IP: IpAddress = IpAddress::v4(127, 0, 0, 1);
+pub const LOCAL_ENDPOINT: IpEndpoint = IpEndpoint::new(LOCAL_IP, 0);

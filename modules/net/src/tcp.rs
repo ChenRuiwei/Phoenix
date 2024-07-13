@@ -535,7 +535,10 @@ impl TcpSocket {
                 SOCKET_SET.poll_interfaces();
                 match f() {
                     Ok(t) => return Ok(t),
-                    Err(SysError::EAGAIN) => yield_now().await,
+                    Err(SysError::EAGAIN) => {
+                        // TODO:判断是否有信号
+                        yield_now().await
+                    }
                     Err(e) => return Err(e),
                 }
             }

@@ -5,12 +5,12 @@ extern crate alloc;
 pub mod error;
 
 use alloc::{boxed::Box, string::String, sync::Arc};
-use core::ptr::NonNull;
+use core::{any::Any, ptr::NonNull};
 
 use async_trait::async_trait;
 use downcast_rs::{impl_downcast, DowncastSync};
 use error::DevResult;
-
+pub use smoltcp::phy::{Loopback, Medium};
 /// General Device Operations
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum DeviceType {
@@ -25,8 +25,6 @@ pub enum DeviceType {
 pub enum DeviceMajor {
     Serial = 4,
     Block = 8,
-    /// 随便设的值，Linux中网络设备貌似没有主设备号和从设备号
-    Net = 16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -120,6 +118,7 @@ pub struct EthernetAddress(pub [u8; 6]);
 
 /// Every Net Device should implement this trait
 pub trait NetDriverOps: Sync + Send {
+    fn medium(&self) -> Medium;
     /// The ethernet address of the NIC.
     fn mac_address(&self) -> EthernetAddress;
 
@@ -139,7 +138,7 @@ pub trait NetDriverOps: Sync + Send {
     ///
     /// `rx_buf` should be the same as the one returned by
     /// [`NetDriverOps::receive`].
-    fn recycle_rx_buffer(&mut self, rx_buf: NetBufPtr) -> DevResult;
+    fn recycle_rx_buffer(&mut self, rx_buf: Box<dyn NetBufPtrOps>) -> DevResult;
 
     /// Poll the transmit queue and gives back the buffers for previous
     /// transmiting. returns [`DevResult`].
@@ -147,7 +146,7 @@ pub trait NetDriverOps: Sync + Send {
 
     /// Transmits a packet in the buffer to the network, without blocking,
     /// returns [`DevResult`].
-    fn transmit(&mut self, tx_buf: NetBufPtr) -> DevResult;
+    fn transmit(&mut self, tx_buf: Box<dyn NetBufPtrOps>) -> DevResult;
 
     /// Receives a packet from the network and store it in the [`NetBuf`],
     /// returns the buffer.
@@ -157,49 +156,15 @@ pub trait NetDriverOps: Sync + Send {
     ///
     /// If currently no incomming packets, returns an error with type
     /// [`DevError::Again`].
-    fn receive(&mut self) -> DevResult<NetBufPtr>;
+    fn receive(&mut self) -> DevResult<Box<dyn NetBufPtrOps>>;
 
     /// Allocate a memory buffer of a specified size for network transmission,
     /// returns [`DevResult`]
-    fn alloc_tx_buffer(&mut self, size: usize) -> DevResult<NetBufPtr>;
+    fn alloc_tx_buffer(&mut self, size: usize) -> DevResult<Box<dyn NetBufPtrOps>>;
 }
 
-/// A raw buffer struct for network device.
-pub struct NetBufPtr {
-    // The raw pointer of the original object.
-    raw_ptr: NonNull<u8>,
-    // The pointer to the net buffer.
-    buf_ptr: NonNull<u8>,
-    len: usize,
-}
-
-impl NetBufPtr {
-    /// Create a new [`NetBufPtr`].
-    pub fn new(raw_ptr: NonNull<u8>, buf_ptr: NonNull<u8>, len: usize) -> Self {
-        Self {
-            raw_ptr,
-            buf_ptr,
-            len,
-        }
-    }
-
-    /// Return raw pointer of the original object.
-    pub fn raw_ptr<T>(&self) -> *mut T {
-        self.raw_ptr.as_ptr() as *mut T
-    }
-
-    /// Return [`NetBufPtr`] buffer len.
-    pub fn packet_len(&self) -> usize {
-        self.len
-    }
-
-    /// Return [`NetBufPtr`] buffer as &[u8].
-    pub fn packet(&self) -> &[u8] {
-        unsafe { core::slice::from_raw_parts(self.buf_ptr.as_ptr() as *const u8, self.len) }
-    }
-
-    /// Return [`NetBufPtr`] buffer as &mut [u8].
-    pub fn packet_mut(&mut self) -> &mut [u8] {
-        unsafe { core::slice::from_raw_parts_mut(self.buf_ptr.as_ptr(), self.len) }
-    }
+pub trait NetBufPtrOps: Any {
+    fn packet(&self) -> &[u8];
+    fn packet_mut(&mut self) -> &mut [u8];
+    fn packet_len(&self) -> usize;
 }

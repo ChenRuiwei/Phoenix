@@ -20,11 +20,10 @@ pub use mm::MmapFlags;
 pub use process::CloneFlags;
 use systype::SyscallResult;
 
-use crate::{syscall::sched::*, task::Task};
+use crate::task::Task;
 
 #[cfg(feature = "strace")]
-pub const STRACE_COLOR_CODE: ColorCode = ColorCode::BrightMagenta;
-
+pub const STRACE_COLOR_CODE: logging::ColorCode = logging::ColorCode::BrightMagenta;
 /// Syscall trace.
 // TODO: syscall trace with exact args and return value
 #[cfg(feature = "strace")]
@@ -270,6 +269,8 @@ impl<'a> Syscall<'a> {
                 self.sys_recvfrom(args[0], args[1].into(), args[2], args[3], args[4], args[5])
                     .await
             }
+            SETSOCKOPT => self.sys_setsockopt(args[0], args[1], args[2], args[3], args[4]),
+            GETSOCKOPT => self.sys_getsockopt(args[0], args[1], args[2], args[3], args[4]),
             // Miscellaneous
             UNAME => self.sys_uname(args[0].into()),
             SYSLOG => self.sys_syslog(args[0], args[1].into(), args[2]),

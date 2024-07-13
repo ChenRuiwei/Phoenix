@@ -8,6 +8,7 @@ use core::{
     intrinsics::{atomic_load_acquire, size_of},
     marker::PhantomData,
     mem,
+    net::Ipv4Addr,
     ops::{self, ControlFlow},
 };
 
@@ -624,7 +625,13 @@ pub fn audit_sockaddr(addr: usize, addrlen: usize, task: &Arc<Task>) -> SysResul
             if addrlen < mem::size_of::<SockAddrIn>() {
                 return Err(SysError::EINVAL);
             }
-            let sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
+            let mut sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
+            log::debug!("[audit_sockaddr] before {sock_addr_in:?}");
+            // TODO:not sure big endian about port and address
+            // sock_addr_in.port = sock_addr_in.port.to_be();
+            // let ip = u32::from_be_bytes(sock_addr_in.addr.to_le_bytes());
+            // sock_addr_in.addr = Ipv4Addr::from(ip);
+            log::debug!("[audit_sockaddr] after {sock_addr_in:?}");
             Ok(SockAddr::SockAddrIn(sock_addr_in))
         }
         SaFamily::AF_INET6 => unimplemented!(),
