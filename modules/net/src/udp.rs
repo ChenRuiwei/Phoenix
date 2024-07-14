@@ -17,7 +17,7 @@ use super::{
     addr::{from_core_sockaddr, into_core_sockaddr, is_unspecified, UNSPECIFIED_ENDPOINT},
     SocketSetWrapper, SOCKET_SET,
 };
-use crate::{addr::LOCAL_ENDPOINT, Mutex, NetPollState};
+use crate::{addr::LOCAL_ENDPOINT_V4, Mutex, NetPollState};
 
 /// A UDP socket that provides POSIX-like APIs.
 pub struct UdpSocket {

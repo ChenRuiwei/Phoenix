@@ -69,12 +69,11 @@ impl Socket {
     pub fn new(domain: SaFamily, types: SocketType, nonblock: bool) -> Self {
         let sk: Arc<dyn ProtoOps> = match domain {
             SaFamily::AF_UNIX => Arc::new(UnixSock {}),
-            SaFamily::AF_INET => match types {
+            SaFamily::AF_INET | SaFamily::AF_INET6 => match types {
                 SocketType::STREAM => Arc::new(TcpSock::new(nonblock)),
                 SocketType::DGRAM => Arc::new(UdpSock::new(nonblock)),
                 _ => unimplemented!(),
             },
-            SaFamily::AF_INET6 => unimplemented!(),
         };
         let flags = if nonblock {
             OpenFlags::O_RDWR | OpenFlags::O_NONBLOCK

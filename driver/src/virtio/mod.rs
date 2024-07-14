@@ -137,7 +137,6 @@ impl DeviceManager {
                                 base_paddr + size
                             )
                         };
-                        init_net = true;
                     }
                     _ => {
                         warn!(

@@ -149,8 +149,12 @@ impl From<SocketAddr> for SockAddr {
 #[allow(non_camel_case_types)]
 /// used in `sys_setsockopt` and `sys_getsockopt`
 pub enum SocketLevel {
+    /// Dummy protocol for TCP
+    IPPROTO_IP = 0,
     SOL_SOCKET = 1,
     IPPROTO_TCP = 6,
+    /// IPv6-in-IPv4 tunnelling
+    IPPROTO_IPV6 = 41,
 }
 
 impl TryFrom<usize> for SocketLevel {
@@ -158,8 +162,10 @@ impl TryFrom<usize> for SocketLevel {
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         match value {
+            0 => Ok(Self::IPPROTO_IP),
             1 => Ok(Self::SOL_SOCKET),
             6 => Ok(Self::IPPROTO_TCP),
+            41 => Ok(Self::IPPROTO_IPV6),
             level => {
                 log::warn!("[SocketLevel] unsupported level: {level}");
                 Err(Self::Error::EINVAL)
@@ -171,7 +177,8 @@ impl TryFrom<usize> for SocketLevel {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[allow(non_camel_case_types)]
 /// used in `sys_setsockopt` and `sys_getsockopt`
-/// https://www.cnblogs.com/cthon/p/9270778.html
+///
+/// see https://www.man7.org/linux/man-pages/man7/socket.7.html
 pub enum SocketOpt {
     DEBUG = 1,
     REUSEADDR = 2,
@@ -194,6 +201,12 @@ pub enum SocketOpt {
     SNDLOWAT = 19,
     RCVTIMEO_OLD = 20,
     SNDTIMEO_OLD = 21,
+    SECURITY_AUTHENTICATION = 22,
+    SECURITY_ENCRYPTION_TRANSPORT = 23,
+    SECURITY_ENCRYPTION_NETWORK = 24,
+    /// Bind this socket to a particular device like “eth0”, as specified in the
+    /// passed interface name
+    BINDTODEVICE = 25,
     SNDBUFFORCE = 32,
     RCVBUFFORCE = 33,
 }
@@ -224,6 +237,10 @@ impl TryFrom<usize> for SocketOpt {
             19 => Ok(Self::SNDLOWAT),
             20 => Ok(Self::RCVTIMEO_OLD),
             21 => Ok(Self::SNDTIMEO_OLD),
+            22 => Ok(Self::SECURITY_AUTHENTICATION),
+            23 => Ok(Self::SECURITY_ENCRYPTION_TRANSPORT),
+            24 => Ok(Self::SECURITY_ENCRYPTION_NETWORK),
+            25 => Ok(Self::BINDTODEVICE),
             32 => Ok(Self::SNDBUFFORCE),
             33 => Ok(Self::RCVBUFFORCE),
             level => {

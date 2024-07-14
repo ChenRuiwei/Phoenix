@@ -76,7 +76,7 @@ impl VirtIoBlkDev {
                     name: "virtio-blk".to_string(),
                     mmio_base,
                     mmio_size,
-                    irq_no: Some(irq_no),
+                    irq_no: None, // TODO: block device don't support interrupts in this system
                     dtype: DeviceType::Block,
                 };
                 let blk_dev = Arc::new(Self {

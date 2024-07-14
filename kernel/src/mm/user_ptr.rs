@@ -18,7 +18,7 @@ use systype::{SysError, SysResult};
 
 use super::memory_space::vm_area::MapPerm;
 use crate::{
-    net::{SaFamily, SockAddr, SockAddrIn},
+    net::{SaFamily, SockAddr, SockAddrIn, SockAddrIn6},
     processor::{env::SumGuard, hart::current_task_ref},
     task::Task,
     trap::{
@@ -626,14 +626,20 @@ pub fn audit_sockaddr(addr: usize, addrlen: usize, task: &Arc<Task>) -> SysResul
                 return Err(SysError::EINVAL);
             }
             let mut sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
-            log::debug!("[audit_sockaddr] before {sock_addr_in:?}");
+            // log::debug!("[audit_sockaddr] before {sock_addr_in:?}");
             // TODO:not sure big endian about port and address
             // sock_addr_in.port = sock_addr_in.port.to_be();
             // let ip = u32::from_be_bytes(sock_addr_in.addr.to_le_bytes());
             // sock_addr_in.addr = Ipv4Addr::from(ip);
-            log::debug!("[audit_sockaddr] after {sock_addr_in:?}");
+            // log::debug!("[audit_sockaddr] after {sock_addr_in:?}");
             Ok(SockAddr::SockAddrIn(sock_addr_in))
         }
-        SaFamily::AF_INET6 => unimplemented!(),
+        SaFamily::AF_INET6 => {
+            if addrlen < mem::size_of::<SockAddrIn6>() {
+                return Err(SysError::EINVAL);
+            }
+            let sock_addr_in6 = unsafe { *(addr as *const SockAddrIn6) };
+            Ok(SockAddr::SockAddrIn6(sock_addr_in6))
+        }
     }
 }

@@ -309,7 +309,7 @@ impl Syscall<'_> {
                     }
                 };
             }
-            SocketLevel::IPPROTO_TCP => {
+            SocketLevel::IPPROTO_IP | SocketLevel::IPPROTO_TCP => {
                 const MAX_SEGMENT_SIZE: usize = 1460;
                 match TcpSocketOpt::try_from(optname)? {
                     TcpSocketOpt::MAXSEG => optval.write(&task, MAX_SEGMENT_SIZE)?,
@@ -321,6 +321,7 @@ impl Syscall<'_> {
                     }
                 };
             }
+            SocketLevel::IPPROTO_IPV6 => todo!(),
         }
         Ok(0)
     }
