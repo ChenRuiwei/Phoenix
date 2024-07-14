@@ -372,7 +372,8 @@ pub fn init_network(net_dev: Box<dyn NetDriverOps>) {
     let ether_addr = EthernetAddress(net_dev.mac_address().0);
     let eth0 = InterfaceWrapper::new("eth0", net_dev, ether_addr);
 
-    let ip = IP.parse().expect("invalid IP address");
+    // let ip = IP.parse().expect("invalid IP address");
+    let ip = "127.0.0.1".parse().expect("invalid IP address");
     let gateway = GATEWAY.parse().expect("invalid gateway IP address");
     eth0.setup_ip_addr(ip, IP_PREFIX);
     eth0.setup_gateway(gateway);

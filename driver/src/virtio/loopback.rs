@@ -57,14 +57,18 @@ impl NetDriverOps for LoopbackDev {
 
     fn transmit(&mut self, tx_buf: Box<dyn NetBufPtrOps>) -> DevResult {
         let data = tx_buf.packet().to_vec();
-        log::warn!("[transmit] now transmit {data:?}");
+        log::warn!("[NetDriverOps::transmit] now transmit {data:?}");
         self.queue.push_back(data);
         Ok(())
     }
 
     fn receive(&mut self) -> DevResult<Box<dyn NetBufPtrOps>> {
-        let buf = self.queue.pop_front().unwrap();
-        Ok(Box::new(SimpleNetBuf(buf)))
+        if let Some(buf) = self.queue.pop_front() {
+            log::warn!("[NetDriverOps::receive] now receive {buf:?}");
+            Ok(Box::new(SimpleNetBuf(buf)))
+        } else {
+            Err(DevError::Again)
+        }
     }
 
     fn alloc_tx_buffer(&mut self, size: usize) -> DevResult<Box<dyn NetBufPtrOps>> {

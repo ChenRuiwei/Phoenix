@@ -2,7 +2,7 @@
 DOCKER_NAME = phoenix
 BOARD := qemu
 
-NET ?=y
+NET ?=n
 
 export TARGET = riscv64gc-unknown-none-elf
 export MODE = debug
