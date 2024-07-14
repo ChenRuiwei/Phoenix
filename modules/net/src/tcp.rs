@@ -83,7 +83,7 @@ impl TcpSocket {
     #[inline]
     pub fn local_addr(&self) -> SysResult<SocketAddr> {
         match self.get_state() {
-            STATE_CONNECTED | STATE_LISTENING => {
+            STATE_CONNECTED | STATE_LISTENING | STATE_CLOSED => {
                 Ok(into_core_sockaddr(unsafe { self.local_addr.get().read() }))
             }
             _ => Err(SysError::ENOTCONN),
@@ -174,7 +174,7 @@ impl TcpSocket {
 
         // Here our state must be `CONNECTING`, and only one thread can run here.
         if self.is_nonblocking() {
-            Err(SysError::EAGAIN)
+            Err(SysError::EINPROGRESS)
         } else {
             self.block_on(|| {
                 let NetPollState { writable, .. } = self.poll_connect();
@@ -270,7 +270,7 @@ impl TcpSocket {
             // no other threads can read or write it.
             let handle = unsafe { self.handle.get().read().unwrap() };
             SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
-                debug!("TCP socket {}: shutting down", handle);
+                warn!("TCP socket {}: shutting down", handle);
                 socket.close();
             });
             unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT) }; // clear bound address

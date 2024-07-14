@@ -126,7 +126,7 @@ impl DeviceManager {
                     VirtIoDevType::Network => {
                         match NetDevice::try_new(transport){
                             Ok(net) =>{
-                                init_network(net);
+                                init_network(net, false);
                                 init_net = true;
                                 continue;
                             },
@@ -158,7 +158,7 @@ impl DeviceManager {
 
         if !init_net {
             log::error!("[init_net] can't find qemu virtio-net. use LoopbackDev to test");
-            init_network(LoopbackDev::new());
+            init_network(LoopbackDev::new(), true);
         }
     }
 }

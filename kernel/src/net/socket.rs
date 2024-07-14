@@ -45,6 +45,9 @@ pub trait ProtoOps: Sync + Send + Any + DowncastSync {
             writable: false,
         }
     }
+    fn shutdown(&self, how: SocketShutdownFlag) -> SysResult<()> {
+        Err(SysError::EOPNOTSUPP)
+    }
 }
 
 // Todo: Maybe it needn't
@@ -73,7 +76,11 @@ impl Socket {
             },
             SaFamily::AF_INET6 => unimplemented!(),
         };
-
+        let flags = if nonblock {
+            OpenFlags::O_RDWR | OpenFlags::O_NONBLOCK
+        } else {
+            OpenFlags::O_RDWR
+        };
         Self {
             types,
             sk,
@@ -81,7 +88,7 @@ impl Socket {
                 dentry: Arc::<usize>::new_zeroed(),
                 inode: Arc::<usize>::new_zeroed(),
                 pos: 0.into(),
-                flags: Mutex::new(OpenFlags::O_RDWR),
+                flags: Mutex::new(flags),
             },
         }
     }

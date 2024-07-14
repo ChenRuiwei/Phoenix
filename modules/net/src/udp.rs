@@ -195,7 +195,7 @@ impl UdpSocket {
     /// Close the socket.
     pub fn shutdown(&self) -> SysResult<()> {
         SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
-            debug!("UDP socket {}: shutting down", self.handle);
+            warn!("UDP socket {}: shutting down", self.handle);
             socket.close();
         });
         SOCKET_SET.poll_interfaces();

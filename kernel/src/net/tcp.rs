@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use net::{tcp::TcpSocket, NetPollState};
 use systype::SysResult;
 
-use super::{socket::ProtoOps, SockAddr};
+use super::{socket::ProtoOps, SockAddr, SocketShutdownFlag};
 pub struct TcpSock {
     tcp: TcpSocket,
 }
@@ -59,5 +59,9 @@ impl ProtoOps for TcpSock {
 
     fn poll(&self) -> NetPollState {
         self.tcp.poll()
+    }
+
+    fn shutdown(&self, _how: SocketShutdownFlag) -> SysResult<()> {
+        self.tcp.shutdown()
     }
 }

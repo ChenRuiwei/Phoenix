@@ -248,14 +248,38 @@ impl TryFrom<usize> for TcpSocketOpt {
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         match value {
-            1 => Ok(TcpSocketOpt::NODELAY),
-            2 => Ok(TcpSocketOpt::MAXSEG),
-            11 => Ok(TcpSocketOpt::INFO),
-            13 => Ok(TcpSocketOpt::CONGESTION),
+            1 => Ok(Self::NODELAY),
+            2 => Ok(Self::MAXSEG),
+            11 => Ok(Self::INFO),
+            13 => Ok(Self::CONGESTION),
             level => {
                 log::warn!("[TcpSocketOpt] unsupported option: {level}");
                 Err(Self::Error::EINVAL)
             }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[allow(non_camel_case_types)]
+pub enum SocketShutdownFlag {
+    /// further receptions will be disallowed
+    SHUTRD = 0,
+    /// further transmissions will be disallowed
+    SHUTWR = 1,
+    /// further  receptions and transmissions will be disallowed
+    SHUTRDWR = 2,
+}
+
+impl TryFrom<usize> for SocketShutdownFlag {
+    type Error = SysError;
+
+    fn try_from(how: usize) -> Result<Self, Self::Error> {
+        match how {
+            0 => Ok(Self::SHUTRD),
+            1 => Ok(Self::SHUTWR),
+            2 => Ok(Self::SHUTRDWR),
+            _ => Err(Self::Error::EINVAL),
         }
     }
 }

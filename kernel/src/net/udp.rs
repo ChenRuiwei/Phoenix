@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use net::{udp::UdpSocket, NetPollState};
 use systype::{SysError, SysResult};
 
-use super::{socket::ProtoOps, SockAddr};
+use super::{socket::ProtoOps, SockAddr, SocketShutdownFlag};
 pub struct UdpSock {
     udp: UdpSocket,
 }
@@ -53,5 +53,9 @@ impl ProtoOps for UdpSock {
 
     fn poll(&self) -> NetPollState {
         self.udp.poll()
+    }
+
+    fn shutdown(&self, _how: SocketShutdownFlag) -> SysResult<()> {
+        self.udp.shutdown()
     }
 }

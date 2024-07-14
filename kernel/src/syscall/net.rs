@@ -324,6 +324,19 @@ impl Syscall<'_> {
         }
         Ok(0)
     }
+
+    /// Unlike the `close` system call, `shutdown` allows for finer grained
+    /// control over the closing behavior of connections. `shutdown` can only
+    /// close the sending and receiving directions of the socket, or both at the
+    /// same time
+    pub fn sys_shutdown(&self, sockfd: usize, how: usize) -> SyscallResult {
+        let task = self.task;
+        let socket = task.sockfd_lookup(sockfd)?;
+        let how = SocketShutdownFlag::try_from(how)?;
+        log::info!("[sys_shutdown] sockfd:{sockfd} {how:?}");
+        socket.sk.shutdown(how)?;
+        Ok(0)
+    }
 }
 
 impl Task {

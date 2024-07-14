@@ -116,6 +116,9 @@ pub enum SysError {
     ENOTCONN = 107,
     /// Connection refused
     ECONNREFUSED = 111,
+    /// The socket is nonblocking and the connection cannot be completed
+    /// immediately.(connect.2)
+    EINPROGRESS = 115,
 }
 
 impl SysError {
@@ -170,6 +173,7 @@ impl SysError {
             EISCONN => "Transport endpoint is already connected",
             ECONNRESET => "Connection reset",
             ECONNREFUSED => "Connection refused",
+            EINPROGRESS => "Operation now in progress",
         }
     }
 

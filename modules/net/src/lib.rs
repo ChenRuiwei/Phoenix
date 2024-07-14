@@ -2,7 +2,7 @@
 #![no_main]
 #![feature(new_uninit)]
 extern crate alloc;
-use alloc::{boxed::Box, vec};
+use alloc::{boxed::Box, vec, vec::Vec};
 use core::{cell::RefCell, ops::DerefMut, panic};
 
 use arch::time::get_time_us;
@@ -179,11 +179,9 @@ impl InterfaceWrapper {
         self.ether_addr
     }
 
-    pub fn setup_ip_addr(&self, ip: IpAddress, prefix_len: u8) {
+    pub fn setup_ip_addr(&self, ips: Vec<IpCidr>) {
         let mut iface = self.iface.lock();
-        iface.update_ip_addrs(|ip_addrs| {
-            ip_addrs.push(IpCidr::new(ip, prefix_len)).unwrap();
-        });
+        iface.update_ip_addrs(|ip_addrs| ip_addrs.extend(ips));
     }
 
     pub fn setup_gateway(&self, gateway: IpAddress) {
@@ -367,15 +365,26 @@ pub fn bench_receive() {
     ETH0.get().unwrap().dev.lock().bench_receive_bandwidth();
 }
 
-pub fn init_network(net_dev: Box<dyn NetDriverOps>) {
+pub fn init_network(net_dev: Box<dyn NetDriverOps>, is_loopback: bool) {
     info!("Initialize network subsystem...");
     let ether_addr = EthernetAddress(net_dev.mac_address().0);
     let eth0 = InterfaceWrapper::new("eth0", net_dev, ether_addr);
 
     // let ip = IP.parse().expect("invalid IP address");
-    let ip = "127.0.0.1".parse().expect("invalid IP address");
+
     let gateway = GATEWAY.parse().expect("invalid gateway IP address");
-    eth0.setup_ip_addr(ip, IP_PREFIX);
+    let ip;
+    let ip_addrs = if is_loopback {
+        ip = "127.0.0.1".parse().unwrap();
+        vec![IpCidr::new(ip, 8)]
+    } else {
+        ip = IP.parse().expect("invalid IP address");
+        vec![
+            IpCidr::new("127.0.0.1".parse().unwrap(), 8),
+            IpCidr::new(ip, IP_PREFIX),
+        ]
+    };
+    eth0.setup_ip_addr(ip_addrs);
     eth0.setup_gateway(gateway);
 
     ETH0.call_once(|| eth0);

@@ -2,7 +2,7 @@
 DOCKER_NAME = phoenix
 BOARD := qemu
 
-NET ?=n
+NET ?=n # 是否启用VirtioNet设备，如果不开启则使用本地Loopback设备
 
 export TARGET = riscv64gc-unknown-none-elf
 export MODE = debug
