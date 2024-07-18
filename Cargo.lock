@@ -241,6 +241,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "early-print"
+version = "0.1.0"
+dependencies = [
+ "sbi-rt",
+]
+
+[[package]]
 name = "either"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -567,6 +574,7 @@ dependencies = [
  "crate_interface",
  "downcast-rs",
  "driver",
+ "early-print",
  "executor",
  "hashbrown",
  "log",
@@ -678,6 +686,7 @@ dependencies = [
  "bitmap-allocator",
  "buddy_system_allocator",
  "config",
+ "early-print",
  "linked_list_allocator",
  "log",
  "riscv",

@@ -22,6 +22,7 @@ time = { path = "../modules/time/" }
 timer = { path = "../modules/timer/" }
 page = { path = "../modules/page/" }
 net = { path = "../modules/net/" }
+early-print = { path = "../crates/early-print/" }
 
 cfg-if = "1.0"
 crate_interface = "0.1"

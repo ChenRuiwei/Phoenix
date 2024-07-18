@@ -7,6 +7,7 @@ use core::{
 
 use arch::interrupts::disable_interrupt;
 use driver::shutdown;
+use early_print::early_println;
 use logging::LOG_INITIALIZED;
 
 use crate::processor::hart::local_hart;
@@ -17,11 +18,11 @@ static PANIC_CNT: AtomicUsize = AtomicUsize::new(0);
 fn panic(info: &PanicInfo) -> ! {
     unsafe { disable_interrupt() };
 
-    println!("panic now!!!");
+    early_println!("early panic now!!!");
     if PANIC_CNT.fetch_add(1, Ordering::Relaxed) > 0 {
         unsafe { LOG_INITIALIZED.store(false, Ordering::Relaxed) }
         if let Some(location) = info.location() {
-            println!(
+            early_println!(
                 "Hart {} panic at {}:{}, msg: {}",
                 local_hart().hart_id(),
                 location.file(),
@@ -29,13 +30,14 @@ fn panic(info: &PanicInfo) -> ! {
                 info.message().unwrap()
             );
         } else if let Some(msg) = info.message() {
-            println!("Panicked: {}", msg);
+            early_println!("Panicked: {}", msg);
         } else {
-            println!("Unknown panic: {:?}", info);
+            early_println!("Unknown panic: {:?}", info);
         }
         backtrace();
         shutdown()
     }
+
     println!("panic now!!!");
 
     // NOTE: message below is mostly printed in log, if these messages can not be
@@ -89,7 +91,7 @@ pub fn backtrace() {
         let mut current_fp = arch::register::fp();
 
         while current_pc >= _stext as usize && current_pc <= _etext as usize && current_fp != 0 {
-            println!("{:#018x}", current_pc - size_of::<usize>());
+            early_println!("{:#018x}", current_pc - size_of::<usize>());
             current_fp = *(current_fp as *const usize).offset(-2);
             current_pc = *(current_fp as *const usize).offset(-1);
         }

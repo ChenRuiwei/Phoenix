@@ -1,11 +1,13 @@
 //! The global allocator
 use core::{
+    self,
     alloc::{GlobalAlloc, Layout},
     ptr::NonNull,
 };
 
 use buddy_system_allocator::Heap as BuddyHeap;
 use config::mm::KERNEL_HEAP_SIZE;
+use early_print::early_println;
 #[cfg(all(feature = "linked", not(feature = "buddy")))]
 use linked_list_allocator::Heap as LinkedHeap;
 use sync::mutex::SpinNoIrqLock;
@@ -26,11 +28,22 @@ static mut HEAP_SPACE: [u8; KERNEL_HEAP_SIZE] = [0; KERNEL_HEAP_SIZE];
 /// Panic when heap allocation error occurs.
 #[alloc_error_handler]
 pub fn handle_alloc_error(layout: core::alloc::Layout) -> ! {
+    log::error!("heap alloc error");
+
     let inner = HEAP_ALLOCATOR.0.lock();
     let alloc_user = inner.stats_alloc_user();
     let alloc_actual = inner.stats_alloc_actual();
     let total_bytes = inner.stats_total_bytes();
-    panic!("Heap allocation error, layout = {layout:?}, alloc_user: {alloc_user}, alloc_actual: {alloc_actual}, total_bytes: {total_bytes}");
+
+    early_println!(
+        "Heap allocation error, layout = {:?}, alloc_user: {}, alloc_actual: {}, total_bytes: {}",
+        layout,
+        alloc_user,
+        alloc_actual,
+        total_bytes
+    );
+
+    panic!();
 }
 
 struct LockedBuddyHeap(SpinNoIrqLock<BuddyHeap<32>>);
