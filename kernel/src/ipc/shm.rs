@@ -91,10 +91,18 @@ impl SharedMemory {
 }
 
 pub struct SharedMemoryManager(pub SpinNoIrqLock<HashMap<usize, SharedMemory>>);
+
 impl SharedMemoryManager {
     pub fn init() -> Self {
         Self(SpinNoIrqLock::new(HashMap::new()))
     }
+
+    pub fn attach(&self, shm_id: usize, lpid: usize) {
+        let mut shm_manager = self.0.lock();
+        let shm = shm_manager.get_mut(&shm_id).unwrap();
+        shm.shmid_ds.attach(lpid);
+    }
+
     pub fn detach(&self, shm_id: usize, lpid: usize) {
         let mut shm_manager = self.0.lock();
         let shm = shm_manager.get_mut(&shm_id).unwrap();

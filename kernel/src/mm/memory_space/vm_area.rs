@@ -464,22 +464,13 @@ impl VmArea {
                 }
                 VmAreaType::Mmap => {
                     if !self.mmap_flags.contains(MmapFlags::MAP_ANONYMOUS) {
+                        // file mapping
                         let file = self.backed_file.as_ref().unwrap();
                         let offset = self.offset + (vpn - self.start_vpn()) * PAGE_SIZE;
                         let offset_aligned = round_down_to_page(offset);
                         if self.mmap_flags.contains(MmapFlags::MAP_SHARED) {
-                            let page = if let Some(page) =
-                                file.inode().page_cache().unwrap().get_page(offset_aligned)
-                            {
-                                page
-                            } else if let Some(page) =
-                                block_on(async { file.read_page_at(offset_aligned).await })?
-                            {
-                                page
-                            } else {
-                                // no page means EOF
-                                unreachable!()
-                            };
+                            let page = block_on(async { file.get_page_at(offset_aligned).await })?
+                                .unwrap();
                             page_table.map(vpn, page.ppn(), self.map_perm.into());
                             self.pages.insert(vpn, page);
                             unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
@@ -487,12 +478,16 @@ impl VmArea {
                             todo!()
                         }
                     } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
-                        // private anonymous area
-                        page = Page::new();
-                        page.fill_zero();
-                        page_table.map(vpn, page.ppn(), self.map_perm.into());
-                        self.pages.insert(vpn, page);
-                        unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                        if self.mmap_flags.contains(MmapFlags::MAP_SHARED) {
+                            todo!()
+                        } else {
+                            // private anonymous area
+                            page = Page::new();
+                            page.fill_zero();
+                            page_table.map(vpn, page.ppn(), self.map_perm.into());
+                            self.pages.insert(vpn, page);
+                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                        }
                     }
                 }
                 _ => {}

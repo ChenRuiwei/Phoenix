@@ -72,7 +72,7 @@ pub trait File: Send + Sync + DowncastSync {
         todo!()
     }
 
-    /// Read a page at `offset_aligned` without address space.
+    /// Read a page at `offset_aligned` without page cache.
     async fn read_page_at(&self, offset_aligned: usize) -> SysResult<Option<Arc<Page>>> {
         log::trace!("[File::read_page] read offset {offset_aligned}");
 
@@ -249,6 +249,19 @@ impl dyn File {
         }
         log::info!("[File::read] read count {}", offset_it - offset);
         Ok(offset_it - offset)
+    }
+
+    pub async fn get_page_at(&self, offset_aligned: usize) -> SysResult<Option<Arc<Page>>> {
+        let inode = self.inode();
+        let page_cache = inode.page_cache().unwrap();
+        if let Some(page) = page_cache.get_page(offset_aligned) {
+            Ok(Some(page))
+        } else if let Some(page) = self.read_page_at(offset_aligned).await? {
+            Ok(Some(page))
+        } else {
+            // no page means EOF
+            Ok(None)
+        }
     }
 
     /// Called by write(2) and related system calls.

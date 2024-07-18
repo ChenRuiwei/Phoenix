@@ -347,7 +347,7 @@ impl MemorySpace {
                 vm_area.pages.insert(vpn, page.clone());
             }
         }
-        self.push_vma(vm_area);
+        self.push_vma_lazily(vm_area);
         return ret_addr;
     }
 
@@ -576,7 +576,7 @@ impl MemorySpace {
         Ok(start)
     }
 
-    // NOTE: can not alloc all pages from `AddressSpace`, otherwise lmbench
+    // NOTE: can not alloc all pages from `PageCache`, otherwise lmbench
     // lat_pagefault will test page fault time as zero.
     pub fn alloc_mmap_area_lazily(
         &mut self,
@@ -611,18 +611,21 @@ impl MemorySpace {
         let mut range_vpn = vma.range_vpn();
         let length = cmp::min(length, MMAP_PRE_ALLOC_PAGES * PAGE_SIZE);
         for offset_aligned in (offset..offset + length).step_by(PAGE_SIZE) {
-            let page = if let Some(page) = page_cache.get_page(offset_aligned) {
-                page
-            } else if let Some(page) = block_on(async { file.read_page_at(offset_aligned).await })?
-            {
-                page
+            if let Some(page) = block_on(async { file.get_page_at(offset_aligned).await })? {
+                let vpn = range_vpn.next().unwrap();
+                // TODO: support copy on write for private mapping
+                if flags.contains(MmapFlags::MAP_PRIVATE) {
+                    let new_page = Page::new();
+                    new_page.copy_from_slice(page.bytes_array());
+                    page_table.map(vpn, new_page.ppn(), perm.into());
+                    vma.pages.insert(vpn, new_page);
+                } else {
+                    page_table.map(vpn, page.ppn(), perm.into());
+                    vma.pages.insert(vpn, page);
+                }
             } else {
-                // no page means EOF
                 break;
-            };
-            let vpn = range_vpn.next().unwrap();
-            page_table.map(vpn, page.ppn(), perm.into());
-            vma.pages.insert(vpn, page);
+            }
         }
         self.push_vma_lazily(vma);
         Ok(start)

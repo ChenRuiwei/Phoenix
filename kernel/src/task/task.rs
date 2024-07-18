@@ -314,6 +314,7 @@ impl Task {
         let cwd;
         let itimers;
         let robust;
+        let shm_ids;
         let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
             self.sig_handlers.clone()
         } else {
@@ -328,6 +329,7 @@ impl Task {
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
             robust = self.robust.clone();
+            shm_ids = self.shm_ids.clone();
         } else {
             is_leader = true;
             leader = None;
@@ -341,6 +343,10 @@ impl Task {
             ]);
             cwd = new_shared(self.cwd());
             robust = new_shared(RobustListHead::default());
+            shm_ids = new_shared(BTreeMap::clone(&self.shm_ids.lock()));
+            for (_, shm_id) in shm_ids.lock().iter() {
+                SHARED_MEMORY_MANAGER.attach(*shm_id, tid.0);
+            }
         }
 
         let memory_space;
@@ -385,7 +391,7 @@ impl Task {
             tid_address: SyncUnsafeCell::new(TidAddress::new()),
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
             // After a fork(2), the child inherits the attached shared memory segments.
-            shm_ids: self.shm_ids.clone(),
+            shm_ids,
         });
 
         if !flags.contains(CloneFlags::THREAD) {
