@@ -419,7 +419,6 @@ impl VmArea {
 
             // PERF: copying data vs. lock the area vs. atomic ref cnt
             let old_page = self.get_page(vpn);
-            let mut _cnt: usize;
             let cnt = Arc::strong_count(old_page);
             if cnt > 1 {
                 // shared now

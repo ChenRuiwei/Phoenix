@@ -73,7 +73,7 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
         loader::init();
         vfs::init();
         task::spawn_kernel_task(async move {
-            task::add_init_proc();
+            task::spawn_init_proc();
         });
 
         #[cfg(feature = "smp")]

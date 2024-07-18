@@ -120,7 +120,12 @@ impl MemorySpace {
     /// Map the sections in the elf.
     ///
     /// Return the max end vpn and the first section's va.
-    pub fn map_elf(&mut self, elf: &ElfFile, offset: VirtAddr) -> (VirtPageNum, VirtAddr) {
+    pub fn map_elf(
+        &mut self,
+        elf_file: Arc<dyn File>,
+        elf: &ElfFile,
+        offset: VirtAddr,
+    ) -> (VirtPageNum, VirtAddr) {
         let elf_header = elf.header;
         let ph_count = elf_header.pt2.ph_count();
 
@@ -178,51 +183,11 @@ impl MemorySpace {
         (max_end_vpn, header_va.into())
     }
 
-    /// Include sections in elf and TrapContext and user stack,
-    /// also returns user_sp and entry point.
-    // PERF: resolve elf file lazily
-    // TODO: dynamic interpreter
-    pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize, Vec<AuxHeader>) {
-        const ELF_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
-
-        let mut memory_space = Self::new_user();
-
-        // map program headers of elf, with U flag
-        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
-        let elf_header = elf.header;
-        assert_eq!(elf_header.pt1.magic, ELF_MAGIC, "invalid elf!");
-        let entry_point = elf_header.pt2.entry_point() as usize;
-        let ph_entry_size = elf_header.pt2.ph_entry_size() as usize;
-        let ph_count = elf_header.pt2.ph_count() as usize;
-
-        let mut auxv = generate_early_auxv(ph_entry_size, ph_count, entry_point);
-
-        auxv.push(AuxHeader::new(AT_BASE, 0));
-
-        let (max_end_vpn, header_va) = memory_space.map_elf(&elf, 0.into());
-
-        let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
-        log::debug!("[from_elf] AT_PHDR  ph_head_addr is {ph_head_addr:x} ");
-        auxv.push(AuxHeader::new(AT_PHDR, ph_head_addr));
-
-        // map user stack with U flags
-        let max_end_va: VirtAddr = max_end_vpn.into();
-        let user_stack_bottom: usize = usize::from(max_end_va) + PAGE_SIZE;
-        let user_stack_top = user_stack_bottom + USER_STACK_SIZE;
-        let ustack_vma = VmArea::new(
-            user_stack_bottom.into()..user_stack_top.into(),
-            MapPerm::URW,
-            VmAreaType::Stack,
-        );
-        memory_space.push_vma(ustack_vma);
-        log::info!("[from_elf] map ustack: {user_stack_bottom:#x}, {user_stack_top:#x}",);
-
-        memory_space.alloc_heap_lazily();
-
-        (memory_space, user_stack_top, entry_point, auxv)
-    }
-
-    pub fn parse_and_map_elf(&mut self, elf_data: &[u8]) -> (usize, Vec<AuxHeader>) {
+    pub fn parse_and_map_elf(
+        &mut self,
+        elf_file: Arc<dyn File>,
+        elf_data: &[u8],
+    ) -> (usize, Vec<AuxHeader>) {
         const ELF_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
 
         // map program headers of elf, with U flag
@@ -237,7 +202,7 @@ impl MemorySpace {
 
         auxv.push(AuxHeader::new(AT_BASE, 0));
 
-        let (_max_end_vpn, header_va) = self.map_elf(&elf, 0.into());
+        let (_max_end_vpn, header_va) = self.map_elf(elf_file, &elf, 0.into());
 
         let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
         auxv.push(AuxHeader::new(AT_RANDOM, ph_head_addr));
@@ -294,7 +259,7 @@ impl MemorySpace {
             let interp_file = interp_dentry.open().ok().unwrap();
             let interp_elf_data = block_on(async { interp_file.read_all().await }).ok()?;
             let interp_elf = xmas_elf::ElfFile::new(&interp_elf_data).unwrap();
-            self.map_elf(&interp_elf, DL_INTERP_OFFSET.into());
+            self.map_elf(interp_file, &interp_elf, DL_INTERP_OFFSET.into());
 
             Some(interp_elf.header.pt2.entry_point() as usize + DL_INTERP_OFFSET)
         } else {
@@ -508,6 +473,7 @@ impl MemorySpace {
                         }
                         _ => {
                             // copy on write
+                            // TODO: MmapFlags::MAP_SHARED
                             let mut new_flags = pte.flags() | PTEFlags::COW;
                             new_flags.remove(PTEFlags::W);
                             pte.set_flags(new_flags);

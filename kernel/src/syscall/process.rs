@@ -295,7 +295,7 @@ impl Syscall<'_> {
 
         let file = task.resolve_path(&path)?.open()?;
         let elf_data = file.read_all().await?;
-        task.do_execve(&elf_data, argv, envp);
+        task.do_execve(file, &elf_data, argv, envp);
         Ok(0)
     }
 
