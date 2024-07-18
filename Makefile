@@ -2,7 +2,7 @@
 DOCKER_NAME = phoenix
 BOARD := qemu
 
-NET ?=y
+NET ?=n # 是否启用VirtioNet设备，如果不开启则使用本地Loopback设备
 
 export TARGET = riscv64gc-unknown-none-elf
 export MODE = debug
@@ -41,7 +41,7 @@ TEST_DIR := ./testcase/$(TEST)
 # TEST_DIR := ./testcase/24/preliminary/
 
 # Crate features
-export STRACE :=
+export STRACE := 
 export SMP :=
 export PREEMPT :=
 

@@ -14,6 +14,7 @@ memory = { path = "../modules/memory/" }
 systype = { path = "../modules/systype/" }
 page = { path = "../modules/page/" }
 device-core = { path = "../modules/device-core/" }
+net = { path = "../modules/net/" }
 
 bitflags = "2.5"
 rustversion = "1.0"
@@ -26,3 +27,6 @@ fdt = "0.1"
 plic = "0.0.2"
 ringbuffer = "0.15"
 crate_interface = "0.1"
+
+[features]
+loopback = [] # 配置使用本地回环设备简化 or Virtio-net设备

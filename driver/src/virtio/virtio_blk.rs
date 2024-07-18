@@ -1,27 +1,26 @@
 use alloc::{string::ToString, sync::Arc};
 
-use config::{board::BLOCK_SIZE, mm::VIRT_RAM_OFFSET};
-use device_core::{BaseDeviceOps, BlockDevice, DevId, DeviceMajor, DeviceMeta, DeviceType};
+use config::board::BLOCK_SIZE;
+use device_core::{BaseDriverOps, BlockDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
 use log::error;
 use page::BufferCache;
 use sync::mutex::SpinNoIrqLock;
-use virtio_drivers::{
-    device::blk::VirtIOBlk,
-    transport::mmio::{MmioTransport, VirtIOHeader},
-};
+use virtio_drivers::{device::blk::VirtIOBlk, transport::mmio::MmioTransport};
 
 use super::VirtioHalImpl;
 
-pub struct VirtIOBlkDev {
+pub type BlockDevice = VirtIoBlkDev;
+
+pub struct VirtIoBlkDev {
     meta: DeviceMeta,
     device: SpinNoIrqLock<VirtIOBlk<VirtioHalImpl, MmioTransport>>,
     pub cache: SpinNoIrqLock<BufferCache>,
 }
 
-unsafe impl Send for VirtIOBlkDev {}
-unsafe impl Sync for VirtIOBlkDev {}
+unsafe impl Send for VirtIoBlkDev {}
+unsafe impl Sync for VirtIoBlkDev {}
 
-impl BlockDevice for VirtIOBlkDev {
+impl BlockDriverOps for VirtIoBlkDev {
     // TODO: cached size value
     fn size(&self) -> u64 {
         self.device.lock().capacity() * (BLOCK_SIZE as u64)
@@ -58,13 +57,14 @@ impl BlockDevice for VirtIOBlkDev {
     }
 }
 
-impl VirtIOBlkDev {
+impl VirtIoBlkDev {
     pub fn try_new(
         mmio_base: usize,
         mmio_size: usize,
         irq_no: usize,
         transport: MmioTransport,
     ) -> Option<Arc<Self>> {
+        // const VIRTIO0: usize = 0x10001000 + VIRT_RAM_OFFSET;
         match VirtIOBlk::<VirtioHalImpl, MmioTransport>::new(transport) {
             Ok(virtio_blk) => {
                 let device = SpinNoIrqLock::new(virtio_blk);
@@ -76,7 +76,7 @@ impl VirtIOBlkDev {
                     name: "virtio-blk".to_string(),
                     mmio_base,
                     mmio_size,
-                    irq_no: None, // TODO: Do not accept interrupt now.
+                    irq_no: None, // TODO: block device don't support interrupts in this system
                     dtype: DeviceType::Block,
                 };
                 let blk_dev = Arc::new(Self {
@@ -99,7 +99,7 @@ impl VirtIOBlkDev {
     }
 }
 
-impl BaseDeviceOps for VirtIOBlkDev {
+impl BaseDriverOps for VirtIoBlkDev {
     fn meta(&self) -> &device_core::DeviceMeta {
         &self.meta
     }
@@ -110,6 +110,6 @@ impl BaseDeviceOps for VirtIOBlkDev {
     }
 
     fn handle_irq(&self) {
-        // TODO:
+        // todo!()
     }
 }

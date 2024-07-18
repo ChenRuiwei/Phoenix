@@ -14,7 +14,7 @@ use config::{
     },
 };
 use downcast_rs::{impl_downcast, DowncastSync};
-use driver::qemu::virtio_blk::VirtIOBlkDev;
+use driver::virtio::virtio_blk::VirtIoBlkDev;
 use memory::address;
 use page::Page;
 use spin::Mutex;
@@ -51,11 +51,11 @@ impl FileMeta {
 pub trait File: Send + Sync + DowncastSync {
     fn meta(&self) -> &FileMeta;
 
-    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SyscallResult {
         todo!()
     }
 
-    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
         todo!()
     }
 
@@ -85,14 +85,14 @@ pub trait File: Send + Sync + DowncastSync {
         let page_cache = inode.page_cache().unwrap();
 
         let device = inode.super_block().device();
-        let mut page = Page::new_file(&device);
+        let page = Page::new_file(&device);
         // read a page normally or less than a page when EOF reached
         let len = self
             .base_read_at(offset_aligned, page.bytes_array())
             .await?;
 
         let virtio_blk = device
-            .downcast_arc::<VirtIOBlkDev>()
+            .downcast_arc::<VirtIoBlkDev>()
             .unwrap_or_else(|_| unreachable!());
         let buffer_caches = virtio_blk.cache.lock();
         for offset in (offset_aligned..offset_aligned + len).step_by(BLOCK_SIZE) {
@@ -311,7 +311,7 @@ impl dyn File {
             let old_size = self.size();
             let new_size = offset_it;
             let virtio_blk = device
-                .downcast_arc::<VirtIOBlkDev>()
+                .downcast_arc::<VirtIoBlkDev>()
                 .unwrap_or_else(|_| unreachable!());
             let buffer_caches = virtio_blk.cache.lock();
             for offset_aligned_page in (round_down_to_page(old_size)..new_size).step_by(PAGE_SIZE) {

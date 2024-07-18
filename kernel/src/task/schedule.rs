@@ -8,7 +8,7 @@ use core::{
 
 use arch::time::get_time_duration;
 use async_utils::{get_waker, suspend_now, yield_now};
-use timer::timer::{Timer, TIMER_MANAGER};
+use timer::{Timer, TIMER_MANAGER};
 
 use super::Task;
 use crate::{
@@ -128,10 +128,10 @@ impl Task {
     /// 0，说明就是超时了，大于 0 才是因事件唤醒
     pub async fn suspend_timeout(&self, limit: Duration) -> Duration {
         let expire = get_time_duration() + limit;
-        TIMER_MANAGER.add_timer(Timer {
+        TIMER_MANAGER.add_timer(Timer::new_waker_timer(
             expire,
-            callback: self.waker().clone(),
-        });
+            self.waker().clone().unwrap(),
+        ));
         suspend_now().await;
         let now = get_time_duration();
         if expire > now {

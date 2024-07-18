@@ -17,7 +17,7 @@ use riscv::register::{
 };
 use signal::{Sig, SigDetails, SigInfo};
 use systype::SysError;
-use timer::timer::TIMER_MANAGER;
+use timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
 use crate::{

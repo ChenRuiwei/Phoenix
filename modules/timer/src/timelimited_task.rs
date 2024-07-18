@@ -7,7 +7,7 @@ use core::{
 
 use arch::time::get_time_duration;
 
-use crate::timer::{Timer, TIMER_MANAGER};
+use crate::{Timer, TIMER_MANAGER};
 
 pub enum TimeLimitedTaskOutput<T> {
     TimeOut,
@@ -43,10 +43,8 @@ impl<F: Future + Send + 'static> Future for TimeLimitedTaskFuture<F> {
                     Poll::Ready(TimeLimitedTaskOutput::TimeOut)
                 } else {
                     if !this.in_timermanager {
-                        TIMER_MANAGER.add_timer(Timer {
-                            expire: this.expire,
-                            callback: Some(cx.waker().clone()),
-                        });
+                        TIMER_MANAGER
+                            .add_timer(Timer::new_waker_timer(this.expire, cx.waker().clone()));
                         this.in_timermanager = true;
                         log::info!("[TimeLimitedTaskFuture] first add into TIME_MANAGER");
                     }

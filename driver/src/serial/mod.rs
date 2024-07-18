@@ -5,21 +5,20 @@ use core::{
     cell::UnsafeCell,
     cmp,
     fmt::{self, Debug, Write},
-    future::Future,
-    pin::Pin,
-    task::{Poll, Waker},
+    task::Waker,
 };
 
 use async_trait::async_trait;
 use async_utils::{block_on, get_waker};
-use config::mm::{DTB_ADDR, VIRT_RAM_OFFSET};
-use device_core::{BaseDeviceOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
-use fdt::{node::FdtNode, Fdt};
+use config::mm::VIRT_RAM_OFFSET;
+use device_core::{BaseDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
+use fdt::Fdt;
+use memory::pte::PTEFlags;
 use ringbuffer::RingBuffer;
 use sync::mutex::SpinNoIrqLock;
 
 use super::CharDevice;
-use crate::{manager::DeviceManager, println, serial::uart8250::Uart};
+use crate::{kernel_page_table, manager::DeviceManager, println, serial::uart8250::Uart};
 
 pub static mut UART0: SpinNoIrqLock<Option<Arc<Serial>>> = SpinNoIrqLock::new(None);
 
@@ -75,7 +74,7 @@ impl Debug for Serial {
     }
 }
 
-impl BaseDeviceOps for Serial {
+impl BaseDriverOps for Serial {
     fn meta(&self) -> &DeviceMeta {
         &self.meta
     }
@@ -155,7 +154,7 @@ impl CharDevice for Serial {
 }
 
 impl DeviceManager {
-    pub fn probe_char_device(&self, root: &Fdt) -> Option<Serial> {
+    pub fn probe_char_device(&mut self, root: &Fdt) {
         let chosen = root.chosen();
         // Serial
         let mut stdout = chosen.stdout();
@@ -196,7 +195,9 @@ impl DeviceManager {
         let stdout = stdout.expect("Still unable to get stdout device");
         println!("Stdout: {}", stdout.name);
 
-        Some(probe_serial_console(&stdout))
+        let serial = probe_serial_console(&stdout);
+
+        self.devices.insert(serial.dev_id(), Arc::new(serial));
     }
 }
 
@@ -209,7 +210,7 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
     let base_vaddr = base_paddr + VIRT_RAM_OFFSET;
     let irq_number = stdout.property("interrupts").unwrap().as_usize().unwrap();
     log::info!("IRQ number: {}", irq_number);
-
+    kernel_page_table().ioremap(base_paddr, size, PTEFlags::R | PTEFlags::W);
     let first_compatible = stdout.compatible().unwrap().first();
     match first_compatible {
         "ns16550a" | "snps,dw-apb-uart" => {

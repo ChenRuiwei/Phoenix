@@ -90,11 +90,14 @@ impl ListenTable {
         *self.tcp[port as usize].lock() = None;
     }
 
-    pub fn can_accept(&self, port: u16) -> AxResult<bool> {
+    pub fn can_accept(&self, port: u16) -> bool {
         if let Some(entry) = self.tcp[port as usize].lock().deref() {
-            Ok(entry.syn_queue.iter().any(|&handle| is_connected(handle)))
+            entry.syn_queue.iter().any(|&handle| is_connected(handle))
         } else {
-            ax_err!(InvalidInput, "socket accept() failed: not listen")
+            // 因为在listen函数调用时已经将port设为监听状态了，这里应该不会查不到？？
+            error!("socket accept() failed: not listen. I suppose this wouldn't happen !!!");
+            false
+            // Err(SysError::EINVAL)
         }
     }
 

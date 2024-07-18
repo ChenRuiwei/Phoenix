@@ -20,11 +20,10 @@ pub use mm::MmapFlags;
 pub use process::CloneFlags;
 use systype::SyscallResult;
 
-use crate::{syscall::sched::*, task::Task};
+use crate::task::Task;
 
 #[cfg(feature = "strace")]
 pub const STRACE_COLOR_CODE: logging::ColorCode = logging::ColorCode::BrightMagenta;
-
 /// Syscall trace.
 // TODO: syscall trace with exact args and return value
 #[cfg(feature = "strace")]
@@ -193,7 +192,7 @@ impl<'a> Syscall<'a> {
             FTRUNCATE => self.sys_ftruncate(args[0], args[1] as _).await,
             // IO
             PPOLL => {
-                self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3])
+                self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3].into())
                     .await
             }
             PSELECT6 => {
@@ -255,6 +254,25 @@ impl<'a> Syscall<'a> {
             // Resource
             GETRUSAGE => self.sys_getrusage(args[0] as _, args[1].into()),
             PRLIMIT64 => self.sys_prlimit64(args[0], args[1] as _, args[2].into(), args[3].into()),
+            // Net
+            SOCKET => self.sys_socket(args[0], args[1] as _, args[2]),
+            BIND => self.sys_bind(args[0], args[1], args[2]),
+            LISTEN => self.sys_listen(args[0], args[1]),
+            ACCEPT => self.sys_accept(args[0], args[1], args[2].into()).await,
+            CONNECT => self.sys_connect(args[0], args[1], args[2]).await,
+            GETSOCKNAME => self.sys_getsockname(args[0], args[1], args[2]),
+            GETPEERNAME => self.sys_getpeername(args[0], args[1], args[2].into()),
+            SENDTO => {
+                self.sys_sendto(args[0], args[1].into(), args[2], args[3], args[4], args[5])
+                    .await
+            }
+            RECVFROM => {
+                self.sys_recvfrom(args[0], args[1].into(), args[2], args[3], args[4], args[5])
+                    .await
+            }
+            SETSOCKOPT => self.sys_setsockopt(args[0], args[1], args[2], args[3], args[4]),
+            GETSOCKOPT => self.sys_getsockopt(args[0], args[1], args[2], args[3], args[4]),
+            SHUTDOWN => self.sys_shutdown(args[0], args[1]),
             // Miscellaneous
             UNAME => self.sys_uname(args[0].into()),
             SYSLOG => self.sys_syslog(args[0], args[1].into(), args[2]),

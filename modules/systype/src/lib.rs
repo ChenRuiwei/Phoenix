@@ -17,7 +17,8 @@ pub type ASyscallResult<'a> = SysFuture<'a, SyscallResult>;
 pub type ASysResult<'a, T> = SysFuture<'a, SysResult<T>>;
 
 /// Linux specific error codes defined in `errno.h`.
-// Defined in <asm-generic/errno-base.h> and <asm-generic/errno.h>.
+/// Defined in <asm-generic/errno-base.h> and <asm-generic/errno.h>.
+/// https://elixir.bootlin.com/linux/v6.8.9/source/include/uapi/asm-generic/errno.h#L71
 #[derive(FromRepr, Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(i32)]
 pub enum SysError {
@@ -41,7 +42,7 @@ pub enum SysError {
     EBADF = 9,
     /// No child processes
     ECHILD = 10,
-    /// Try again
+    /// Resource temporarily unavailable
     EAGAIN = 11,
     /// Out of memory
     ENOMEM = 12,
@@ -99,14 +100,25 @@ pub enum SysError {
     ENOSYS = 38,
     /// Directory not empty
     ENOTEMPTY = 39,
-    /// Transport endpoint is not connected
-    ENOTCONN = 107,
+    /// Socket operation on non-socket
+    ENOTSOCK = 88,
     /// Unsupported
     EOPNOTSUPP = 95,
     /// Socket address is already in use
     EADDRINUSE = 98,
+    /// Address not available
+    EADDRNOTAVAIL = 99,
+    /// Connection reset
+    ECONNRESET = 104,
+    /// Transport endpoint is already connected
+    EISCONN = 106,
+    /// The socket is not connected
+    ENOTCONN = 107,
     /// Connection refused
     ECONNREFUSED = 111,
+    /// The socket is nonblocking and the connection cannot be completed
+    /// immediately.(connect.2)
+    EINPROGRESS = 115,
 }
 
 impl SysError {
@@ -153,10 +165,15 @@ impl SysError {
             ENOLCK => "No record locks available",
             ENOSYS => "Invalid system call number",
             ENOTEMPTY => "Directory not empty",
+            ENOTSOCK => "Socket operation on non-socket",
             ENOTCONN => "Transport endpoint is not connected",
             EOPNOTSUPP => "Unsupported Error",
+            EADDRNOTAVAIL => "Address not available",
             EADDRINUSE => "Address already in use",
+            EISCONN => "Transport endpoint is already connected",
+            ECONNRESET => "Connection reset",
             ECONNREFUSED => "Connection refused",
+            EINPROGRESS => "Operation now in progress",
         }
     }
 

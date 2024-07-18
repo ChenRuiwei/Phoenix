@@ -8,7 +8,7 @@ use riscv::register::{
     scause::{self, Exception, Interrupt, Scause, Trap},
     sepc, stval, stvec,
 };
-use timer::timer::TIMER_MANAGER;
+use timer::TIMER_MANAGER;
 
 use crate::{processor::hart::local_hart, when_debug};
 

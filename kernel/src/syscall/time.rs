@@ -1,7 +1,6 @@
 use core::time::Duration;
 
 use arch::time::{get_time_duration, get_time_ms, get_time_us};
-use async_utils::{Select2Futures, SelectOutput};
 use systype::{SysError, SyscallResult};
 use time::{
     timespec::TimeSpec,
@@ -10,7 +9,6 @@ use time::{
     CLOCK_DEVIATION, CLOCK_MONOTONIC, CLOCK_PROCESS_CPUTIME_ID, CLOCK_REALTIME,
     CLOCK_THREAD_CPUTIME_ID,
 };
-use timer::timelimited_task::ksleep_ms;
 
 use super::Syscall;
 use crate::mm::{UserReadPtr, UserWritePtr};

@@ -4,7 +4,7 @@
 
 use alloc::sync::Arc;
 
-use device_core::BlockDevice;
+use device_core::BlockDriverOps;
 use fatfs::{DefaultTimeProvider, Dir, DirIter, Error, File, FileSystem, LossyOemCpConverter};
 use sync::mutex::SpinNoIrqLock;
 use systype::SysError;
@@ -42,7 +42,7 @@ pub const fn as_sys_err(err: fatfs::Error<()>) -> systype::SysError {
 pub struct DiskCursor {
     sector: u64,
     offset: usize,
-    blk_dev: Arc<dyn BlockDevice>,
+    blk_dev: Arc<dyn BlockDriverOps>,
 }
 
 impl DiskCursor {

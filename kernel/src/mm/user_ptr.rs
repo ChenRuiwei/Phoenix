@@ -8,6 +8,7 @@ use core::{
     intrinsics::{atomic_load_acquire, size_of},
     marker::PhantomData,
     mem,
+    net::Ipv4Addr,
     ops::{self, ControlFlow},
 };
 
@@ -17,10 +18,7 @@ use systype::{SysError, SysResult};
 
 use super::memory_space::vm_area::MapPerm;
 use crate::{
-    net::{
-        socket::{SockAddr, SockAddrIn},
-        SocketAddressFamily,
-    },
+    net::{SaFamily, SockAddr, SockAddrIn, SockAddrIn6},
     processor::{env::SumGuard, hart::current_task_ref},
     task::Task,
     trap::{
@@ -487,7 +485,7 @@ impl<T: Clone + Copy + 'static, P: Policy> From<usize> for UserPtr<T, P> {
 }
 
 impl Task {
-    pub fn just_ensure_user_area(
+    fn just_ensure_user_area(
         &self,
         begin: VirtAddr,
         len: usize,
@@ -607,21 +605,41 @@ impl From<usize> for FutexAddr {
     }
 }
 
-pub fn audit_sockaddr(addr: usize, addr_len: usize, task: &Arc<Task>) -> SysResult<SockAddr> {
-    task.just_ensure_user_area(addr.into(), addr_len, PageFaultAccessType::RO)?;
+/// The `addr` parameter is a pointer to a `SockAddr` structure passed by the
+/// system call, and `addr_len` is the length of the address pointed to by this
+/// pointer.
+///
+/// First, the function checks whether the address pointed to by the pointer has
+/// read permissions. Then, based on the `sa_family` member of theSockAddr
+/// structure, it determines which variant of the `SockAddr` enum the
+/// user-provided parameter corresponds to.
+pub fn audit_sockaddr(addr: usize, addrlen: usize, task: &Arc<Task>) -> SysResult<SockAddr> {
+    let _guard = SumGuard::new();
+    task.just_ensure_user_area(addr.into(), addrlen, PageFaultAccessType::RO)?;
     let family_ptr = addr as *const u16;
     let family_value = unsafe { *family_ptr };
-    let family =
-        SocketAddressFamily::from_usize(family_value as _).map_err(|_| SysError::EINVAL)?;
+    let family = SaFamily::try_from(family_value as usize)?;
     match family {
-        SocketAddressFamily::AF_UNIX => unimplemented!(),
-        SocketAddressFamily::AF_INET => {
-            if addr_len < mem::size_of::<SockAddrIn>() {
+        SaFamily::AF_UNIX => unimplemented!(),
+        SaFamily::AF_INET => {
+            if addrlen < mem::size_of::<SockAddrIn>() {
                 return Err(SysError::EINVAL);
             }
-            let sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
+            let mut sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
+            // log::debug!("[audit_sockaddr] before {sock_addr_in:?}");
+            // TODO:not sure big endian about port and address
+            // sock_addr_in.port = sock_addr_in.port.to_be();
+            // let ip = u32::from_be_bytes(sock_addr_in.addr.to_le_bytes());
+            // sock_addr_in.addr = Ipv4Addr::from(ip);
+            // log::debug!("[audit_sockaddr] after {sock_addr_in:?}");
             Ok(SockAddr::SockAddrIn(sock_addr_in))
         }
-        SocketAddressFamily::AF_INET6 => unimplemented!(),
+        SaFamily::AF_INET6 => {
+            if addrlen < mem::size_of::<SockAddrIn6>() {
+                return Err(SysError::EINVAL);
+            }
+            let sock_addr_in6 = unsafe { *(addr as *const SockAddrIn6) };
+            Ok(SockAddr::SockAddrIn6(sock_addr_in6))
+        }
     }
 }

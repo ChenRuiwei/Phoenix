@@ -2,7 +2,7 @@ use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use core::{
     fmt::Error,
     future::{self, Future},
-    mem::size_of,
+    mem::{self, size_of},
     ops::Deref,
     pin::Pin,
     task::{Context, Poll},
@@ -10,6 +10,7 @@ use core::{
 
 use async_utils::{dyn_future, yield_now, Async};
 use memory::VirtAddr;
+use signal::SigSet;
 use systype::{SysError, SysResult, SyscallResult};
 use time::timespec::TimeSpec;
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
@@ -25,9 +26,12 @@ use crate::{
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct PollFd {
-    fd: i32,             // file descriptor
-    events: PollEvents,  // requested events
-    revents: PollEvents, // returned events
+    /// file descriptor
+    fd: i32,
+    /// requested events    
+    events: PollEvents,
+    /// returned events
+    revents: PollEvents,
 }
 
 const FD_SETSIZE: usize = 1024;
@@ -130,12 +134,14 @@ impl Future for PSelectFuture {
 }
 
 impl Syscall<'_> {
+    /// `ppoll` is used to monitor a set of file descriptors to see if they have
+    /// readable, writable, or abnormal events
     pub async fn sys_ppoll(
         &self,
         fds: UserRdWrPtr<PollFd>,
         nfds: usize,
         timeout: UserReadPtr<TimeSpec>,
-        _sigmask: usize,
+        sigmask: UserReadPtr<SigSet>,
     ) -> SyscallResult {
         let task = self.task;
         let fds_va: VirtAddr = fds.as_usize().into();
@@ -145,8 +151,17 @@ impl Syscall<'_> {
         } else {
             Some(timeout.read(&task)?.into())
         };
+        let new_mask;
+        let old_mask;
+        if sigmask.not_null() {
+            new_mask = Some(sigmask.read(&task)?);
+            old_mask = Some(mem::replace(task.sig_mask(), new_mask.unwrap()))
+        } else {
+            new_mask = None;
+            old_mask = None;
+        };
         log::info!(
-            "[sys_ppoll] fds:{poll_fds:?}, nfds:{nfds}, timeout:{timeout:?}, sigmast{_sigmask:#x}"
+            "[sys_ppoll] fds:{poll_fds:?}, nfds:{nfds}, timeout:{timeout:?}, sigmast{new_mask:?}"
         );
         let mut polls = Vec::<(PollEvents, Arc<dyn File>)>::with_capacity(nfds as usize);
         for poll_fd in poll_fds.iter() {
@@ -178,6 +193,10 @@ impl Syscall<'_> {
             poll_fds[i].revents |= result
         }
         poll_fds_slice.copy_from_slice(&poll_fds);
+
+        if let Some(old_mask) = old_mask {
+            *task.sig_mask() = old_mask;
+        }
         Ok(ret)
     }
 

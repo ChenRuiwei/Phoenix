@@ -179,7 +179,7 @@ pub fn waitpid(pid: usize, exit_code: &mut i32) -> isize {
 }
 
 pub fn pipe(pipe_fd: &mut [i32]) -> isize {
-    sys_pipe(pipe_fd.as_mut_ptr())
+    sys_pipe(pipe_fd.())
 }
 
 pub fn close(fd: usize) -> isize {

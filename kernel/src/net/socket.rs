@@ -1,11 +1,11 @@
 use alloc::{boxed::Box, sync::Arc};
-use core::{
-    mem::MaybeUninit,
-    net::{Ipv4Addr, Ipv6Addr},
-    ptr,
-};
+use core::any::Any;
 
 use async_trait::async_trait;
+use downcast_rs::{impl_downcast, DowncastSync};
+use log::warn;
+use net::{poll_interfaces, NetPollState};
+use spin::Mutex;
 use systype::{SysError, SysResult, SyscallResult};
 use tcp::TcpSock;
 use udp::UdpSock;
@@ -14,97 +14,151 @@ use vfs_core::*;
 
 use super::*;
 
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-/// IPv4 address
-pub struct SockAddrIn {
-    pub family: u16,
-    pub port: u16,
-    pub addr: Ipv4Addr,
-    pub zero: [u8; 8],
-}
-
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-/// IPv6 address
-pub struct SockAddrIn6 {
-    pub family: u16,
-    pub port: u16,
-    pub flowinfo: u32,
-    pub addr: Ipv6Addr,
-    pub scope: u32,
-}
-
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-/// Unix domain socket address
-pub struct SockAddrUn {
-    pub family: u16,
-    pub path: [u8; 108],
-}
-
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-pub enum SockAddr {
-    SockAddrIn(SockAddrIn),
-    SockAddrIn6(SockAddrIn6),
-    SockAddrUn(SockAddrUn),
-}
-
-pub trait ProtoOps {
-    fn bind(&self, myaddr: SockAddr) -> SysResult<()> {
+#[async_trait]
+pub trait ProtoOps: Sync + Send + Any + DowncastSync {
+    fn bind(&self, _myaddr: SockAddr) -> SysResult<()>;
+    fn listen(&self) -> SysResult<()> {
         Err(SysError::EOPNOTSUPP)
     }
-    fn connect(&self, vaddr: SockAddr) -> SysResult<()> {
+    async fn accept(&self) -> SysResult<Arc<dyn ProtoOps>> {
+        Err(SysError::EOPNOTSUPP)
+    }
+    async fn connect(&self, _vaddr: SockAddr) -> SysResult<()> {
+        Err(SysError::EOPNOTSUPP)
+    }
+    fn peer_addr(&self) -> SysResult<SockAddr> {
+        Err(SysError::EOPNOTSUPP)
+    }
+    fn local_addr(&self) -> SysResult<SockAddr> {
+        Err(SysError::EOPNOTSUPP)
+    }
+    async fn sendto(&self, _buf: &[u8], _vaddr: Option<SockAddr>) -> SysResult<usize> {
+        Err(SysError::EOPNOTSUPP)
+    }
+    async fn recvfrom(&self, _buf: &mut [u8]) -> SysResult<(usize, SockAddr)> {
+        Err(SysError::EOPNOTSUPP)
+    }
+    fn poll(&self) -> NetPollState {
+        log::error!("[net poll] unimplemented");
+        NetPollState {
+            readable: false,
+            writable: false,
+        }
+    }
+    fn shutdown(&self, how: SocketShutdownFlag) -> SysResult<()> {
         Err(SysError::EOPNOTSUPP)
     }
 }
 
+// Todo: Maybe it needn't
+impl_downcast!(sync ProtoOps);
 /// linux中，socket面向用户空间，sock面向内核空间
 pub struct Socket {
     /// socket类型
-    types: SocketType,
+    pub types: SocketType,
     /// 套接字的核心，面向底层网络具体协议
-    sk: Arc<dyn ProtoOps>,
+    pub sk: Arc<dyn ProtoOps>,
     /// TODO:
-    file: Arc<SocketFile>,
+    pub meta: FileMeta,
 }
 
 unsafe impl Sync for Socket {}
 unsafe impl Send for Socket {}
 
 impl Socket {
-    pub fn new(domain: SocketAddressFamily, types: SocketType) -> Self {
+    pub fn new(domain: SaFamily, types: SocketType, nonblock: bool) -> Self {
         let sk: Arc<dyn ProtoOps> = match domain {
-            SocketAddressFamily::AF_UNIX => Arc::new(UnixSock {}),
-            SocketAddressFamily::AF_INET => {
-                if types.contains(SocketType::STREAM) {
-                    Arc::new(TcpSock {})
-                } else {
-                    Arc::new(UdpSock {})
-                }
-            }
-            SocketAddressFamily::AF_INET6 => unimplemented!(),
+            SaFamily::AF_UNIX => Arc::new(UnixSock {}),
+            SaFamily::AF_INET | SaFamily::AF_INET6 => match types {
+                SocketType::STREAM => Arc::new(TcpSock::new(nonblock)),
+                SocketType::DGRAM => Arc::new(UdpSock::new(nonblock)),
+                _ => unimplemented!(),
+            },
         };
-
+        let flags = if nonblock {
+            OpenFlags::O_RDWR | OpenFlags::O_NONBLOCK
+        } else {
+            OpenFlags::O_RDWR
+        };
         Self {
             types,
             sk,
-            file: unsafe { Arc::from_raw(ptr::null_mut()) },
+            meta: FileMeta {
+                dentry: Arc::<usize>::new_zeroed(),
+                inode: Arc::<usize>::new_zeroed(),
+                pos: 0.into(),
+                flags: Mutex::new(flags),
+            },
         }
     }
 
-    // pub fn bind(&self, addr: SockAddr) {
-    //     self.sk.bind(myaddr)
-    // }
+    pub fn from_another(another: &Self, sk: Arc<dyn ProtoOps>) -> Self {
+        Self {
+            types: another.types,
+            sk,
+            meta: FileMeta {
+                dentry: Arc::<usize>::new_zeroed(),
+                inode: Arc::<usize>::new_zeroed(),
+                pos: 0.into(),
+                flags: Mutex::new(OpenFlags::O_RDWR),
+            },
+        }
+    }
+}
+
+#[async_trait]
+impl File for Socket {
+    fn meta(&self) -> &FileMeta {
+        &self.meta
+    }
+
+    async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
+        if buf.len() == 0 {
+            return Ok(0);
+        }
+        // TODO: should add this?
+        poll_interfaces();
+        let bytes = self.sk.recvfrom(buf).await.map(|e| e.0)?;
+        warn!("[socket read] expect: {:?} exact: {bytes}", buf.len());
+        Ok(bytes)
+    }
+
+    async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
+        if buf.len() == 0 {
+            return Ok(0);
+        }
+        // TODO: should add this?
+        poll_interfaces();
+        let bytes = self.sk.sendto(buf, None).await?;
+        warn!("[socket write] expect: {:?} exact: {bytes}", buf.len());
+        Ok(bytes)
+    }
+
+    async fn base_poll(&self, events: PollEvents) -> PollEvents {
+        let mut res = PollEvents::empty();
+        let netstate = self.sk.poll();
+        if events.contains(PollEvents::IN) {
+            if netstate.readable {
+                res |= PollEvents::IN;
+            }
+        }
+        if events.contains(PollEvents::OUT) {
+            if netstate.writable {
+                res |= PollEvents::OUT;
+            }
+        }
+        log::info!("[Socket::base_poll] ret events:{res:?} {netstate:?}");
+        res
+    }
 }
 
 /// sockfs是虚拟文件系统，所以在磁盘上不存在inode的表示，在内核中有struct
 /// socket_alloc来表示内存中sockfs文件系统inode的相关结构体
-// pub struct SocketAlloc {
-//     socket: Socket,
-//     meta: InodeMeta,
-// }
+#[allow(dead_code)]
+pub struct SocketAlloc {
+    socket: Socket,
+    meta: InodeMeta,
+}
 
 // impl SocketAlloc {
 //     pub fn new(types: SocketType) -> Self {
@@ -126,57 +180,3 @@ impl Socket {
 //         }
 //     }
 // }
-
-pub struct SocketFile {
-    meta: FileMeta,
-}
-
-#[async_trait]
-impl File for Socket {
-    fn meta(&self) -> &FileMeta {
-        &self.file.meta
-    }
-
-    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SyscallResult {
-        // log::debug!("[TtyFile::base_read_at] buf len {}", buf.len());
-        // let char_dev = &self
-        //     .inode()
-        //     .downcast_arc::<TtyInode>()
-        //     .unwrap_or_else(|_| unreachable!())
-        //     .char_dev;
-        // let len = char_dev.read(buf).await;
-        Ok(0)
-    }
-
-    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
-        // let utf8_buf: Vec<u8> = buf.iter().filter(|c| c.is_ascii()).map(|c|
-        // *c).collect(); let char_dev = &self
-        //     .inode()
-        //     .downcast_arc::<TtyInode>()
-        //     .unwrap_or_else(|_| unreachable!())
-        //     .char_dev;
-        // let len = char_dev.write(buf).await;
-        Ok(0)
-    }
-
-    // async fn base_poll(&self, events: PollEvents) -> PollEvents {
-    //     let mut res = PollEvents::empty();
-    //     let char_dev = &self
-    //         .inode()
-    //         .downcast_arc::<TtyInode>()
-    //         .unwrap_or_else(|_| unreachable!())
-    //         .char_dev;
-    //     if events.contains(PollEvents::IN) {
-    //         if char_dev.poll_in().await {
-    //             res |= PollEvents::IN;
-    //         }
-    //     }
-    //     if events.contains(PollEvents::OUT) {
-    //         if char_dev.poll_out().await {
-    //             res |= PollEvents::OUT;
-    //         }
-    //     }
-    //     log::debug!("[TtyFile::base_poll] ret events:{res:?}");
-    //     res
-    // }
-}

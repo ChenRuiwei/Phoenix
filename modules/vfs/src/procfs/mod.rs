@@ -3,7 +3,7 @@ mod mounts;
 
 use alloc::sync::Arc;
 
-use device_core::BlockDevice;
+use device_core::BlockDriverOps;
 use systype::{SysResult, SyscallResult};
 use vfs_core::{
     Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, MountFlags, SuperBlock, SuperBlockMeta,
@@ -61,7 +61,7 @@ impl FileSystemType for ProcFsType {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         flags: MountFlags,
-        dev: Option<Arc<dyn BlockDevice>>,
+        dev: Option<Arc<dyn BlockDriverOps>>,
     ) -> SysResult<Arc<dyn Dentry>> {
         let sb = ProcSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
@@ -85,7 +85,7 @@ pub struct ProcSuperBlock {
 
 impl ProcSuperBlock {
     pub fn new(
-        device: Option<Arc<dyn BlockDevice>>,
+        device: Option<Arc<dyn BlockDriverOps>>,
         fs_type: Arc<dyn FileSystemType>,
     ) -> Arc<Self> {
         Arc::new(Self {
