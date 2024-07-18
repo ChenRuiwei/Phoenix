@@ -65,7 +65,6 @@ impl VirtIOBlkDev {
         irq_no: usize,
         transport: MmioTransport,
     ) -> Option<Arc<Self>> {
-        // const VIRTIO0: usize = 0x10001000 + VIRT_RAM_OFFSET;
         match VirtIOBlk::<VirtioHalImpl, MmioTransport>::new(transport) {
             Ok(virtio_blk) => {
                 let device = SpinNoIrqLock::new(virtio_blk);
@@ -77,7 +76,7 @@ impl VirtIOBlkDev {
                     name: "virtio-blk".to_string(),
                     mmio_base,
                     mmio_size,
-                    irq_no: Some(irq_no),
+                    irq_no: None, // TODO: Do not accept interrupt now.
                     dtype: DeviceType::Block,
                 };
                 let blk_dev = Arc::new(Self {
@@ -111,6 +110,6 @@ impl BaseDeviceOps for VirtIOBlkDev {
     }
 
     fn handle_irq(&self) {
-        // todo!()
+        // TODO:
     }
 }

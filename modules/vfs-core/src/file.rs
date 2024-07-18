@@ -301,7 +301,6 @@ impl dyn File {
             offset_it += len;
             buf_it = &buf_it[len..];
         }
-
         if offset_it > self.size() {
             log::warn!(
                 "[File::write_at] write beyond file, offset_it:{offset_it}, size:{}",

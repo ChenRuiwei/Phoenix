@@ -23,7 +23,7 @@ use systype::SyscallResult;
 use crate::{syscall::sched::*, task::Task};
 
 #[cfg(feature = "strace")]
-pub const STRACE_COLOR_CODE: ColorCode = ColorCode::BrightMagenta;
+pub const STRACE_COLOR_CODE: logging::ColorCode = logging::ColorCode::BrightMagenta;
 
 /// Syscall trace.
 // TODO: syscall trace with exact args and return value
@@ -190,6 +190,7 @@ impl<'a> Syscall<'a> {
             }
             SYNC => self.sys_do_nothing("sync"),
             FSYNC => self.sys_do_nothing("fsync"),
+            FTRUNCATE => self.sys_ftruncate(args[0], args[1] as _).await,
             // IO
             PPOLL => {
                 self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3])

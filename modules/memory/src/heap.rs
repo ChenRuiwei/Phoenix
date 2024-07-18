@@ -20,12 +20,17 @@ type GlobalHeap = LockedLinkedHeap;
 static HEAP_ALLOCATOR: GlobalHeap = GlobalHeap::empty();
 
 /// heap space
+#[link_section = ".bss.heap"]
 static mut HEAP_SPACE: [u8; KERNEL_HEAP_SIZE] = [0; KERNEL_HEAP_SIZE];
 
 /// Panic when heap allocation error occurs.
 #[alloc_error_handler]
 pub fn handle_alloc_error(layout: core::alloc::Layout) -> ! {
-    panic!("Heap allocation error, layout = {:?}", layout);
+    let inner = HEAP_ALLOCATOR.0.lock();
+    let alloc_user = inner.stats_alloc_user();
+    let alloc_actual = inner.stats_alloc_actual();
+    let total_bytes = inner.stats_total_bytes();
+    panic!("Heap allocation error, layout = {layout:?}, alloc_user: {alloc_user}, alloc_actual: {alloc_actual}, total_bytes: {total_bytes}");
 }
 
 struct LockedBuddyHeap(SpinNoIrqLock<BuddyHeap<32>>);

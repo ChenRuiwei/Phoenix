@@ -30,7 +30,6 @@ impl From<OpenFlags> for FdFlags {
         if value.contains(OpenFlags::O_CLOEXEC) {
             FdFlags::CLOEXEC
         } else {
-            log::warn!("[FdFlags::from] unsupported flag");
             FdFlags::empty()
         }
     }
