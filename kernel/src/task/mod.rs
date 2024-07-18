@@ -18,7 +18,6 @@ use vfs::sys_root_dentry;
 use vfs_core::Path;
 
 use crate::{
-    loader::get_app_data_by_name,
     mm::memory_space::{self, init_stack, MemorySpace},
     processor::env::within_sum,
     trap::TrapContext,
