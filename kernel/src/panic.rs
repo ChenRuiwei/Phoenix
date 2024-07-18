@@ -6,6 +6,7 @@ use core::{
 };
 
 use arch::interrupts::disable_interrupt;
+use backtrace::backtrace;
 use driver::shutdown;
 use early_print::early_println;
 use logging::LOG_INITIALIZED;
@@ -79,21 +80,4 @@ fn panic(info: &PanicInfo) -> ! {
     log::error!("=============== END BACKTRACE ================");
 
     shutdown()
-}
-
-pub fn backtrace() {
-    extern "C" {
-        fn _stext();
-        fn _etext();
-    }
-    unsafe {
-        let mut current_pc = arch::register::ra();
-        let mut current_fp = arch::register::fp();
-
-        while current_pc >= _stext as usize && current_pc <= _etext as usize && current_fp != 0 {
-            early_println!("{:#018x}", current_pc - size_of::<usize>());
-            current_fp = *(current_fp as *const usize).offset(-2);
-            current_pc = *(current_fp as *const usize).offset(-1);
-        }
-    }
 }

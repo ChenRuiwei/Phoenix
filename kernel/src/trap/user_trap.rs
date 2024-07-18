@@ -20,9 +20,7 @@ use systype::SysError;
 use timer::TIMER_MANAGER;
 
 use super::{set_kernel_trap, TrapContext};
-use crate::{
-    mm::PageFaultAccessType, panic::backtrace, syscall::Syscall, task::Task, trap::set_user_trap,
-};
+use crate::{mm::PageFaultAccessType, syscall::Syscall, task::Task, trap::set_user_trap};
 
 /// handle an interrupt, exception, or system call from user space
 /// return if it is syscall and has been interrupted

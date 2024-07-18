@@ -82,6 +82,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 
 [[package]]
+name = "backtrace"
+version = "0.1.0"
+dependencies = [
+ "arch",
+ "early-print",
+]
+
+[[package]]
 name = "bit_field"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -566,6 +574,7 @@ dependencies = [
  "arch",
  "async-trait",
  "async_utils",
+ "backtrace",
  "bit_field",
  "bitflags 2.6.0",
  "buddy_system_allocator",
