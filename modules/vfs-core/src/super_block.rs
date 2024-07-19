@@ -18,10 +18,6 @@ pub struct SuperBlockMeta {
     pub fs_type: Weak<dyn FileSystemType>,
     /// Root dentry points to the mount point.
     pub root_dentry: Once<Arc<dyn Dentry>>,
-    // /// All inodes.
-    // pub inodes: Mutex<Vec<Arc<dyn Inode>>>,
-    // /// All dirty inodes.
-    // pub dirty: Mutex<Vec<Arc<dyn Inode>>>,
 }
 
 impl SuperBlockMeta {

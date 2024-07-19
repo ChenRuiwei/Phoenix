@@ -6,7 +6,7 @@ use core::{
     time::Duration,
 };
 
-use arch::time::get_time_duration;
+use arch::time::{get_time_duration, get_time_us};
 use async_utils::{get_waker, suspend_now, yield_now};
 use timer::{Timer, TIMER_MANAGER};
 

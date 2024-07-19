@@ -52,6 +52,7 @@ impl ShmIdDs {
             shm_nattch: 0,
         }
     }
+
     pub fn attach(&mut self, lpid: usize) {
         // shm_atime is set to the current time.
         self.shm_atime = get_time_sec();

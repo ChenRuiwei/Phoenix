@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use downcast_rs::{impl_downcast, DowncastSync};
 use error::DevResult;
 pub use smoltcp::phy::{Loopback, Medium};
+
 /// General Device Operations
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum DeviceType {

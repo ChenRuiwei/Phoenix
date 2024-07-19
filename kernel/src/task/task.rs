@@ -10,7 +10,7 @@ use core::{
     task::Waker,
 };
 
-use arch::memory::sfence_vma_all;
+use arch::{memory::sfence_vma_all, time::get_time_us};
 use config::{
     mm::{DL_INTERP_OFFSET, USER_STACK_SIZE},
     process::INIT_PROC_PID,
@@ -408,7 +408,6 @@ impl Task {
         new
     }
 
-    // TODO: figure out what should be reserved across this syscall
     pub fn do_execve(
         self: &Arc<Self>,
         elf_file: Arc<dyn File>,
@@ -428,6 +427,7 @@ impl Task {
         } else {
             auxv.push(AuxHeader::new(AT_BASE, 0));
         }
+
         // NOTE: should do termination before switching page table, so that other
         // threads will trap in by page fault and be handled by `do_exit`
         log::debug!("[Task::do_execve] terminating all threads except the leader");
