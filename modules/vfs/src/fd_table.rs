@@ -7,7 +7,7 @@ use config::fs::MAX_FD_NUM;
 use systype::{RLimit, SysError, SysResult};
 use vfs_core::{File, OpenFlags};
 
-use crate::devfs::{stdio, tty::TTY};
+use crate::devfs::tty::TTY;
 
 pub type Fd = usize;
 

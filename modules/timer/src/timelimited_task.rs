@@ -65,6 +65,10 @@ impl Future for IdleFuture {
     }
 }
 
+pub async fn ksleep_s(sec: usize) {
+    TimeLimitedTaskFuture::new(Duration::from_secs(sec as u64), IdleFuture).await;
+}
+
 pub async fn ksleep_ms(msec: usize) {
     TimeLimitedTaskFuture::new(Duration::from_millis(msec as u64), IdleFuture).await;
 }

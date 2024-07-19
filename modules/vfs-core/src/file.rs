@@ -94,10 +94,10 @@ pub trait File: Send + Sync + DowncastSync {
         let virtio_blk = device
             .downcast_arc::<VirtIoBlkDev>()
             .unwrap_or_else(|_| unreachable!());
-        let buffer_caches = virtio_blk.cache.lock();
+        let mut buffer_caches = virtio_blk.cache.lock();
         for offset in (offset_aligned..offset_aligned + len).step_by(BLOCK_SIZE) {
             let block_id = inode.get_blk_idx(offset)?;
-            let buffer_head = buffer_caches.get_buffer_head(block_id as usize);
+            let buffer_head = buffer_caches.get_buffer_head_or_create(block_id as usize);
             page.insert_buffer_head(buffer_head);
         }
 
@@ -326,14 +326,14 @@ impl dyn File {
             let virtio_blk = device
                 .downcast_arc::<VirtIoBlkDev>()
                 .unwrap_or_else(|_| unreachable!());
-            let buffer_caches = virtio_blk.cache.lock();
+            let mut buffer_caches = virtio_blk.cache.lock();
             for offset_aligned_page in (round_down_to_page(old_size)..new_size).step_by(PAGE_SIZE) {
                 let page = page_cache.get_page(offset_aligned_page).unwrap();
                 for i in page.buffer_head_cnts()..MAX_BUFFERS_PER_PAGE {
                     let offset_aligned_block = offset_aligned_page + i * BLOCK_SIZE;
                     if offset_aligned_block < new_size {
                         let blk_idx = inode.get_blk_idx(offset_aligned_block)?;
-                        let buffer_head = buffer_caches.get_buffer_head(blk_idx);
+                        let buffer_head = buffer_caches.get_buffer_head_or_create(blk_idx);
                         page.insert_buffer_head(buffer_head);
                     }
                 }

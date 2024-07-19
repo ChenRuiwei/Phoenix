@@ -234,6 +234,7 @@ dependencies = [
  "config",
  "crate_interface",
  "device-core",
+ "early-print",
  "fdt",
  "log",
  "memory",

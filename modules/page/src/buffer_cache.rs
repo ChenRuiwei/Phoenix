@@ -13,7 +13,7 @@ use config::{
     board::BLOCK_SIZE,
     mm::{
         block_page_id, is_aligned_to_block, BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE,
-        MAX_BUFFER_PAGES, PAGE_SIZE,
+        MAX_BUFFER_HEADS, MAX_BUFFER_PAGES, PAGE_SIZE,
     },
 };
 use device_core::BlockDriverOps;
@@ -35,7 +35,7 @@ pub struct BufferCache {
     // NOTE: Stores all accesses to block device. Some of them will be attached
     // to pages above, while others with file related will be attached to pages
     // stored in address space.
-    buffer_heads: BTreeMap<usize, Arc<BufferHead>>,
+    pub buffer_heads: LruCache<usize, Arc<BufferHead>>,
 }
 
 impl BufferCache {
@@ -43,7 +43,7 @@ impl BufferCache {
         Self {
             device: None,
             pages: LruCache::new(NonZeroUsize::new(MAX_BUFFER_PAGES).unwrap()),
-            buffer_heads: BTreeMap::new(),
+            buffer_heads: LruCache::new(NonZeroUsize::new(MAX_BUFFER_HEADS).unwrap()),
         }
     }
 
@@ -100,13 +100,20 @@ impl BufferCache {
             // {block_id}" );
             let buffer_head = BufferHead::new_arc(block_id);
             buffer_head.inc_acc_cnt();
-            self.buffer_heads.insert(block_id, buffer_head.clone());
+            self.buffer_heads.push(block_id, buffer_head.clone());
             buffer_head
         }
     }
 
-    pub fn get_buffer_head(&self, block_id: usize) -> Arc<BufferHead> {
-        self.buffer_heads.get(&block_id).cloned().unwrap()
+    pub fn get_buffer_head_or_create(&mut self, block_id: usize) -> Arc<BufferHead> {
+        // self.buffer_heads.get(&block_id).cloned().unwrap()
+        if let Some(buffer_head) = self.buffer_heads.get_mut(&block_id) {
+            buffer_head.clone()
+        } else {
+            let buffer_head = BufferHead::new_arc(block_id);
+            self.buffer_heads.push(block_id, buffer_head.clone());
+            buffer_head
+        }
     }
 }
 

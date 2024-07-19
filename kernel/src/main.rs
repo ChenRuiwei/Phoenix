@@ -11,7 +11,6 @@
 #![feature(stdsimd)]
 #![feature(riscv_ext_intrinsics)]
 #![feature(map_try_insert)]
-#![feature(format_args_nl)]
 #![allow(clippy::mut_from_ref)]
 #![feature(new_uninit)]
 
@@ -32,6 +31,8 @@ use core::{
 };
 
 use ::net::init_network;
+use driver::BLOCK_DEVICE;
+use timer::timelimited_task::ksleep_s;
 
 use crate::processor::hart;
 
@@ -71,6 +72,16 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
         vfs::init();
         task::spawn_kernel_task(async move {
             task::spawn_init_proc();
+        });
+
+        task::spawn_kernel_task(async move {
+            loop {
+                log::error!(
+                    "buffer head cnts {}",
+                    BLOCK_DEVICE.get().unwrap().buffer_head_cnts()
+                );
+                ksleep_s(3).await;
+            }
         });
 
         #[cfg(feature = "smp")]

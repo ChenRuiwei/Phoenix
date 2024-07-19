@@ -4,7 +4,7 @@ use core::{cmp, ptr::drop_in_place};
 use async_trait::async_trait;
 use async_utils::{block_on, get_waker, yield_now};
 use device_core::{CharDevice, DeviceMajor};
-use driver::{get_device_manager, get_device_manager_mut, print, serial::Serial};
+use driver::{_print, get_device_manager, get_device_manager_mut, serial::Serial};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use spin::Once;
 use strum::FromRepr;
@@ -222,13 +222,6 @@ impl File for TtyFile {
     }
 
     async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
-        let utf8_buf: Vec<u8> = buf.iter().filter(|c| c.is_ascii()).map(|c| *c).collect();
-        // if PRINT_LOCKED {
-        //     let _locked = PRINT_MUTEX.lock().await;
-        //     print!("{}", unsafe { core::str::from_utf8_unchecked(&utf8_buf) });
-        // } else {
-        //     print!("{}", unsafe { core::str::from_utf8_unchecked(&utf8_buf) });
-        // }
         let char_dev = &self
             .inode()
             .downcast_arc::<TtyInode>()

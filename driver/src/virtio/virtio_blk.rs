@@ -55,6 +55,10 @@ impl BlockDriverOps for VirtIoBlkDev {
     fn write_block(&self, block_id: usize, buf: &[u8]) {
         self.cache.lock().write_block(block_id, buf)
     }
+
+    fn buffer_head_cnts(&self) -> usize {
+        self.cache.lock().buffer_heads.len()
+    }
 }
 
 impl VirtIoBlkDev {

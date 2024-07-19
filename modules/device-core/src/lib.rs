@@ -98,6 +98,8 @@ pub trait BlockDriverOps: BaseDriverOps {
 
     fn block_size(&self) -> usize;
 
+    fn buffer_head_cnts(&self) -> usize;
+
     /// Read data form block to buffer
     fn base_read_block(&self, block_id: usize, buf: &mut [u8]);
 

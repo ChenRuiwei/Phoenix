@@ -14,6 +14,7 @@ use core::fmt::{self, Write};
 use async_utils::block_on;
 use crate_interface::call_interface;
 use device_core::{BlockDriverOps, CharDevice, DeviceMajor};
+use early_print::EarlyStdout;
 use manager::DeviceManager;
 use memory::PageTable;
 use spin::Once;
@@ -94,42 +95,26 @@ impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         if let Some(serial) = unsafe { UART0.lock().as_mut() } {
             block_on(async { serial.write(s.as_bytes()).await });
-            return Ok(());
+            Ok(())
+        } else {
+            EarlyStdout.write_str(s)
         }
-        for s in s.as_bytes() {
-            console_putchar(*s as usize);
-        }
-        Ok(())
     }
 }
 
-pub fn print(args: fmt::Arguments<'_>) {
+pub fn _print(args: fmt::Arguments) {
     Stdout.write_fmt(args).unwrap();
 }
 
-/// print string macro
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => {{
-        $crate::print(format_args!($($arg)*));
+        $crate::_print(format_args!($($arg)*));
     }};
 }
 
-/// println string macro
 #[macro_export]
 macro_rules! println {
-    () => {
-        $crate::print!("\n")
-    };
-    ($($arg:tt)*) => {{
-        $crate::print(format_args_nl!($($arg)*));
-    }};
-}
-
-pub fn shutdown() -> ! {
-    sbi::shutdown()
-}
-
-pub fn set_timer(timer: usize) {
-    sbi::set_timer(timer)
+    () => ($crate::print!("\n"));
+    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
 }

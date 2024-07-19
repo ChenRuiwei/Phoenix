@@ -3,7 +3,7 @@
 
 use core::{fmt, fmt::Write};
 
-struct EarlyStdout;
+pub struct EarlyStdout;
 
 impl fmt::Write for EarlyStdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {

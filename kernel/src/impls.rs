@@ -14,7 +14,7 @@ use crate::{
 
 /// Print msg with color
 pub fn print_in_color(args: fmt::Arguments, color_code: u8) {
-    driver::print(with_color!(color_code, "{}", args));
+    driver::_print(with_color!(color_code, "{}", args));
 }
 
 struct LogIfImpl;
@@ -51,7 +51,7 @@ impl LogIf for LogIfImpl {
         } else {
             "-".to_string()
         };
-        driver::print(with_color!(
+        driver::_print(with_color!(
             ColorCode::White,
             "{}{}{} {} \r\n",
             with_color!(level_color, "[{:>5}]", level),

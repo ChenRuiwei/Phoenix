@@ -7,7 +7,7 @@ use core::{
 
 use arch::interrupts::disable_interrupt;
 use backtrace::backtrace;
-use driver::shutdown;
+use driver::sbi::shutdown;
 use early_print::early_println;
 use logging::LOG_INITIALIZED;
 

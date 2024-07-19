@@ -19,7 +19,6 @@ use crate::{
 
 mod null;
 mod rtc;
-pub mod stdio;
 pub mod tty;
 mod zero;
 

@@ -12,14 +12,15 @@ use core::{
     ops::{self, Range},
 };
 
+use arch::memory::{sfence_vma_all, sfence_vma_vaddr};
 use async_utils::block_on;
 use config::{
     board::MEMORY_END,
     mm::{
-        align_offset_to_page, is_aligned_to_page, DL_INTERP_OFFSET, MMAP_PRE_ALLOC_PAGES,
-        PAGE_SIZE, USER_STACK_PRE_ALLOC_SIZE, USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END,
-        U_SEG_HEAP_BEG, U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG,
-        U_SEG_STACK_END, VIRT_RAM_OFFSET,
+        align_offset_to_page, is_aligned_to_page, round_down_to_page, DL_INTERP_OFFSET,
+        MMAP_PRE_ALLOC_PAGES, PAGE_SIZE, USER_ELF_PRE_ALLOC_PAGE_CNT, USER_STACK_PRE_ALLOC_SIZE,
+        USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END,
+        U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
     },
 };
 use log::info;
@@ -156,7 +157,7 @@ impl MemorySpace {
             if ph_flags.is_execute() {
                 map_perm |= MapPerm::X;
             }
-            let vm_area = VmArea::new(start_va..end_va, map_perm, VmAreaType::Elf);
+            let mut vm_area = VmArea::new(start_va..end_va, map_perm, VmAreaType::Elf);
 
             log::debug!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?} start...",);
 
@@ -171,13 +172,53 @@ impl MemorySpace {
                 ph.mem_size()
             );
 
-            self.push_vma_with_data(
-                vm_area,
-                map_offset,
-                &elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize],
-            );
-
-            log::info!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?}",);
+            if ph.file_size() == ph.mem_size() && is_aligned_to_page(ph.offset() as usize) {
+                assert!(!map_perm.contains(MapPerm::W));
+                // NOTE: only add cow flag in elf page newly mapped.
+                // FIXME: mprotect is not checked yet
+                // WARN: the underlying elf file page cache may be edited, may cause unknown
+                // behavior
+                let mut pre_alloc_page_cnt = 0;
+                for vpn in vm_area.range_vpn() {
+                    let start_offset = ph.offset() as usize;
+                    let offset = start_offset + (vpn - vm_area.start_vpn()) * PAGE_SIZE;
+                    let offset_aligned = round_down_to_page(offset);
+                    if let Some(page) =
+                        block_on(async { elf_file.get_page_at(offset_aligned).await }).unwrap()
+                    {
+                        if pre_alloc_page_cnt < USER_ELF_PRE_ALLOC_PAGE_CNT {
+                            let new_page = Page::new();
+                            // WARN: area outer than region may should be set to zero
+                            new_page.copy_from_slice(page.bytes_array());
+                            self.page_table_mut()
+                                .map(vpn, new_page.ppn(), map_perm.into());
+                            vm_area.pages.insert(vpn, new_page);
+                            unsafe { sfence_vma_vaddr(vpn.into()) };
+                        } else {
+                            let (pte_flags, ppn) = {
+                                let mut new_flags: PTEFlags = map_perm.into();
+                                new_flags |= PTEFlags::COW;
+                                new_flags.remove(PTEFlags::W);
+                                (new_flags, page.ppn())
+                            };
+                            self.page_table_mut().map(vpn, ppn, pte_flags);
+                            vm_area.pages.insert(vpn, page);
+                            unsafe { sfence_vma_vaddr(vpn.into()) };
+                        }
+                        pre_alloc_page_cnt += 1;
+                    } else {
+                        break;
+                    }
+                }
+                self.push_vma_lazily(vm_area);
+                log::info!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?}",);
+            } else {
+                self.push_vma_with_data(
+                    vm_area,
+                    map_offset,
+                    &elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize],
+                );
+            }
         }
 
         (max_end_vpn, header_va.into())
