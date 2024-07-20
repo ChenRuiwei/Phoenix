@@ -118,6 +118,90 @@ impl MemorySpace {
         unsafe { &mut *self.page_table.get() }
     }
 
+    /// Include sections in elf and TrapContext and user stack,
+    /// also returns user_sp and entry point.
+    // PERF: resolve elf file lazily
+    // TODO: dynamic interpreter
+    pub fn parse_and_map_elf_data(&mut self, elf_data: &[u8]) -> (usize, Vec<AuxHeader>) {
+        const ELF_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
+
+        // map program headers of elf, with U flag
+        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
+        let elf_header = elf.header;
+        assert_eq!(elf_header.pt1.magic, ELF_MAGIC, "invalid elf!");
+        let entry_point = elf_header.pt2.entry_point() as usize;
+        let ph_entry_size = elf_header.pt2.ph_entry_size() as usize;
+        let ph_count = elf_header.pt2.ph_count() as usize;
+
+        let mut auxv = generate_early_auxv(ph_entry_size, ph_count, entry_point);
+
+        auxv.push(AuxHeader::new(AT_BASE, 0));
+
+        let (max_end_vpn, header_va) = self.map_elf_data(&elf, 0.into());
+
+        let ph_head_addr = header_va.0 + elf.header.pt2.ph_offset() as usize;
+        log::debug!("[from_elf] AT_PHDR  ph_head_addr is {ph_head_addr:x} ");
+        auxv.push(AuxHeader::new(AT_PHDR, ph_head_addr));
+
+        (entry_point, auxv)
+    }
+
+    pub fn map_elf_data(&mut self, elf: &ElfFile, offset: VirtAddr) -> (VirtPageNum, VirtAddr) {
+        let elf_header = elf.header;
+        let ph_count = elf_header.pt2.ph_count();
+
+        let mut max_end_vpn = offset.floor();
+        let mut header_va = 0;
+        let mut has_found_header_va = false;
+        info!("[map_elf]: entry point {:#x}", elf.header.pt2.entry_point());
+
+        for i in 0..ph_count {
+            let ph = elf.program_header(i).unwrap();
+            if ph.get_type().unwrap() != xmas_elf::program::Type::Load {
+                continue;
+            }
+            let start_va: VirtAddr = (ph.virtual_addr() as usize + offset.0).into();
+            let end_va: VirtAddr = ((ph.virtual_addr() + ph.mem_size()) as usize + offset.0).into();
+            if !has_found_header_va {
+                header_va = start_va.0;
+                has_found_header_va = true;
+            }
+            let mut map_perm = MapPerm::U;
+            let ph_flags = ph.flags();
+            if ph_flags.is_read() {
+                map_perm |= MapPerm::R;
+            }
+            if ph_flags.is_write() {
+                map_perm |= MapPerm::W;
+            }
+            if ph_flags.is_execute() {
+                map_perm |= MapPerm::X;
+            }
+            let mut vm_area = VmArea::new(start_va..end_va, map_perm, VmAreaType::Elf);
+
+            log::debug!("[map_elf] [{start_va:#x}, {end_va:#x}], map_perm: {map_perm:?} start...",);
+
+            max_end_vpn = vm_area.end_vpn();
+
+            let map_offset = start_va - start_va.round_down();
+
+            log::debug!(
+                "[map_elf] ph offset {:#x}, file size {:#x}, mem size {:#x}",
+                ph.offset(),
+                ph.file_size(),
+                ph.mem_size()
+            );
+
+            self.push_vma_with_data(
+                vm_area,
+                map_offset,
+                &elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize],
+            );
+        }
+
+        (max_end_vpn, header_va.into())
+    }
+
     /// Map the sections in the elf.
     ///
     /// Return the max end vpn and the first section's va.

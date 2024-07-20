@@ -4,6 +4,7 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
+use driver::sbi::shutdown;
 use core::{
     cell::SyncUnsafeCell,
     sync::atomic::{AtomicI32, AtomicUsize, Ordering},

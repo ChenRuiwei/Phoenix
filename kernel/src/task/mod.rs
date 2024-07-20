@@ -6,7 +6,7 @@ pub mod signal;
 pub mod task;
 mod tid;
 
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{string::ToString, sync::Arc, vec, vec::Vec};
 
 use async_utils::block_on;
 use config::mm::USER_STACK_SIZE;
@@ -18,26 +18,24 @@ use vfs::sys_root_dentry;
 use vfs_core::Path;
 
 use crate::{
+    loader::get_app_data_by_name,
     mm::memory_space::{self, init_stack, MemorySpace},
     processor::env::within_sum,
     trap::TrapContext,
 };
 
 pub fn spawn_init_proc() {
-    let init_proc_path = "/final_tests";
-    let argv = Vec::new();
-    let envp = Vec::new();
-
-    let file = Path::new(sys_root_dentry(), sys_root_dentry(), init_proc_path)
-        .walk()
-        .unwrap()
-        .open()
-        .unwrap();
-    let elf_data = block_on(async { file.read_all().await }).unwrap();
+    let elf_data = get_app_data_by_name("final_tests").unwrap();
+    let argv = vec!["final_tests".to_string()];
+    let envp = vec![
+        "PATH=/:/bin:/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin:".to_string(),
+        "LD_LIBRARY_PATH=/:/lib:/lib64/lp64d:/usr/lib:/usr/local/lib:".to_string(),
+        "TERM=screen".to_string(),
+    ];
 
     let mut memory_space = MemorySpace::new_user();
     unsafe { memory_space.switch_page_table() };
-    let (entry, auxv) = memory_space.parse_and_map_elf(file, &elf_data);
+    let (entry, auxv) = memory_space.parse_and_map_elf_data(&elf_data);
     let sp_init = memory_space.alloc_stack_lazily(USER_STACK_SIZE);
     let (sp, argc, argv, envp) = within_sum(|| init_stack(sp_init, argv, envp, auxv));
     memory_space.alloc_heap_lazily();
