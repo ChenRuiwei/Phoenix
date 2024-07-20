@@ -10,20 +10,15 @@ use user_lib::{execve, fork, wait, waitpid};
 #[macro_use]
 extern crate user_lib;
 
-// const TESTCASES: [&str; 0] = [];
-
 const TESTCASES: [&str; 8] = [
-    // "cyclictest_testcode.sh",
     "busybox_testcode.sh",
     "lua_testcode.sh",
     "time-test",
     "libc-bench",
     "libctest_testcode.sh",
-    "iozone_testcode.sh",
     "lmbench_testcode.sh",
+    "iozone_testcode.sh",
     "unixbench_testcode.sh",
-    // "netperf_testcode.sh",
-    // "iperf_testcode.sh",
 ];
 
 #[no_mangle]
@@ -52,15 +47,13 @@ fn main() -> i32 {
                 waitpid(pid as usize, &mut exit_code);
             }
         }
-        println!(" !TEST FINISH! ");
     } else {
         loop {
             let mut exit_code: i32 = 0;
-            let _pid = wait(&mut exit_code);
-            // println!(
-            //     "[initproc] Released a zombie process, pid={}, exit_code={}",
-            //     pid, exit_code,
-            // );
+            let pid = wait(&mut exit_code);
+            if pid < 0 {
+                break;
+            }
         }
     }
     0

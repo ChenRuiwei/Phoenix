@@ -14,7 +14,7 @@ pub const KERNEL_START_PHYS: usize = RAM_START + KERNEL_OFFSET;
 pub const KERNEL_START: usize = VIRT_START + KERNEL_OFFSET;
 
 pub const KERNEL_STACK_SIZE: usize = 64 * 1024;
-pub const KERNEL_HEAP_SIZE: usize = 48 * 1024 * 1024;
+pub const KERNEL_HEAP_SIZE: usize = 64 * 1024 * 1024;
 
 register_mut_const!(pub DTB_ADDR, usize, 0);
 
