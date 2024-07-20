@@ -123,21 +123,21 @@ impl DeviceManager {
                             continue;
                         }
                     }
-                    VirtIoDevType::Network => {
-                        match NetDevice::try_new(transport){
-                            Ok(net) =>{
-                                init_network(net, false);
-                                init_net = true;
-                                continue;
-                            },
-                            Err(e) =>
-                            error!(
-                                "[virtio-net] failed to initialize MMIO device at [PA:{:#x}, PA:{:#x}), {e:?}",
-                                base_paddr,
-                                base_paddr + size
-                            )
-                        };
-                    }
+                    // VirtIoDevType::Network => {
+                    //     match NetDevice::try_new(transport){
+                    //         Ok(net) =>{
+                    //             init_network(net, false);
+                    //             init_net = true;
+                    //             continue;
+                    //         },
+                    //         Err(e) =>
+                    //         error!(
+                    //             "[virtio-net] failed to initialize MMIO device at [PA:{:#x},
+                    // PA:{:#x}), {e:?}",             base_paddr,
+                    //             base_paddr + size
+                    //         )
+                    //     };
+                    // }
                     _ => {
                         warn!(
                             "Unsupported VirtIO device type: {:?}",
