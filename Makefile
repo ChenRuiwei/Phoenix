@@ -4,6 +4,9 @@ BOARD := qemu
 
 NET ?=n # 是否启用VirtioNet设备，如果不开启则使用本地Loopback设备
 
+# For submit
+export PATH := /opt/riscv64-linux-musl-cross/bin:$(PATH)
+
 export TARGET = riscv64gc-unknown-none-elf
 export MODE = debug
 export LOG = error
