@@ -1,4 +1,4 @@
-use config::{mm::HART_START_ADDR, processor::HART_NUM};
+use config::{mm::HART_START_ADDR, processor::MAX_HARTS};
 use driver::{println, sbi};
 
 const BOOT_BANNER: &str = r#"
@@ -36,7 +36,7 @@ pub fn clear_bss() {
 }
 
 pub fn start_harts(hart_id: usize) {
-    for i in 0..HART_NUM {
+    for i in 0..MAX_HARTS {
         if i == hart_id {
             continue;
         }

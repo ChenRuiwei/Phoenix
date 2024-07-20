@@ -1,1 +1,1 @@
-pub const HART_NUM: usize = 4;
+pub const MAX_HARTS: usize = 4;

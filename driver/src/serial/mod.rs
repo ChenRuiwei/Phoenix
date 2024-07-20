@@ -10,7 +10,7 @@ use core::{
 
 use async_trait::async_trait;
 use async_utils::{block_on, get_waker};
-use config::mm::VIRT_RAM_OFFSET;
+use config::{board::UART_BUF_LEN, mm::VIRT_RAM_OFFSET};
 use device_core::{BaseDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
 use fdt::Fdt;
 use memory::pte::PTEFlags;
@@ -33,7 +33,7 @@ trait UartDriver: Send + Sync {
 pub struct Serial {
     meta: DeviceMeta,
     inner: UnsafeCell<Box<dyn UartDriver>>,
-    read_buf: SpinNoIrqLock<RingBuffer<512>>, // Hard-coded buffer size
+    read_buf: SpinNoIrqLock<RingBuffer<UART_BUF_LEN>>, // Hard-coded buffer size
     /// Hold waker of pollin tasks.
     pollin_queue: SpinNoIrqLock<VecDeque<Waker>>,
 }
@@ -243,15 +243,6 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
                 )
             };
             Serial::new(base_paddr, size, irq_number, Box::new(uart))
-        }
-        "sifive,uart0" => {
-            todo!()
-            // sifive_u QEMU (FU540)
-            // let uart = sifive::SifiveUart::new(
-            //     base_vaddr,
-            //     500 * 1000 * 1000, // 500 MHz hard coded for now
-            // );
-            // Serial::new(base_paddr, size, irq_number, Box::new(uart))
         }
         _ => panic!("Unsupported serial console"),
     }

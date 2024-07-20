@@ -1,4 +1,4 @@
-use config::{mm::USER_STACK_SIZE, processor::HART_NUM};
+use config::{process::USER_STACK_SIZE, processor::MAX_HARTS};
 use systype::{RLimit, Rusage, SysError, SyscallResult};
 
 use super::Syscall;
@@ -75,8 +75,8 @@ impl Syscall<'_> {
         if old_limit.not_null() {
             let limit = match resource {
                 RLIMIT_CPU => RLimit {
-                    rlim_cur: HART_NUM,
-                    rlim_max: HART_NUM,
+                    rlim_cur: MAX_HARTS,
+                    rlim_max: MAX_HARTS,
                 },
                 RLIMIT_STACK => RLimit {
                     rlim_cur: USER_STACK_SIZE,
