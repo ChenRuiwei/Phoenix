@@ -1,10 +1,15 @@
 # Building variables
 DOCKER_NAME = phoenix
 BOARD := qemu
+
+NET ?=n # 是否启用VirtioNet设备，如果不开启则使用本地Loopback设备
+
 export TARGET = riscv64gc-unknown-none-elf
 export MODE = debug
 export LOG = error
 
+export Phoenix_IP=$(IP)
+export Phoenix_GW=$(GW)
 
 # Tools
 OBJDUMP = rust-objdump --arch-name=riscv64
@@ -27,21 +32,24 @@ USER_APPS := $(wildcard $(USER_APPS_DIR)/*.rs)
 USER_ELFS := $(patsubst $(USER_APPS_DIR)/%.rs, $(TARGET_DIR)/%, $(USER_APPS))
 USER_BINS := $(patsubst $(USER_APPS_DIR)/%.rs, $(TARGET_DIR)/%.bin, $(USER_APPS))
 
-FS_IMG_DIR := ./fs-img
+FS_IMG_DIR := .
 FS_IMG := $(FS_IMG_DIR)/sdcard.img
-TEST_DIR := ./testcase/24/preliminary/
+TEST := 24/final
+# FS := fat32
+FS := ext4
+TEST_DIR := ./testcase/$(TEST)
+# TEST_DIR := ./testcase/24/preliminary/
 
 # Crate features
-export STRACE :=
+export STRACE := 
 export SMP :=
 export PREEMPT :=
-
 
 # Args
 DISASM_ARGS = -d
 
 BOOTLOADER := default
-CPUS := 2
+CPUS := 1
 QEMU_ARGS :=
 ifeq ($(SUBMIT), )
 	QEMU_ARGS += -m 512M
@@ -67,6 +75,20 @@ DOCKER_RUN_ARGS += -w /mnt
 DOCKER_RUN_ARGS += $(DOCKER_NAME)
 DOCKER_RUN_ARGS += bash
 
+# Net 
+IP ?= 10.0.2.15
+GW ?= 10.0.2.2
+
+ifeq ($(NET),y)
+$(info "enabled qemu net device")
+# 指定该网络设备使用 net0 这个网络后端，使用用户模式网络。
+# 设置端口转发，将主机的 TCP 端口 5555 和 UDP 端口 5555 分别转发到虚拟机的 TCP端口 5555 和 UDP 端口 5555。
+QEMU_ARGS += -device virtio-net-device,netdev=net0 \
+             -netdev user,id=net0,hostfwd=tcp::5555-:5555,hostfwd=udp::5555-:5555
+QEMU_ARGS += -d guest_errors\
+			 -d unimp
+
+endif
 
 # File targets
 $(KERNEL_ASM): $(KERNEL_ELF)
@@ -128,24 +150,37 @@ user:
 PHONY += fs-img
 fs-img:
 	@echo "building fs-img..."
-	@rm -rf $(FS_IMG)
+	@rm -f $(FS_IMG)
 	@mkdir -p $(FS_IMG_DIR)
+	@mkdir -p mnt
+ifeq ($(FS), fat32)
 	@dd if=/dev/zero of=$(FS_IMG) count=1363148 bs=1K
 	@mkfs.vfat -F 32 $(FS_IMG)
 	@echo "making fatfs image by using $(TEST_DIR)"
-	@mkdir -p mnt
 	@mount -t vfat -o user,umask=000,utf8=1 --source $(FS_IMG) --target mnt
+else
+	@dd if=/dev/zero of=$(FS_IMG) count=2048 bs=1M
+	# @mkfs.ext4 $(FS_IMG)
+	@mkfs.ext4  -F -O ^metadata_csum_seed $(FS_IMG)
+	@echo "making ext4 image by using $(TEST_DIR)"
+	@mount $(FS_IMG) mnt
+endif
 	@cp -r $(TEST_DIR)/* mnt
 	@cp -r $(USER_ELFS) mnt
 	@umount mnt
 	@rm -rf mnt
-	@chmod -R 777 $(FS_IMG_DIR)
+	@chmod 777 $(FS_IMG)
 	@echo "building fs-img finished"
 
 PHONY += qemu
 qemu:
 	@echo "start to run kernel in qemu..."
 	$(QEMU) $(QEMU_ARGS)
+
+PHONY += dumpdtb
+dumpdtb:
+	$(QEMU) $(QEMU_ARGS) -machine dumpdtb=riscv64-virt.dtb
+	dtc -I dtb -O dts -o riscv64-virt.dts riscv64-virt.dtb
 
 PHONY += run
 run: qemu

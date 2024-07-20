@@ -4,7 +4,7 @@ use bitflags::*;
 
 pub const NSIG: usize = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Sig(i32);
 
@@ -70,6 +70,11 @@ impl fmt::Display for Sig {
         write!(f, "{}", self.0)
     }
 }
+impl fmt::Debug for Sig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", SigSet::from(*self))
+    }
+}
 
 impl From<usize> for Sig {
     fn from(item: usize) -> Self {
@@ -78,7 +83,7 @@ impl From<usize> for Sig {
 }
 
 bitflags! {
-    #[derive(Copy, Clone, Default)]
+    #[derive(Copy, Clone, Default, Debug)]
     pub struct SigSet: u64 {
         const SIGHUP    = 1 << 0 ;
         const SIGINT    = 1 << 1 ;
@@ -112,6 +117,11 @@ bitflags! {
         const SIGPWR    = 1 << 29;
         const SIGSYS    = 1 << 30;
         const SIGLEGACYMAX  = 1 << 31;
+
+        // TODO: rt signal
+        const SIGRT1    = 1 << (33 - 1);   // real time signal min
+        const SIGRT2    = 1 << (34 - 1);
+        const SIGRT3    = 1 << (34 - 1);
         const SIGMAX   = 1 << 63;
         // 下面信号通常是由程序中的错误或异常操作触发的，如非法内存访问（导致
         // SIGSEGV）、硬件异常（可能导致
@@ -143,8 +153,8 @@ impl From<Sig> for SigSet {
     }
 }
 
-impl fmt::Debug for SigSet {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#018X}", self.bits())
-    }
-}
+// impl fmt::Debug for SigSet {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "{:#018X}", self.bits())
+//     }
+// }

@@ -51,9 +51,9 @@ impl TaskManager {
         Ok(())
     }
 
-    // pub fn total_num(&self) -> usize {
-    //     self.0.lock().len()
-    // }
+    pub fn len(&self) -> usize {
+        self.0.lock().len()
+    }
 }
 
 /// PGid -> Process group

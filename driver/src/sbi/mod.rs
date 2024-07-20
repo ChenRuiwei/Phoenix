@@ -1,7 +1,10 @@
 //! SBI call wrappers
 #![allow(unused)]
 
+use alloc::boxed::Box;
 use core::arch::asm;
+
+use async_trait::async_trait;
 
 use super::CharDevice;
 
@@ -59,26 +62,4 @@ pub fn shutdown() -> ! {
 /// use sbi call to start the specific core
 pub fn hart_start(hart_id: usize, start_addr: usize) -> usize {
     sbi_call(SBI_HART_START, hart_id, start_addr, 0)
-}
-
-pub struct SbiChar;
-
-impl SbiChar {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl CharDevice for SbiChar {
-    fn getchar(&self) -> u8 {
-        console_getchar()
-    }
-    fn puts(&self, str: &[u8]) {
-        for s in str {
-            console_putchar(*s as usize);
-        }
-    }
-    fn handle_irq(&self) {
-        todo!()
-    }
 }

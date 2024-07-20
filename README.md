@@ -24,7 +24,7 @@ VisionFive 2 赛道，初赛功能测试满分：
 
 ### 文档
 
-[Phoenix-初赛文档](./docs/Phoenix-初赛文档.pdf)
+[Phoenix-初赛文档](./Phoenix-初赛文档.pdf)
 
 ### 项目结构
 

@@ -6,7 +6,7 @@ use core::time::Duration;
 pub struct TimeVal {
     /// second
     tv_sec: usize,
-    /// millisecond
+    /// microsecond
     tv_usec: usize,
 }
 
@@ -21,7 +21,7 @@ impl From<Duration> for TimeVal {
 
 impl Into<Duration> for TimeVal {
     fn into(self) -> Duration {
-        Duration::new(self.tv_sec as u64, (self.tv_usec * 1000) as u32)
+        Duration::new(self.tv_sec as u64, (self.tv_usec * 1_000) as u32)
     }
 }
 

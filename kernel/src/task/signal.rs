@@ -8,17 +8,12 @@ use core::{
 };
 
 use arch::time::get_time_duration;
-use signal::{
-    action::{Action, ActionType, SigActionFlag},
-    siginfo::{SigDetails, SigInfo},
-    signal_stack::{MContext, UContext},
-    sigset::{Sig, SigSet},
-};
+use signal::*;
 use systype::SysResult;
 use time::timeval::ITimerVal;
 
 use super::Task;
-use crate::{mm::UserWritePtr, processor::hart::current_task, task::task::TaskState};
+use crate::{mm::UserWritePtr, processor::hart::current_task_ref, task::task::TaskState};
 
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
@@ -89,9 +84,15 @@ impl Task {
         }
     }
     fn recv(&self, si: SigInfo) {
+        log::info!(
+            "[Task::recv] tid {} recv {si:?} {:?}",
+            self.tid(),
+            self.with_sig_handlers(|h| h.get(si.sig))
+        );
         self.with_mut_sig_pending(|pending| {
             pending.add(si);
             if self.is_interruptable() && pending.should_wake.contain_signal(si.sig) {
+                log::info!("[Task::recv] tid {} has been woken", { self.tid() });
                 self.wake();
             }
         });
@@ -109,6 +110,7 @@ impl Task {
             .flags
             .contains(SigActionFlag::SA_NOCLDSTOP)
         {
+            log::error!("send sigchld to parent called wait4 will cause bug now");
             parent.receive_siginfo(
                 SigInfo {
                     sig: Sig::SIGCHLD,
@@ -133,95 +135,116 @@ extern "C" {
 /// Signal dispositions and actions are process-wide: if an unhandled signal is
 /// delivered to a thread, then it will affect (terminate, stop, continue, be
 /// ignored in) all members of the thread group.
-pub fn do_signal() -> SysResult<()> {
-    let task = current_task();
+pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
     let old_mask = *task.sig_mask();
-    loop {
-        if let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
-            log::info!("[do signal] Handlering signal: {:?}", si);
-            let action = task.with_sig_handlers(|handlers| handlers.get(si.sig));
-            log::info!("[do signal] {:?}", action);
-            match action.atype {
-                ActionType::Ignore => {}
-                ActionType::Kill => terminate(si.sig),
-                ActionType::Stop => stop(si.sig, &task),
-                ActionType::Cont => cont(si.sig, &task),
-                ActionType::User { entry } => {
-                    // The signal being delivered is also added to the signal mask, unless
-                    // SA_NODEFER was specified when registering the handler.
-                    if !action.flags.contains(SigActionFlag::SA_NODEFER) {
-                        task.sig_mask().add_signal(si.sig)
-                    };
-                    // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
-                    // 这些信息定义在Action的mask字段
-                    *task.sig_mask() |= action.mask;
-                    let cx = task.trap_context_mut();
-                    cx.user_fx.encounter_signal();
-                    let signal_stack = task.sig_stack().take();
-                    let sp = match signal_stack {
-                        Some(s) => {
-                            log::error!("[sigstack] use user defined signal stack. Unimplemented");
-                            s.get_stack_top()
-                        }
-                        None => {
-                            // 如果进程未定义专门的信号栈，
-                            // 用户自定义的信号处理函数将使用进程的普通栈空间，
-                            // 即和其他普通函数相同的栈。这个栈通常就是进程的主栈，
-                            // 也就是在进程启动时由操作系统自动分配的栈。
-                            cx.user_x[2]
-                        }
-                    };
-                    // extend the signal_stack
-                    // 在栈上压入一个UContext，存储trap frame里的寄存器信息
-                    let ucontext_ptr = UserWritePtr::<UContext>::from(sp - size_of::<UContext>());
-                    // TODO: should increase the size of the signal_stack? It seams umi doesn't do
-                    // that
-                    let ucontext = UContext {
-                        uc_link: 0,
-                        uc_sigmask: old_mask,
-                        uc_stack: signal_stack.unwrap_or_default(),
-                        uc_mcontext: MContext {
-                            sepc: cx.sepc,
-                            user_x: cx.user_x,
-                        },
-                    };
-                    log::trace!("[save_context_into_sigstack] ucontext_ptr: {ucontext_ptr:?}");
-                    let mut new_sp = ucontext_ptr.as_usize();
-                    ucontext_ptr.write(&task, ucontext)?;
-                    // user defined void (*sa_handler)(int);
-                    cx.user_x[10] = si.sig.raw();
-                    // if sa_flags contains SA_SIGINFO, It means user defined function is
-                    // void (*sa_sigaction)(int, siginfo_t *, void *ucontext); which two more
-                    // parameters
-                    if action.flags.contains(SigActionFlag::SA_SIGINFO) {
-                        // a2
-                        cx.user_x[12] = new_sp;
-                        let siginfo_ptr =
-                            UserWritePtr::<SigInfo>::from(new_sp - size_of::<SigInfo>());
-                        new_sp = siginfo_ptr.as_usize();
-                        siginfo_ptr.write(&task, si.clone())?;
-                        cx.user_x[11] = new_sp;
+    let cx = task.trap_context_mut();
+
+    while let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
+        let action = task.with_sig_handlers(|handlers| handlers.get(si.sig));
+        log::info!("[do signal] Handlering signal: {:?} {:?}", si, action);
+        if intr && action.flags.contains(SigActionFlag::SA_RESTART) {
+            cx.sepc -= 4;
+            cx.restore_last_user_a0();
+            log::info!("[do_signal] restart syscall");
+            intr = false;
+        }
+        match action.atype {
+            ActionType::Ignore => {}
+            ActionType::Kill => terminate(task, si.sig),
+            ActionType::Stop => stop(task, si.sig),
+            ActionType::Cont => cont(task, si.sig),
+            ActionType::User { entry } => {
+                // The signal being delivered is also added to the signal mask, unless
+                // SA_NODEFER was specified when registering the handler.
+                if !action.flags.contains(SigActionFlag::SA_NODEFER) {
+                    task.sig_mask().add_signal(si.sig)
+                };
+                // 信号定义中可能包含了在处理该信号时需要阻塞的其他信号集。
+                // 这些信息定义在Action的mask字段
+                *task.sig_mask() |= action.mask;
+                cx.user_fx.encounter_signal();
+                let signal_stack = task.sig_stack().take();
+                let sp = match signal_stack {
+                    Some(s) => {
+                        log::error!("[sigstack] use user defined signal stack. Unimplemented");
+                        s.get_stack_top()
                     }
-                    cx.sepc = entry;
-                    // ra (when the sigaction set by user finished,it will return to
-                    // sigreturn_trampoline, which calls sys_sigreturn)
-                    cx.user_x[1] = sigreturn_trampoline as usize;
-                    // sp (it will be used later by sys_sigreturn to restore ucontext)
-                    cx.user_x[2] = new_sp;
-                    task.set_sig_ucontext_ptr(new_sp);
+                    None => {
+                        // 如果进程未定义专门的信号栈，
+                        // 用户自定义的信号处理函数将使用进程的普通栈空间，
+                        // 即和其他普通函数相同的栈。这个栈通常就是进程的主栈，
+                        // 也就是在进程启动时由操作系统自动分配的栈。
+                        cx.user_x[2]
+                    }
+                };
+                // extend the signal_stack
+                // 在栈上压入一个UContext，存储trap frame里的寄存器信息
+                let mut new_sp = sp - size_of::<UContext>();
+                let ucontext_ptr: UserWritePtr<UContext> = new_sp.into();
+                // TODO: should increase the size of the signal_stack? It seams umi doesn't do
+                // that
+                let mut ucontext = UContext {
+                    uc_flags: 0,
+                    uc_link: 0,
+                    uc_sigmask: old_mask,
+                    uc_stack: signal_stack.unwrap_or_default(),
+                    uc_mcontext: MContext {
+                        user_x: cx.user_x,
+                        fpstate: [0; 66],
+                    },
+                };
+                ucontext.uc_mcontext.user_x[0] = cx.sepc;
+                log::trace!("[save_context_into_sigstack] ucontext_ptr: {ucontext_ptr:?}");
+                ucontext_ptr.write(&task, ucontext)?;
+                task.set_sig_ucontext_ptr(new_sp);
+                // user defined void (*sa_handler)(int);
+                cx.user_x[10] = si.sig.raw();
+                // if sa_flags contains SA_SIGINFO, It means user defined function is
+                // void (*sa_sigaction)(int, siginfo_t *, void *ucontext); which two more
+                // parameters
+                // FIXME: `SigInfo` and `UContext` may not be the exact struct in C, which will
+                // cause a random bug that sometimes user will trap into kernel because of
+                // accessing kernel addrress
+                if action.flags.contains(SigActionFlag::SA_SIGINFO) {
+                    // log::error!("[SA_SIGINFO] set ucontext {ucontext:?}");
+                    // a2
+                    cx.user_x[12] = new_sp;
+                    #[derive(Default, Copy, Clone)]
+                    #[repr(C)]
+                    pub struct LinuxSigInfo {
+                        pub si_signo: i32,
+                        pub si_errno: i32,
+                        pub si_code: i32,
+                        pub _pad: [i32; 29],
+                        _align: [u64; 0],
+                    }
+                    let mut siginfo_v = LinuxSigInfo::default();
+                    siginfo_v.si_signo = si.sig.raw() as _;
+                    siginfo_v.si_code = si.code;
+                    new_sp -= size_of::<LinuxSigInfo>();
+                    let siginfo_ptr: UserWritePtr<LinuxSigInfo> = new_sp.into();
+                    siginfo_ptr.write(&task, siginfo_v)?;
+                    cx.user_x[11] = new_sp;
                 }
+                cx.sepc = entry;
+                // ra (when the sigaction set by user finished,it will return to
+                // sigreturn_trampoline, which calls sys_sigreturn)
+                cx.user_x[1] = sigreturn_trampoline as usize;
+                // sp (it will be used later by sys_sigreturn to restore ucontext)
+                cx.user_x[2] = new_sp;
+                cx.user_x[4] = ucontext.uc_mcontext.user_x[4];
+                cx.user_x[3] = ucontext.uc_mcontext.user_x[3];
+                // log::error!("{:#x}", new_sp);
+                break;
             }
-        } else {
-            break;
         }
     }
     Ok(())
 }
 
 /// terminate the process
-fn terminate(sig: Sig) {
+fn terminate(task: &Arc<Task>, sig: Sig) {
     // exit all the memers of a thread group
-    let task = current_task();
     task.with_thread_group(|tg| {
         for t in tg.iter() {
             t.set_zombie();
@@ -230,7 +253,7 @@ fn terminate(sig: Sig) {
     // 将信号放入低7位 (第8位是core dump标志,在gdb调试崩溃程序中用到)
     task.set_exit_code(sig.raw() as i32 & 0x7F);
 }
-fn stop(sig: Sig, task: &Arc<Task>) {
+fn stop(task: &Arc<Task>, sig: Sig) {
     log::warn!("[do_signal] task stopped!");
     task.with_mut_thread_group(|tg| {
         for t in tg.iter() {
@@ -240,8 +263,9 @@ fn stop(sig: Sig, task: &Arc<Task>) {
     });
     task.notify_parent(SigInfo::CLD_STOPPED, sig);
 }
+
 /// continue the process if it is currently stopped
-fn cont(sig: Sig, task: &Arc<Task>) {
+fn cont(task: &Arc<Task>, sig: Sig) {
     log::warn!("[do_signal] task continue");
     task.with_mut_thread_group(|tg| {
         for t in tg.iter() {
@@ -285,7 +309,7 @@ impl ITimer {
         Self {
             interval: Duration::ZERO,
             next_expire: Duration::ZERO,
-            now: || current_task().get_process_utime(),
+            now: || current_task_ref().get_process_utime(),
             activated: false,
             sig: Sig::SIGVTALRM,
         }
@@ -301,7 +325,7 @@ impl ITimer {
         Self {
             interval: Duration::ZERO,
             next_expire: Duration::ZERO,
-            now: || current_task().get_process_cputime(),
+            now: || current_task_ref().get_process_cputime(),
             activated: false,
             sig: Sig::SIGPROF,
         }
@@ -317,7 +341,7 @@ impl ITimer {
                 self.activated = false;
             }
             self.next_expire = now + self.interval;
-            current_task().receive_siginfo(
+            current_task_ref().receive_siginfo(
                 SigInfo {
                     sig: self.sig,
                     // The SI-TIMER value indicates that the signal was triggered by a timer

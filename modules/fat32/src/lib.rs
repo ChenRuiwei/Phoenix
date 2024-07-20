@@ -4,7 +4,7 @@
 
 use alloc::sync::Arc;
 
-use driver::BlockDevice;
+use device_core::BlockDriverOps;
 use fatfs::{DefaultTimeProvider, Dir, DirIter, Error, File, FileSystem, LossyOemCpConverter};
 use sync::mutex::SpinNoIrqLock;
 use systype::SysError;
@@ -42,7 +42,7 @@ pub const fn as_sys_err(err: fatfs::Error<()>) -> systype::SysError {
 pub struct DiskCursor {
     sector: u64,
     offset: usize,
-    blk_dev: Arc<dyn BlockDevice>,
+    blk_dev: Arc<dyn BlockDriverOps>,
 }
 
 impl DiskCursor {
@@ -79,7 +79,7 @@ impl fatfs::Read for DiskCursor {
         // 如果 start 不是 0 或者 len 不是 512
         let read_size = if self.offset != 0 || buf.len() < 512 {
             let mut data = vec![0u8; 512];
-            self.blk_dev.read_blocks(self.sector as usize, &mut data);
+            self.blk_dev.read_block(self.sector as usize, &mut data);
 
             let start = self.offset;
             let end = (self.offset + buf.len()).min(512);
@@ -92,7 +92,7 @@ impl fatfs::Read for DiskCursor {
             assert!(rlen % 0x200 == 0);
             // 如果不用同一个数组 会导致读取数据的时候出现问题
             let mut data = vec![0u8; rlen];
-            self.blk_dev.read_blocks(self.sector as usize, &mut data);
+            self.blk_dev.read_block(self.sector as usize, &mut data);
             buf[..rlen].copy_from_slice(&data);
             rlen
         };
@@ -112,20 +112,20 @@ impl fatfs::Write for DiskCursor {
         // 如果 start 不是 0 或者 len 不是 512
         let write_size = if self.offset != 0 || buf.len() < 512 {
             let mut data = vec![0u8; 512];
-            self.blk_dev.read_blocks(self.sector as usize, &mut data);
+            self.blk_dev.read_block(self.sector as usize, &mut data);
 
             let start = self.offset;
             let end = (self.offset + buf.len()).min(512);
 
             data[start..end].clone_from_slice(&buf[..end - start]);
-            self.blk_dev.write_blocks(self.sector as usize, &mut data);
+            self.blk_dev.write_block(self.sector as usize, &mut data);
 
             end - start
         } else {
             // should copy data from buffer
             let mut data = vec![0u8; 512];
             data.copy_from_slice(&buf[..512]);
-            self.blk_dev.write_blocks(self.sector as usize, &data);
+            self.blk_dev.write_block(self.sector as usize, &data);
             512
         };
 

@@ -7,6 +7,8 @@ use core::{
     fmt::{self, Debug},
     intrinsics::{atomic_load_acquire, size_of},
     marker::PhantomData,
+    mem,
+    net::Ipv4Addr,
     ops::{self, ControlFlow},
 };
 
@@ -14,8 +16,10 @@ use memory::VirtAddr;
 use riscv::register::scause;
 use systype::{SysError, SysResult};
 
+use super::memory_space::vm_area::MapPerm;
 use crate::{
-    processor::env::SumGuard,
+    net::{SaFamily, SockAddr, SockAddrIn, SockAddrIn6},
+    processor::{env::SumGuard, hart::current_task_ref},
     task::Task,
     trap::{
         kernel_trap::{set_kernel_user_rw_trap, will_read_fail, will_write_fail},
@@ -63,7 +67,7 @@ macro_rules! impl_fmt {
     ($name:ident) => {
         impl<T: Clone + Copy + 'static> fmt::Display for $name<T> {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "{}({})", stringify!($name), self.as_usize())
+                write!(f, "{}({:#x})", stringify!($name), self.as_usize())
             }
         }
 
@@ -385,12 +389,18 @@ impl<T: Clone + Copy + 'static, P: Write> UserPtr<T, P> {
 
     pub fn write(self, task: &Arc<Task>, val: T) -> SysResult<()> {
         debug_assert!(self.not_null());
+        if !Arc::ptr_eq(task, current_task_ref()) {
+            unsafe { task.switch_page_table() };
+        }
         task.just_ensure_user_area(
             VirtAddr::from(self.as_usize()),
             size_of::<T>(),
             PageFaultAccessType::RW,
         )?;
         unsafe { core::ptr::write(self.ptr, val) };
+        if !Arc::ptr_eq(task, current_task_ref()) {
+            unsafe { current_task_ref().switch_page_table() };
+        }
         Ok(())
     }
 
@@ -475,7 +485,7 @@ impl<T: Clone + Copy + 'static, P: Policy> From<usize> for UserPtr<T, P> {
 }
 
 impl Task {
-    pub fn just_ensure_user_area(
+    fn just_ensure_user_area(
         &self,
         begin: VirtAddr,
         len: usize,
@@ -508,7 +518,7 @@ impl Task {
         let mut readable_len = 0;
         while readable_len < len {
             if test_fn(curr_vaddr.0) {
-                self.with_mut_memory_space(|m| m.handle_page_fault(curr_vaddr))?
+                self.with_mut_memory_space(|m| m.handle_page_fault(curr_vaddr, access))?
             }
 
             let next_page_beg: VirtAddr = VirtAddr::from(curr_vaddr.floor().next());
@@ -546,8 +556,6 @@ bitflags! {
 
 impl PageFaultAccessType {
     pub const RO: Self = Self::READ;
-    // can't use | (bits or) here
-    // see https://github.com/bitflags/bitflags/issues/180
     pub const RW: Self = Self::RO.union(Self::WRITE);
     pub const RX: Self = Self::RO.union(Self::EXECUTE);
 
@@ -559,30 +567,79 @@ impl PageFaultAccessType {
             _ => panic!("unexcepted exception type for PageFaultAccessType"),
         }
     }
+
+    pub fn can_access(self, flag: MapPerm) -> bool {
+        if self.contains(Self::WRITE) && !flag.contains(MapPerm::W) {
+            return false;
+        }
+        if self.contains(Self::EXECUTE) && !flag.contains(MapPerm::X) {
+            return false;
+        }
+        true
+    }
 }
 
-pub struct FutexWord(u32);
+pub struct FutexAddr {
+    pub addr: VirtAddr,
+    _guard: SumGuard,
+}
 
-impl FutexWord {
-    pub fn from(a: usize) -> Self {
-        Self(a as u32)
-    }
-    pub fn raw(&self) -> u32 {
-        self.0
+impl FutexAddr {
+    pub fn raw(&self) -> usize {
+        self.addr.into()
     }
     pub fn check(&self, task: &Arc<Task>) -> SysResult<()> {
-        task.just_ensure_user_area(
-            VirtAddr::from(self.0 as usize),
-            size_of::<u32>(),
-            PageFaultAccessType::RO,
-        )
+        task.just_ensure_user_area(self.addr, size_of::<VirtAddr>(), PageFaultAccessType::RO)
     }
     pub fn read(&self) -> u32 {
-        unsafe { atomic_load_acquire(self.0 as *const u32) }
+        unsafe { atomic_load_acquire(self.addr.0 as *const u32) }
     }
 }
-impl From<usize> for FutexWord {
+
+impl From<usize> for FutexAddr {
     fn from(a: usize) -> Self {
-        Self(a as u32)
+        Self {
+            addr: a.into(),
+            _guard: SumGuard::new(),
+        }
+    }
+}
+
+/// The `addr` parameter is a pointer to a `SockAddr` structure passed by the
+/// system call, and `addr_len` is the length of the address pointed to by this
+/// pointer.
+///
+/// First, the function checks whether the address pointed to by the pointer has
+/// read permissions. Then, based on the `sa_family` member of theSockAddr
+/// structure, it determines which variant of the `SockAddr` enum the
+/// user-provided parameter corresponds to.
+pub fn audit_sockaddr(addr: usize, addrlen: usize, task: &Arc<Task>) -> SysResult<SockAddr> {
+    let _guard = SumGuard::new();
+    task.just_ensure_user_area(addr.into(), addrlen, PageFaultAccessType::RO)?;
+    let family_ptr = addr as *const u16;
+    let family_value = unsafe { *family_ptr };
+    let family = SaFamily::try_from(family_value as usize)?;
+    match family {
+        SaFamily::AF_UNIX => unimplemented!(),
+        SaFamily::AF_INET => {
+            if addrlen < mem::size_of::<SockAddrIn>() {
+                return Err(SysError::EINVAL);
+            }
+            let mut sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
+            // log::debug!("[audit_sockaddr] before {sock_addr_in:?}");
+            // TODO:not sure big endian about port and address
+            // sock_addr_in.port = sock_addr_in.port.to_be();
+            // let ip = u32::from_be_bytes(sock_addr_in.addr.to_le_bytes());
+            // sock_addr_in.addr = Ipv4Addr::from(ip);
+            // log::debug!("[audit_sockaddr] after {sock_addr_in:?}");
+            Ok(SockAddr::SockAddrIn(sock_addr_in))
+        }
+        SaFamily::AF_INET6 => {
+            if addrlen < mem::size_of::<SockAddrIn6>() {
+                return Err(SysError::EINVAL);
+            }
+            let sock_addr_in6 = unsafe { *(addr as *const SockAddrIn6) };
+            Ok(SockAddr::SockAddrIn6(sock_addr_in6))
+        }
     }
 }

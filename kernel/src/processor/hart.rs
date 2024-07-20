@@ -86,7 +86,6 @@ impl Hart {
         } else {
             // log::warn!("优化了，此时不需要切换页表");
         }
-        unsafe { task.switch_page_table() };
         unsafe { enable_interrupt() };
         log::trace!("[enter_user_task_switch] enter user task");
     }
@@ -96,13 +95,14 @@ impl Hart {
         unsafe { disable_interrupt() };
         unsafe { env.auto_sum() };
         // PERF: no need to switch to kernel page table
-        unsafe { mm::switch_kernel_page_table() };
+        // unsafe { mm::switch_kernel_page_table() };
         core::mem::swap(self.env_mut(), env);
-        self.task().time_stat().record_switch_out();
-        self.last_task_pid = self.task().pid();
+        let task = self.task();
+        task.time_stat().record_switch_out();
+        task.trap_context_mut().user_fx.yield_task();
+        self.last_task_pid = task.pid();
         self.clear_task();
         unsafe { enable_interrupt() };
-        log::trace!("[leave_user_task_switch] fuck user task");
     }
 
     pub fn kernel_task_switch(&mut self, env: &mut EnvContext) {
@@ -161,4 +161,17 @@ pub fn init(hart_id: usize) {
 
 pub fn current_task() -> Arc<Task> {
     local_hart().task().clone()
+}
+
+/// WARN: never hold a local task ref when it may get scheduled, will cause bug
+/// on smp situations.
+///
+/// ```rust
+/// let task = current_task_ref();
+/// task.do_something(); // the task ref is hart0's task
+/// yield_now().await();
+/// task.do_something(); // the task is still hart0's task, the two tasks may be different!
+/// ```
+pub fn current_task_ref() -> &'static Arc<Task> {
+    local_hart().task()
 }

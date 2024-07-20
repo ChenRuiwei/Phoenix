@@ -20,7 +20,7 @@ static mut BOOT_PAGE_TABLE: BootPageTable = {
 #[naked]
 #[no_mangle]
 #[link_section = ".text.entry"]
-unsafe extern "C" fn _start(hart_id: usize) -> ! {
+unsafe extern "C" fn _start(hart_id: usize, dtb_addr: usize) -> ! {
     core::arch::asm!(
         // 1. set boot stack
         // sp = boot_stack + (hartid + 1) * 64KB

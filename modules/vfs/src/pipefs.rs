@@ -1,19 +1,39 @@
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{boxed::Box, collections::VecDeque, sync::Arc};
+use core::{
+    cmp,
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll, Waker},
+};
 
 use async_trait::async_trait;
-use async_utils::yield_now;
+use async_utils::{get_waker, suspend_now, yield_now};
 use config::fs::PIPE_BUF_CAPACITY;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sync::mutex::SpinNoIrqLock;
 use systype::{SysError, SysResult};
-use vfs_core::{arc_zero, File, FileMeta, FileSystemType, Inode, InodeMeta, InodeMode, Stat};
+use vfs_core::{
+    arc_zero, File, FileMeta, FileSystemType, Inode, InodeMeta, InodeMode, PollEvents, Stat,
+};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 
 pub struct PipeInode {
     meta: InodeMeta,
-    is_closed: Mutex<bool>,
-    buf: Mutex<AllocRingBuffer<u8>>,
+    inner: Mutex<PipeInodeInner>,
+}
+
+pub struct PipeInodeInner {
+    is_write_closed: bool,
+    is_read_closed: bool,
+    buf: AllocRingBuffer<u8>,
+    // WARN: `Waker` may not wake the task exactly, it may be abandoned.
+    // Rust only guarentees that waker will wake the task from the last poll where the waker is
+    // passed in.
+    // Also, `sys_ppoll` and `sys_pselect6` may return because of other wake ups
+    // while the waker registered here is not removed.
+    read_waker: VecDeque<Waker>,
+    write_waker: VecDeque<Waker>,
 }
 
 impl PipeInode {
@@ -23,12 +43,14 @@ impl PipeInode {
             Arc::<usize>::new_uninit(),
             PIPE_BUF_CAPACITY,
         );
-        let buf = Mutex::new(AllocRingBuffer::new(PIPE_BUF_CAPACITY));
-        Arc::new(Self {
-            meta,
-            is_closed: Mutex::new(false),
-            buf,
-        })
+        let inner = Mutex::new(PipeInodeInner {
+            is_write_closed: false,
+            is_read_closed: false,
+            buf: AllocRingBuffer::new(PIPE_BUF_CAPACITY),
+            read_waker: VecDeque::new(),
+            write_waker: VecDeque::new(),
+        });
+        Arc::new(Self { meta, inner })
     }
 }
 
@@ -60,6 +82,37 @@ impl Inode for PipeInode {
     }
 }
 
+struct PipeWritePollFuture {
+    events: PollEvents,
+    pipe: Arc<PipeInode>,
+}
+
+impl PipeWritePollFuture {
+    fn new(pipe: Arc<PipeInode>, events: PollEvents) -> Self {
+        Self { pipe, events }
+    }
+}
+
+impl Future for PipeWritePollFuture {
+    type Output = PollEvents;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut inner = self.pipe.inner.lock();
+        let mut res = PollEvents::empty();
+        if self.events.contains(PollEvents::OUT) && !inner.buf.is_full() {
+            res |= PollEvents::OUT;
+            Poll::Ready(res)
+        } else {
+            if inner.is_read_closed {
+                res |= PollEvents::ERR;
+                return Poll::Ready(res);
+            }
+            inner.write_waker.push_back(cx.waker().clone());
+            Poll::Pending
+        }
+    }
+}
+
 pub struct PipeWriteFile {
     meta: FileMeta,
 }
@@ -71,14 +124,19 @@ impl PipeWriteFile {
     }
 }
 
+// NOTE: `PipeReadFile` is hold by task as `Arc<dyn File>`.
 impl Drop for PipeWriteFile {
     fn drop(&mut self) {
         let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()
-            .map_err(|_| SysError::EIO)
-            .unwrap();
-        *pipe.is_closed.lock() = true;
+            .unwrap_or_else(|_| unreachable!());
+        log::info!("[PipeWriteFile::drop] pipe write end is closed");
+        let mut inner = pipe.inner.lock();
+        inner.is_write_closed = true;
+        while let Some(waker) = inner.read_waker.pop_front() {
+            waker.wake();
+        }
     }
 }
 
@@ -93,6 +151,21 @@ impl PipeReadFile {
     }
 }
 
+impl Drop for PipeReadFile {
+    fn drop(&mut self) {
+        let pipe = self
+            .inode()
+            .downcast_arc::<PipeInode>()
+            .unwrap_or_else(|_| unreachable!());
+        log::info!("[PipeReadFile::drop] pipe read end is closed");
+        let mut inner = pipe.inner.lock();
+        inner.is_read_closed = true;
+        while let Some(waker) = inner.write_waker.pop_front() {
+            waker.wake();
+        }
+    }
+}
+
 #[async_trait]
 impl File for PipeWriteFile {
     fn meta(&self) -> &FileMeta {
@@ -100,23 +173,83 @@ impl File for PipeWriteFile {
     }
 
     async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SysResult<usize> {
-        todo!()
+        Err(SysError::EBADF)
     }
 
     async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SysResult<usize> {
         let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()
-            .map_err(|_| SysError::EIO)?;
-        let mut pipe_buf = pipe.buf.lock();
-        let space_left = pipe_buf.capacity() - pipe_buf.len();
+            .unwrap_or_else(|_| unreachable!());
 
-        let len = core::cmp::min(space_left, buf.len());
-        for i in 0..len {
-            pipe_buf.push(buf[i]);
+        let revents = PipeWritePollFuture::new(pipe.clone(), PollEvents::OUT).await;
+        if revents.contains(PollEvents::ERR) {
+            return Err(SysError::EPIPE);
         }
-        log::trace!("[Pipe::write] already write buf {buf:?} with data len {len:?}");
-        Ok(len)
+        if revents.contains(PollEvents::OUT) {
+            let mut inner = pipe.inner.lock();
+            let space_left = inner.buf.capacity() - inner.buf.len();
+
+            let len = cmp::min(space_left, buf.len());
+            for i in 0..len {
+                inner.buf.push(buf[i]);
+            }
+            if let Some(waker) = inner.read_waker.pop_front() {
+                waker.wake();
+            }
+            log::trace!("[Pipe::write] already write buf {buf:?} with data len {len:?}");
+            return Ok(len);
+        }
+        unreachable!()
+    }
+
+    async fn base_poll(&self, events: PollEvents) -> PollEvents {
+        let waker = get_waker().await;
+        let pipe = self
+            .inode()
+            .downcast_arc::<PipeInode>()
+            .unwrap_or_else(|_| unreachable!());
+        let mut inner = pipe.inner.lock();
+        let mut res = PollEvents::empty();
+        if events.contains(PollEvents::OUT) && !inner.buf.is_full() {
+            res |= PollEvents::OUT;
+        } else if inner.is_read_closed {
+            res |= PollEvents::ERR;
+        } else {
+            inner.write_waker.push_back(waker);
+        }
+        res
+    }
+}
+
+struct PipeReadPollFuture {
+    events: PollEvents,
+    pipe: Arc<PipeInode>,
+}
+
+impl PipeReadPollFuture {
+    fn new(pipe: Arc<PipeInode>, events: PollEvents) -> Self {
+        Self { pipe, events }
+    }
+}
+
+impl Future for PipeReadPollFuture {
+    type Output = PollEvents;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut inner = self.pipe.inner.lock();
+        let mut res = PollEvents::empty();
+        if self.events.contains(PollEvents::IN) && !inner.buf.is_empty() {
+            res |= PollEvents::IN;
+            Poll::Ready(res)
+        } else {
+            if inner.is_write_closed {
+                res |= PollEvents::HUP;
+                return Poll::Ready(res);
+            }
+            inner.read_waker.push_back(cx.waker().clone());
+            Poll::Pending
+        }
     }
 }
 
@@ -126,31 +259,56 @@ impl File for PipeReadFile {
         &self.meta
     }
 
-    async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> systype::SysResult<usize> {
+    async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SysResult<usize> {
         let pipe = self
             .inode()
             .downcast_arc::<PipeInode>()
-            .map_err(|_| SysError::EIO)?;
-        let mut pipe_len = pipe.buf.lock().len();
-        while pipe_len == 0 {
-            yield_now().await;
-            pipe_len = pipe.buf.lock().len();
-            if *pipe.is_closed.lock() {
-                break;
+            .unwrap_or_else(|_| unreachable!());
+        let events = PollEvents::IN;
+        let revents = PipeReadPollFuture::new(pipe.clone(), events).await;
+
+        if revents.contains(PollEvents::HUP) {
+            return Ok(0);
+        }
+        if revents.contains(PollEvents::IN) {
+            let mut inner = pipe.inner.lock();
+            let len = core::cmp::min(inner.buf.len(), buf.len());
+            for i in 0..len {
+                buf[i] = inner
+                    .buf
+                    .dequeue()
+                    .expect("Just checked for len, should not fail");
             }
+            if let Some(waker) = inner.write_waker.pop_front() {
+                waker.wake();
+            }
+            return Ok(len);
         }
-        let mut pipe_buf = pipe.buf.lock();
-        let len = core::cmp::min(pipe_buf.len(), buf.len());
-        for i in 0..len {
-            buf[i] = pipe_buf
-                .dequeue()
-                .expect("Just checked for len, should not fail");
-        }
-        Ok(len)
+
+        unreachable!()
     }
 
-    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> systype::SysResult<usize> {
-        todo!()
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SysResult<usize> {
+        Err(SysError::EBADF)
+    }
+
+    async fn base_poll(&self, events: PollEvents) -> PollEvents {
+        let pipe = self
+            .inode()
+            .downcast_arc::<PipeInode>()
+            .unwrap_or_else(|_| unreachable!());
+        let waker = get_waker().await;
+        let mut inner = pipe.inner.lock();
+        let mut res = PollEvents::empty();
+        if events.contains(PollEvents::IN) && !inner.buf.is_empty() {
+            res |= PollEvents::IN;
+        } else if inner.is_write_closed {
+            res |= PollEvents::HUP;
+            Poll::Ready(res);
+        } else {
+            inner.read_waker.push_back(waker);
+        }
+        res
     }
 }
 

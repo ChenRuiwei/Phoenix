@@ -116,15 +116,16 @@ impl SigPending {
                 return self.queue.remove(i);
             }
         }
+        // FIXME: lmbench_all lat_sig -P 1 catch
         // if it isn't in self.queue, it must be wrong
         log::error!("[dequeue_signal] I suppose it won't go here");
         return None;
     }
 
-    /// Dequeue a sepcific signal in `except` even if it is blocked and return
+    /// Dequeue a sepcific signal in `expect` even if it is blocked and return
     /// the SigInfo to the caller
-    pub fn dequeue_except(&mut self, except: SigSet) -> Option<SigInfo> {
-        let x = self.bitmap & except;
+    pub fn dequeue_expect(&mut self, expect: SigSet) -> Option<SigInfo> {
+        let x = self.bitmap & expect;
         if x.is_empty() {
             return None;
         }
@@ -135,14 +136,13 @@ impl SigPending {
                 return self.queue.remove(i);
             }
         }
-        log::error!("[dequeue_except] I suppose it won't go here");
+        log::error!("[dequeue_expect] I suppose it won't go here");
         None
     }
 
-    // #[inline]
-    // pub fn has_expect_signals(&self, expect: SigSet) -> bool {
-    //     !(expect & self.bitmap).is_empty()
-    // }
+    pub fn has_expect_signals(&self, expect: SigSet) -> bool {
+        !(expect & self.bitmap).is_empty()
+    }
 
     // #[inline]
     // pub fn has_expect_sigset(&self, expect: SigSet) -> Option<SigInfo> {

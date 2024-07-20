@@ -1,15 +1,53 @@
 use alloc::sync::Arc;
 
-use driver::BlockDevice;
-use vfs_core::{Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, SuperBlock, SuperBlockMeta};
+use device_core::BlockDriverOps;
+use systype::SysResult;
+use vfs_core::{
+    Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, Path, SuperBlock, SuperBlockMeta,
+};
 
+use self::{
+    null::{NullDentry, NullInode},
+    rtc::{RtcDentry, RtcInode},
+    tty::{TtyDentry, TtyFile, TtyInode, TTY},
+    zero::{ZeroDentry, ZeroFile, ZeroInode},
+};
 use crate::{
     simplefs::{dentry::SimpleDentry, inode::SimpleInode},
     sys_root_dentry,
 };
 
-pub mod stdio;
+mod null;
+mod rtc;
 pub mod tty;
+mod zero;
+
+pub fn init_devfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
+    let sb = root_dentry.super_block();
+
+    let zero_dentry = ZeroDentry::new("zero", sb.clone(), Some(root_dentry.clone()));
+    root_dentry.insert(zero_dentry.clone());
+    let zero_inode = ZeroInode::new(sb.clone());
+    zero_dentry.set_inode(zero_inode);
+
+    let null_dentry = NullDentry::new("null", sb.clone(), Some(root_dentry.clone()));
+    root_dentry.insert(null_dentry.clone());
+    let null_inode = NullInode::new(sb.clone());
+    null_dentry.set_inode(null_inode);
+
+    let rtc_dentry = RtcDentry::new("rtc", sb.clone(), Some(root_dentry.clone()));
+    root_dentry.insert(rtc_dentry.clone());
+    let rtc_inode = RtcInode::new(sb.clone());
+    rtc_dentry.set_inode(rtc_inode);
+
+    let tty_dentry = TtyDentry::new("tty", sb.clone(), Some(root_dentry.clone()));
+    root_dentry.insert(tty_dentry.clone());
+    let tty_inode = TtyInode::new(sb.clone());
+    tty_dentry.set_inode(tty_inode);
+    let tty_file = TtyFile::new(tty_dentry.clone(), tty_dentry.inode()?);
+    TTY.call_once(|| tty_file);
+    Ok(())
+}
 
 pub struct DevFsType {
     meta: FileSystemTypeMeta,
@@ -33,7 +71,7 @@ impl FileSystemType for DevFsType {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         _flags: vfs_core::MountFlags,
-        dev: Option<alloc::sync::Arc<dyn driver::BlockDevice>>,
+        dev: Option<alloc::sync::Arc<dyn BlockDriverOps>>,
     ) -> systype::SysResult<alloc::sync::Arc<dyn vfs_core::Dentry>> {
         let sb = DevSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
@@ -57,7 +95,7 @@ struct DevSuperBlock {
 
 impl DevSuperBlock {
     pub fn new(
-        device: Option<Arc<dyn BlockDevice>>,
+        device: Option<Arc<dyn BlockDriverOps>>,
         fs_type: Arc<dyn FileSystemType>,
     ) -> Arc<Self> {
         Arc::new(Self {

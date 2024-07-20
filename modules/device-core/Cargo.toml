@@ -1,0 +1,28 @@
+[package]
+name = "device-core"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1"
+downcast-rs = { version = "1.2", default-features = false }
+[dependencies.smoltcp]
+path = "../smoltcp"
+default-features = false
+features = [
+    "alloc",
+    "log",             # no std
+    "medium-ethernet",
+    "medium-ip",       # used for Loopback device
+    "proto-ipv4",
+    "socket-raw",
+    "socket-icmp",
+    "socket-udp",
+    "socket-tcp",
+    "socket-dns",
+    # "fragmentation-buffer-size-65536", "proto-ipv4-fragmentation",
+    # "reassembly-buffer-size-65536", "reassembly-buffer-count-32",
+    # "assembler-max-segment-count-32",
+]

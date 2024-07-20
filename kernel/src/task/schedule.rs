@@ -6,14 +6,14 @@ use core::{
     time::Duration,
 };
 
-use arch::time::get_time_duration;
-use async_utils::{suspend_now, take_waker, yield_now};
-use timer::timer::{Timer, TIMER_MANAGER};
+use arch::time::{get_time_duration, get_time_us};
+use async_utils::{get_waker, suspend_now, yield_now};
+use timer::{Timer, TIMER_MANAGER};
 
 use super::Task;
 use crate::{
     processor::{env::EnvContext, hart},
-    task::{signal::do_signal, task::TaskState::*},
+    task::{signal::*, task::TaskState::*},
     trap,
 };
 
@@ -77,7 +77,7 @@ impl<F: Future<Output = ()> + Send + 'static> Future for KernelTaskFuture<F> {
 }
 
 pub async fn task_loop(task: Arc<Task>) {
-    *task.waker() = Some(take_waker().await);
+    *task.waker() = Some(get_waker().await);
     loop {
         trap::user_trap::trap_return(&task);
 
@@ -89,7 +89,7 @@ pub async fn task_loop(task: Arc<Task>) {
             _ => {}
         }
 
-        trap::user_trap::trap_handler(&task).await;
+        let intr = trap::user_trap::trap_handler(&task).await;
 
         match task.state() {
             Zombie => break,
@@ -99,7 +99,7 @@ pub async fn task_loop(task: Arc<Task>) {
 
         task.update_itimers();
 
-        do_signal().expect("do signal error");
+        do_signal(&task, intr).expect("do signal error");
     }
 
     log::debug!("thread {} terminated", task.tid());
@@ -128,10 +128,10 @@ impl Task {
     /// 0，说明就是超时了，大于 0 才是因事件唤醒
     pub async fn suspend_timeout(&self, limit: Duration) -> Duration {
         let expire = get_time_duration() + limit;
-        TIMER_MANAGER.add_timer(Timer {
+        TIMER_MANAGER.add_timer(Timer::new_waker_timer(
             expire,
-            callback: self.waker().clone(),
-        });
+            self.waker().clone().unwrap(),
+        ));
         suspend_now().await;
         let now = get_time_duration();
         if expire > now {

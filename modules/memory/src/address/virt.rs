@@ -1,5 +1,8 @@
 //! Implementation of physical and virtual address and page number.
-use core::fmt::{self};
+use core::{
+    fmt::{self},
+    hash::Hash,
+};
 
 use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM};
 
@@ -10,7 +13,7 @@ use super::{
 use crate::address::{VA_WIDTH_SV39, VPN_WIDTH_SV39};
 
 /// Virtual address
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Hash, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct VirtAddr(pub usize);
 
 /// Virtual page number
@@ -26,14 +29,21 @@ impl_step!(VirtPageNum);
 impl From<usize> for VirtAddr {
     fn from(v: usize) -> Self {
         let tmp = v as isize >> VA_WIDTH_SV39;
-        assert!(tmp == 0 || tmp == -1, "invalid va: {:#x}", v);
+        // NOTE: do not use assert here because syscall args passed in may be invalid
+        if !(tmp == 0 || tmp == -1) {
+            log::warn!("invalid virtual address {v}");
+        }
         Self(v)
     }
 }
+
 impl From<usize> for VirtPageNum {
     fn from(v: usize) -> Self {
         let tmp = v >> (VPN_WIDTH_SV39 - 1);
-        assert!(tmp == 0 || tmp == (1 << (52 - VPN_WIDTH_SV39 + 1)) - 1);
+        // NOTE: do not use assert here because syscall args passed in may be invalid
+        if !(tmp == 0 || tmp == (1 << (52 - VPN_WIDTH_SV39 + 1)) - 1) {
+            log::warn!("invalid virtual page number {v}");
+        }
         Self(v)
     }
 }
@@ -81,7 +91,7 @@ impl VirtAddr {
     }
 
     /// `VirtAddr` -> rounded down to a multiple of PAGE_SIZE
-    pub fn rounded_down(&self) -> Self {
+    pub fn round_down(&self) -> Self {
         Self(self.0 & !PAGE_MASK)
     }
 
@@ -91,7 +101,7 @@ impl VirtAddr {
     }
 
     /// `VirtAddr` -> rounded up to a multiple of PAGE_SIZE
-    pub fn rounded_up(&self) -> Self {
+    pub fn round_up(&self) -> Self {
         Self((self.0 + PAGE_MASK) & !PAGE_MASK)
     }
 
@@ -121,6 +131,7 @@ impl VirtAddr {
         unsafe { (self.0 as *mut T).as_mut().unwrap() }
     }
 }
+
 impl From<VirtAddr> for VirtPageNum {
     fn from(v: VirtAddr) -> Self {
         assert_eq!(v.page_offset(), 0);

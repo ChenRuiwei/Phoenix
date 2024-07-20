@@ -9,11 +9,14 @@ edition = "2021"
 config = { path = "../../config/" }
 sync = { path = "../sync/" }
 arch = { path = "../../arch" }
+early-print = { path = "../../crates/early-print/" }
+
 buddy_system_allocator = "0.9"
 linked_list_allocator = "0.10"
 bitflags = "2.5"
 log = "0.4"
 bitmap-allocator = { git = "https://github.com/rcore-os/bitmap-allocator", version = "0.1.0" }
+riscv = "0.11"
 
 [features]
 default = ["buddy"]

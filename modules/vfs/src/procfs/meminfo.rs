@@ -108,19 +108,15 @@ impl Dentry for MemInfoDentry {
     }
 
     fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
-        todo!()
+        Err(SysError::ENOTDIR)
     }
 
     fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
-        todo!()
+        Err(SysError::ENOTDIR)
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SyscallResult {
-        todo!()
-    }
-
-    fn base_rmdir(self: Arc<Self>, name: &str) -> SyscallResult {
-        todo!()
+    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
+        Err(SysError::ENOTDIR)
     }
 }
 
@@ -190,7 +186,7 @@ impl File for MemInfoFile {
     }
 
     fn base_read_dir(&self) -> SysResult<Option<DirEntry>> {
-        todo!()
+        Err(SysError::ENOTDIR)
     }
 
     fn flush(&self) -> SysResult<usize> {

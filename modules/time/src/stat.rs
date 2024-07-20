@@ -1,6 +1,7 @@
 use core::time::Duration;
 
 use arch::time::get_time_duration;
+use config::time::TIME_SLICE_DUATION;
 
 ///                                -user-          --user--
 /// ---kernel---(switch)---kernel--      --kernel--        ------(switch)
@@ -8,15 +9,16 @@ use arch::time::get_time_duration;
 // TODO: what about kernel interrupt
 // HACK: use state machine implementation will be much clearer
 pub struct TaskTimeStat {
+    user_time: Duration,
+    system_time: Duration,
+
     task_start: Duration,
-    utime: Duration,
-    stime: Duration,
-    cutime: Duration,
-    cstime: Duration,
-    switch_in: Duration,
-    switch_out: Duration,
-    last_trap_ret: Duration,
-    last_trap: Duration,
+    system_time_start: Duration,
+    user_time_start: Duration,
+    schedule_time_start: Duration,
+
+    child_user_time: Duration,
+    child_system_stime: Duration,
 }
 
 impl TaskTimeStat {
@@ -24,69 +26,75 @@ impl TaskTimeStat {
         let start = get_time_duration();
         Self {
             task_start: start,
-            utime: Duration::ZERO,
-            stime: Duration::ZERO,
-            cutime: Duration::ZERO,
-            cstime: Duration::ZERO,
-            switch_in: start,
-            switch_out: start,
-            last_trap_ret: Duration::ZERO,
-            last_trap: Duration::ZERO,
+            user_time: Duration::ZERO,
+            system_time: Duration::ZERO,
+            child_user_time: Duration::ZERO,
+            child_system_stime: Duration::ZERO,
+            system_time_start: Duration::ZERO,
+            user_time_start: Duration::ZERO,
+            schedule_time_start: Duration::ZERO,
         }
     }
+
     /// return the cutime and cstime
     pub fn user_system_time(&self) -> (Duration, Duration) {
-        (self.utime, self.stime)
+        (self.user_time, self.system_time)
     }
 
     pub fn child_user_system_time(&self) -> (Duration, Duration) {
-        (self.cutime, self.cstime)
+        (self.child_user_time, self.child_system_stime)
     }
 
     #[inline]
     pub fn user_time(&self) -> Duration {
-        self.utime
+        self.user_time
     }
 
     #[inline]
     pub fn sys_time(&self) -> Duration {
-        self.stime
+        self.system_time
     }
 
     pub fn cpu_time(&self) -> Duration {
-        self.utime + self.stime
+        self.user_time + self.system_time
     }
 
     pub fn update_child_time(&mut self, (utime, stime): (Duration, Duration)) {
-        self.cutime += utime;
-        self.cstime += stime;
+        self.child_user_time += utime;
+        self.child_system_stime += stime;
     }
 
     pub fn record_switch_in(&mut self) {
-        self.switch_in = get_time_duration();
+        let current_time = get_time_duration();
+
+        self.system_time_start = current_time;
+        self.schedule_time_start = current_time;
     }
 
     pub fn record_switch_out(&mut self) {
-        self.switch_out = get_time_duration();
-        self.stime += if self.last_trap == Duration::ZERO {
-            self.switch_out - self.switch_in
-        } else {
-            self.switch_out - self.last_trap
-        };
+        let stime_slice = get_time_duration() - self.system_time_start;
+        self.system_time += stime_slice;
     }
 
     pub fn record_trap(&mut self) {
-        self.last_trap = get_time_duration();
-        self.utime += self.last_trap - self.last_trap_ret;
-        self.last_trap_ret = Duration::ZERO;
+        let current_time = get_time_duration();
+
+        self.system_time_start = current_time;
+
+        let utime_slice = current_time - self.user_time_start;
+        self.user_time += utime_slice;
     }
 
     pub fn record_trap_return(&mut self) {
-        self.last_trap_ret = get_time_duration();
-        self.stime += if self.last_trap == Duration::ZERO {
-            self.last_trap_ret - self.switch_in
-        } else {
-            self.last_trap_ret - self.last_trap
-        };
+        let current_time = get_time_duration();
+
+        let stime_slice = current_time - self.user_time_start;
+        self.system_time += stime_slice;
+
+        self.user_time_start = current_time;
+    }
+
+    pub fn need_schedule(&self) -> bool {
+        get_time_duration() - self.schedule_time_start >= TIME_SLICE_DUATION
     }
 }

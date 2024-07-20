@@ -2,6 +2,7 @@ use alloc::string::String;
 use core::fmt::Display;
 
 use bitflags::Flags;
+use time::timespec::TimeSpec;
 
 use crate::InodeType;
 
@@ -14,7 +15,7 @@ bitflags::bitflags! {
     pub struct OpenFlags: i32 {
         // reserve 3 bits for the access mode
         // NOTE: bitflags do not encourage zero bit flag, we should not directly check `O_RDONLY`
-        const O_RDONLY      = 0;
+        // const O_RDONLY      = 0;
         const O_WRONLY      = 1;
         const O_RDWR        = 2;
         const O_ACCMODE     = 3;
@@ -109,36 +110,30 @@ pub struct DirEntry {
     pub name: String,
 }
 
-bitflags! {
-    // See in "bits/poll.h"
+bitflags::bitflags! {
+    // Defined in <bits/poll.h>.
+    #[derive(Debug, Clone, Copy)]
     pub struct PollEvents: i16 {
         // Event types that can be polled for. These bits may be set in `events' to
         // indicate the interesting event types; they will appear in `revents' to
         // indicate the status of the file descriptor.
         /// There is data to read.
-        const POLLIN = 0x001;
+        const IN = 0x001;
         /// There is urgent data to read.
-        const POLLPRI = 0x002;
+        const PRI = 0x002;
         ///  Writing now will not block.
-        const POLLOUT = 0x004;
+        const OUT = 0x004;
 
         // Event types always implicitly polled for. These bits need not be set in
         // `events', but they will appear in `revents' to indicate the status of the
         // file descriptor.
         /// Error condition.
-        const POLLERR = 0x008;
+        const ERR = 0x008;
         /// Hang up.
-        const POLLHUP = 0x010;
+        const HUP = 0x010;
         /// Invalid poll request.
-        const POLLNVAL = 0x020;
+        const INVAL = 0x020;
     }
-}
-
-#[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub struct TimeSpec {
-    pub sec: u64,
-    pub nsec: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
@@ -162,26 +157,7 @@ pub struct Stat {
     pub unused: u64,
 }
 
-bitflags! {
-    /// renameat flag
-   pub struct RenameFlag: u32 {
-       /// Atomically exchange oldpath and newpath.
-       /// Both pathnames must exist but may be of different type
-       const RENAME_EXCHANGE = 1 << 1;
-       /// Don't overwrite newpath of the rename. Return an error if newpath already exists.
-       const RENAME_NOREPLACE = 1 << 0;
-       /// This operation makes sense only for overlay/union filesystem implementations.
-       const RENAME_WHITEOUT = 1 << 2;
-   }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Time {
-    AccessTime(TimeSpec),
-    ModifiedTime(TimeSpec),
-}
-
-bitflags! {
+bitflags::bitflags! {
     #[derive(Debug)]
     pub struct MountFlags:u32 {
         /// This filesystem is mounted read-only.
@@ -270,7 +246,7 @@ pub enum AtFd {
     /// Special value used to indicate the *at functions should use the current
     /// working directory.
     FdCwd = -100,
-    /// Normal file descriptor
+    /// Normal file descriptor.
     Normal(usize),
 }
 
@@ -307,3 +283,16 @@ pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
 pub const AT_REMOVEDIR: i32 = 0x200;
 /// Follow symbolic links.
 pub const AT_SYMLINK_FOLLOW: i32 = 0x400;
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    // Defined in <stdio.h>.
+    pub struct RenameFlags: i32 {
+        /// Don't overwrite newpath of the rename. Return an error if newpath already exists.
+        const RENAME_NOREPLACE = 1 << 0;
+        /// Atomically exchange oldpath and newpath.
+        const RENAME_EXCHANGE = 1 << 1;
+        /// This operation makes sense only for overlay/union filesystem implementations.
+        const RENAME_WHITEOUT = 1 << 2;
+    }
+}

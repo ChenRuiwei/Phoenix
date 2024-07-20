@@ -4,7 +4,7 @@ use alloc::{
     sync::Arc,
 };
 
-use driver::BlockDevice;
+use device_core::BlockDriverOps;
 use systype::{SysError, SysResult};
 
 use crate::{Dentry, MountFlags, Mutex, SuperBlock};
@@ -13,7 +13,7 @@ pub struct FileSystemTypeMeta {
     /// Name of this file system type.
     name: String,
     /// Super blocks.
-    supers: Mutex<BTreeMap<String, Arc<dyn SuperBlock>>>,
+    pub supers: Mutex<BTreeMap<String, Arc<dyn SuperBlock>>>,
 }
 
 impl FileSystemTypeMeta {
@@ -36,7 +36,7 @@ pub trait FileSystemType: Send + Sync {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         flags: MountFlags,
-        dev: Option<Arc<dyn BlockDevice>>,
+        dev: Option<Arc<dyn BlockDriverOps>>,
     ) -> SysResult<Arc<dyn Dentry>>;
 
     /// Call when an instance of this filesystem should be shut down.
@@ -64,7 +64,7 @@ impl dyn FileSystemType {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         flags: MountFlags,
-        dev: Option<Arc<dyn BlockDevice>>,
+        dev: Option<Arc<dyn BlockDriverOps>>,
     ) -> SysResult<Arc<dyn Dentry>> {
         self.clone().base_mount(name, parent, flags, dev)
     }
@@ -79,7 +79,7 @@ impl dyn FileSystemType {
     }
 }
 
-bitflags! {
+bitflags::bitflags! {
     pub struct FileSystemFlags:u32{
         /// The file system requires a device.
         const REQUIRES_DEV = 0x1;
@@ -96,6 +96,6 @@ bitflags! {
         /// FS uses multigrain timestamps
         const MGTIME = 0x40;
         /// The file systen will handle `d_move` during `rename` internally.
-        const RENAME_DOES_D_MOVE = 0x8000; //32768
+        const RENAME_DOES_D_MOVE = 0x8000;
     }
 }

@@ -5,6 +5,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 use core::{future::Future, pin::Pin};
 
+use strum::FromRepr;
+use time::timeval::TimeVal;
+
 pub type SyscallResult = Result<usize, SysError>;
 pub type SysResult<T> = Result<T, SysError>;
 
@@ -14,8 +17,9 @@ pub type ASyscallResult<'a> = SysFuture<'a, SyscallResult>;
 pub type ASysResult<'a, T> = SysFuture<'a, SysResult<T>>;
 
 /// Linux specific error codes defined in `errno.h`.
-// See in "asm-generic/errno-base.h" and "asm-generic/errno.h".
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Defined in <asm-generic/errno-base.h> and <asm-generic/errno.h>.
+/// https://elixir.bootlin.com/linux/v6.8.9/source/include/uapi/asm-generic/errno.h#L71
+#[derive(FromRepr, Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(i32)]
 pub enum SysError {
     /// Operation not permitted
@@ -38,7 +42,7 @@ pub enum SysError {
     EBADF = 9,
     /// No child processes
     ECHILD = 10,
-    /// Try again
+    /// Resource temporarily unavailable
     EAGAIN = 11,
     /// Out of memory
     ENOMEM = 12,
@@ -96,10 +100,25 @@ pub enum SysError {
     ENOSYS = 38,
     /// Directory not empty
     ENOTEMPTY = 39,
-    /// Transport endpoint is not connected
+    /// Socket operation on non-socket
+    ENOTSOCK = 88,
+    /// Unsupported
+    EOPNOTSUPP = 95,
+    /// Socket address is already in use
+    EADDRINUSE = 98,
+    /// Address not available
+    EADDRNOTAVAIL = 99,
+    /// Connection reset
+    ECONNRESET = 104,
+    /// Transport endpoint is already connected
+    EISCONN = 106,
+    /// The socket is not connected
     ENOTCONN = 107,
     /// Connection refused
     ECONNREFUSED = 111,
+    /// The socket is nonblocking and the connection cannot be completed
+    /// immediately.(connect.2)
+    EINPROGRESS = 115,
 }
 
 impl SysError {
@@ -146,13 +165,66 @@ impl SysError {
             ENOLCK => "No record locks available",
             ENOSYS => "Invalid system call number",
             ENOTEMPTY => "Directory not empty",
+            ENOTSOCK => "Socket operation on non-socket",
             ENOTCONN => "Transport endpoint is not connected",
+            EOPNOTSUPP => "Unsupported Error",
+            EADDRNOTAVAIL => "Address not available",
+            EADDRINUSE => "Address already in use",
+            EISCONN => "Transport endpoint is already connected",
+            ECONNRESET => "Connection reset",
             ECONNREFUSED => "Connection refused",
+            EINPROGRESS => "Operation now in progress",
         }
+    }
+
+    pub fn from_i32(value: i32) -> Self {
+        Self::from_repr(value).unwrap()
     }
 
     /// Returns the error code value in `i32`.
     pub const fn code(self) -> i32 {
         self as i32
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+#[repr(C)]
+pub struct Rusage {
+    pub utime: TimeVal, // This is the total amount of time spent executing in user mode
+    pub stime: TimeVal, // This is the total amount of time spent executing in kernel mode
+    pub maxrss: usize,  // maximum resident set size
+    pub ixrss: usize,   // In modern systems, this field is usually no longer used
+    pub idrss: usize,   // In modern systems, this field is usually no longer used
+    pub isrss: usize,   // In modern systems, this field is usually no longer used
+    pub minflt: usize,  // page reclaims (soft page faults)
+    pub majflt: usize,  // page faults (hard page faults)
+    pub nswap: usize,   // swaps
+    pub inblock: usize, // block input operations
+    pub oublock: usize, // block output operations
+    pub msgsnd: usize,  // In modern systems, this field is usually no longer used
+    pub msgrcv: usize,  // In modern systems, this field is usually no longer used
+    pub nsignals: usize, // In modern systems, this field is usually no longer used
+    pub nvcsw: usize,   // voluntary context switches
+    pub nivcsw: usize,  // involuntary context switches
+}
+
+pub const RLIM_INFINITY: usize = usize::MAX;
+
+/// Resource Limit
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct RLimit {
+    /// Soft limit: the kernel enforces for the corresponding resource
+    pub rlim_cur: usize,
+    /// Hard limit (ceiling for rlim_cur)
+    pub rlim_max: usize,
+}
+
+impl RLimit {
+    pub fn new(rlim_cur: usize) -> Self {
+        Self {
+            rlim_cur,
+            rlim_max: RLIM_INFINITY,
+        }
     }
 }

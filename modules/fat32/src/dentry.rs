@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use systype::SysError;
+use systype::{SysError, SysResult};
 use vfs_core::{Dentry, DentryMeta, Inode, InodeType, SuperBlock};
 
 use crate::{
@@ -54,7 +54,7 @@ impl Dentry for FatDentry {
         }
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> systype::SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
         let sb = self.super_block();
         let inode = self
             .inode()?
@@ -115,32 +115,13 @@ impl Dentry for FatDentry {
         }
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> systype::SyscallResult {
+    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
         let inode = self
             .inode()?
             .downcast_arc::<FatDirInode>()
             .map_err(|_| SysError::ENOTDIR)?;
-        let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
-        if sub_dentry.inode()?.itype().is_dir() {
-            return Err(SysError::EISDIR);
-        }
-        sub_dentry.clear_inode();
         inode.dir.lock().remove(name).map_err(as_sys_err)?;
-        Ok(0)
-    }
-
-    fn base_rmdir(self: Arc<Self>, name: &str) -> systype::SyscallResult {
-        let inode = self
-            .inode()?
-            .downcast_arc::<FatDirInode>()
-            .map_err(|_| SysError::ENOTDIR)?;
-        let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
-        if !sub_dentry.inode()?.itype().is_dir() {
-            return Err(SysError::ENOTDIR);
-        }
-        sub_dentry.clear_inode();
-        inode.dir.lock().remove(name).map_err(as_sys_err)?;
-        Ok(0)
+        Ok(())
     }
 
     fn base_new_child(self: Arc<Self>, name: &str) -> Arc<dyn Dentry> {

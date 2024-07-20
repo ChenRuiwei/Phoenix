@@ -1,14 +1,18 @@
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use core::{cmp, ptr::drop_in_place};
 
 use async_trait::async_trait;
-use async_utils::{take_waker, yield_now};
-use driver::{getchar, print, CHAR_DEVICE};
+use async_utils::{block_on, get_waker, yield_now};
+use device_core::{CharDevice, DeviceMajor};
+use driver::{_print, get_device_manager, get_device_manager_mut, serial::Serial};
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 use spin::Once;
 use strum::FromRepr;
 use sync::mutex::{SleepLock, SpinNoIrqLock};
-use systype::{SysResult, SyscallResult};
+use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
-    Dentry, DentryMeta, File, FileMeta, Inode, InodeMeta, InodeMode, Path, Stat, SuperBlock,
+    Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Path, PollEvents,
+    SeekFrom, Stat, SuperBlock,
 };
 
 use crate::sys_root_dentry;
@@ -39,30 +43,38 @@ impl Dentry for TtyDentry {
     }
 
     fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
-        todo!()
+        Err(SysError::ENOTDIR)
     }
 
     fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
-        todo!()
+        Err(SysError::ENOTDIR)
     }
 
-    fn base_unlink(self: Arc<Self>, _name: &str) -> SyscallResult {
-        todo!()
-    }
-
-    fn base_rmdir(self: Arc<Self>, _name: &str) -> SyscallResult {
-        todo!()
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SysResult<()> {
+        Err(SysError::ENOTDIR)
     }
 }
 
 pub struct TtyInode {
     meta: InodeMeta,
+    char_dev: Arc<dyn CharDevice>,
 }
 
 impl TtyInode {
     pub fn new(super_block: Arc<dyn SuperBlock>) -> Arc<Self> {
-        let meta = InodeMeta::new(InodeMode::CHAR, super_block, 0);
-        Arc::new(Self { meta })
+        let mut meta = InodeMeta::new(InodeMode::CHAR, super_block, 0);
+        let (&dev_id, char_dev) = get_device_manager()
+            .devices()
+            .iter()
+            .filter(|(dev_id, device)| dev_id.major == DeviceMajor::Serial)
+            .next()
+            .unwrap();
+        meta.dev_id = Some(dev_id);
+        let char_dev = char_dev
+            .clone()
+            .downcast_arc::<Serial>()
+            .unwrap_or_else(|_| unreachable!());
+        Arc::new(Self { meta, char_dev })
     }
 }
 
@@ -164,68 +176,11 @@ impl WinSize {
     }
 }
 
-pub fn init() -> SysResult<()> {
-    let path = "/dev/tty";
-    let path = Path::new(sys_root_dentry(), sys_root_dentry(), path);
-    let tty_dentry = path.walk()?;
-    let parent = tty_dentry.parent().unwrap();
-    let tty_dentry = TtyDentry::new("tty", parent.super_block(), Some(parent.clone()));
-    parent.insert(tty_dentry.clone());
-    // let tty_file = tty_dentry.open()?;
-    let sb = parent.clone().super_block();
-    let tty_inode = TtyInode::new(sb.clone());
-    tty_dentry.set_inode(tty_inode);
-    let tty_file = TtyFile::new(tty_dentry.clone(), tty_dentry.inode()?);
-    TTY.call_once(|| tty_file);
-    Ok(())
-}
-
 const CTRL_C: u8 = 3;
 
 pub static TTY: Once<Arc<TtyFile>> = Once::new();
 
-const QUEUE_BUFFER_LEN: usize = 256;
-
-struct QueueBuffer {
-    buf: [u8; QUEUE_BUFFER_LEN],
-    e: usize,
-    f: usize,
-}
-
-impl QueueBuffer {
-    fn new() -> Self {
-        Self {
-            buf: [0; QUEUE_BUFFER_LEN],
-            e: 0,
-            f: 0,
-        }
-    }
-    fn push(&mut self, val: u8) {
-        self.buf[self.f] = val;
-        self.f = (self.f + 1) % QUEUE_BUFFER_LEN;
-    }
-    fn top(&self) -> u8 {
-        if self.e == self.f {
-            0xff
-        } else {
-            self.buf[self.e]
-        }
-    }
-
-    fn pop(&mut self) -> u8 {
-        if self.e == self.f {
-            0xff
-        } else {
-            let ret = self.buf[self.e];
-            self.e = (self.e + 1) % QUEUE_BUFFER_LEN;
-            ret
-        }
-    }
-}
-
 pub struct TtyFile {
-    /// Temporarily save poll in data
-    buf: SpinNoIrqLock<QueueBuffer>,
     meta: FileMeta,
     inner: SpinNoIrqLock<TtyInner>,
 }
@@ -239,7 +194,6 @@ struct TtyInner {
 impl TtyFile {
     pub fn new(dentry: Arc<dyn Dentry>, inode: Arc<dyn Inode>) -> Arc<Self> {
         Arc::new(Self {
-            buf: SpinNoIrqLock::new(QueueBuffer::new()),
             meta: FileMeta::new(dentry, inode),
             inner: SpinNoIrqLock::new(TtyInner {
                 fg_pgid: 2 as u32,
@@ -248,83 +202,54 @@ impl TtyFile {
             }),
         })
     }
-
-    pub fn handle_irq(&self, _ch: u8) {
-        todo!()
-        // log::debug!("[TtyFile::handle_irq] handle irq, ch {}", ch);
-        // self.buf.lock().push(ch);
-        // if ch == CTRL_C {
-        //     let pids =
-        // PROCESS_GROUP_MANAGER.get_group_by_pgid(self.inner.lock().fg_pgid as
-        // usize);     log::debug!("[TtyFile::handle_irq] fg pid {}",
-        // self.inner.lock().fg_pgid);     for pid in pids {
-        //         let process = PROCESS_MANAGER.get(pid);
-        //         if let Some(p) = process {
-        //             p.inner_handler(|proc| {
-        //                 for (_, thread) in proc.threads.iter() {
-        //                     if let Some(t) = thread.upgrade() {
-        //                         log::debug!("[TtyFile::handle_irq] kill tid
-        // {}", t.tid());                         t.recv_signal(SIGINT);
-        //                     }
-        //                 }
-        //             })
-        //         }
-        //     }
-        // }
-    }
 }
 
 #[async_trait]
 impl File for TtyFile {
+    fn meta(&self) -> &FileMeta {
+        &self.meta
+    }
+
     async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
-        let mut cnt = 0;
-        loop {
-            let ch: u8;
-            let self_buf = self.buf.lock().pop();
-            if self_buf != 0xff {
-                ch = self_buf;
-            } else {
-                ch = getchar();
-                if ch == 0xff {
-                    CHAR_DEVICE
-                        .get()
-                        .unwrap()
-                        .register_waker(take_waker().await);
-                    log::debug!("[TtyFuture::poll] nothing to read");
-                    yield_now().await;
-                    continue;
-                }
-            }
-            log::debug!(
-                "[TtyFuture::poll] recv ch {ch}, cnt {cnt}, len {}",
-                buf.len()
-            );
-            buf[cnt] = ch;
-
-            cnt += 1;
-
-            if cnt < buf.len() {
-                yield_now().await;
-                continue;
-            } else {
-                return Ok(buf.len());
-            }
-        }
+        log::debug!("[TtyFile::base_read_at] buf len {}", buf.len());
+        let char_dev = &self
+            .inode()
+            .downcast_arc::<TtyInode>()
+            .unwrap_or_else(|_| unreachable!())
+            .char_dev;
+        let len = char_dev.read(buf).await;
+        Ok(len)
     }
 
     async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
-        let utf8_buf: Vec<u8> = buf.iter().filter(|c| c.is_ascii()).map(|c| *c).collect();
-        if PRINT_LOCKED {
-            let _locked = PRINT_MUTEX.lock().await;
-            print!("{}", unsafe { core::str::from_utf8_unchecked(&utf8_buf) });
-        } else {
-            print!("{}", unsafe { core::str::from_utf8_unchecked(&utf8_buf) });
-        }
-        Ok(buf.len())
+        let char_dev = &self
+            .inode()
+            .downcast_arc::<TtyInode>()
+            .unwrap_or_else(|_| unreachable!())
+            .char_dev;
+        let len = char_dev.write(buf).await;
+        Ok(len)
     }
 
-    fn meta(&self) -> &FileMeta {
-        &self.meta
+    async fn base_poll(&self, events: PollEvents) -> PollEvents {
+        let mut res = PollEvents::empty();
+        let char_dev = &self
+            .inode()
+            .downcast_arc::<TtyInode>()
+            .unwrap_or_else(|_| unreachable!())
+            .char_dev;
+        if events.contains(PollEvents::IN) {
+            if char_dev.poll_in().await {
+                res |= PollEvents::IN;
+            }
+        }
+        if events.contains(PollEvents::OUT) {
+            if char_dev.poll_out().await {
+                res |= PollEvents::OUT;
+            }
+        }
+        log::debug!("[TtyFile::base_poll] ret events:{res:?}");
+        res
     }
 
     /// See `ioctl_tty` manual page.
@@ -383,8 +308,8 @@ impl File for TtyFile {
         }
     }
 
-    fn base_read_dir(&self) -> SysResult<Option<vfs_core::DirEntry>> {
-        todo!()
+    fn base_read_dir(&self) -> SysResult<Option<DirEntry>> {
+        Err(SysError::ENOTDIR)
     }
 
     fn flush(&self) -> SysResult<usize> {

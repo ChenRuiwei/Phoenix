@@ -10,11 +10,12 @@ use core::{
     task::Waker,
 };
 
-use arch::memory::sfence_vma_all;
-use config::{mm::USER_STACK_SIZE, process::INIT_PROC_PID};
-use driver::shutdown;
-use futex::Futexes;
-use memory::VirtAddr;
+use arch::{memory::sfence_vma_all, time::get_time_us};
+use config::{
+    mm::{DL_INTERP_OFFSET, USER_STACK_SIZE},
+    process::INIT_PROC_PID,
+};
+use memory::{vaddr_to_paddr, VirtAddr};
 use signal::{
     action::{SigHandlers, SigPending},
     siginfo::{SigDetails, SigInfo},
@@ -22,9 +23,10 @@ use signal::{
     sigset::{Sig, SigSet},
 };
 use sync::mutex::SpinNoIrqLock;
+use systype::SysResult;
 use time::stat::TaskTimeStat;
 use vfs::{fd_table::FdTable, sys_root_dentry};
-use vfs_core::Dentry;
+use vfs_core::{is_absolute_path, AtFd, Dentry, File, InodeMode, Path};
 
 use super::{
     resource::CpuMask,
@@ -33,11 +35,18 @@ use super::{
 };
 use crate::{
     generate_accessors, generate_atomic_accessors, generate_state_methods, generate_with_methods,
-    ipc::shm::SHARED_MEMORY_MANAGER,
-    mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
+    ipc::{
+        futex::{futex_manager, FutexHashKey, RobustListHead, FUTEX_MANAGER},
+        shm::SHARED_MEMORY_MANAGER,
+    },
+    mm::{
+        memory_space::{self, init_stack},
+        MemorySpace, UserReadPtr, UserWritePtr,
+    },
     processor::env::within_sum,
-    syscall,
+    syscall::{self, CloneFlags},
     task::{
+        aux::{AuxHeader, AT_BASE},
         manager::TASK_MANAGER,
         schedule,
         tid::{alloc_tid, TidAddress},
@@ -107,7 +116,7 @@ pub struct Task {
     /// Interval timers for the task.
     itimers: Shared<[ITimer; 3]>,
     /// Futexes used by the task.
-    futexes: Shared<Futexes>,
+    robust: Shared<RobustListHead>,
     ///
     tid_address: SyncUnsafeCell<TidAddress>,
     cpus_allowed: SyncUnsafeCell<CpuMask>,
@@ -163,15 +172,13 @@ impl Task {
         thread_group: ThreadGroup,
         sig_pending: SigPending,
         itimers: [ITimer; 3],
-        futexes: Futexes,
+        robust: RobustListHead,
         sig_handlers: SigHandlers,
         state: TaskState,
         shm_ids: BTreeMap<VirtAddr, usize>
     );
-    // TODO: this function is not clear, may be replaced with exec
-    pub fn spawn_from_elf(elf_data: &[u8]) {
-        let (memory_space, user_sp_top, entry_point, _auxv) = MemorySpace::from_elf(elf_data);
-        let trap_context = TrapContext::new(entry_point, user_sp_top);
+
+    pub fn new_init(memory_space: MemorySpace, trap_context: TrapContext) -> Arc<Self> {
         let task = Arc::new(Self {
             tid: alloc_tid(),
             leader: None,
@@ -197,16 +204,17 @@ impl Task {
                 ITimer::new_virtual(),
                 ITimer::new_prof(),
             ]),
-            futexes: new_shared(Futexes::new()),
+            robust: new_shared(RobustListHead::default()),
             tid_address: SyncUnsafeCell::new(TidAddress::new()),
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
             shm_ids: new_shared(BTreeMap::new()),
         });
-        task.thread_group.lock().push(task.clone());
 
+        task.thread_group.lock().push(task.clone());
+        task.memory_space.lock().set_task(&task);
         TASK_MANAGER.add(&task);
-        log::debug!("create a new process, pid {}", task.tid());
-        schedule::spawn_user_task(task);
+
+        task
     }
 
     pub fn parent(&self) -> Option<Weak<Self>> {
@@ -242,13 +250,17 @@ impl Task {
         if self.is_leader() {
             self.clone()
         } else {
-            self.leader.as_ref().cloned().unwrap().upgrade().unwrap()
+            self.leader.as_ref().unwrap().upgrade().unwrap()
         }
     }
 
     /// Pid means tgid.
     pub fn pid(self: &Arc<Self>) -> Pid {
-        self.leader().tid()
+        if self.is_leader() {
+            self.tid()
+        } else {
+            self.leader().tid()
+        }
     }
 
     pub fn tid(&self) -> Tid {
@@ -286,14 +298,11 @@ impl Task {
         self.memory_space.lock().switch_page_table()
     }
 
-    // TODO:
-    pub fn do_clone(
-        self: &Arc<Self>,
-        flags: syscall::CloneFlags,
-        stack: Option<VirtAddr>,
-        chilren_tid_ptr: usize,
-    ) -> Arc<Self> {
-        use syscall::CloneFlags;
+    pub fn raw_mm_pointer(&self) -> usize {
+        Arc::as_ptr(&self.memory_space) as usize
+    }
+
+    pub fn do_clone(self: &Arc<Self>, flags: CloneFlags) -> Arc<Self> {
         let tid = alloc_tid();
         let mut trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
@@ -305,7 +314,8 @@ impl Task {
         let thread_group;
         let cwd;
         let itimers;
-        let futexes;
+        let robust;
+        let shm_ids;
         let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
             self.sig_handlers.clone()
         } else {
@@ -319,7 +329,8 @@ impl Task {
             thread_group = self.thread_group.clone();
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
-            futexes = self.futexes.clone();
+            robust = self.robust.clone();
+            shm_ids = self.shm_ids.clone();
         } else {
             is_leader = true;
             leader = None;
@@ -332,7 +343,11 @@ impl Task {
                 ITimer::new_prof(),
             ]);
             cwd = new_shared(self.cwd());
-            futexes = new_shared(Futexes::new());
+            robust = new_shared(RobustListHead::default());
+            shm_ids = new_shared(BTreeMap::clone(&self.shm_ids.lock()));
+            for (_, shm_id) in shm_ids.lock().iter() {
+                SHARED_MEMORY_MANAGER.attach(*shm_id, tid.0);
+            }
         }
 
         let memory_space;
@@ -349,19 +364,6 @@ impl Task {
             self.fd_table.clone()
         } else {
             new_shared(self.fd_table.lock().clone())
-        };
-
-        if let Some(sp) = stack {
-            trap_context.get_mut().set_user_sp(sp.bits());
-        }
-        let tid_address = if flags.contains(CloneFlags::CHILD_CLEARTID) {
-            log::warn!("CloneFlags::CHILD_CLEARTID");
-            SyncUnsafeCell::new(TidAddress {
-                set_child_tid: None,
-                clear_child_tid: Some(chilren_tid_ptr),
-            })
-        } else {
-            SyncUnsafeCell::new(TidAddress::new())
         };
 
         let new = Arc::new(Self {
@@ -386,11 +388,11 @@ impl Task {
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
             itimers,
-            futexes,
-            tid_address,
+            robust,
+            tid_address: SyncUnsafeCell::new(TidAddress::new()),
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
             // After a fork(2), the child inherits the attached shared memory segments.
-            shm_ids: self.shm_ids.clone(),
+            shm_ids,
         });
 
         if !flags.contains(CloneFlags::THREAD) {
@@ -398,23 +400,33 @@ impl Task {
         }
         new.with_mut_thread_group(|tg| tg.push(new.clone()));
 
-        if flags.contains(CloneFlags::CHILD_SETTID) {
-            log::warn!("CloneFlags::CHILD_SETTID");
-            UserWritePtr::from_usize(chilren_tid_ptr)
-                .write(self, new.tid())
-                .expect("CloneFlags::CHILD_SETTID error");
+        if new.is_leader() {
+            new.memory_space.lock().set_task(&new);
         }
 
         TASK_MANAGER.add(&new);
         new
     }
 
-    // TODO: figure out what should be reserved across this syscall
-    // TODO: support CLOSE_ON_EXEC flag may be
-    pub fn do_execve(&self, elf_data: &[u8], argv: Vec<String>, envp: Vec<String>) {
+    pub fn do_execve(
+        self: &Arc<Self>,
+        elf_file: Arc<dyn File>,
+        elf_data: &[u8],
+        argv: Vec<String>,
+        envp: Vec<String>,
+    ) {
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();
-        let (entry, auxv) = memory_space.parse_and_map_elf(elf_data);
+        memory_space.set_task(&self.leader());
+        let (mut entry, mut auxv) = memory_space.parse_and_map_elf(elf_file, elf_data);
+
+        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
+        if let Some(interp_entry_point) = memory_space.load_dl_interp_if_needed(&elf) {
+            auxv.push(AuxHeader::new(AT_BASE, DL_INTERP_OFFSET));
+            entry = interp_entry_point;
+        } else {
+            auxv.push(AuxHeader::new(AT_BASE, 0));
+        }
 
         // NOTE: should do termination before switching page table, so that other
         // threads will trap in by page fault and be handled by `do_exit`
@@ -425,7 +437,7 @@ impl Task {
                 if !t.is_leader() {
                     t.set_zombie();
                 } else {
-                    pid = t.tid.0;
+                    pid = t.tid();
                 }
             }
             pid
@@ -440,7 +452,7 @@ impl Task {
 
         // alloc stack, and push argv, envp and auxv
         log::debug!("[Task::do_execve] allocing stack");
-        let sp_init = self.with_mut_memory_space(|m| m.alloc_stack(USER_STACK_SIZE));
+        let sp_init = self.with_mut_memory_space(|m| m.alloc_stack_lazily(USER_STACK_SIZE));
 
         let (sp, argc, argv, envp) = within_sum(|| init_stack(sp_init, argv, envp, auxv));
 
@@ -475,12 +487,44 @@ impl Task {
     // process of the thread group is sent a SIGCHLD (or other termination) signal.
     // WARN: do not call this function directly if a task should be terminated,
     // instead, call `set_zombie`
-    // TODO:
     pub fn do_exit(self: &Arc<Self>) {
         log::info!("thread {} do exit", self.tid());
         if self.tid() == INIT_PROC_PID {
             shutdown();
         }
+
+        if let Some(address) = self.tid_address_ref().clear_child_tid {
+            log::info!("[do_exit] clear_child_tid: {}", address);
+            UserWritePtr::from(address)
+                .write(self, 0)
+                .expect("tid address write error");
+            let key = FutexHashKey::Shared {
+                paddr: vaddr_to_paddr(address.into()),
+            };
+            futex_manager().wake(&key, 1);
+            let key = FutexHashKey::Private {
+                mm: self.raw_mm_pointer(),
+                vaddr: address.into(),
+            };
+            futex_manager().wake(&key, 1);
+        }
+
+        let mut tg = self.thread_group.lock();
+
+        if (!self.leader().is_zombie())
+            || (self.is_leader && tg.len() > 1)
+            || (!self.is_leader && tg.len() > 2)
+        {
+            if !self.is_leader {
+                // NOTE: leader will be removed by parent calling `sys_wait4`
+                tg.remove(self);
+                TASK_MANAGER.remove(self.tid());
+            }
+            return;
+        }
+
+        // exit the process, e.g. reparent all children, and send SIGCHLD to parent
+        log::info!("[Task::do_exit] exit the whole process");
 
         log::debug!("[Task::do_exit] set children to be zombie and reparent them to init");
         self.with_mut_children(|children| {
@@ -495,44 +539,68 @@ impl Task {
             init_proc.children.lock().extend(children.clone());
         });
 
-        if let Some(address) = self.tid_address_ref().clear_child_tid {
-            log::info!("[do_exit] clear_child_tid: {}", address);
-            UserWritePtr::from(address)
-                .write(self, 0)
-                .expect("tid address write error");
-            self.with_mut_futexes(|futexes| futexes.wake(address as u32, 1));
+        // NOTE: leader will be removed by parent calling `sys_wait4`
+        // TODO: drop most of resource
+        if let Some(parent) = self.parent() {
+            let parent = parent.upgrade().unwrap();
+            parent.receive_siginfo(
+                SigInfo {
+                    sig: Sig::SIGCHLD,
+                    code: SigInfo::CLD_EXITED,
+                    details: SigDetails::CHLD {
+                        pid: self.pid(),
+                        status: self.exit_code(),
+                        utime: self.time_stat().user_time(),
+                        stime: self.time_stat().sys_time(),
+                    },
+                },
+                false,
+            );
         }
 
-        // NOTE: leader will be removed by parent calling `sys_wait4`
-        if !self.is_leader() {
-            self.with_mut_thread_group(|tg| tg.remove(self));
-            TASK_MANAGER.remove(self.tid())
-        } else {
-            // TODO: drop most of resource
-            if let Some(parent) = self.parent() {
-                let parent = parent.upgrade().unwrap();
-                parent.receive_siginfo(
-                    SigInfo {
-                        sig: Sig::SIGCHLD,
-                        code: SigInfo::CLD_EXITED,
-                        details: SigDetails::CHLD {
-                            pid: self.pid(),
-                            status: self.exit_code(),
-                            utime: self.time_stat().user_time(),
-                            stime: self.time_stat().sys_time(),
-                        },
-                    },
-                    false,
-                );
+        // Upon _exit(2), all attached shared memory segments are detached from the
+        // process.
+        self.with_shm_ids(|ids| {
+            for (_, shm_id) in ids.iter() {
+                SHARED_MEMORY_MANAGER.detach(*shm_id, self.pid());
             }
-            // Upon _exit(2), all attached shared memory segments are detached from the
-            // process.
-            self.with_shm_ids(|ids| {
-                for (_, shm_id) in ids.iter() {
-                    SHARED_MEMORY_MANAGER.detach(*shm_id, self.pid());
+        });
+    }
+
+    /// The dirfd argument is used in conjunction with the pathname argument as
+    /// follows:
+    /// + If the pathname given in pathname is absolute, then dirfd is ignored.
+    /// + If the pathname given in pathname is relative and dirfd is the special
+    ///   value AT_FDCWD, then pathname is interpreted relative to the current
+    ///   working directory of the calling process (like open()).
+    /// + If the pathname given in pathname is relative, then it is interpreted
+    ///   relative to the directory referred to by the file descriptor dirfd
+    ///   (rather than relative to the current working directory of the calling
+    ///   process, as is done by open() for a relative pathname).  In this case,
+    ///   dirfd must be a directory that was opened for reading (O_RDONLY) or
+    ///   using the O_PATH flag.
+    pub fn at_helper(&self, fd: AtFd, path: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+        log::info!("[at_helper] fd: {fd}, path: {path}");
+        let path = if is_absolute_path(path) {
+            Path::new(sys_root_dentry(), sys_root_dentry(), path)
+        } else {
+            match fd {
+                AtFd::FdCwd => {
+                    log::info!("[at_helper] cwd: {}", self.cwd().path());
+                    Path::new(sys_root_dentry(), self.cwd(), path)
                 }
-            });
-        }
+                AtFd::Normal(fd) => {
+                    let file = self.with_fd_table(|table| table.get_file(fd))?;
+                    Path::new(sys_root_dentry(), file.dentry(), path)
+                }
+            }
+        };
+        path.walk()
+    }
+
+    /// Given a path, absolute or relative, will find.
+    pub fn resolve_path(&self, path: &str) -> SysResult<Arc<dyn Dentry>> {
+        self.at_helper(AtFd::FdCwd, path, InodeMode::empty())
     }
 }
 
@@ -546,6 +614,10 @@ impl ThreadGroup {
         Self {
             members: BTreeMap::new(),
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.members.len()
     }
 
     pub fn push(&mut self, task: Arc<Task>) {
