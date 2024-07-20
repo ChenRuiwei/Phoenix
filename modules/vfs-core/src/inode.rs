@@ -152,7 +152,6 @@ impl_downcast!(sync Inode);
 pub enum InodeState {
     /// Init state, indicates that this inode is not loaded from disk yet.
     UnInit,
-    /// already sync
     Sync,
     Dirty,
     Removed,

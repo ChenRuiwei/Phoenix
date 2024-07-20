@@ -107,7 +107,7 @@ impl Dentry for Ext4Dentry {
             .unwrap_or_else(|_| unreachable!());
         let sub_dentry = self.get_child(name).unwrap();
         let fpath = sub_dentry.path();
-        log::debug!("[Ext4Dentry::base_remove] path: {fpath}");
+        log::info!("[Ext4Dentry::base_remove] path: {fpath}");
         let mut file = inode.file.lock();
         if file.check_inode_exist(&fpath, InodeTypes::EXT4_DE_DIR) {
             // Recursive directory remove

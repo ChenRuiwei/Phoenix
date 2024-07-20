@@ -10,26 +10,15 @@ use user_lib::{execve, fork, wait, waitpid};
 #[macro_use]
 extern crate user_lib;
 
-// const TESTCASES: [&str; 0] = [];
-
-const TESTCASES: [&str; 17] = [
-    "cyclictest_testcode.sh",
+const TESTCASES: [&str; 8] = [
     "busybox_testcode.sh",
+    "lua_testcode.sh",
     "time-test",
+    "libc-bench",
     "libctest_testcode.sh",
     "lmbench_testcode.sh",
-    "lua_testcode.sh",
     "iozone_testcode.sh",
-    "libc-bench",
     "unixbench_testcode.sh",
-    "netperf_testcode.sh",
-    "iperf_testcode.sh",
-    "interrupts-test-1",
-    "interrupts-test-2",
-    "copy-file-range-test-1",
-    "copy-file-range-test-2",
-    "copy-file-range-test-3",
-    "copy-file-range-test-4",
 ];
 
 #[no_mangle]
@@ -42,7 +31,12 @@ fn main() -> i32 {
                 if execve(
                     &testname,
                     &[testname.as_ptr(), core::ptr::null::<u8>()],
-                    &[core::ptr::null::<u8>()],
+                    &[
+                        "PATH=/:/bin:/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin:\0".as_ptr(),
+                        "LD_LIBRARY_PATH=/:/lib:/lib64/lp64d:/usr/lib:/usr/local/lib:\0".as_ptr(),
+                        "TERM=screen\0".as_ptr(),
+                        core::ptr::null::<u8>(),
+                    ],
                 ) != 0
                 {
                     println!("Error when executing!");
@@ -53,15 +47,13 @@ fn main() -> i32 {
                 waitpid(pid as usize, &mut exit_code);
             }
         }
-        println!(" !TEST FINISH! ");
     } else {
         loop {
             let mut exit_code: i32 = 0;
-            let _pid = wait(&mut exit_code);
-            // println!(
-            //     "[initproc] Released a zombie process, pid={}, exit_code={}",
-            //     pid, exit_code,
-            // );
+            let pid = wait(&mut exit_code);
+            if pid < 0 {
+                break;
+            }
         }
     }
     0

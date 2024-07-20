@@ -7,7 +7,7 @@ use config::fs::MAX_FD_NUM;
 use systype::{RLimit, SysError, SysResult};
 use vfs_core::{File, OpenFlags};
 
-use crate::devfs::{stdio, tty::TTY};
+use crate::devfs::tty::TTY;
 
 pub type Fd = usize;
 
@@ -30,7 +30,6 @@ impl From<OpenFlags> for FdFlags {
         if value.contains(OpenFlags::O_CLOEXEC) {
             FdFlags::CLOEXEC
         } else {
-            log::warn!("[FdFlags::from] unsupported flag");
             FdFlags::empty()
         }
     }

@@ -13,7 +13,7 @@ use config::{
     board::BLOCK_SIZE,
     mm::{
         block_page_id, is_aligned_to_block, BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE,
-        MAX_BUFFER_PAGES, PAGE_SIZE,
+        MAX_BUFFER_HEADS, MAX_BUFFER_PAGES, PAGE_SIZE,
     },
 };
 use device_core::BlockDriverOps;
@@ -22,19 +22,21 @@ use lru::LruCache;
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 
-use crate::Page;
+use crate::{Page, PageKind};
 
 pub struct BufferCache {
     device: Option<Weak<dyn BlockDriverOps>>,
     /// Block page id to `Page`.
     // NOTE: These `Page`s are pages without file, only exist for caching pure
     // block data.
-    pages: LruCache<usize, Arc<Page>>,
+    pub pages: LruCache<usize, Arc<Page>>,
     /// Block idx to `BufferHead`.
+    // TODO: add lru support, otherwise may occupy too much heap space
     // NOTE: Stores all accesses to block device. Some of them will be attached
     // to pages above, while others with file related will be attached to pages
     // stored in address space.
-    buffer_heads: BTreeMap<usize, Arc<BufferHead>>,
+    // PERF: perf issue will happen when lru cache is full
+    pub buffer_heads: LruCache<usize, Arc<BufferHead>>,
 }
 
 impl BufferCache {
@@ -42,7 +44,7 @@ impl BufferCache {
         Self {
             device: None,
             pages: LruCache::new(NonZeroUsize::new(MAX_BUFFER_PAGES).unwrap()),
-            buffer_heads: BTreeMap::new(),
+            buffer_heads: LruCache::new(NonZeroUsize::new(MAX_BUFFER_HEADS).unwrap()),
         }
     }
 
@@ -79,7 +81,7 @@ impl BufferCache {
             buffer_head.inc_acc_cnt();
             // log::error!("acc cnt {}", buffer_head.acc_cnt());
             if buffer_head.need_cache() && !buffer_head.has_cached() {
-                // log::error!("need cache");
+                // log::error!("block id {block_id} need cache");
                 if let Some(page) = self.pages.get_mut(&block_page_id(block_id)) {
                     // log::error!("has page");
                     device.base_read_block(block_id, page.block_bytes_array(block_id));
@@ -99,13 +101,20 @@ impl BufferCache {
             // {block_id}" );
             let buffer_head = BufferHead::new_arc(block_id);
             buffer_head.inc_acc_cnt();
-            self.buffer_heads.insert(block_id, buffer_head.clone());
+            self.buffer_heads.push(block_id, buffer_head.clone());
             buffer_head
         }
     }
 
-    pub fn get_buffer_head(&self, block_id: usize) -> Arc<BufferHead> {
-        self.buffer_heads.get(&block_id).cloned().unwrap()
+    pub fn get_buffer_head_or_create(&mut self, block_id: usize) -> Arc<BufferHead> {
+        // self.buffer_heads.get(&block_id).cloned().unwrap()
+        if let Some(buffer_head) = self.buffer_heads.get_mut(&block_id) {
+            buffer_head.clone()
+        } else {
+            let buffer_head = BufferHead::new_arc(block_id);
+            self.buffer_heads.push(block_id, buffer_head.clone());
+            buffer_head
+        }
     }
 }
 
@@ -158,10 +167,24 @@ impl BufferHead {
     pub fn init(&self, page: &Arc<Page>, offset: usize) {
         if self.has_cached() {
             log::error!(
-                "block id {} already cached, with acc_cnt {}",
+                "block id {} already cached, with acc_cnt {}, page kind {:?}",
                 self.block_id,
-                self.acc_cnt()
+                self.acc_cnt(),
+                self.page().kind()
             );
+            // only block cache can be transfered to file cache, e.g. a directory is mis
+            // recognized as block cache
+            assert!(self.page().kind().is_block_cache());
+            assert!(page.kind().is_file_cache());
+            match &self.page().kind() {
+                PageKind::BlockCache(inner) => {
+                    let mut inner = inner.lock();
+                    let device = inner.device.upgrade().unwrap();
+                    device.remove_buffer_page(self.block_id);
+                    // block page should be dropped here
+                }
+                _ => panic!(),
+            }
         }
         debug_assert!(is_aligned_to_block(offset) && offset < PAGE_SIZE);
         let mut inner = self.inner.lock();

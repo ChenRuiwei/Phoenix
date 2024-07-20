@@ -10,7 +10,7 @@ use core::{
     task::Waker,
 };
 
-use arch::memory::sfence_vma_all;
+use arch::{memory::sfence_vma_all, time::get_time_us};
 use config::{
     mm::{DL_INTERP_OFFSET, USER_STACK_SIZE},
     process::INIT_PROC_PID,
@@ -26,7 +26,7 @@ use sync::mutex::SpinNoIrqLock;
 use systype::SysResult;
 use time::stat::TaskTimeStat;
 use vfs::{fd_table::FdTable, sys_root_dentry};
-use vfs_core::{is_absolute_path, AtFd, Dentry, InodeMode, Path};
+use vfs_core::{is_absolute_path, AtFd, Dentry, File, InodeMode, Path};
 
 use super::{
     resource::CpuMask,
@@ -39,7 +39,10 @@ use crate::{
         futex::{futex_manager, FutexHashKey, RobustListHead, FUTEX_MANAGER},
         shm::SHARED_MEMORY_MANAGER,
     },
-    mm::{memory_space::init_stack, MemorySpace, UserReadPtr, UserWritePtr},
+    mm::{
+        memory_space::{self, init_stack},
+        MemorySpace, UserReadPtr, UserWritePtr,
+    },
     processor::env::within_sum,
     syscall::{self, CloneFlags},
     task::{
@@ -175,10 +178,7 @@ impl Task {
         itimers: [ITimer;3]
     );
 
-    // TODO: this function is not clear, may be replaced with exec
-    pub fn spawn_from_elf(elf_data: &[u8]) {
-        let (memory_space, user_sp_top, entry_point, _auxv) = MemorySpace::from_elf(elf_data);
-        let trap_context = TrapContext::new(entry_point, user_sp_top);
+    pub fn new_init(memory_space: MemorySpace, trap_context: TrapContext) -> Arc<Self> {
         let task = Arc::new(Self {
             tid: alloc_tid(),
             leader: None,
@@ -205,11 +205,12 @@ impl Task {
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
             shm_ids: new_shared(BTreeMap::new()),
         });
+
         task.thread_group.lock().push(task.clone());
         task.memory_space.lock().set_task(&task);
         TASK_MANAGER.add(&task);
-        log::debug!("create a new process, pid {}", task.tid());
-        schedule::spawn_user_task(task);
+
+        task
     }
 
     pub fn parent(&self) -> Option<Weak<Self>> {
@@ -310,6 +311,7 @@ impl Task {
         let cwd;
         let itimers;
         let robust;
+        let shm_ids;
         let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
             self.sig_handlers.clone()
         } else {
@@ -324,6 +326,7 @@ impl Task {
             itimers = self.itimers.clone();
             cwd = self.cwd.clone();
             robust = self.robust.clone();
+            shm_ids = self.shm_ids.clone();
         } else {
             is_leader = true;
             leader = None;
@@ -333,6 +336,10 @@ impl Task {
             itimers = new_shared([ITimer::ZERO; 3]);
             cwd = new_shared(self.cwd());
             robust = new_shared(RobustListHead::default());
+            shm_ids = new_shared(BTreeMap::clone(&self.shm_ids.lock()));
+            for (_, shm_id) in shm_ids.lock().iter() {
+                SHARED_MEMORY_MANAGER.attach(*shm_id, tid.0);
+            }
         }
 
         let memory_space;
@@ -377,7 +384,7 @@ impl Task {
             tid_address: SyncUnsafeCell::new(TidAddress::new()),
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
             // After a fork(2), the child inherits the attached shared memory segments.
-            shm_ids: self.shm_ids.clone(),
+            shm_ids,
         });
 
         if !flags.contains(CloneFlags::THREAD) {
@@ -393,12 +400,17 @@ impl Task {
         new
     }
 
-    // TODO: figure out what should be reserved across this syscall
-    pub fn do_execve(self: &Arc<Self>, elf_data: &[u8], argv: Vec<String>, envp: Vec<String>) {
+    pub fn do_execve(
+        self: &Arc<Self>,
+        elf_file: Arc<dyn File>,
+        elf_data: &[u8],
+        argv: Vec<String>,
+        envp: Vec<String>,
+    ) {
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();
         memory_space.set_task(&self.leader());
-        let (mut entry, mut auxv) = memory_space.parse_and_map_elf(elf_data);
+        let (mut entry, mut auxv) = memory_space.parse_and_map_elf(elf_file, elf_data);
 
         let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         if let Some(interp_entry_point) = memory_space.load_dl_interp_if_needed(&elf) {
@@ -407,6 +419,7 @@ impl Task {
         } else {
             auxv.push(AuxHeader::new(AT_BASE, 0));
         }
+
         // NOTE: should do termination before switching page table, so that other
         // threads will trap in by page fault and be handled by `do_exit`
         log::debug!("[Task::do_execve] terminating all threads except the leader");

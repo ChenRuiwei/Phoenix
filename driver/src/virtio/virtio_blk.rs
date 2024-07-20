@@ -30,8 +30,15 @@ impl BlockDriverOps for VirtIoBlkDev {
         BLOCK_SIZE
     }
 
+    fn buffer_head_cnts(&self) -> usize {
+        self.cache.lock().buffer_heads.len()
+    }
+
+    fn remove_buffer_page(&self, block_id: usize) {
+        self.cache.lock().pages.pop(&block_id);
+    }
+
     fn base_read_block(&self, block_id: usize, buf: &mut [u8]) {
-        // log::error!("read blk id {}", block_id);
         let res = self.device.lock().read_blocks(block_id, buf);
         if res.is_err() {
             panic!(
@@ -76,7 +83,7 @@ impl VirtIoBlkDev {
                     name: "virtio-blk".to_string(),
                     mmio_base,
                     mmio_size,
-                    irq_no: None, // TODO: block device don't support interrupts in this system
+                    irq_no: None, // TODO: support interrupt for block device
                     dtype: DeviceType::Block,
                 };
                 let blk_dev = Arc::new(Self {

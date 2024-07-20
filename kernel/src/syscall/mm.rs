@@ -153,7 +153,6 @@ impl Syscall<'_> {
                         .with_mut_memory_space(|m| m.alloc_mmap_anonymous(perm, flags, length))?;
                     Ok(start_va.bits())
                 } else {
-                    log::warn!("private copy on write mmap is not implemented yet");
                     let file = task.with_fd_table(|table| table.get_file(fd))?;
                     if offset + length > file.size() {
                         log::warn!("offset plus length is bigger than file size");
@@ -301,8 +300,8 @@ impl Syscall<'_> {
         if shmflg.contains(ShmAtFlags::SHM_RDONLY) {
             map_perm.remove(MapPerm::W);
         }
-        let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
-        if let Some(shm) = shm_manager.get_mut(&shmid) {
+        let mut ret = 0;
+        if let Some(shm) = SHARED_MEMORY_MANAGER.0.lock().get_mut(&shmid) {
             let task = self.task;
             let ret_addr = task.with_mut_memory_space(|m| {
                 m.attach_shm(shm.size(), shmaddr_aligned, map_perm, &mut shm.pages)
@@ -310,11 +309,13 @@ impl Syscall<'_> {
             task.with_mut_shm_ids(|ids| {
                 ids.insert(ret_addr, shmid);
             });
-            Ok(ret_addr.into())
+            ret = ret_addr.into();
         } else {
             // Invalid shmid value
-            Err(SysError::EINVAL)
+            return Err(SysError::EINVAL);
         }
+        SHARED_MEMORY_MANAGER.attach(shmid, self.task.pid());
+        return Ok(ret);
     }
 
     /// When a process no longer uses a shared memory block, it should detach

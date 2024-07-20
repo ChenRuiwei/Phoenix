@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use downcast_rs::{impl_downcast, DowncastSync};
 use error::DevResult;
 pub use smoltcp::phy::{Loopback, Medium};
+
 /// General Device Operations
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum DeviceType {
@@ -97,6 +98,10 @@ pub trait BlockDriverOps: BaseDriverOps {
     fn size(&self) -> u64;
 
     fn block_size(&self) -> usize;
+
+    fn buffer_head_cnts(&self) -> usize;
+
+    fn remove_buffer_page(&self, block_id: usize);
 
     /// Read data form block to buffer
     fn base_read_block(&self, block_id: usize, buf: &mut [u8]);

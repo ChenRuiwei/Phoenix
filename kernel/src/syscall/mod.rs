@@ -189,6 +189,7 @@ impl<'a> Syscall<'a> {
             }
             SYNC => self.sys_do_nothing("sync"),
             FSYNC => self.sys_do_nothing("fsync"),
+            FTRUNCATE => self.sys_ftruncate(args[0], args[1] as _).await,
             // IO
             PPOLL => {
                 self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3].into())

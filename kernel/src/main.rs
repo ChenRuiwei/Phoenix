@@ -11,14 +11,12 @@
 #![feature(stdsimd)]
 #![feature(riscv_ext_intrinsics)]
 #![feature(map_try_insert)]
-#![feature(format_args_nl)]
 #![allow(clippy::mut_from_ref)]
 #![feature(new_uninit)]
 
 mod boot;
 mod impls;
 mod ipc;
-mod loader;
 mod mm;
 mod net;
 mod panic;
@@ -33,8 +31,10 @@ use core::{
 };
 
 use ::net::init_network;
+use driver::BLOCK_DEVICE;
+use timer::timelimited_task::ksleep_s;
 
-use crate::processor::hart;
+use crate::{processor::hart, task::TASK_MANAGER};
 
 extern crate alloc;
 
@@ -48,7 +48,6 @@ extern crate driver;
 extern crate logging;
 
 global_asm!(include_str!("trampoline.asm"));
-global_asm!(include_str!("link_app.asm"));
 
 static FIRST_HART: AtomicBool = AtomicBool::new(true);
 
@@ -70,11 +69,27 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
         mm::init();
         trap::init();
         driver::init();
-        loader::init();
         vfs::init();
         task::spawn_kernel_task(async move {
-            task::add_init_proc();
+            task::spawn_init_proc();
         });
+
+        // task::spawn_kernel_task(async move {
+        //     loop {
+        //         log::error!(
+        //             "buffer head cnts {}",
+        //             BLOCK_DEVICE.get().unwrap().buffer_head_cnts()
+        //         );
+        //         ksleep_s(3).await;
+        //     }
+        // });
+        //
+        // task::spawn_kernel_task(async move {
+        //     loop {
+        //         log::error!("task counts {}", TASK_MANAGER.len());
+        //         ksleep_s(3).await;
+        //     }
+        // });
 
         #[cfg(feature = "smp")]
         boot::start_harts(hart_id);

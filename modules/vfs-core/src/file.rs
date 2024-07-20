@@ -72,7 +72,7 @@ pub trait File: Send + Sync + DowncastSync {
         todo!()
     }
 
-    /// Read a page at `offset_aligned` without address space.
+    /// Read a page at `offset_aligned` without page cache.
     async fn read_page_at(&self, offset_aligned: usize) -> SysResult<Option<Arc<Page>>> {
         log::trace!("[File::read_page] read offset {offset_aligned}");
 
@@ -94,10 +94,10 @@ pub trait File: Send + Sync + DowncastSync {
         let virtio_blk = device
             .downcast_arc::<VirtIoBlkDev>()
             .unwrap_or_else(|_| unreachable!());
-        let buffer_caches = virtio_blk.cache.lock();
+        let mut buffer_caches = virtio_blk.cache.lock();
         for offset in (offset_aligned..offset_aligned + len).step_by(BLOCK_SIZE) {
             let block_id = inode.get_blk_idx(offset)?;
-            let buffer_head = buffer_caches.get_buffer_head(block_id as usize);
+            let buffer_head = buffer_caches.get_buffer_head_or_create(block_id as usize);
             page.insert_buffer_head(buffer_head);
         }
 
@@ -251,6 +251,19 @@ impl dyn File {
         Ok(offset_it - offset)
     }
 
+    pub async fn get_page_at(&self, offset_aligned: usize) -> SysResult<Option<Arc<Page>>> {
+        let inode = self.inode();
+        let page_cache = inode.page_cache().unwrap();
+        if let Some(page) = page_cache.get_page(offset_aligned) {
+            Ok(Some(page))
+        } else if let Some(page) = self.read_page_at(offset_aligned).await? {
+            Ok(Some(page))
+        } else {
+            // no page means EOF
+            Ok(None)
+        }
+    }
+
     /// Called by write(2) and related system calls.
     ///
     /// On success, the number of bytes written is returned, and the file offset
@@ -301,7 +314,6 @@ impl dyn File {
             offset_it += len;
             buf_it = &buf_it[len..];
         }
-
         if offset_it > self.size() {
             log::warn!(
                 "[File::write_at] write beyond file, offset_it:{offset_it}, size:{}",
@@ -314,15 +326,18 @@ impl dyn File {
             let virtio_blk = device
                 .downcast_arc::<VirtIoBlkDev>()
                 .unwrap_or_else(|_| unreachable!());
-            let buffer_caches = virtio_blk.cache.lock();
+            let mut buffer_caches = virtio_blk.cache.lock();
             for offset_aligned_page in (round_down_to_page(old_size)..new_size).step_by(PAGE_SIZE) {
                 let page = page_cache.get_page(offset_aligned_page).unwrap();
                 for i in page.buffer_head_cnts()..MAX_BUFFERS_PER_PAGE {
                     let offset_aligned_block = offset_aligned_page + i * BLOCK_SIZE;
                     if offset_aligned_block < new_size {
                         let blk_idx = inode.get_blk_idx(offset_aligned_block)?;
-                        let buffer_head = buffer_caches.get_buffer_head(blk_idx);
+                        log::debug!("offset {offset_aligned_block}, blk idx {blk_idx}");
+                        let buffer_head = buffer_caches.get_buffer_head_or_create(blk_idx);
                         page.insert_buffer_head(buffer_head);
+                    } else {
+                        break;
                     }
                 }
             }

@@ -13,16 +13,18 @@ pub const KERNEL_OFFSET: usize = 0x20_0000;
 pub const KERNEL_START_PHYS: usize = RAM_START + KERNEL_OFFSET;
 pub const KERNEL_START: usize = VIRT_START + KERNEL_OFFSET;
 
-pub const KERNEL_STACK_SIZE: usize = 64 * 1024; // 64K
-pub const KERNEL_HEAP_SIZE: usize = 32 * 1024 * 1024; // 32M
+pub const KERNEL_STACK_SIZE: usize = 64 * 1024;
+pub const KERNEL_HEAP_SIZE: usize = 64 * 1024 * 1024;
 
 register_mut_const!(pub DTB_ADDR, usize, 0);
 
 /// boot
 pub const HART_START_ADDR: usize = 0x80200000;
 
-pub const USER_STACK_SIZE: usize = 8 * 1024 * 1024; // 8M
+pub const USER_STACK_SIZE: usize = 8 * 1024 * 1024;
 pub const USER_STACK_PRE_ALLOC_SIZE: usize = 4 * PAGE_SIZE;
+
+pub const USER_ELF_PRE_ALLOC_PAGE_CNT: usize = 0;
 
 pub const PAGE_SIZE: usize = 1 << PAGE_SIZE_BITS;
 pub const PAGE_MASK: usize = PAGE_SIZE - 1;
@@ -39,7 +41,8 @@ pub const PAGE_TABLE_LEVEL_NUM: usize = 3;
 /// Dynamic linked interpreter address range in user space
 pub const DL_INTERP_OFFSET: usize = 0x20_0000_0000;
 
-pub const MAX_BUFFER_CACHE: usize = 0x100;
+pub const MAX_BUFFER_HEADS: usize = 0x30000;
+pub const MAX_BUFFER_CACHE: usize = 0x1000;
 pub const MAX_BUFFER_PAGES: usize = MAX_BUFFER_CACHE / MAX_BUFFERS_PER_PAGE;
 pub const MAX_BUFFERS_PER_PAGE: usize = PAGE_SIZE / BLOCK_SIZE;
 pub const BUFFER_NEED_CACHE_CNT: usize = 8;
