@@ -30,7 +30,7 @@ use vfs_core::{is_absolute_path, AtFd, Dentry, InodeMode, Path};
 
 use super::{
     resource::CpuMask,
-    signal::ITimer,
+    signal::{ITimer, RealITimer},
     tid::{Pid, Tid, TidHandle},
 };
 use crate::{
@@ -168,11 +168,11 @@ impl Task {
         memory_space: MemorySpace,
         thread_group: ThreadGroup,
         sig_pending: SigPending,
-        itimers: [ITimer; 3],
         robust: RobustListHead,
         sig_handlers: SigHandlers,
         state: TaskState,
-        shm_ids: BTreeMap<VirtAddr, usize>
+        shm_ids: BTreeMap<VirtAddr, usize>,
+        itimers: [ITimer;3]
     );
 
     // TODO: this function is not clear, may be replaced with exec
@@ -199,11 +199,7 @@ impl Task {
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
-            itimers: new_shared([
-                ITimer::new_real(),
-                ITimer::new_virtual(),
-                ITimer::new_prof(),
-            ]),
+            itimers: new_shared([ITimer::ZERO; 3]),
             robust: new_shared(RobustListHead::default()),
             tid_address: SyncUnsafeCell::new(TidAddress::new()),
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
@@ -334,11 +330,7 @@ impl Task {
             parent = new_shared(Some(Arc::downgrade(self)));
             children = new_shared(BTreeMap::new());
             thread_group = new_shared(ThreadGroup::new());
-            itimers = new_shared([
-                ITimer::new_real(),
-                ITimer::new_virtual(),
-                ITimer::new_prof(),
-            ]);
+            itimers = new_shared([ITimer::ZERO; 3]);
             cwd = new_shared(self.cwd());
             robust = new_shared(RobustListHead::default());
         }

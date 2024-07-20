@@ -1,11 +1,16 @@
 {
-  "rust-analyzer.checkOnSave.allTargets": false,
-  "rust-analyzer.checkOnSave.extraArgs": [
-    "--target",
-    "riscv64gc-unknown-none-elf"
-  ],
+  "json.schemaDownload.enable": false,
+  "rust-analyzer.cargo.target": "riscv64gc-unknown-none-elf",
+  "rust-analyzer.check.allTargets": false,
+  "rust-analyzer.procMacro.enable": true,
   "rust-analyzer.linkedProjects": [
     "./kernel/Cargo.toml",
   ],
-  "rust-analyzer.checkOnSave": true
+  "rust-analyzer.checkOnSave": true,
+  "rust-analyzer.files.excludeDirs": [
+    "third-party"
+  ],
+  "files.watcherExclude": {
+    "**/third-party": true
+  },
 }

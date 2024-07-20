@@ -96,9 +96,6 @@ pub async fn task_loop(task: Arc<Task>) {
             Stopped => suspend_now().await,
             _ => {}
         }
-
-        task.update_itimers();
-
         do_signal(&task, intr).expect("do signal error");
     }
 

@@ -1,4 +1,7 @@
-use alloc::sync::Arc;
+use alloc::{
+    boxed::Box,
+    sync::{Arc, Weak},
+};
 use core::{
     future::{Future, Pending},
     intrinsics::size_of,
@@ -10,7 +13,8 @@ use core::{
 use arch::time::get_time_duration;
 use signal::*;
 use systype::SysResult;
-use time::timeval::ITimerVal;
+use time::timeval::{ITimerVal, TimeVal};
+use timer::{Timer, TimerEvent};
 
 use super::Task;
 use crate::{mm::UserWritePtr, processor::hart::current_task_ref, task::task::TaskState};
@@ -276,118 +280,53 @@ fn cont(task: &Arc<Task>, sig: Sig) {
     task.notify_parent(SigInfo::CLD_CONTINUED, sig);
 }
 
-/// A process has only one of each of the three types of timers.
+#[derive(Debug)]
 pub struct ITimer {
-    interval: Duration,
-    next_expire: Duration,
-    now: fn() -> Duration,
-    activated: bool,
-    sig: Sig,
+    pub interval: Duration,
+    pub next_expire: Duration,
+    pub enabled: bool,
 }
 
 impl ITimer {
-    // pub const ITIMER_REAL: i32 = 0;
-    // pub const ITIMER_VIRTUAL: i32 = 1;
-    // pub const ITIMER_PROF: i32 = 2;
+    pub const ZERO: Self = Self {
+        interval: Duration::ZERO,
+        next_expire: Duration::ZERO,
+        enabled: false,
+    };
+}
 
-    /// This timer counts down in real (i.e., wall clock) time.  At each
-    /// expiration, a SIGALRM signal is generated.
-    pub fn new_real() -> Self {
-        Self {
-            interval: Duration::ZERO,
-            next_expire: Duration::ZERO,
-            now: get_time_duration,
-            activated: false,
-            sig: Sig::SIGALRM,
-        }
-    }
+#[derive(Default, Debug)]
+pub struct RealITimer {
+    /// 设置Weak是因为可能task已经释放了但是RealITimer依然存在于TimerManager的情况
+    pub task: Weak<Task>,
+}
 
-    /// This timer counts down against the user-mode CPU time consumed by the
-    /// process.  (The measurement includes CPU time  consumed by all threads in
-    /// the process.)  At each expiration, a SIGVTALRM signal is generated.
-    pub fn new_virtual() -> Self {
-        Self {
-            interval: Duration::ZERO,
-            next_expire: Duration::ZERO,
-            now: || current_task_ref().get_process_utime(),
-            activated: false,
-            sig: Sig::SIGVTALRM,
-        }
-    }
-
-    /// This  timer  counts down against the total (i.e., both user and system)
-    /// CPU time consumed by the process.  (The measurement includes CPU time
-    /// consumed by all threads in the process.)  At each expiration, a SIGPROF
-    /// signal is generated.
-    /// In conjunction with ITIMER_VIRTUAL, this timer
-    /// can be used to profile user and system CPU time consumed by the process.
-    pub fn new_prof() -> Self {
-        Self {
-            interval: Duration::ZERO,
-            next_expire: Duration::ZERO,
-            now: || current_task_ref().get_process_cputime(),
-            activated: false,
-            sig: Sig::SIGPROF,
-        }
-    }
-
-    pub fn update(&mut self) {
-        if !self.activated {
-            return;
-        }
-        let now = (self.now)();
-        if self.next_expire <= now {
-            if self.interval.is_zero() {
-                self.activated = false;
-            }
-            self.next_expire = now + self.interval;
-            current_task_ref().receive_siginfo(
+impl TimerEvent for RealITimer {
+    // TODO: not sure
+    fn callback(self: Box<Self>) -> Option<Timer> {
+        if let Some(task) = self.task.upgrade() {
+            task.receive_siginfo(
                 SigInfo {
-                    sig: self.sig,
-                    // The SI-TIMER value indicates that the signal was triggered by a timer
-                    // expiration. This usually refers to POSIX timers set through the
-                    // timer_settime() function, rather than traditional UNIX timers set through
-                    // setter() or alarm(). Therefore, only set si_code field SI_KERNEL
+                    sig: Sig::SIGALRM,
                     code: SigInfo::KERNEL,
                     details: SigDetails::None,
                 },
                 false,
             );
+            return task.with_mut_itimers(|itimers| {
+                let mut real = &mut itimers[0];
+                if real.interval == Duration::ZERO {
+                    real.enabled = false;
+                    return None;
+                }
+                real.next_expire = get_time_duration() + real.interval;
+                Some(Timer {
+                    expire: real.next_expire,
+                    data: self,
+                })
+            });
         }
-    }
 
-    // TODO: It may be something wrong?
-    pub fn set(&mut self, new: ITimerVal) -> ITimerVal {
-        debug_assert!(new.is_valid());
-        let now = (self.now)();
-        let old = ITimerVal {
-            it_interval: self.interval.into(),
-            it_value: if self.next_expire < now {
-                Duration::ZERO.into()
-            } else {
-                (self.next_expire - now).into()
-            },
-        };
-        self.interval = new.it_interval.into();
-        self.next_expire = now + new.it_value.into();
-        self.activated = new.is_activated();
-        old
-    }
-
-    pub fn get(&self) -> ITimerVal {
-        ITimerVal {
-            it_interval: self.interval.into(),
-            it_value: (self.next_expire - (self.now)()).into(),
-        }
-    }
-}
-
-impl Task {
-    /// this function must be calld by the task which wants to modify itself
-    /// because of the `current_task()`.(i.e. it can't be called when a process
-    /// wants to modify other process's itimers)
-    /// TODO: 加入到全局的TIMER_MANAGER中去管理
-    pub fn update_itimers(&self) {
-        self.with_mut_itimers(|itimers| itimers.iter_mut().for_each(|itimer| itimer.update()))
+        None
     }
 }

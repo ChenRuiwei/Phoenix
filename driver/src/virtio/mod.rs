@@ -156,7 +156,7 @@ impl DeviceManager {
         }
 
         if !init_net {
-            log::error!("[init_net] can't find qemu virtio-net. use LoopbackDev to test");
+            log::info!("[init_net] can't find qemu virtio-net. use LoopbackDev to test");
             init_network(LoopbackDev::new(), true);
         }
     }

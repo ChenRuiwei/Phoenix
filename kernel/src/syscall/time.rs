@@ -1,3 +1,4 @@
+use alloc::{boxed::Box, sync::Arc};
 use core::time::Duration;
 
 use arch::time::{get_time_duration, get_time_ms, get_time_us};
@@ -9,9 +10,13 @@ use time::{
     CLOCK_DEVIATION, CLOCK_MONOTONIC, CLOCK_PROCESS_CPUTIME_ID, CLOCK_REALTIME,
     CLOCK_THREAD_CPUTIME_ID,
 };
+use timer::{Timer, TIMER_MANAGER};
 
 use super::Syscall;
-use crate::mm::{UserReadPtr, UserWritePtr};
+use crate::{
+    mm::{UserReadPtr, UserWritePtr},
+    task::signal::RealITimer,
+};
 
 impl Syscall<'_> {
     /// Retrieves the current time of day.
@@ -146,42 +151,78 @@ impl Syscall<'_> {
         Ok(0)
     }
 
-    /// provide access to interval timers, that is, timers that initially expire
-    /// at some point in the future, and (optionally) at regular intervals
-    /// after that. When a timer expires, a signal is generated for the
-    /// calling process, and the timer is reset to the specified interval
-    /// (if the interval is nonzero). Three  types  of  timers—specified via
-    /// the which argument—are provided, each of which counts against a
-    /// different clock and generates a different signal
-    /// on timer expiration:
+    /// Kernel provides a timer mechanism called itimer for implementing
+    /// interval timers. Interval timer allows processes to receive signals
+    /// after a specified time interval
     pub fn sys_setitimer(
         &self,
-        which: i32,
+        which: usize,
         new_value: UserReadPtr<ITimerVal>,
         old_value: UserWritePtr<ITimerVal>,
     ) -> SyscallResult {
-        if which < 0 || which > 2 {
+        if which > 2 {
             return Err(SysError::EINVAL);
         }
+        debug_assert!(which == CLOCK_REALTIME);
         let task = self.task;
         let new = new_value.read(&task)?;
+
         if !new.is_valid() {
             return Err(SysError::EINVAL);
         }
-        let old = task.with_mut_itimers(|itimers| itimers[which as usize].set(new));
+        let (old, next_expire, add_timer) = task.with_mut_itimers(|itimers| {
+            // only supports real itimer now
+            let mut itimer = &mut itimers[which];
+            let old = ITimerVal {
+                it_interval: itimer.interval.into(),
+                it_value: itimer
+                    .next_expire
+                    .saturating_sub(get_time_duration())
+                    .into(),
+            };
+            let new_enabled = new.is_enabled();
+            let add_timer = !itimer.enabled && new_enabled;
+            itimer.enabled = new_enabled;
+            itimer.interval = new.it_interval.into();
+            itimer.next_expire = get_time_duration() + new.it_value.into();
+            (old, itimer.next_expire, add_timer)
+        });
+        if add_timer {
+            let timer = Timer::new(
+                next_expire,
+                Box::new(RealITimer {
+                    task: Arc::downgrade(self.task),
+                }),
+            );
+            TIMER_MANAGER.add_timer(timer);
+        }
+        log::info!("[sys_setitimer] new: {new:?} old: {old:?}");
         if old_value.not_null() {
             old_value.write(&task, old)?;
         }
         Ok(0)
     }
 
-    pub fn sys_getitimer(&self, which: i32, curr_value: UserWritePtr<ITimerVal>) -> SyscallResult {
+    pub fn sys_getitimer(
+        &self,
+        which: usize,
+        curr_value: UserWritePtr<ITimerVal>,
+    ) -> SyscallResult {
         if which < 0 || which > 2 {
             return Err(SysError::EINVAL);
         }
         if curr_value.not_null() {
             let task = self.task;
-            let itimerval = task.with_itimers(|itimers| itimers[which as usize].get());
+            let itimerval = task.with_itimers(|itimers| {
+                let itimer = &itimers[which];
+                ITimerVal {
+                    it_interval: itimer.interval.into(),
+                    it_value: itimer
+                        .next_expire
+                        .saturating_sub(get_time_duration())
+                        .into(),
+                }
+            });
             curr_value.write(&task, itimerval)?;
         }
         Ok(0)

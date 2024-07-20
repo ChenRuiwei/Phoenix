@@ -136,25 +136,21 @@ impl Syscall<'_> {
 
     /// The kill() system call can be used to send any signal to any process
     /// group or process.
-    /// - If pid is positive, then signal sig is sent to the process with the ID
-    ///   specified by pid.
-    /// - If pid equals 0, then sig is sent to every process in the process
-    ///   group of the calling process.
-    /// - If pid equals -1, then sig is sent to every process for which the
-    ///   calling process has permission to send signals, except for process 1
-    ///   (init)
-    /// - If pid is less than -1, then sig is sent to every process in the
-    ///   process group whose ID is -pid.
-    /// - If sig is 0, then no signal is sent, but existence and permission
-    ///   checks are still performed; this can be used to check for the
-    ///   existence of a process ID or process group ID that the caller is
-    ///   permitted to signal.
+    /// - If pid > 0, Send a signal to the process with ID PID.
+    /// - If pid = 0, then sig is sent to every process in the process group of
+    ///   the calling process.
+    /// - If pid = -1, then sig is sent to every process for which the calling
+    ///   process has permission to send signals, except for process 1 (init)
+    /// - If pid < -1, then sig is sent to every process in the process group
+    ///   whose ID is -pid.
+    /// - If sig is 0, linux will perform permission check but our system skips
     ///
     /// **RETURN VALUE** :On success (at least one signal was sent), zero is
     /// returned. On error, -1 is returned, and errno is set appropriately
     pub fn sys_kill(&self, pid: isize, signum: i32) -> SyscallResult {
         if signum == 0 {
-            log::warn!("signum is zero, currently skip the permission check");
+            // log::warn!("signum is zero, currently skip the permission check");
+            // our system has no permission check
             return Ok(0);
         }
         let sig = Sig::from_i32(signum);
