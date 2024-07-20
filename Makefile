@@ -109,7 +109,7 @@ all:
 	@rm -rf user/.cargo
 	@cp -r user/cargo-submit user/.cargo
 	@make user kernel MODE=release
-	@cp target/riscv64gc-unknown-none-elf/release/kernel kernel-qemu
+	@cp target/riscv64gc-unknown-none-elf/release/kernel.bin kernel-qemu
 
 
 PHONY += build_docker
