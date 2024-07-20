@@ -333,8 +333,11 @@ impl dyn File {
                     let offset_aligned_block = offset_aligned_page + i * BLOCK_SIZE;
                     if offset_aligned_block < new_size {
                         let blk_idx = inode.get_blk_idx(offset_aligned_block)?;
+                        log::debug!("offset {offset_aligned_block}, blk idx {blk_idx}");
                         let buffer_head = buffer_caches.get_buffer_head_or_create(blk_idx);
                         page.insert_buffer_head(buffer_head);
+                    } else {
+                        break;
                     }
                 }
             }

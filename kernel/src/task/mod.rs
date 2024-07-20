@@ -28,8 +28,11 @@ pub fn spawn_init_proc() {
     let argv = Vec::new();
     let envp = Vec::new();
 
-    let path = Path::new(sys_root_dentry(), sys_root_dentry(), init_proc_path);
-    let file = path.walk().unwrap().open().unwrap();
+    let file = Path::new(sys_root_dentry(), sys_root_dentry(), init_proc_path)
+        .walk()
+        .unwrap()
+        .open()
+        .unwrap();
     let elf_data = block_on(async { file.read_all().await }).unwrap();
 
     let mut memory_space = MemorySpace::new_user();

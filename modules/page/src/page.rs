@@ -23,13 +23,27 @@ pub enum PageKind {
     BlockCache(SpinNoIrqLock<BufferInfo>),
 }
 
+impl core::fmt::Debug for PageKind {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PageKind")
+            .field("kind", &{
+                match self {
+                    PageKind::Normal => "normal",
+                    PageKind::FileCache(_) => "file cache",
+                    PageKind::BlockCache(_) => "block cache",
+                }
+            })
+            .finish()
+    }
+}
+
 pub struct Page {
     frame: FrameTracker,
     kind: PageKind,
 }
 
 pub struct BufferInfo {
-    device: Weak<dyn BlockDriverOps>,
+    pub device: Weak<dyn BlockDriverOps>,
     buffer_heads: LinkedList<BufferHeadAdapter>,
     buffer_head_cnts: usize,
 }

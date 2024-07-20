@@ -101,6 +101,8 @@ pub trait BlockDriverOps: BaseDriverOps {
 
     fn buffer_head_cnts(&self) -> usize;
 
+    fn remove_buffer_page(&self, block_id: usize);
+
     /// Read data form block to buffer
     fn base_read_block(&self, block_id: usize, buf: &mut [u8]);
 
