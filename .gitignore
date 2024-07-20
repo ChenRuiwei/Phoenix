@@ -19,4 +19,5 @@ sdcard.img
 ltp/
 target/
 crates/virtio-drivers/
+crates/lwext4_rust/
 kernel/src/link_app.asm

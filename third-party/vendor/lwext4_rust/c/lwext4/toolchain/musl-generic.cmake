@@ -9,10 +9,10 @@ set(CMAKE_SYSTEM_NAME "Linux")
 set(CMAKE_SYSTEM_PROCESSOR ${ARCH})
 
 # Toolchain settings
-set(TOOLCHAIN_PREFIX ${ARCH}-linux-musl)
+set(TOOLCHAIN_PREFIX ${ARCH}-linux-gnu)
 
-set(CMAKE_C_COMPILER    ${TOOLCHAIN_PREFIX}-cc)
-set(CMAKE_CXX_COMPILER  ${TOOLCHAIN_PREFIX}-c++)
+set(CMAKE_C_COMPILER    ${TOOLCHAIN_PREFIX}-gcc)
+set(CMAKE_CXX_COMPILER  ${TOOLCHAIN_PREFIX}-g++)
 set(AS                  ${TOOLCHAIN_PREFIX}-as)
 set(AR                  ${TOOLCHAIN_PREFIX}-ar)
 set(OBJCOPY             ${TOOLCHAIN_PREFIX}-objcopy)
