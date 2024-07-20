@@ -16,6 +16,7 @@ page = { path = "../modules/page/" }
 device-core = { path = "../modules/device-core/" }
 early-print = { path = "../crates/early-print/" }
 net = { path = "../modules/net/" }
+ring-buffer = { path = "../crates/ring-buffer/" }
 
 bitflags = "2.5"
 rustversion = "1.0"
@@ -26,7 +27,6 @@ virtio-drivers = { version = "0.7" }
 async-trait = "0.1"
 fdt = "0.1"
 plic = "0.0.2"
-ringbuffer = "0.15"
 crate_interface = "0.1"
 
 [features]

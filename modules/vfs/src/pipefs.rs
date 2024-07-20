@@ -9,7 +9,7 @@ use core::{
 use async_trait::async_trait;
 use async_utils::{get_waker, suspend_now, yield_now};
 use config::fs::PIPE_BUF_CAPACITY;
-use ringbuffer::{AllocRingBuffer, RingBuffer};
+use ring_buffer::RingBuffer;
 use sync::mutex::SpinNoIrqLock;
 use systype::{SysError, SysResult};
 use vfs_core::{
@@ -26,7 +26,7 @@ pub struct PipeInode {
 pub struct PipeInodeInner {
     is_write_closed: bool,
     is_read_closed: bool,
-    buf: AllocRingBuffer<u8>,
+    ring_buffer: RingBuffer<PIPE_BUF_CAPACITY>,
     // WARN: `Waker` may not wake the task exactly, it may be abandoned.
     // Rust only guarentees that waker will wake the task from the last poll where the waker is
     // passed in.
@@ -46,7 +46,7 @@ impl PipeInode {
         let inner = Mutex::new(PipeInodeInner {
             is_write_closed: false,
             is_read_closed: false,
-            buf: AllocRingBuffer::new(PIPE_BUF_CAPACITY),
+            ring_buffer: RingBuffer::new(),
             read_waker: VecDeque::new(),
             write_waker: VecDeque::new(),
         });
@@ -99,7 +99,7 @@ impl Future for PipeWritePollFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut inner = self.pipe.inner.lock();
         let mut res = PollEvents::empty();
-        if self.events.contains(PollEvents::OUT) && !inner.buf.is_full() {
+        if self.events.contains(PollEvents::OUT) && !inner.ring_buffer.is_full() {
             res |= PollEvents::OUT;
             Poll::Ready(res)
         } else {
@@ -188,12 +188,7 @@ impl File for PipeWriteFile {
         }
         if revents.contains(PollEvents::OUT) {
             let mut inner = pipe.inner.lock();
-            let space_left = inner.buf.capacity() - inner.buf.len();
-
-            let len = cmp::min(space_left, buf.len());
-            for i in 0..len {
-                inner.buf.push(buf[i]);
-            }
+            let len = inner.ring_buffer.write(buf);
             if let Some(waker) = inner.read_waker.pop_front() {
                 waker.wake();
             }
@@ -211,7 +206,7 @@ impl File for PipeWriteFile {
             .unwrap_or_else(|_| unreachable!());
         let mut inner = pipe.inner.lock();
         let mut res = PollEvents::empty();
-        if events.contains(PollEvents::OUT) && !inner.buf.is_full() {
+        if events.contains(PollEvents::OUT) && !inner.ring_buffer.is_full() {
             res |= PollEvents::OUT;
         } else if inner.is_read_closed {
             res |= PollEvents::ERR;
@@ -239,7 +234,7 @@ impl Future for PipeReadPollFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut inner = self.pipe.inner.lock();
         let mut res = PollEvents::empty();
-        if self.events.contains(PollEvents::IN) && !inner.buf.is_empty() {
+        if self.events.contains(PollEvents::IN) && !inner.ring_buffer.is_empty() {
             res |= PollEvents::IN;
             Poll::Ready(res)
         } else {
@@ -272,13 +267,8 @@ impl File for PipeReadFile {
         }
         if revents.contains(PollEvents::IN) {
             let mut inner = pipe.inner.lock();
-            let len = core::cmp::min(inner.buf.len(), buf.len());
-            for i in 0..len {
-                buf[i] = inner
-                    .buf
-                    .dequeue()
-                    .expect("Just checked for len, should not fail");
-            }
+
+            let len = inner.ring_buffer.read(buf);
             if let Some(waker) = inner.write_waker.pop_front() {
                 waker.wake();
             }
@@ -300,7 +290,7 @@ impl File for PipeReadFile {
         let waker = get_waker().await;
         let mut inner = pipe.inner.lock();
         let mut res = PollEvents::empty();
-        if events.contains(PollEvents::IN) && !inner.buf.is_empty() {
+        if events.contains(PollEvents::IN) && !inner.ring_buffer.is_empty() {
             res |= PollEvents::IN;
         } else if inner.is_write_closed {
             res |= PollEvents::HUP;
