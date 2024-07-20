@@ -15,13 +15,12 @@ use core::{
 use arch::memory::{sfence_vma_all, sfence_vma_vaddr};
 use async_utils::block_on;
 use config::{
-    board::MEMORY_END,
-    mm::{
+    board::MEMORY_END, mm::{
         align_offset_to_page, is_aligned_to_page, round_down_to_page, DL_INTERP_OFFSET,
-        MMAP_PRE_ALLOC_PAGES, PAGE_SIZE, USER_ELF_PRE_ALLOC_PAGE_CNT, USER_STACK_PRE_ALLOC_SIZE,
-        USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END,
-        U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
-    },
+        MMAP_PRE_ALLOC_PAGES, PAGE_SIZE, USER_ELF_PRE_ALLOC_PAGE_CNT, U_SEG_FILE_BEG,
+        U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END,
+        U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
+    }, process::USER_STACK_PRE_ALLOC_SIZE
 };
 use log::info;
 use memory::{page_table, pte::PTEFlags, PageTable, PhysAddr, VirtAddr, VirtPageNum};

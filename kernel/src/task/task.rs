@@ -12,10 +12,7 @@ use core::{
 };
 
 use arch::{memory::sfence_vma_all, time::get_time_us};
-use config::{
-    mm::{DL_INTERP_OFFSET, USER_STACK_SIZE},
-    process::INIT_PROC_PID,
-};
+use config::{mm::DL_INTERP_OFFSET, process::{INIT_PROC_PID, USER_STACK_SIZE}};
 use memory::{vaddr_to_paddr, VirtAddr};
 use signal::{
     action::{SigHandlers, SigPending},

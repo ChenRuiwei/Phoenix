@@ -3,7 +3,7 @@ use alloc::{
     vec::{self, Vec},
 };
 
-use config::fs::MAX_FD_NUM;
+use config::fs::MAX_FDS;
 use systype::{RLimit, SysError, SysResult};
 use vfs_core::{File, OpenFlags};
 
@@ -67,7 +67,7 @@ impl FdInfo {
 
 impl FdTable {
     pub fn new() -> Self {
-        let mut table: Vec<Option<FdInfo>> = Vec::with_capacity(MAX_FD_NUM);
+        let mut table: Vec<Option<FdInfo>> = Vec::with_capacity(MAX_FDS);
 
         let tty_file = TTY.get().unwrap().clone();
         let stdin = tty_file.clone();
@@ -84,8 +84,8 @@ impl FdTable {
         Self {
             table,
             rlimit: RLimit {
-                rlim_cur: MAX_FD_NUM,
-                rlim_max: MAX_FD_NUM,
+                rlim_cur: MAX_FDS,
+                rlim_max: MAX_FDS,
             },
         }
     }

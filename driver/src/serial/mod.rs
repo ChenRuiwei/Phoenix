@@ -10,11 +10,11 @@ use core::{
 
 use async_trait::async_trait;
 use async_utils::{block_on, get_waker};
-use config::mm::VIRT_RAM_OFFSET;
+use config::{board::UART_BUF_LEN, mm::VIRT_RAM_OFFSET};
 use device_core::{BaseDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
 use fdt::Fdt;
 use memory::pte::PTEFlags;
-use ringbuffer::RingBuffer;
+use ring_buffer::RingBuffer;
 use sync::mutex::SpinNoIrqLock;
 
 use super::CharDevice;
@@ -33,7 +33,7 @@ trait UartDriver: Send + Sync {
 pub struct Serial {
     meta: DeviceMeta,
     inner: UnsafeCell<Box<dyn UartDriver>>,
-    read_buf: SpinNoIrqLock<ringbuffer::ConstGenericRingBuffer<u8, 512>>, // Hard-coded buffer size
+    read_buf: SpinNoIrqLock<RingBuffer<UART_BUF_LEN>>, // Hard-coded buffer size
     /// Hold waker of pollin tasks.
     pollin_queue: SpinNoIrqLock<VecDeque<Waker>>,
 }
@@ -58,7 +58,7 @@ impl Serial {
         Self {
             meta,
             inner: UnsafeCell::new(driver),
-            read_buf: SpinNoIrqLock::new(ringbuffer::ConstGenericRingBuffer::new()),
+            read_buf: SpinNoIrqLock::new(RingBuffer::new()),
             pollin_queue: SpinNoIrqLock::new(VecDeque::new()),
         }
     }
@@ -68,8 +68,8 @@ impl Serial {
     }
 }
 
-impl Debug for Serial {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Debug for Serial {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Serial")
     }
 }
@@ -92,7 +92,9 @@ impl BaseDriverOps for Serial {
                 "Serial interrupt handler got byte: {}",
                 core::str::from_utf8(&[byte]).unwrap()
             );
-            read_buf.enqueue(byte);
+            if read_buf.enqueue(byte).is_none() {
+                break;
+            }
         }
         // Round Robin
         if let Some(waiting) = self.pollin_queue.lock().pop_front() {
@@ -113,14 +115,7 @@ impl CharDevice for Serial {
     async fn read(&self, buf: &mut [u8]) -> usize {
         let mut len = 0;
         let mut read_buf = self.read_buf.lock();
-        if !read_buf.is_empty() {
-            len = cmp::min(read_buf.len(), buf.len());
-            for i in 0..len {
-                buf[i] = read_buf
-                    .dequeue()
-                    .expect("Just checked for len, should not fail");
-            }
-        }
+        len = read_buf.read(buf);
         drop(read_buf);
         let uart = self.uart();
         while uart.poll_in() && len < buf.len() {
@@ -139,7 +134,7 @@ impl CharDevice for Serial {
     }
 
     async fn poll_in(&self) -> bool {
-        if self.uart().poll_in() || self.read_buf.lock().len() > 0 {
+        if self.uart().poll_in() || !self.read_buf.lock().is_empty() {
             return true;
         }
         let waker = get_waker().await;
@@ -248,15 +243,6 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
                 )
             };
             Serial::new(base_paddr, size, irq_number, Box::new(uart))
-        }
-        "sifive,uart0" => {
-            todo!()
-            // sifive_u QEMU (FU540)
-            // let uart = sifive::SifiveUart::new(
-            //     base_vaddr,
-            //     500 * 1000 * 1000, // 500 MHz hard coded for now
-            // );
-            // Serial::new(base_paddr, size, irq_number, Box::new(uart))
         }
         _ => panic!("Unsupported serial console"),
     }
