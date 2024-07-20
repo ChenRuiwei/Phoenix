@@ -1,24 +1,22 @@
-*.gdb
 .github
 .gdb_history
 .idea
+.gdbinit
 
-
+*.gdb
 *.dtb
 *.dts
+traces.*
 
 !third-party/vendor/
-!third-party/vendor/**/*.dtb
-!third-party/vendor/**/*.dts
+!third-party/vendor/**
 
-traces.*
+
 lmbench_all_debug
-.gdbinit
-ltp/
-target/
-fs-img/
 kernel-qemu
 sdcard.img
-kernel/src/link_app.asm
 
-crates/virtio-drivers
+ltp/
+target/
+crates/virtio-drivers/
+kernel/src/link_app.asm
