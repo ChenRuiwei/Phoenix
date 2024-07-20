@@ -26,12 +26,8 @@ use crate::{
 
 pub fn spawn_init_proc() {
     let elf_data = get_app_data_by_name("final_tests").unwrap();
-    let argv = vec!["final_tests".to_string()];
-    let envp = vec![
-        "PATH=/:/bin:/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin:".to_string(),
-        "LD_LIBRARY_PATH=/:/lib:/lib64/lp64d:/usr/lib:/usr/local/lib:".to_string(),
-        "TERM=screen".to_string(),
-    ];
+    let argv = Vec::new();
+    let envp = Vec::new();
 
     let mut memory_space = MemorySpace::new_user();
     unsafe { memory_space.switch_page_table() };

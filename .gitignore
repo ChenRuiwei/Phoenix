@@ -2,19 +2,23 @@
 .github
 .gdb_history
 .idea
+
+
 *.dtb
 *.dts
+
+!third-party/vendor/
+!third-party/vendor/**/*.dtb
+!third-party/vendor/**/*.dts
 
 traces.*
 lmbench_all_debug
 .gdbinit
 ltp/
 target/
-third-party/vendor/
 fs-img/
 kernel-qemu
 sdcard.img
 kernel/src/link_app.asm
 
-lwext4_rust
-virtio-drivers
+crates/virtio-drivers
