@@ -8,8 +8,8 @@ use core::{
 use arch::interrupts::disable_interrupt;
 use backtrace::backtrace;
 use driver::sbi::shutdown;
-use early_print::early_println;
 use logging::LOG_INITIALIZED;
+use sbi_print::sbi_println;
 
 use crate::processor::hart::local_hart;
 
@@ -19,11 +19,11 @@ static PANIC_CNT: AtomicUsize = AtomicUsize::new(0);
 fn panic(info: &PanicInfo) -> ! {
     unsafe { disable_interrupt() };
 
-    early_println!("early panic now!!!");
+    sbi_println!("early panic now!!!");
     if PANIC_CNT.fetch_add(1, Ordering::Relaxed) > 0 {
         unsafe { LOG_INITIALIZED.store(false, Ordering::Relaxed) }
         if let Some(location) = info.location() {
-            early_println!(
+            sbi_println!(
                 "Hart {} panic at {}:{}, msg: {}",
                 local_hart().hart_id(),
                 location.file(),
@@ -31,9 +31,9 @@ fn panic(info: &PanicInfo) -> ! {
                 info.message().unwrap()
             );
         } else if let Some(msg) = info.message() {
-            early_println!("Panicked: {}", msg);
+            sbi_println!("Panicked: {}", msg);
         } else {
-            early_println!("Unknown panic: {:?}", info);
+            sbi_println!("Unknown panic: {:?}", info);
         }
         backtrace();
         shutdown()

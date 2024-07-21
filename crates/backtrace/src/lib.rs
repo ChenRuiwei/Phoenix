@@ -3,7 +3,7 @@
 
 use core::mem::size_of;
 
-use early_print::early_println;
+use sbi_print::sbi_println;
 
 pub fn backtrace() {
     extern "C" {
@@ -15,7 +15,7 @@ pub fn backtrace() {
         let mut current_fp = arch::register::fp();
 
         while current_pc >= _stext as usize && current_pc <= _etext as usize && current_fp != 0 {
-            early_println!("{:#018x}", current_pc - size_of::<usize>());
+            sbi_println!("{:#018x}", current_pc - size_of::<usize>());
             current_fp = *(current_fp as *const usize).offset(-2);
             current_pc = *(current_fp as *const usize).offset(-1);
         }

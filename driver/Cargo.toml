@@ -14,7 +14,7 @@ systype = { path = "../modules/systype/" }
 page = { path = "../modules/page/" }
 device-core = { path = "../modules/device-core/" }
 net = { path = "../modules/net/" }
-early-print = { path = "../crates/early-print/" }
+sbi-print = { path = "../crates/sbi-print/" }
 ring-buffer = { path = "../crates/ring-buffer/" }
 async-utils = { path = "../crates/async-utils/" }
 macro-utils = { path = "../crates/macro-utils/" }

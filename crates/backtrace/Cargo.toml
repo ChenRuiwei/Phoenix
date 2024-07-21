@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 arch = { path = "../../arch/" }
-early-print = { path = "../early-print/" }
+sbi-print = { path = "../sbi-print/" }

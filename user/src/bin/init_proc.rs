@@ -16,7 +16,7 @@ fn main() -> i32 {
                 core::ptr::null::<u8>(),
             ],
             &[
-                "PATH=/:/bin:/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin:\0".as_ptr(),
+                "PATH=/:/bin\0".as_ptr(),
                 "LD_LIBRARY_PATH=/:/lib:/lib/glibc/:/lib/musl\0".as_ptr(),
                 "TERM=screen\0".as_ptr(),
                 core::ptr::null::<u8>(),

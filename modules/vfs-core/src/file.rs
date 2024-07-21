@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use config::{
     board::BLOCK_SIZE,
     mm::{
-        align_offset_to_page, round_down_to_page, round_up_to_page, MAX_BUFFERS_PER_PAGE,
-        PAGE_MASK, PAGE_SIZE,
+        align_offset_to_page, block_page_id, round_down_to_page, round_up_to_page,
+        MAX_BUFFERS_PER_PAGE, PAGE_MASK, PAGE_SIZE,
     },
 };
 use downcast_rs::{impl_downcast, DowncastSync};
@@ -98,6 +98,14 @@ pub trait File: Send + Sync + DowncastSync {
         for offset in (offset_aligned..offset_aligned + len).step_by(BLOCK_SIZE) {
             let block_id = inode.get_blk_idx(offset)?;
             let buffer_head = buffer_caches.get_buffer_head_or_create(block_id as usize);
+            if buffer_head.has_cached() {
+                log::warn!("read page conflict");
+                // only block cache can be transfered to file cache, e.g. a directory is
+                // mis recognized as block cache
+                assert!(buffer_head.page().kind().is_block_cache());
+                buffer_caches.pages.pop(&block_page_id(block_id));
+                // block page should be dropped here
+            }
             page.insert_buffer_head(buffer_head);
         }
 
@@ -335,6 +343,14 @@ impl dyn File {
                         let blk_idx = inode.get_blk_idx(offset_aligned_block)?;
                         log::debug!("offset {offset_aligned_block}, blk idx {blk_idx}");
                         let buffer_head = buffer_caches.get_buffer_head_or_create(blk_idx);
+                        if buffer_head.has_cached() {
+                            log::warn!("write page conflict");
+                            // only block cache can be transfered to file cache, e.g. a directory is
+                            // mis recognized as block cache
+                            assert!(buffer_head.page().kind().is_block_cache());
+                            buffer_caches.pages.pop(&block_page_id(blk_idx));
+                            // block page should be dropped here
+                        }
                         page.insert_buffer_head(buffer_head);
                     } else {
                         break;
