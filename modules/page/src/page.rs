@@ -1,5 +1,5 @@
 use alloc::sync::{Arc, Weak};
-use core::{cmp, ops::Range};
+use core::{cmp, fmt, ops::Range};
 
 use config::{
     board::BLOCK_SIZE,
@@ -23,8 +23,8 @@ pub enum PageKind {
     BlockCache(SpinNoIrqLock<BufferInfo>),
 }
 
-impl core::fmt::Debug for PageKind {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl fmt::Debug for PageKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PageKind")
             .field("kind", &{
                 match self {
@@ -37,6 +37,7 @@ impl core::fmt::Debug for PageKind {
     }
 }
 
+// FIXME: mmap should mark this whole buffer as dirty
 pub struct Page {
     frame: FrameTracker,
     kind: PageKind,

@@ -14,7 +14,7 @@ driver = { path = "../../driver/" }
 device-core = { path = "../device-core/" }
 config = { path = "../../config/" }
 systype = { path = "../systype/" }
-async_utils = { path = "../../crates/async_utils/" }
+async-utils = { path = "../../crates/async-utils/" }
 ring-buffer = { path = "../../crates/ring-buffer/" }
 
 bitflags = "2.5"

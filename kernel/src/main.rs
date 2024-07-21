@@ -30,7 +30,6 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use ::net::init_network;
 use driver::BLOCK_DEVICE;
 use timer::timelimited_task::ksleep_s;
 

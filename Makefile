@@ -5,7 +5,7 @@ BOARD := qemu
 NET ?=n # 是否启用VirtioNet设备，如果不开启则使用本地Loopback设备
 
 export TARGET = riscv64gc-unknown-none-elf
-export MODE = debug
+export MODE = release
 export LOG = error
 
 export Phoenix_IP=$(IP)
@@ -49,13 +49,9 @@ export PREEMPT :=
 DISASM_ARGS = -d
 
 BOOTLOADER := default
-CPUS := 1
+CPUS := 2
 QEMU_ARGS :=
-ifeq ($(SUBMIT), )
-	QEMU_ARGS += -m 512M
-else
-	QEMU_ARGS += -m 128M
-endif
+QEMU_ARGS += -m 128M
 QEMU_ARGS += -machine virt
 QEMU_ARGS += -nographic
 QEMU_ARGS += -smp $(CPUS)
@@ -64,18 +60,7 @@ QEMU_ARGS += -bios $(BOOTLOADER)
 QEMU_ARGS += -drive file=$(FS_IMG),if=none,format=raw,id=x0
 QEMU_ARGS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 
-DOCKER_RUN_ARGS := run
-DOCKER_RUN_ARGS += --rm
-DOCKER_RUN_ARGS += -it
-DOCKER_RUN_ARGS += --privileged
-DOCKER_RUN_ARGS += --network="host"
-DOCKER_RUN_ARGS += -v $(PWD):/mnt
-DOCKER_RUN_ARGS += -v /dev:/dev
-DOCKER_RUN_ARGS += -w /mnt
-DOCKER_RUN_ARGS += $(DOCKER_NAME)
-DOCKER_RUN_ARGS += bash
-
-# Net 
+# Net
 IP ?= 10.0.2.15
 GW ?= 10.0.2.2
 
@@ -89,6 +74,18 @@ QEMU_ARGS += -d guest_errors\
 			 -d unimp
 
 endif
+
+DOCKER_RUN_ARGS := run
+DOCKER_RUN_ARGS += --rm
+DOCKER_RUN_ARGS += -it
+DOCKER_RUN_ARGS += --privileged
+DOCKER_RUN_ARGS += --network="host"
+DOCKER_RUN_ARGS += -v $(PWD):/mnt
+DOCKER_RUN_ARGS += -v /dev:/dev
+DOCKER_RUN_ARGS += -w /mnt
+DOCKER_RUN_ARGS += $(DOCKER_NAME)
+DOCKER_RUN_ARGS += bash
+
 
 # File targets
 $(KERNEL_ASM): $(KERNEL_ELF)

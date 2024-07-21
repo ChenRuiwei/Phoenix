@@ -1,9 +1,12 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
+use alloc::{vec, vec::Vec};
 use core::cmp;
 
-#[derive(Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 enum RingBufferState {
     #[default]
     Empty,
@@ -12,8 +15,8 @@ enum RingBufferState {
 }
 
 pub struct RingBuffer<const N: usize> {
-    arr: [u8; N],
-    // NOTE: When and only when `head` equals `tail`, `state` can only be `Full` or `Empty`
+    arr: Vec<u8>,
+    // NOTE: When and only when `head` equals `tail`, `state` can only be `Full` or `Empty`.
     head: usize,
     tail: usize,
     state: RingBufferState,
@@ -22,7 +25,7 @@ pub struct RingBuffer<const N: usize> {
 impl<const N: usize> RingBuffer<N> {
     pub fn new() -> Self {
         Self {
-            arr: [0; N],
+            arr: vec![0; N],
             head: 0,
             tail: 0,
             state: RingBufferState::Empty,
