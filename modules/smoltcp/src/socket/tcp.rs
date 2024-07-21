@@ -2,19 +2,20 @@
 // the parts of RFC 1122 that discuss TCP. Consult RFC 7414 when implementing
 // a new feature.
 
-use core::fmt::Display;
 #[cfg(feature = "async")]
 use core::task::Waker;
-use core::{cmp, fmt, mem};
+use core::{cmp, fmt, fmt::Display, mem};
 
 #[cfg(feature = "async")]
 use crate::socket::WakerRegistration;
-use crate::socket::{Context, PollAt};
-use crate::storage::{Assembler, RingBuffer};
-use crate::time::{Duration, Instant};
-use crate::wire::{
-    IpAddress, IpEndpoint, IpListenEndpoint, IpProtocol, IpRepr, TcpControl, TcpRepr, TcpSeqNumber,
-    TCP_HEADER_LEN,
+use crate::{
+    socket::{Context, PollAt},
+    storage::{Assembler, RingBuffer},
+    time::{Duration, Instant},
+    wire::{
+        IpAddress, IpEndpoint, IpListenEndpoint, IpProtocol, IpRepr, TcpControl, TcpRepr,
+        TcpSeqNumber, TCP_HEADER_LEN,
+    },
 };
 
 macro_rules! tcp_trace {
@@ -233,7 +234,8 @@ impl RttEstimator {
             // - The network conditions change, suddenly making the RTT much higher
             // In these cases, the estimator can get stuck, because it can't sample because
             // all packets sent would incur a retransmit. To avoid this, force an estimate
-            // increase if we see 3 consecutive retransmissions without any successful sample.
+            // increase if we see 3 consecutive retransmissions without any successful
+            // sample.
             self.rto_count = 0;
             self.rtt = RTTE_MAX_RTO.min(self.rtt * 2);
             let rto = self.retransmission_timeout().total_millis();
@@ -392,10 +394,10 @@ impl Display for Tuple {
 
 /// A Transmission Control Protocol socket.
 ///
-/// A TCP socket may passively listen for connections or actively connect to another endpoint.
-/// Note that, for listening sockets, there is no "backlog"; to be able to simultaneously
-/// accept several connections, as many sockets must be allocated, or any new connection
-/// attempts will be reset.
+/// A TCP socket may passively listen for connections or actively connect to
+/// another endpoint. Note that, for listening sockets, there is no "backlog";
+/// to be able to simultaneously accept several connections, as many sockets
+/// must be allocated, or any new connection attempts will be reset.
 #[derive(Debug)]
 pub struct Socket<'a> {
     state: State,
@@ -405,22 +407,26 @@ pub struct Socket<'a> {
     rx_buffer: SocketBuffer<'a>,
     rx_fin_received: bool,
     tx_buffer: SocketBuffer<'a>,
-    /// Interval after which, if no inbound packets are received, the connection is aborted.
+    /// Interval after which, if no inbound packets are received, the connection
+    /// is aborted.
     timeout: Option<Duration>,
     /// Interval at which keep-alive packets will be sent.
     keep_alive: Option<Duration>,
-    /// The time-to-live (IPv4) or hop limit (IPv6) value used in outgoing packets.
+    /// The time-to-live (IPv4) or hop limit (IPv6) value used in outgoing
+    /// packets.
     hop_limit: Option<u8>,
-    /// Address passed to listen(). Listen address is set when listen() is called and
-    /// used every time the socket is reset back to the LISTEN state.
+    /// Address passed to listen(). Listen address is set when listen() is
+    /// called and used every time the socket is reset back to the LISTEN
+    /// state.
     listen_endpoint: IpListenEndpoint,
     /// Current 4-tuple (local and remote endpoints).
     tuple: Option<Tuple>,
-    /// The sequence number corresponding to the beginning of the transmit buffer.
-    /// I.e. an ACK(local_seq_no+n) packet removes n bytes from the transmit buffer.
+    /// The sequence number corresponding to the beginning of the transmit
+    /// buffer. I.e. an ACK(local_seq_no+n) packet removes n bytes from the
+    /// transmit buffer.
     local_seq_no: TcpSeqNumber,
-    /// The sequence number corresponding to the beginning of the receive buffer.
-    /// I.e. userspace reading n bytes adds n to remote_seq_no.
+    /// The sequence number corresponding to the beginning of the receive
+    /// buffer. I.e. userspace reading n bytes adds n to remote_seq_no.
     remote_seq_no: TcpSeqNumber,
     /// The last sequence number sent.
     /// I.e. in an idle socket, local_seq_no+tx_buffer.len().
@@ -430,15 +436,18 @@ pub struct Socket<'a> {
     remote_last_ack: Option<TcpSeqNumber>,
     /// The last window length sent.
     remote_last_win: u16,
-    /// The sending window scaling factor advertised to remotes which support RFC 1323.
-    /// It is zero if the window <= 64KiB and/or the remote does not support it.
+    /// The sending window scaling factor advertised to remotes which support
+    /// RFC 1323. It is zero if the window <= 64KiB and/or the remote does
+    /// not support it.
     remote_win_shift: u8,
     /// The remote window size, relative to local_seq_no
     /// I.e. we're allowed to send octets until local_seq_no+remote_win_len
     remote_win_len: usize,
-    /// The receive window scaling factor for remotes which support RFC 1323, None if unsupported.
+    /// The receive window scaling factor for remotes which support RFC 1323,
+    /// None if unsupported.
     remote_win_scale: Option<u8>,
-    /// Whether or not the remote supports selective ACK as described in RFC 2018.
+    /// Whether or not the remote supports selective ACK as described in RFC
+    /// 2018.
     remote_has_sack: bool,
     /// The maximum number of data octets that the remote side may receive.
     remote_mss: usize,
@@ -458,7 +467,8 @@ pub struct Socket<'a> {
     /// ACK or window updates (ie, no data) won't be sent until expiry.
     ack_delay_timer: AckDelayTimer,
 
-    /// Used for rate-limiting: No more challenge ACKs will be sent until this instant.
+    /// Used for rate-limiting: No more challenge ACKs will be sent until this
+    /// instant.
     challenge_ack_timer: Instant,
 
     /// Nagle's Algorithm enabled.
@@ -537,11 +547,12 @@ impl<'a> Socket<'a> {
     ///
     /// Notes:
     ///
-    /// - Only one waker can be registered at a time. If another waker was previously registered,
-    ///   it is overwritten and will no longer be woken.
-    /// - The Waker is woken only once. Once woken, you must register it again to receive more wakes.
-    /// - "Spurious wakes" are allowed: a wake doesn't guarantee the result of `recv` has
-    ///   necessarily changed.
+    /// - Only one waker can be registered at a time. If another waker was
+    ///   previously registered, it is overwritten and will no longer be woken.
+    /// - The Waker is woken only once. Once woken, you must register it again
+    ///   to receive more wakes.
+    /// - "Spurious wakes" are allowed: a wake doesn't guarantee the result of
+    ///   `recv` has necessarily changed.
     #[cfg(feature = "async")]
     pub fn register_recv_waker(&mut self, waker: &Waker) {
         self.rx_waker.register(waker)
@@ -555,11 +566,12 @@ impl<'a> Socket<'a> {
     ///
     /// Notes:
     ///
-    /// - Only one waker can be registered at a time. If another waker was previously registered,
-    ///   it is overwritten and will no longer be woken.
-    /// - The Waker is woken only once. Once woken, you must register it again to receive more wakes.
-    /// - "Spurious wakes" are allowed: a wake doesn't guarantee the result of `send` has
-    ///   necessarily changed.
+    /// - Only one waker can be registered at a time. If another waker was
+    ///   previously registered, it is overwritten and will no longer be woken.
+    /// - The Waker is woken only once. Once woken, you must register it again
+    ///   to receive more wakes.
+    /// - "Spurious wakes" are allowed: a wake doesn't guarantee the result of
+    ///   `send` has necessarily changed.
     #[cfg(feature = "async")]
     pub fn register_send_waker(&mut self, waker: &Waker) {
         self.tx_waker.register(waker)
@@ -586,10 +598,10 @@ impl<'a> Socket<'a> {
         self.nagle
     }
 
-    /// Return the current window field value, including scaling according to RFC 1323.
+    /// Return the current window field value, including scaling according to
+    /// RFC 1323.
     ///
     /// Used in internal calculations as well as packet generation.
-    ///
     #[inline]
     fn scaled_window(&self) -> u16 {
         cmp::min(
@@ -600,15 +612,17 @@ impl<'a> Socket<'a> {
 
     /// Set the timeout duration.
     ///
-    /// A socket with a timeout duration set will abort the connection if either of the following
-    /// occurs:
+    /// A socket with a timeout duration set will abort the connection if either
+    /// of the following occurs:
     ///
-    ///   * After a [connect](#method.connect) call, the remote endpoint does not respond within
-    ///     the specified duration;
-    ///   * After establishing a connection, there is data in the transmit buffer and the remote
-    ///     endpoint exceeds the specified duration between any two packets it sends;
-    ///   * After enabling [keep-alive](#method.set_keep_alive), the remote endpoint exceeds
-    ///     the specified duration between any two packets it sends.
+    ///   * After a [connect](#method.connect) call, the remote endpoint does
+    ///     not respond within the specified duration;
+    ///   * After establishing a connection, there is data in the transmit
+    ///     buffer and the remote endpoint exceeds the specified duration
+    ///     between any two packets it sends;
+    ///   * After enabling [keep-alive](#method.set_keep_alive), the remote
+    ///     endpoint exceeds the specified duration between any two packets it
+    ///     sends.
     pub fn set_timeout(&mut self, duration: Option<Duration>) {
         self.timeout = duration
     }
@@ -625,13 +639,14 @@ impl<'a> Socket<'a> {
     /// Also known as "tinygram prevention". By default, it is enabled.
     /// Disabling it is equivalent to Linux's TCP_NODELAY flag.
     ///
-    /// When enabled, Nagle's Algorithm prevents sending segments smaller than MSS if
-    /// there is data in flight (sent but not acknowledged). In other words, it ensures
-    /// at most only one segment smaller than MSS is in flight at a time.
+    /// When enabled, Nagle's Algorithm prevents sending segments smaller than
+    /// MSS if there is data in flight (sent but not acknowledged). In other
+    /// words, it ensures at most only one segment smaller than MSS is in
+    /// flight at a time.
     ///
-    /// It ensures better network utilization by preventing sending many very small packets,
-    /// at the cost of increased latency in some situations, particularly when the remote peer
-    /// has ACK delay enabled.
+    /// It ensures better network utilization by preventing sending many very
+    /// small packets, at the cost of increased latency in some situations,
+    /// particularly when the remote peer has ACK delay enabled.
     pub fn set_nagle_enabled(&mut self, enabled: bool) {
         self.nagle = enabled
     }
@@ -645,40 +660,44 @@ impl<'a> Socket<'a> {
 
     /// Set the keep-alive interval.
     ///
-    /// An idle socket with a keep-alive interval set will transmit a "keep-alive ACK" packet
-    /// every time it receives no communication during that interval. As a result, three things
-    /// may happen:
+    /// An idle socket with a keep-alive interval set will transmit a
+    /// "keep-alive ACK" packet every time it receives no communication
+    /// during that interval. As a result, three things may happen:
     ///
     ///   * The remote endpoint is fine and answers with an ACK packet.
     ///   * The remote endpoint has rebooted and answers with an RST packet.
     ///   * The remote endpoint has crashed and does not answer.
     ///
-    /// The keep-alive functionality together with the timeout functionality allows to react
-    /// to these error conditions.
+    /// The keep-alive functionality together with the timeout functionality
+    /// allows to react to these error conditions.
     pub fn set_keep_alive(&mut self, interval: Option<Duration>) {
         self.keep_alive = interval;
         if self.keep_alive.is_some() {
-            // If the connection is idle and we've just set the option, it would not take effect
-            // until the next packet, unless we wind up the timer explicitly.
+            // If the connection is idle and we've just set the option, it would not take
+            // effect until the next packet, unless we wind up the timer
+            // explicitly.
             self.timer.set_keep_alive();
         }
     }
 
-    /// Return the time-to-live (IPv4) or hop limit (IPv6) value used in outgoing packets.
+    /// Return the time-to-live (IPv4) or hop limit (IPv6) value used in
+    /// outgoing packets.
     ///
     /// See also the [set_hop_limit](#method.set_hop_limit) method
     pub fn hop_limit(&self) -> Option<u8> {
         self.hop_limit
     }
 
-    /// Set the time-to-live (IPv4) or hop limit (IPv6) value used in outgoing packets.
+    /// Set the time-to-live (IPv4) or hop limit (IPv6) value used in outgoing
+    /// packets.
     ///
-    /// A socket without an explicitly set hop limit value uses the default [IANA recommended]
-    /// value (64).
+    /// A socket without an explicitly set hop limit value uses the default
+    /// [IANA recommended] value (64).
     ///
     /// # Panics
     ///
-    /// This function panics if a hop limit value of 0 is given. See [RFC 1122 § 3.2.1.7].
+    /// This function panics if a hop limit value of 0 is given. See [RFC 1122 §
+    /// 3.2.1.7].
     ///
     /// [IANA recommended]: https://www.iana.org/assignments/ip-parameters/ip-parameters.xhtml
     /// [RFC 1122 § 3.2.1.7]: https://tools.ietf.org/html/rfc1122#section-3.2.1.7
@@ -744,9 +763,10 @@ impl<'a> Socket<'a> {
 
     /// Start listening on the given endpoint.
     ///
-    /// This function returns `Err(Error::Illegal)` if the socket was already open
-    /// (see [is_open](#method.is_open)), and `Err(Error::Unaddressable)`
-    /// if the port in the given endpoint is zero.
+    /// This function returns `Err(Error::Illegal)` if the socket was already
+    /// open (see [is_open](#method.is_open)), and
+    /// `Err(Error::Unaddressable)` if the port in the given endpoint is
+    /// zero.
     pub fn listen<T>(&mut self, local_endpoint: T) -> Result<(), ListenError>
     where
         T: Into<IpListenEndpoint>,
@@ -769,8 +789,9 @@ impl<'a> Socket<'a> {
 
     /// Connect to a given endpoint.
     ///
-    /// The local port must be provided explicitly. Assuming `fn get_ephemeral_port() -> u16`
-    /// allocates a port between 49152 and 65535, a connection may be established as follows:
+    /// The local port must be provided explicitly. Assuming `fn
+    /// get_ephemeral_port() -> u16` allocates a port between 49152 and
+    /// 65535, a connection may be established as follows:
     ///
     /// ```no_run
     /// # #[cfg(all(
@@ -803,9 +824,9 @@ impl<'a> Socket<'a> {
     ///
     /// The local address may optionally be provided.
     ///
-    /// This function returns an error if the socket was open; see [is_open](#method.is_open).
-    /// It also returns an error if the local or remote port is zero, or if the remote address
-    /// is unspecified.
+    /// This function returns an error if the socket was open; see
+    /// [is_open](#method.is_open). It also returns an error if the local or
+    /// remote port is zero, or if the remote address is unspecified.
     pub fn connect<T, U>(
         &mut self,
         cx: &mut Context,
@@ -854,9 +875,11 @@ impl<'a> Socket<'a> {
             local: local_endpoint,
             remote: remote_endpoint,
         });
+        // 将 socket 状态设置为 SynSent，表示已发送 SYN 包
         self.set_state(State::SynSent);
-
+        // 生成一个随机的初始序列号
         let seq = Self::random_seq_no(cx);
+        // 设置本地和远程的序列号
         self.local_seq_no = seq;
         self.remote_last_seq = seq;
         Ok(())
@@ -874,9 +897,10 @@ impl<'a> Socket<'a> {
 
     /// Close the transmit half of the full-duplex connection.
     ///
-    /// Note that there is no corresponding function for the receive half of the full-duplex
-    /// connection; only the remote end can close it. If you no longer wish to receive any
-    /// data and would like to reuse the socket right away, use [abort](#method.abort).
+    /// Note that there is no corresponding function for the receive half of the
+    /// full-duplex connection; only the remote end can close it. If you no
+    /// longer wish to receive any data and would like to reuse the socket
+    /// right away, use [abort](#method.abort).
     pub fn close(&mut self) {
         match self.state {
             // In the LISTEN state there is no established connection.
@@ -902,18 +926,20 @@ impl<'a> Socket<'a> {
 
     /// Aborts the connection, if any.
     ///
-    /// This function instantly closes the socket. One reset packet will be sent to the remote
-    /// endpoint.
+    /// This function instantly closes the socket. One reset packet will be sent
+    /// to the remote endpoint.
     ///
-    /// In terms of the TCP state machine, the socket may be in any state and is moved to
-    /// the `CLOSED` state.
+    /// In terms of the TCP state machine, the socket may be in any state and is
+    /// moved to the `CLOSED` state.
     pub fn abort(&mut self) {
         self.set_state(State::Closed);
     }
 
-    /// Return whether the socket is passively listening for incoming connections.
+    /// Return whether the socket is passively listening for incoming
+    /// connections.
     ///
-    /// In terms of the TCP state machine, the socket must be in the `LISTEN` state.
+    /// In terms of the TCP state machine, the socket must be in the `LISTEN`
+    /// state.
     #[inline]
     pub fn is_listening(&self) -> bool {
         match self.state {
@@ -924,12 +950,13 @@ impl<'a> Socket<'a> {
 
     /// Return whether the socket is open.
     ///
-    /// This function returns true if the socket will process incoming or dispatch outgoing
-    /// packets. Note that this does not mean that it is possible to send or receive data through
-    /// the socket; for that, use [can_send](#method.can_send) or [can_recv](#method.can_recv).
+    /// This function returns true if the socket will process incoming or
+    /// dispatch outgoing packets. Note that this does not mean that it is
+    /// possible to send or receive data through the socket; for that, use
+    /// [can_send](#method.can_send) or [can_recv](#method.can_recv).
     ///
-    /// In terms of the TCP state machine, the socket must not be in the `CLOSED`
-    /// or `TIME-WAIT` states.
+    /// In terms of the TCP state machine, the socket must not be in the
+    /// `CLOSED` or `TIME-WAIT` states.
     #[inline]
     pub fn is_open(&self) -> bool {
         match self.state {
@@ -941,16 +968,16 @@ impl<'a> Socket<'a> {
 
     /// Return whether a connection is active.
     ///
-    /// This function returns true if the socket is actively exchanging packets with
-    /// a remote endpoint. Note that this does not mean that it is possible to send or receive
-    /// data through the socket; for that, use [can_send](#method.can_send) or
-    /// [can_recv](#method.can_recv).
+    /// This function returns true if the socket is actively exchanging packets
+    /// with a remote endpoint. Note that this does not mean that it is
+    /// possible to send or receive data through the socket; for that, use
+    /// [can_send](#method.can_send) or [can_recv](#method.can_recv).
     ///
-    /// If a connection is established, [abort](#method.close) will send a reset to
-    /// the remote endpoint.
+    /// If a connection is established, [abort](#method.close) will send a reset
+    /// to the remote endpoint.
     ///
-    /// In terms of the TCP state machine, the socket must not be in the `CLOSED`, `TIME-WAIT`,
-    /// or `LISTEN` state.
+    /// In terms of the TCP state machine, the socket must not be in the
+    /// `CLOSED`, `TIME-WAIT`, or `LISTEN` state.
     #[inline]
     pub fn is_active(&self) -> bool {
         match self.state {
@@ -963,13 +990,14 @@ impl<'a> Socket<'a> {
 
     /// Return whether the transmit half of the full-duplex connection is open.
     ///
-    /// This function returns true if it's possible to send data and have it arrive
-    /// to the remote endpoint. However, it does not make any guarantees about the state
-    /// of the transmit buffer, and even if it returns true, [send](#method.send) may
-    /// not be able to enqueue any octets.
+    /// This function returns true if it's possible to send data and have it
+    /// arrive to the remote endpoint. However, it does not make any
+    /// guarantees about the state of the transmit buffer, and even if it
+    /// returns true, [send](#method.send) may not be able to enqueue any
+    /// octets.
     ///
-    /// In terms of the TCP state machine, the socket must be in the `ESTABLISHED` or
-    /// `CLOSE-WAIT` state.
+    /// In terms of the TCP state machine, the socket must be in the
+    /// `ESTABLISHED` or `CLOSE-WAIT` state.
     #[inline]
     pub fn may_send(&self) -> bool {
         match self.state {
@@ -983,12 +1011,14 @@ impl<'a> Socket<'a> {
 
     /// Return whether the receive half of the full-duplex connection is open.
     ///
-    /// This function returns true if it's possible to receive data from the remote endpoint.
-    /// It will return true while there is data in the receive buffer, and if there isn't,
-    /// as long as the remote endpoint has not closed the connection.
+    /// This function returns true if it's possible to receive data from the
+    /// remote endpoint. It will return true while there is data in the
+    /// receive buffer, and if there isn't, as long as the remote endpoint
+    /// has not closed the connection.
     ///
-    /// In terms of the TCP state machine, the socket must be in the `ESTABLISHED`,
-    /// `FIN-WAIT-1`, or `FIN-WAIT-2` state, or have data in the receive buffer instead.
+    /// In terms of the TCP state machine, the socket must be in the
+    /// `ESTABLISHED`, `FIN-WAIT-1`, or `FIN-WAIT-2` state, or have data in
+    /// the receive buffer instead.
     #[inline]
     pub fn may_recv(&self) -> bool {
         match self.state {
@@ -1025,8 +1055,9 @@ impl<'a> Socket<'a> {
         self.tx_buffer.capacity()
     }
 
-    /// Check whether the receive half of the full-duplex connection buffer is open
-    /// (see [may_recv](#method.may_recv)), and the receive buffer is not empty.
+    /// Check whether the receive half of the full-duplex connection buffer is
+    /// open (see [may_recv](#method.may_recv)), and the receive buffer is
+    /// not empty.
     #[inline]
     pub fn can_recv(&self) -> bool {
         if !self.may_recv() {
@@ -1064,8 +1095,8 @@ impl<'a> Socket<'a> {
         Ok(result)
     }
 
-    /// Call `f` with the largest contiguous slice of octets in the transmit buffer,
-    /// and enqueue the amount of elements returned by `f`.
+    /// Call `f` with the largest contiguous slice of octets in the transmit
+    /// buffer, and enqueue the amount of elements returned by `f`.
     ///
     /// This function returns `Err(Error::Illegal)` if the transmit half of
     /// the connection is not open; see [may_send](#method.may_send).
@@ -1078,8 +1109,9 @@ impl<'a> Socket<'a> {
 
     /// Enqueue a sequence of octets to be sent, and fill it from a slice.
     ///
-    /// This function returns the amount of octets actually enqueued, which is limited
-    /// by the amount of free space in the transmit buffer; down to zero.
+    /// This function returns the amount of octets actually enqueued, which is
+    /// limited by the amount of free space in the transmit buffer; down to
+    /// zero.
     ///
     /// See also [send](#method.send).
     pub fn send_slice(&mut self, data: &[u8]) -> Result<usize, SendError> {
@@ -1090,9 +1122,10 @@ impl<'a> Socket<'a> {
     }
 
     fn recv_error_check(&mut self) -> Result<(), RecvError> {
-        // We may have received some data inside the initial SYN, but until the connection
-        // is fully open we must not dequeue any data, as it may be overwritten by e.g.
-        // another (stale) SYN. (We do not support TCP Fast Open.)
+        // We may have received some data inside the initial SYN, but until the
+        // connection is fully open we must not dequeue any data, as it may be
+        // overwritten by e.g. another (stale) SYN. (We do not support TCP Fast
+        // Open.)
         if !self.may_recv() {
             if self.rx_fin_received {
                 return Err(RecvError::Finished);
@@ -1123,16 +1156,17 @@ impl<'a> Socket<'a> {
         Ok(result)
     }
 
-    /// Call `f` with the largest contiguous slice of octets in the receive buffer,
-    /// and dequeue the amount of elements returned by `f`.
+    /// Call `f` with the largest contiguous slice of octets in the receive
+    /// buffer, and dequeue the amount of elements returned by `f`.
     ///
     /// This function errors if the receive half of the connection is not open.
     ///
-    /// If the receive half has been gracefully closed (with a FIN packet), `Err(Error::Finished)`
-    /// is returned. In this case, the previously received data is guaranteed to be complete.
+    /// If the receive half has been gracefully closed (with a FIN packet),
+    /// `Err(Error::Finished)` is returned. In this case, the previously
+    /// received data is guaranteed to be complete.
     ///
-    /// In all other cases, `Err(Error::Illegal)` is returned and previously received data (if any)
-    /// may be incomplete (truncated).
+    /// In all other cases, `Err(Error::Illegal)` is returned and previously
+    /// received data (if any) may be incomplete (truncated).
     pub fn recv<'b, F, R>(&'b mut self, f: F) -> Result<R, RecvError>
     where
         F: FnOnce(&'b mut [u8]) -> (usize, R),
@@ -1142,8 +1176,9 @@ impl<'a> Socket<'a> {
 
     /// Dequeue a sequence of received octets, and fill a slice from it.
     ///
-    /// This function returns the amount of octets actually dequeued, which is limited
-    /// by the amount of occupied space in the receive buffer; down to zero.
+    /// This function returns the amount of octets actually dequeued, which is
+    /// limited by the amount of occupied space in the receive buffer; down
+    /// to zero.
     ///
     /// See also [recv](#method.recv).
     pub fn recv_slice(&mut self, data: &mut [u8]) -> Result<usize, RecvError> {
@@ -1171,7 +1206,8 @@ impl<'a> Socket<'a> {
     /// Peek at a sequence of received octets without removing them from
     /// the receive buffer, and fill a slice from it.
     ///
-    /// This function otherwise behaves identically to [recv_slice](#method.recv_slice).
+    /// This function otherwise behaves identically to
+    /// [recv_slice](#method.recv_slice).
     pub fn peek_slice(&mut self, data: &mut [u8]) -> Result<usize, RecvError> {
         let buffer = self.peek(data.len())?;
         let data = &mut data[..buffer.len()];
@@ -1181,16 +1217,19 @@ impl<'a> Socket<'a> {
 
     /// Return the amount of octets queued in the transmit buffer.
     ///
-    /// Note that the Berkeley sockets interface does not have an equivalent of this API.
+    /// Note that the Berkeley sockets interface does not have an equivalent of
+    /// this API.
     pub fn send_queue(&self) -> usize {
         self.tx_buffer.len()
     }
 
-    /// Return the amount of octets queued in the receive buffer. This value can be larger than
-    /// the slice read by the next `recv` or `peek` call because it includes all queued octets,
-    /// and not only the octets that may be returned as a contiguous slice.
+    /// Return the amount of octets queued in the receive buffer. This value can
+    /// be larger than the slice read by the next `recv` or `peek` call
+    /// because it includes all queued octets, and not only the octets that
+    /// may be returned as a contiguous slice.
     ///
-    /// Note that the Berkeley sockets interface does not have an equivalent of this API.
+    /// Note that the Berkeley sockets interface does not have an equivalent of
+    /// this API.
     pub fn recv_queue(&self) -> usize {
         self.rx_buffer.len()
     }
@@ -1205,8 +1244,9 @@ impl<'a> Socket<'a> {
         #[cfg(feature = "async")]
         {
             // Wake all tasks waiting. Even if we haven't received/sent data, this
-            // is needed because return values of functions may change depending on the state.
-            // For example, a pending read has to fail with an error if the socket is closed.
+            // is needed because return values of functions may change depending on the
+            // state. For example, a pending read has to fail with an error if
+            // the socket is closed.
             self.rx_waker.wake();
             self.tx_waker.wake();
         }
@@ -1256,9 +1296,9 @@ impl<'a> Socket<'a> {
         let (mut ip_reply_repr, mut reply_repr) = Self::reply(ip_repr, repr);
 
         // From RFC 793:
-        // [...] an empty acknowledgment segment containing the current send-sequence number
-        // and an acknowledgment indicating the next sequence number expected
-        // to be received.
+        // [...] an empty acknowledgment segment containing the current send-sequence
+        // number and an acknowledgment indicating the next sequence number
+        // expected to be received.
         reply_repr.seq_number = self.remote_last_seq;
         reply_repr.ack_number = Some(self.remote_seq_no + self.rx_buffer.len());
         self.remote_last_ack = reply_repr.ack_number;
@@ -1269,15 +1309,16 @@ impl<'a> Socket<'a> {
         reply_repr.window_len = self.scaled_window();
         self.remote_last_win = reply_repr.window_len;
 
-        // If the remote supports selective acknowledgement, add the option to the outgoing
-        // segment.
+        // If the remote supports selective acknowledgement, add the option to the
+        // outgoing segment.
         if self.remote_has_sack {
             net_debug!("sending sACK option with current assembler ranges");
 
-            // RFC 2018: The first SACK block (i.e., the one immediately following the kind and
-            // length fields in the option) MUST specify the contiguous block of data containing
-            // the segment which triggered this ACK, unless that segment advanced the
-            // Acknowledgment Number field in the header.
+            // RFC 2018: The first SACK block (i.e., the one immediately following the kind
+            // and length fields in the option) MUST specify the contiguous
+            // block of data containing the segment which triggered this ACK,
+            // unless that segment advanced the Acknowledgment Number field in
+            // the header.
             reply_repr.sack_ranges[0] = None;
 
             if let Some(last_seg_seq) = self.local_rx_last_seq.map(|s| s.0 as u32) {
@@ -1289,8 +1330,9 @@ impl<'a> Socket<'a> {
             }
 
             if reply_repr.sack_ranges[0].is_none() {
-                // The matching segment was removed from the assembler, meaning the acknowledgement
-                // number has advanced, or there was no previous sACK.
+                // The matching segment was removed from the assembler, meaning the
+                // acknowledgement number has advanced, or there was no previous
+                // sACK.
                 //
                 // While the RFC says we SHOULD keep a list of reported sACK ranges, and iterate
                 // through those, that is currently infeasible. Instead, we offer the range with
@@ -1304,7 +1346,8 @@ impl<'a> Socket<'a> {
             }
         }
 
-        // Since the sACK option may have changed the length of the payload, update that.
+        // Since the sACK option may have changed the length of the payload, update
+        // that.
         ip_reply_repr.set_payload_len(reply_repr.buffer_len());
         (ip_reply_repr, reply_repr)
     }
@@ -1361,7 +1404,8 @@ impl<'a> Socket<'a> {
     ) -> Option<(IpRepr, TcpRepr<'static>)> {
         debug_assert!(self.accepts(cx, ip_repr, repr));
 
-        // Consider how much the sequence number space differs from the transmit buffer space.
+        // Consider how much the sequence number space differs from the transmit buffer
+        // space.
         let (sent_syn, sent_fin) = match self.state {
             // In SYN-SENT or SYN-RECEIVED, we've just sent a SYN.
             State::SynSent | State::SynReceived => (true, false),
@@ -1424,7 +1468,7 @@ impl<'a> Socket<'a> {
                 return Some(Self::rst_reply(ip_repr, repr));
             }
             // Anything else in the SYN-SENT state is invalid.
-            (State::SynSent, _, _) => {
+            (State::SynSent, ..) => {
                 net_debug!("expecting a SYN|ACK");
                 return None;
             }
@@ -1592,8 +1636,9 @@ impl<'a> Socket<'a> {
         let mut control = repr.control;
         control = control.quash_psh();
 
-        // If a FIN is received at the end of the current segment but the start of the segment
-        // is not at the start of the receive window, disregard this FIN.
+        // If a FIN is received at the end of the current segment but the start of the
+        // segment is not at the start of the receive window, disregard this
+        // FIN.
         if control == TcpControl::Fin && window_start != segment_start {
             control = TcpControl::None;
         }
@@ -1776,8 +1821,9 @@ impl<'a> Socket<'a> {
         // Update remote state.
         self.remote_last_ts = Some(cx.now());
 
-        // RFC 1323: The window field (SEG.WND) in the header of every incoming segment, with the
-        // exception of SYN segments, is left-shifted by Snd.Wind.Scale bits before updating SND.WND.
+        // RFC 1323: The window field (SEG.WND) in the header of every incoming segment,
+        // with the exception of SYN segments, is left-shifted by Snd.Wind.Scale
+        // bits before updating SND.WND.
         let scale = match repr.control {
             TcpControl::Syn => 0,
             _ => self.remote_win_scale.unwrap_or(0),
@@ -1868,7 +1914,10 @@ impl<'a> Socket<'a> {
         let assembler_was_empty = self.assembler.is_empty();
 
         // Try adding payload octets to the assembler.
-        let Ok(contig_len) = self.assembler.add_then_remove_front(payload_offset, payload_len) else {
+        let Ok(contig_len) = self
+            .assembler
+            .add_then_remove_front(payload_offset, payload_len)
+        else {
             net_debug!(
                 "assembler: too many holes to add {} octets at offset {}",
                 payload_len,
@@ -1946,7 +1995,7 @@ impl<'a> Socket<'a> {
     fn timed_out(&self, timestamp: Instant) -> bool {
         match (self.remote_last_ts, self.timeout) {
             (Some(remote_last_ts), Some(timeout)) => timestamp >= remote_last_ts + timeout,
-            (_, _) => false,
+            (..) => false,
         }
     }
 
@@ -2008,7 +2057,8 @@ impl<'a> Socket<'a> {
         // Can we actually send the FIN? We can send it if:
         // 1. We have unsent data that fits in the remote window.
         // 2. We have no unsent data.
-        // This condition matches only if #2, because #1 is already covered by can_data and we're ORing them.
+        // This condition matches only if #2, because #1 is already covered by can_data
+        // and we're ORing them.
         let can_fin = want_fin && self.remote_last_seq == self.local_seq_no + self.tx_buffer.len();
 
         can_send || can_fin
@@ -2067,7 +2117,8 @@ impl<'a> Socket<'a> {
             self.set_state(State::Closed);
         } else if !self.seq_to_transmit(cx) {
             if let Some(retransmit_delta) = self.timer.should_retransmit(cx.now()) {
-                // If a retransmit timer expired, we should resend data starting at the last ACK.
+                // If a retransmit timer expired, we should resend data starting at the last
+                // ACK.
                 net_debug!("retransmitting at t+{}", retransmit_delta);
 
                 // Rewind "last sequence number sent", as if we never
@@ -2221,10 +2272,11 @@ impl<'a> Socket<'a> {
             State::FinWait2 | State::TimeWait => {}
         }
 
-        // There might be more than one reason to send a packet. E.g. the keep-alive timer
-        // has expired, and we also have data in transmit buffer. Since any packet that occupies
-        // sequence space will elicit an ACK, we only need to send an explicit packet if we
-        // couldn't fill the sequence space with anything.
+        // There might be more than one reason to send a packet. E.g. the keep-alive
+        // timer has expired, and we also have data in transmit buffer. Since
+        // any packet that occupies sequence space will elicit an ACK, we only
+        // need to send an explicit packet if we couldn't fill the sequence
+        // space with anything.
         let is_keep_alive;
         if self.timer.should_keep_alive(cx.now()) && repr.is_empty() {
             repr.seq_number = repr.seq_number - 1;
@@ -2289,8 +2341,8 @@ impl<'a> Socket<'a> {
         }
         self.ack_delay_timer = AckDelayTimer::Idle;
 
-        // Leave the rest of the state intact if sending a keep-alive packet, since those
-        // carry a fake segment.
+        // Leave the rest of the state intact if sending a keep-alive packet, since
+        // those carry a fake segment.
         if is_keep_alive {
             return Ok(());
         }
@@ -2313,7 +2365,8 @@ impl<'a> Socket<'a> {
         }
 
         if self.state == State::Closed {
-            // When aborting a connection, forget about it after sending a single RST packet.
+            // When aborting a connection, forget about it after sending a single RST
+            // packet.
             self.tuple = None;
             #[cfg(feature = "async")]
             {
@@ -2355,7 +2408,7 @@ impl<'a> Socket<'a> {
                 // when the timeout would expire.
                 (Some(remote_last_ts), Some(timeout)) => PollAt::Time(remote_last_ts + timeout),
                 // Otherwise we have no timeout.
-                (_, _) => PollAt::Ingress,
+                (..) => PollAt::Ingress,
             };
 
             // We wait for the earliest of our timers to fire.
@@ -2380,11 +2433,14 @@ impl<'a> fmt::Write for Socket<'a> {
 
 #[cfg(test)]
 mod test {
+    use core::i32;
+    use std::{
+        ops::{Deref, DerefMut},
+        vec::Vec,
+    };
+
     use super::*;
     use crate::wire::IpRepr;
-    use core::i32;
-    use std::ops::{Deref, DerefMut};
-    use std::vec::Vec;
 
     // =========================================================================================//
     // Constants
@@ -3661,11 +3717,11 @@ mod test {
     }
 
     fn setup_rfc2018_cases() -> (TestSocket, Vec<u8>) {
-        // This is a utility function used by the tests for RFC 2018 cases. It configures a socket
-        // in a particular way suitable for those cases.
+        // This is a utility function used by the tests for RFC 2018 cases. It
+        // configures a socket in a particular way suitable for those cases.
         //
-        // RFC 2018: Assume the left window edge is 5000 and that the data transmitter sends [...]
-        // segments, each containing 500 data bytes.
+        // RFC 2018: Assume the left window edge is 5000 and that the data transmitter
+        // sends [...] segments, each containing 500 data bytes.
         let mut s = socket_established_with_buffer_sizes(4000, 4000);
         s.remote_has_sack = true;
 
@@ -3708,17 +3764,18 @@ mod test {
 
     #[test]
     fn test_established_rfc2018_cases() {
-        // This test case verifies the exact scenarios described on pages 8-9 of RFC 2018. Please
-        // ensure its behavior does not deviate from those scenarios.
+        // This test case verifies the exact scenarios described on pages 8-9 of RFC
+        // 2018. Please ensure its behavior does not deviate from those
+        // scenarios.
 
         let (mut s, segment) = setup_rfc2018_cases();
         // RFC 2018:
         //
         // Case 2: The first segment is dropped but the remaining 7 are received.
         //
-        // Upon receiving each of the last seven packets, the data receiver will return a TCP ACK
-        // segment that acknowledges sequence number 5000 and contains a SACK option specifying one
-        // block of queued data:
+        // Upon receiving each of the last seven packets, the data receiver will return
+        // a TCP ACK segment that acknowledges sequence number 5000 and contains
+        // a SACK option specifying one block of queued data:
         //
         //   Triggering   ACK      Left Edge  Right Edge
         //   Segment
@@ -3917,8 +3974,9 @@ mod test {
 
         // - Peer doesn't ack them yet
         // - Sends data so we need to reply with an ACK
-        // - ...AND and sends a window announcement that SHRINKS the window, so data we've
-        //   previously sent is now outside the window. Yes, this is allowed by TCP.
+        // - ...AND and sends a window announcement that SHRINKS the window, so data
+        //   we've previously sent is now outside the window. Yes, this is allowed by
+        //   TCP.
         send!(
             s,
             TcpRepr {

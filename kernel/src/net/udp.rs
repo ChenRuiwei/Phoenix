@@ -51,8 +51,8 @@ impl ProtoOps for UdpSock {
             .map(|(len, addr)| (len, addr.into()))
     }
 
-    fn poll(&self) -> NetPollState {
-        self.udp.poll()
+    async fn poll(&self) -> NetPollState {
+        self.udp.poll().await
     }
 
     fn shutdown(&self, _how: SocketShutdownFlag) -> SysResult<()> {

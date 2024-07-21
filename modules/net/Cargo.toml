@@ -34,6 +34,7 @@ features = [
     "socket-tcp",
     "socket-dns",
     "proto-ipv6",
+    "async",
     # "fragmentation-buffer-size-65536", "proto-ipv4-fragmentation",
     # "reassembly-buffer-size-65536", "reassembly-buffer-count-32",
     # "assembler-max-segment-count-32",

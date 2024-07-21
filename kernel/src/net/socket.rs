@@ -38,7 +38,7 @@ pub trait ProtoOps: Sync + Send + Any + DowncastSync {
     async fn recvfrom(&self, _buf: &mut [u8]) -> SysResult<(usize, SockAddr)> {
         Err(SysError::EOPNOTSUPP)
     }
-    fn poll(&self) -> NetPollState {
+    async fn poll(&self) -> NetPollState {
         log::error!("[net poll] unimplemented");
         NetPollState {
             readable: false,
@@ -136,7 +136,8 @@ impl File for Socket {
 
     async fn base_poll(&self, events: PollEvents) -> PollEvents {
         let mut res = PollEvents::empty();
-        let netstate = self.sk.poll();
+        poll_interfaces();
+        let netstate = self.sk.poll().await;
         if events.contains(PollEvents::IN) {
             if netstate.readable {
                 res |= PollEvents::IN;

@@ -12,7 +12,7 @@ pub struct TaskTimeStat {
     user_time: Duration,
     system_time: Duration,
 
-    task_start: Duration,
+    // task_start: Duration,
     system_time_start: Duration,
     user_time_start: Duration,
     schedule_time_start: Duration,
@@ -22,10 +22,10 @@ pub struct TaskTimeStat {
 }
 
 impl TaskTimeStat {
-    pub fn new() -> Self {
-        let start = get_time_duration();
+    pub const fn new() -> Self {
+        // let start = get_time_duration();
         Self {
-            task_start: start,
+            // task_start: start,
             user_time: Duration::ZERO,
             system_time: Duration::ZERO,
             child_user_time: Duration::ZERO,

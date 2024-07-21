@@ -3,7 +3,7 @@
 #![feature(new_uninit)]
 extern crate alloc;
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{cell::RefCell, ops::DerefMut, panic};
+use core::{cell::RefCell, future::Future, ops::DerefMut, panic};
 
 use arch::time::get_time_us;
 use device_core::{error::DevError, NetBufPtrOps, NetDriverOps};
@@ -120,6 +120,34 @@ impl<'a> SocketSetWrapper<'a> {
         let set = self.0.lock();
         let socket = set.get(handle);
         f(socket)
+    }
+
+    pub async fn with_socket_async<T: AnySocket<'a>, R, F, Fut>(
+        &self,
+        handle: SocketHandle,
+        f: F,
+    ) -> R
+    where
+        F: FnOnce(&T) -> Fut,
+        Fut: Future<Output = R>,
+    {
+        let set = self.0.lock();
+        let socket = set.get(handle);
+        f(socket).await
+    }
+
+    pub async fn with_socket_mut_async<T: AnySocket<'a>, R, F, Fut>(
+        &self,
+        handle: SocketHandle,
+        f: F,
+    ) -> R
+    where
+        F: FnOnce(&mut T) -> Fut,
+        Fut: Future<Output = R>,
+    {
+        let mut set = self.0.lock();
+        let socket = set.get_mut(handle);
+        f(socket).await
     }
 
     pub fn with_socket_mut<T: AnySocket<'a>, R, F>(&self, handle: SocketHandle, f: F) -> R

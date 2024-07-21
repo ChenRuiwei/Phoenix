@@ -1,10 +1,12 @@
+use alloc::boxed::Box;
 use core::{
     cell::UnsafeCell,
+    future::Future,
     net::SocketAddr,
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
-use async_utils::yield_now;
+use async_utils::{get_waker, suspend_now, yield_now};
 use log::*;
 use smoltcp::{
     iface::SocketHandle,
@@ -176,8 +178,8 @@ impl TcpSocket {
         if self.is_nonblocking() {
             Err(SysError::EINPROGRESS)
         } else {
-            self.block_on(|| {
-                let NetPollState { writable, .. } = self.poll_connect();
+            self.block_on_async(|| async {
+                let NetPollState { writable, .. } = self.poll_connect().await;
                 if !writable {
                     warn!("socket connect() failed: invalid state");
                     Err(SysError::EAGAIN)
@@ -255,6 +257,7 @@ impl TcpSocket {
         // SAFETY: `self.local_addr` should be initialized after `bind()`.
         let local_port = unsafe { self.local_addr.get().read().port };
         self.block_on(|| {
+            // TODO: 这里waker还没有注册到Socket上，可能会丢失 waker
             let (handle, (local_addr, peer_addr)) = LISTEN_TABLE.accept(local_port)?;
             debug!("TCP socket accepted a new connection {}", peer_addr);
             Ok(TcpSocket::new_connected(handle, local_addr, peer_addr))
@@ -368,10 +371,10 @@ impl TcpSocket {
     }
 
     /// Whether the socket is readable or writable.
-    pub fn poll(&self) -> NetPollState {
+    pub async fn poll(&self) -> NetPollState {
         match self.get_state() {
-            STATE_CONNECTING => self.poll_connect(),
-            STATE_CONNECTED => self.poll_stream(),
+            STATE_CONNECTING => self.poll_connect().await,
+            STATE_CONNECTED => self.poll_stream().await,
             STATE_LISTENING => self.poll_listener(),
             _ => NetPollState {
                 readable: false,
@@ -464,12 +467,17 @@ impl TcpSocket {
     ///
     /// Returning `true` indicates that the socket has entered a stable
     /// state(connected or failed) and can proceed to the next step
-    fn poll_connect(&self) -> NetPollState {
+    async fn poll_connect(&self) -> NetPollState {
         // SAFETY: `self.handle` should be initialized above.
         let handle = unsafe { self.handle.get().read().unwrap() };
-        let writable =
-            SOCKET_SET.with_socket::<tcp::Socket, _, _>(handle, |socket| match socket.state() {
-                State::SynSent => false, // The connection request has been sent but no response
+        let waker = get_waker().await;
+        let writable = SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
+            match socket.state() {
+                State::SynSent => {
+                    // The connection request has been sent but no response
+                    socket.register_recv_waker(&waker);
+                    false
+                }
                 // has been received yet
                 State::Established => {
                     self.set_state(STATE_CONNECTED); // connected
@@ -488,25 +496,32 @@ impl TcpSocket {
                     self.set_state(STATE_CLOSED); // connection failed
                     true
                 }
-            });
+            }
+        });
         NetPollState {
             readable: false,
             writable,
         }
     }
 
-    fn poll_stream(&self) -> NetPollState {
+    async fn poll_stream(&self) -> NetPollState {
         // SAFETY: `self.handle` should be initialized in a connected socket.
         let handle = unsafe { self.handle.get().read().unwrap() };
-        SOCKET_SET.with_socket::<tcp::Socket, _, _>(handle, |socket| {
-            NetPollState {
-                // readable 本质上是是否应该继续阻塞，因此为 true 时的条件可以理解为：
-                // 1. 套接字已经关闭接收：在这种情况下，即使没有新数据到达，读取操作也不会阻塞，
-                //    因为读取会立即返回
-                // 2. 套接字中有数据可读：这是最常见的可读情况，表示可以从套接字中读取到数据
-                readable: !socket.may_recv() || socket.can_recv(),
-                writable: !socket.may_send() || socket.can_send(),
+        let waker = get_waker().await;
+        SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
+            // readable 本质上是是否应该继续阻塞，因此为 true 时的条件可以理解为：
+            // 1. 套接字已经关闭接收：在这种情况下，即使没有新数据到达，读取操作也不会阻塞，
+            //    因为读取会立即返回
+            // 2. 套接字中有数据可读：这是最常见的可读情况，表示可以从套接字中读取到数据
+            let readable = !socket.may_recv() || socket.can_recv();
+            let writable = !socket.may_send() || socket.can_send();
+            if !readable {
+                socket.register_recv_waker(&waker);
             }
+            if !writable {
+                socket.register_send_waker(&waker);
+            }
+            NetPollState { readable, writable }
         })
     }
 
@@ -538,7 +553,29 @@ impl TcpSocket {
                     Err(SysError::EAGAIN) => {
                         // TODO:判断是否有信号
 
-                        yield_now().await
+                        suspend_now().await
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+    }
+
+    async fn block_on_async<F, T, Fut>(&self, mut f: F) -> SysResult<T>
+    where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = SysResult<T>>,
+    {
+        if self.is_nonblocking() {
+            f().await
+        } else {
+            loop {
+                SOCKET_SET.poll_interfaces();
+                match f().await {
+                    Ok(t) => return Ok(t),
+                    Err(SysError::EAGAIN) => {
+                        // TODO:判断是否有信号
+                        suspend_now().await
                     }
                     Err(e) => return Err(e),
                 }

@@ -3,7 +3,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use async_utils::yield_now;
+use async_utils::{get_waker, suspend_now, yield_now};
 use log::{debug, warn};
 use smoltcp::{
     iface::SocketHandle,
@@ -114,7 +114,7 @@ impl UdpSocket {
     /// number of bytes written.
     pub async fn send_to(&self, buf: &[u8], remote_addr: SocketAddr) -> SysResult<usize> {
         if remote_addr.port() == 0 || remote_addr.ip().is_unspecified() {
-            warn!("socket send_to() failed: invalid address");
+            warn!("socket send_to() failed: invalid remote address");
             return Err(SysError::EINVAL);
         }
         self.send_impl(buf, from_core_sockaddr(remote_addr)).await
@@ -203,16 +203,24 @@ impl UdpSocket {
     }
 
     /// Whether the socket is readable or writable.
-    pub fn poll(&self) -> NetPollState {
+    pub async fn poll(&self) -> NetPollState {
         if self.local_addr.read().is_none() {
             return NetPollState {
                 readable: false,
                 writable: false,
             };
         }
-        SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| NetPollState {
-            readable: socket.can_recv(),
-            writable: socket.can_send(),
+        let waker = get_waker().await;
+        SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
+            let readable = socket.can_recv();
+            let writable = socket.can_send();
+            if !readable {
+                socket.register_recv_waker(&waker);
+            }
+            if !writable {
+                socket.register_send_waker(&waker);
+            }
+            NetPollState { readable, writable }
         })
     }
 }
@@ -235,7 +243,7 @@ impl UdpSocket {
             // TODO: UNSPECIFIED_ENDPOINT or LOCAL_ENDPOINT?
             self.bind(into_core_sockaddr(UNSPECIFIED_ENDPOINT))?;
         }
-
+        let waker = get_waker().await;
         let bytes = self
             .block_on(|| {
                 SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
@@ -255,6 +263,8 @@ impl UdpSocket {
                         Ok(buf.len())
                     } else {
                         // tx buffer is full
+                        socket.register_send_waker(&waker);
+
                         Err(SysError::EAGAIN)
                     }
                 })
@@ -272,7 +282,7 @@ impl UdpSocket {
             warn!("socket send() failed");
             return Err(SysError::ENOTCONN);
         }
-
+        let waker = get_waker().await;
         self.block_on(|| {
             SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
                 if socket.can_recv() {
@@ -285,6 +295,7 @@ impl UdpSocket {
                 } else {
                     // no more data
                     log::info!("[recv_impl] no more data");
+                    socket.register_send_waker(&waker);
                     Err(SysError::EAGAIN)
                 }
             })
@@ -305,7 +316,8 @@ impl UdpSocket {
                     Ok(t) => return Ok(t),
                     Err(SysError::EAGAIN) => {
                         // TODO:判断是否有信号
-                        yield_now().await
+                        // yield_now().await
+                        suspend_now().await;
                     }
                     Err(e) => return Err(e),
                 }

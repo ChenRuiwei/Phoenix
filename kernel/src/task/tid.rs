@@ -33,7 +33,7 @@ pub struct TidAddress {
 }
 
 impl TidAddress {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             set_child_tid: None,
             clear_child_tid: None,

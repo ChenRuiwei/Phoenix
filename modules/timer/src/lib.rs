@@ -101,7 +101,7 @@ impl TimerManager {
                     current,
                     timer.0.expire
                 );
-                let mut timer = timers.pop().unwrap().0;
+                let timer = timers.pop().unwrap().0;
                 if let Some(new_timer) = timer.callback() {
                     timers.push(Reverse(new_timer));
                 }

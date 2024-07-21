@@ -338,6 +338,17 @@ impl Syscall<'_> {
         socket.sk.shutdown(how)?;
         Ok(0)
     }
+
+    pub fn sys_socketpair(
+        &self,
+        domain: usize,
+        types: usize,
+        protocol: usize,
+        sv: UserWritePtr<[u32; 2]>,
+    ) -> SyscallResult {
+        log::error!("[sys_socketpair] unsupport syscall now");
+        Ok(0)
+    }
 }
 
 impl Task {

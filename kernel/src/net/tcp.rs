@@ -57,8 +57,8 @@ impl ProtoOps for TcpSock {
         Ok((bytes, peer_addr))
     }
 
-    fn poll(&self) -> NetPollState {
-        self.tcp.poll()
+    async fn poll(&self) -> NetPollState {
+        self.tcp.poll().await
     }
 
     fn shutdown(&self, _how: SocketShutdownFlag) -> SysResult<()> {

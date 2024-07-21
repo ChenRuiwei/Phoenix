@@ -246,7 +246,7 @@ dependencies = [
  "spin",
  "sync",
  "systype",
- "virtio-drivers 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "virtio-drivers",
 ]
 
 [[package]]
@@ -605,7 +605,7 @@ dependencies = [
  "timer",
  "vfs",
  "vfs-core",
- "virtio-drivers 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "virtio-drivers",
  "xmas-elf",
 ]
 
@@ -1263,15 +1263,6 @@ dependencies = [
  "sync",
  "systype",
  "time",
-]
-
-[[package]]
-name = "virtio-drivers"
-version = "0.7.3"
-dependencies = [
- "bitflags 2.6.0",
- "log",
- "zerocopy",
 ]
 
 [[package]]
