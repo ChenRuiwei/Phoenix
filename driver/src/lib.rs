@@ -18,7 +18,7 @@ use early_print::EarlyStdout;
 use manager::DeviceManager;
 use memory::PageTable;
 use spin::Once;
-use sync::mutex::SpinLock;
+use sync::mutex::{SpinLock, SpinNoIrqLock};
 
 use self::sbi::console_putchar;
 use crate::serial::{Serial, UART0};
@@ -82,11 +82,11 @@ pub fn init_device_manager() {
 
 #[crate_interface::def_interface]
 pub trait KernelPageTableIf: Send + Sync {
-    fn kernel_page_table() -> &'static mut PageTable;
+    fn kernel_page_table_mut() -> &'static mut PageTable;
 }
 
-pub(crate) fn kernel_page_table() -> &'static mut PageTable {
-    call_interface!(KernelPageTableIf::kernel_page_table())
+pub(crate) fn kernel_page_table_mut() -> &'static mut PageTable {
+    call_interface!(KernelPageTableIf::kernel_page_table_mut())
 }
 
 struct Stdout;
@@ -102,7 +102,9 @@ impl Write for Stdout {
     }
 }
 
+static PRINT_LOCK: SpinLock<()> = SpinLock::new(());
 pub fn _print(args: fmt::Arguments) {
+    let _guard = PRINT_LOCK.lock();
     Stdout.write_fmt(args).unwrap();
 }
 

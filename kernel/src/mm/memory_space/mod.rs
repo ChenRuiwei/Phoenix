@@ -34,7 +34,7 @@ use vfs_core::{Dentry, File};
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};
-use super::PageFaultAccessType;
+use super::{kernel_page_table, PageFaultAccessType};
 use crate::{
     mm::{
         memory_space::vm_area::{MapPerm, VmAreaType},
@@ -50,16 +50,6 @@ use crate::{
 
 mod range_map;
 pub mod vm_area;
-
-/// Kernel space for all processes.
-///
-/// There is no need to lock `KERNEL_PAGE_TABLE` since it won't be changed.
-pub static KERNEL_PAGE_TABLE: Lazy<SyncUnsafeCell<PageTable>> =
-    Lazy::new(|| SyncUnsafeCell::new(PageTable::new_kernel()));
-
-pub unsafe fn switch_kernel_page_table() {
-    &(*KERNEL_PAGE_TABLE.get()).switch();
-}
 
 /// Virtual memory space for kernel and user.
 pub struct MemorySpace {
@@ -87,9 +77,7 @@ impl MemorySpace {
     /// Create a new user memory space that inherits kernel page table.
     pub fn new_user() -> Self {
         Self {
-            page_table: SyncUnsafeCell::new(PageTable::from_kernel(unsafe {
-                &*KERNEL_PAGE_TABLE.get()
-            })),
+            page_table: SyncUnsafeCell::new(PageTable::from_kernel(kernel_page_table())),
             areas: SyncUnsafeCell::new(RangeMap::new()),
             task: None,
         }
