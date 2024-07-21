@@ -8,6 +8,9 @@
 
 extern crate alloc;
 
+#[macro_use]
+extern crate macro_utils;
+
 use alloc::sync::Arc;
 use core::fmt::{self, Write};
 
@@ -54,7 +57,7 @@ pub fn init() {
         })
         .next()
         .unwrap();
-    unsafe { *UART0.lock() = Some(serial) };
+    unsafe { UART0 = Some(serial) };
     // CHAR_DEVICE.call_once(|| manager.char_device[0].clone());
 }
 
@@ -93,7 +96,7 @@ struct Stdout;
 
 impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        if let Some(serial) = unsafe { UART0.lock().as_mut() } {
+        if let Some(serial) = unsafe { UART0.as_mut() } {
             block_on(async { serial.write(s.as_bytes()).await });
             Ok(())
         } else {

@@ -237,9 +237,11 @@ dependencies = [
  "early-print",
  "fdt",
  "log",
+ "macro-utils",
  "memory",
  "net",
  "page",
+ "paste",
  "plic",
  "ring-buffer",
  "rustversion",
@@ -664,6 +666,13 @@ source = "git+https://github.com/ChenRuiwei/lwext4_rust.git#201d8fd9c21e814a63f9
 dependencies = [
  "log",
  "printf-compat",
+]
+
+[[package]]
+name = "macro-utils"
+version = "0.1.0"
+dependencies = [
+ "paste",
 ]
 
 [[package]]

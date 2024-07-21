@@ -31,6 +31,7 @@ use core::{
 };
 
 use driver::BLOCK_DEVICE;
+use executor::task_len;
 use timer::timelimited_task::ksleep_s;
 
 use crate::{processor::hart, task::TASK_MANAGER};
@@ -82,10 +83,9 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
         //         ksleep_s(3).await;
         //     }
         // });
-        //
         // task::spawn_kernel_task(async move {
         //     loop {
-        //         log::error!("task counts {}", TASK_MANAGER.len());
+        //         log::error!("task counts {}", task_len());
         //         ksleep_s(3).await;
         //     }
         // });

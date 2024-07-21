@@ -7,7 +7,6 @@ use config::time::TIME_SLICE_DUATION;
 /// ---kernel---(switch)---kernel--      --kernel--        ------(switch)
 ///      switch_out    switch_in  ret   trap      ret    trap switch_out
 // TODO: what about kernel interrupt
-// HACK: use state machine implementation will be much clearer
 pub struct TaskTimeStat {
     user_time: Duration,
     system_time: Duration,

@@ -13,6 +13,7 @@ use async_utils::{block_on, get_waker};
 use config::{board::UART_BUF_LEN, mm::VIRT_RAM_OFFSET};
 use device_core::{BaseDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
 use fdt::Fdt;
+use macro_utils::with_methods;
 use memory::pte::PTEFlags;
 use ring_buffer::RingBuffer;
 use sync::mutex::SpinNoIrqLock;
@@ -20,7 +21,7 @@ use sync::mutex::SpinNoIrqLock;
 use super::CharDevice;
 use crate::{kernel_page_table_mut, manager::DeviceManager, println, serial::uart8250::Uart};
 
-pub static mut UART0: SpinNoIrqLock<Option<Arc<Serial>>> = SpinNoIrqLock::new(None);
+pub static mut UART0: Option<Arc<Serial>> = None;
 
 trait UartDriver: Send + Sync {
     fn init(&mut self);
@@ -32,10 +33,14 @@ trait UartDriver: Send + Sync {
 
 pub struct Serial {
     meta: DeviceMeta,
-    inner: UnsafeCell<Box<dyn UartDriver>>,
-    read_buf: SpinNoIrqLock<RingBuffer<UART_BUF_LEN>>, // Hard-coded buffer size
+    uart: UnsafeCell<Box<dyn UartDriver>>,
+    inner: SpinNoIrqLock<SerialInner>,
+}
+
+pub struct SerialInner {
+    read_buf: RingBuffer<UART_BUF_LEN>, // Hard-coded buffer size
     /// Hold waker of pollin tasks.
-    pollin_queue: SpinNoIrqLock<VecDeque<Waker>>,
+    pollin_queue: VecDeque<Waker>,
 }
 
 unsafe impl Send for Serial {}
@@ -57,15 +62,19 @@ impl Serial {
 
         Self {
             meta,
-            inner: UnsafeCell::new(driver),
-            read_buf: SpinNoIrqLock::new(RingBuffer::new()),
-            pollin_queue: SpinNoIrqLock::new(VecDeque::new()),
+            uart: UnsafeCell::new(driver),
+            inner: SpinNoIrqLock::new(SerialInner {
+                read_buf: RingBuffer::new(),
+                pollin_queue: VecDeque::new(),
+            }),
         }
     }
 
     fn uart(&self) -> &mut Box<dyn UartDriver> {
-        unsafe { &mut *self.inner.get() }
+        unsafe { &mut *self.uart.get() }
     }
+
+    with_methods!(inner: SerialInner);
 }
 
 impl fmt::Debug for Serial {
@@ -80,33 +89,29 @@ impl BaseDriverOps for Serial {
     }
 
     fn init(&self) {
-        unsafe { &mut *self.inner.get() }.as_mut().init()
+        unsafe { &mut *self.uart.get() }.as_mut().init()
     }
 
     fn handle_irq(&self) {
         let uart = self.uart();
-        let mut read_buf = self.read_buf.lock();
-        while uart.poll_in() {
-            let byte = uart.getc();
-            log::info!(
-                "Serial interrupt handler got byte: {}",
-                core::str::from_utf8(&[byte]).unwrap()
-            );
-            if read_buf.enqueue(byte).is_none() {
-                break;
+        self.with_mut_inner(|inner| {
+            let read_buf = &mut inner.read_buf;
+            let pollin_queue = &mut inner.pollin_queue;
+            while uart.poll_in() {
+                let byte = uart.getc();
+                log::info!(
+                    "Serial interrupt handler got byte: {}",
+                    core::str::from_utf8(&[byte]).unwrap()
+                );
+                if read_buf.enqueue(byte).is_none() {
+                    break;
+                }
             }
-        }
-        // Round Robin
-        if let Some(waiting) = self.pollin_queue.lock().pop_front() {
-            waiting.wake();
-        }
-    }
-}
-
-impl Write for Serial {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        block_on(async { self.write(s.as_bytes()).await });
-        Ok(())
+            // Round Robin
+            if let Some(waiting) = pollin_queue.pop_front() {
+                waiting.wake();
+            }
+        });
     }
 }
 
@@ -114,9 +119,10 @@ impl Write for Serial {
 impl CharDevice for Serial {
     async fn read(&self, buf: &mut [u8]) -> usize {
         let mut len = 0;
-        let mut read_buf = self.read_buf.lock();
-        len = read_buf.read(buf);
-        drop(read_buf);
+        self.with_mut_inner(|inner| {
+            let read_buf = &mut inner.read_buf;
+            len = read_buf.read(buf);
+        });
         let uart = self.uart();
         while uart.poll_in() && len < buf.len() {
             let c = uart.getc();
@@ -127,19 +133,23 @@ impl CharDevice for Serial {
     }
 
     async fn write(&self, buf: &[u8]) -> usize {
+        let uart = self.uart();
         for &c in buf {
-            self.uart().putc(c)
+            uart.putc(c)
         }
         buf.len()
     }
 
     async fn poll_in(&self) -> bool {
-        if self.uart().poll_in() || !self.read_buf.lock().is_empty() {
-            return true;
-        }
+        let uart = self.uart();
         let waker = get_waker().await;
-        self.pollin_queue.lock().push_back(waker);
-        false
+        self.with_mut_inner(|inner| {
+            if uart.poll_in() || !inner.read_buf.is_empty() {
+                return true;
+            }
+            inner.pollin_queue.push_back(waker);
+            false
+        })
     }
 
     // TODO:
