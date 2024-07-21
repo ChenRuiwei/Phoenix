@@ -5,7 +5,7 @@ use alloc::{
     sync::{self, Arc},
     vec::Vec,
 };
-use core::iter::zip;
+use core::{cmp, iter::zip};
 
 use async_trait::async_trait;
 use lwext4_rust::bindings::{O_RDONLY, O_RDWR, SEEK_SET};
@@ -43,18 +43,20 @@ impl File for Ext4File {
         //     self.inode().get_blk_idx(offset as u64)?
         // );
         match self.itype() {
-            InodeType::File | InodeType::SymLink => {
+            InodeType::File=> {
                 let mut file = self.file.lock();
-                let path = file.get_path();
-                let path = path.to_str().unwrap();
-                // file.file_open(path, O_RDONLY).map_err(SysError::from_i32)?;
                 file.file_seek(offset as i64, SEEK_SET)
                     .map_err(SysError::from_i32)?;
                 let r = file.file_read(buf).map_err(SysError::from_i32);
-                // let _ = file.file_close();
                 r
             }
             InodeType::Dir => Err(SysError::EISDIR),
+            InodeType::SymLink => {
+                let mut file = self.file.lock();
+                let r = file.link_read(buf).map_err(SysError::from_i32);
+                log::info!("size:{}, buf:{:?}", self.size(),&buf[..cmp::min(buf.len(), 20)]);
+                r
+            }
             _ => unreachable!(),
         }
     }
@@ -96,7 +98,8 @@ impl File for Ext4File {
         let iters = file.lwext4_dir_entries().unwrap();
 
         let path = self.dentry().path();
-        for (name, file_type) in zip(iters.0, iters.1).skip(3) {
+        for (name, file_type) in zip(iters.0, iters.1).skip(2) {
+            // skip "." and ".."
             let name = CString::from_vec_with_nul(name).map_err(|_| SysError::EINVAL)?;
             let name = name.to_str().unwrap();
             let sub_dentry = self.dentry().get_child_or_create(name);

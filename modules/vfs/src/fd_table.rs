@@ -118,7 +118,7 @@ impl FdTable {
         if inner_slot.is_some() {
             return inner_slot;
         } else if inner_slot.is_none() && start < self.rlimit.rlim_max {
-            for _ in self.table.len()..start {
+            for _ in self.table.len()..(start + 1) {
                 self.table.push(None);
             }
             return Some(self.table.len() - 1);
@@ -212,6 +212,7 @@ impl FdTable {
             .ok_or_else(|| SysError::EMFILE)?;
         let fd_info = FdInfo::new(file, flags.into());
         self.put(new_fd, fd_info)?;
+        debug_assert!(new_fd >= lower_bound);
         Ok(new_fd)
     }
 

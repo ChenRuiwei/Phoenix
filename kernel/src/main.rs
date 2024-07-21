@@ -11,8 +11,10 @@
 #![feature(stdsimd)]
 #![feature(riscv_ext_intrinsics)]
 #![feature(map_try_insert)]
-#![allow(clippy::mut_from_ref)]
+#![feature(byte_slice_trim_ascii)]
 #![feature(new_uninit)]
+
+#![allow(clippy::mut_from_ref)]
 
 mod boot;
 mod impls;

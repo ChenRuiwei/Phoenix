@@ -655,7 +655,7 @@ dependencies = [
 [[package]]
 name = "lwext4_rust"
 version = "0.2.0"
-source = "git+https://github.com/ChenRuiwei/lwext4_rust.git#201d8fd9c21e814a63f9e6e887c03d7e81b3eec1"
+source = "git+https://github.com/ChenRuiwei/lwext4_rust.git#d8298248a04e4a742ef2174a1f66c161e9664f44"
 dependencies = [
  "log",
  "printf-compat",

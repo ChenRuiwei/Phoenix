@@ -136,7 +136,7 @@ impl<'a> Syscall<'a> {
                 self.sys_pwrite64(args[0], args[1].into(), args[2], args[3])
                     .await
             }
-            OPENAT => self.sys_openat(args[0].into(), args[1].into(), args[2] as _, args[3] as _),
+            OPENAT => self.sys_openat(args[0].into(), args[1].into(), args[2] as _, args[3] as _).await,
             CLOSE => self.sys_close(args[0]),
             MKDIR => self.sys_mkdirat(args[0].into(), args[1].into(), args[2] as _),
             GETCWD => self.sys_getcwd(args[0].into(), args[1]),
