@@ -474,7 +474,17 @@ impl VmArea {
                             self.pages.insert(vpn, page);
                             unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                         } else {
-                            todo!()
+                            let page = block_on(async { file.get_page_at(offset_aligned).await })?
+                                .unwrap();
+                            let (pte_flags, ppn) = {
+                                let mut new_flags: PTEFlags = self.map_perm.into();
+                                new_flags |= PTEFlags::COW;
+                                new_flags.remove(PTEFlags::W);
+                                (new_flags, page.ppn())
+                            };
+                            page_table.map(vpn, ppn, pte_flags);
+                            self.pages.insert(vpn, page);
+                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                         }
                     } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
                         if self.mmap_flags.contains(MmapFlags::MAP_SHARED) {

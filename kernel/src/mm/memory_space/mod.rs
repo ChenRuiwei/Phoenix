@@ -5,7 +5,7 @@ use alloc::{
     vec::Vec,
 };
 use core::{
-    arch::riscv64,
+    arch::riscv64::{self},
     borrow::Borrow,
     cell::{RefCell, SyncUnsafeCell, UnsafeCell},
     cmp,
@@ -555,16 +555,20 @@ impl MemorySpace {
 
     pub fn alloc_mmap_anonymous(
         &mut self,
+        addr: VirtAddr,
+        length: usize,
         perm: MapPerm,
         flags: MmapFlags,
-        length: usize,
     ) -> SysResult<VirtAddr> {
         const MMAP_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
-        let range = self
-            .areas()
-            .find_free_range(MMAP_RANGE, length)
-            .expect("mmap range is full");
+        let range = if flags.contains(MmapFlags::MAP_FIXED) {
+            addr..addr + length
+        } else {
+            self.areas_mut()
+                .find_free_range(MMAP_RANGE, length)
+                .expect("mmap range is full")
+        };
         let start = range.start;
         let mut vma = VmArea::new_mmap(range, perm, flags, None, 0);
         self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
@@ -588,7 +592,6 @@ impl MemorySpace {
             VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
 
         let range = if flags.contains(MmapFlags::MAP_FIXED) {
-            self.unmap(addr..addr + length)?;
             addr..addr + length
         } else {
             self.areas_mut()
@@ -610,13 +613,19 @@ impl MemorySpace {
                 let vpn = range_vpn.next().unwrap();
                 // TODO: support copy on write for private mapping
                 if flags.contains(MmapFlags::MAP_PRIVATE) {
-                    let new_page = Page::new();
-                    new_page.copy_from_slice(page.bytes_array());
-                    page_table.map(vpn, new_page.ppn(), perm.into());
-                    vma.pages.insert(vpn, new_page);
+                    let (pte_flags, ppn) = {
+                        let mut new_flags: PTEFlags = perm.into();
+                        new_flags |= PTEFlags::COW;
+                        new_flags.remove(PTEFlags::W);
+                        (new_flags, page.ppn())
+                    };
+                    page_table.map(vpn, ppn, pte_flags);
+                    vma.pages.insert(vpn, page);
+                    unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                 } else {
                     page_table.map(vpn, page.ppn(), perm.into());
                     vma.pages.insert(vpn, page);
+                    unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                 }
             } else {
                 break;
@@ -652,6 +661,8 @@ impl MemorySpace {
     }
 
     pub fn unmap(&mut self, range: Range<VirtAddr>) -> SysResult<()> {
+        debug_assert!(range.start.is_aligned());
+        debug_assert!(range.end.is_aligned());
         log::debug!("[MemorySpace::unmap] remove area {:?}", range.clone());
 
         // First find the left most vm_area containing `range.start`.
