@@ -2,6 +2,7 @@ use alloc::{
     sync::Arc,
     vec::{self, Vec},
 };
+use core::fmt;
 
 use config::fs::MAX_FDS;
 use systype::{RLimit, SysError, SysResult};
@@ -41,6 +42,15 @@ pub struct FdInfo {
     /// FD_CLOEXEC.
     flags: FdFlags,
     file: Arc<dyn File>,
+}
+
+impl fmt::Debug for FdInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FdInfo")
+            .field("flags", &self.flags)
+            .field("file path", &self.file.dentry().path())
+            .finish()
+    }
 }
 
 impl FdInfo {
@@ -118,9 +128,12 @@ impl FdTable {
         if inner_slot.is_some() {
             return inner_slot;
         } else if inner_slot.is_none() && start < self.rlimit.rlim_max {
-            for _ in self.table.len()..(start + 1) {
+            // if table len not enough, push enough empty slots
+            for _ in self.table.len()..start {
                 self.table.push(None);
             }
+            // inner_slot is none means we need to add more one slot
+            self.table.push(None);
             return Some(self.table.len() - 1);
         } else {
             return None;

@@ -46,6 +46,14 @@ pub fn init_devfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
     tty_dentry.set_inode(tty_inode);
     let tty_file = TtyFile::new(tty_dentry.clone(), tty_dentry.inode()?);
     TTY.call_once(|| tty_file);
+
+    // TODO: POSIX shm operations are not implemented yet. The code below is work
+    // around to pass libc test pthread_cancel_points.
+    let shm_dentry = SimpleDentry::new("shm", sb.clone(), Some(root_dentry.clone()));
+    root_dentry.insert(shm_dentry.clone());
+    let shm_inode = SimpleInode::new(InodeMode::DIR, sb.clone(), 0);
+    shm_dentry.set_inode(shm_inode);
+
     Ok(())
 }
 
