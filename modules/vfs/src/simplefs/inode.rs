@@ -1,5 +1,6 @@
 use alloc::sync::Arc;
 
+use systype::SysResult;
 use vfs_core::{Inode, InodeMeta, InodeMode, Stat, SuperBlock};
 
 pub struct SimpleInode {
@@ -19,7 +20,7 @@ impl Inode for SimpleInode {
         &self.meta
     }
 
-    fn get_attr(&self) -> systype::SysResult<vfs_core::Stat> {
+    fn get_attr(&self) -> SysResult<Stat> {
         let inner = self.meta.inner.lock();
         let mode = self.meta.mode.bits();
         let len = inner.size;
@@ -41,5 +42,9 @@ impl Inode for SimpleInode {
             st_ctime: inner.ctime,
             unused: 0,
         })
+    }
+
+    fn base_truncate(&self, len: usize) -> SysResult<()> {
+        Ok(())
     }
 }
