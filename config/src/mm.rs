@@ -80,13 +80,9 @@ pub const K_SEG_PHY_MEM_END: usize = 0xffff_ffff_8000_0000;
 pub const K_SEG_TEXT_BEG: usize = 0xffff_ffff_8000_0000;
 pub const K_SEG_TEXT_END: usize = 0xffff_ffff_c000_0000;
 
-// Hardware IO segment (750 MiB)
-pub const K_SEG_HARDWARE_BEG: usize = 0xffff_ffff_c000_0000;
-pub const K_SEG_HARDWARE_END: usize = 0xffff_ffff_f000_0000;
-
 // DTB fixed mapping
-pub const K_SEG_DTB_BEG: usize = K_SEG_DTB_END - MAX_DTB_SIZE + 1;
-pub const K_SEG_DTB_END: usize = 0xffff_ffff_ffff_ffff;
+pub const K_SEG_DTB_BEG: usize = K_SEG_DTB_END - MAX_DTB_SIZE;
+pub const K_SEG_DTB_END: usize = 0xffff_ffff_f000_0000;
 pub const MAX_DTB_SIZE: usize = PAGE_SIZE * PAGE_SIZE;
 
 pub fn align_offset_to_page(offset: usize) -> (usize, usize) {

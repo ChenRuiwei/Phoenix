@@ -97,7 +97,7 @@ impl VirtAddr {
 
     /// `VirtAddr`->`VirtPageNum`
     pub fn ceil(&self) -> VirtPageNum {
-        VirtPageNum((self.0 + PAGE_SIZE - 1) / PAGE_SIZE)
+        VirtPageNum((self.0 + PAGE_MASK) / PAGE_SIZE)
     }
 
     /// `VirtAddr` -> rounded up to a multiple of PAGE_SIZE

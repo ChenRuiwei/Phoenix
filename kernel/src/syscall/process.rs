@@ -285,8 +285,6 @@ impl Syscall<'_> {
 
         log::info!("[sys_execve]: path: {path:?}, argv: {argv:?}, envp: {envp:?}",);
 
-        // TODO: should we add envp
-
         if path.ends_with(".sh") {
             path = "/busybox".to_string();
             argv.insert(0, "busybox".to_string());
@@ -299,7 +297,6 @@ impl Syscall<'_> {
         Ok(0)
     }
 
-    // TODO:
     pub fn sys_clone(
         &self,
         flags: usize,

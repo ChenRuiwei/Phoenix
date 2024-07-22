@@ -182,7 +182,7 @@ impl MemorySpace {
                             self.page_table_mut()
                                 .map(vpn, new_page.ppn(), map_perm.into());
                             vm_area.pages.insert(vpn, new_page);
-                            unsafe { sfence_vma_vaddr(vpn.into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                         } else {
                             let (pte_flags, ppn) = {
                                 let mut new_flags: PTEFlags = map_perm.into();
@@ -192,7 +192,7 @@ impl MemorySpace {
                             };
                             self.page_table_mut().map(vpn, ppn, pte_flags);
                             vm_area.pages.insert(vpn, page);
-                            unsafe { sfence_vma_vaddr(vpn.into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                         }
                         pre_alloc_page_cnt += 1;
                     } else {

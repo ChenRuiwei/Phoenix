@@ -186,6 +186,9 @@ impl TrapContext {
         cx
     }
 
+    // NOTE: this function must not update `Sstatus` field using `sstatus::read()`,
+    // otherwise, interrupt will be triggered in `__return_to_user`, which will mess
+    // up user registers .
     pub fn init_user(
         &mut self,
         user_sp: usize,
@@ -199,7 +202,6 @@ impl TrapContext {
         self.user_x[11] = argv;
         self.user_x[12] = envp;
         self.sepc = sepc;
-        self.sstatus = sstatus::read();
         self.user_fx = UserFloatContext::new()
     }
 
