@@ -22,8 +22,31 @@ const TESTCASES: [&str; 9] = [
     "unixbench_testcode.sh",
 ];
 
+fn run_cmd(cmd: &str) {
+    if fork() == 0 {
+        execve(
+            "/busybox\0",
+            &[
+                "busybox\0".as_ptr(),
+                "sh\0".as_ptr(),
+                "-c\0".as_ptr(),
+                cmd.as_ptr(),
+            ],
+            &[
+                "PATH=/:/bin\0".as_ptr(),
+                "LD_LIBRARY_PATH=/:/lib:/lib/glibc/:/lib/musl\0".as_ptr(),
+            ],
+        );
+    } else {
+        let mut result: i32 = 0;
+        waitpid((-1isize) as usize, &mut result);
+    }
+}
+
 #[no_mangle]
 fn main() -> i32 {
+    run_cmd("busybox touch sort.src\0");
+    run_cmd("busybox cp /lib/dlopen_dso.so dlopen_dso.so\0");
     if fork() == 0 {
         for testcase in TESTCASES {
             let pid = fork();
@@ -33,7 +56,7 @@ fn main() -> i32 {
                     &testname,
                     &[testname.as_ptr(), core::ptr::null::<u8>()],
                     &[
-                        "PATH=/:/bin:/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin:\0".as_ptr(),
+                        "PATH=/:/bin\0".as_ptr(),
                         "LD_LIBRARY_PATH=/:/lib:/lib64/lp64d:/usr/lib:/usr/local/lib:\0".as_ptr(),
                         "TERM=screen\0".as_ptr(),
                         core::ptr::null::<u8>(),

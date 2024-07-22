@@ -24,6 +24,7 @@ use crate::task::Task;
 
 #[cfg(feature = "strace")]
 pub const STRACE_COLOR_CODE: logging::ColorCode = logging::ColorCode::BrightMagenta;
+
 /// Syscall trace.
 // TODO: syscall trace with exact args and return value
 #[cfg(feature = "strace")]
@@ -43,6 +44,7 @@ macro_rules! strace {
         );
     }
 }
+
 #[cfg(not(feature = "strace"))]
 #[macro_export]
 macro_rules! strace {

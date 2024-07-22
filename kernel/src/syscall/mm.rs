@@ -367,7 +367,7 @@ impl Syscall<'_> {
                 let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
                 if let Some(shm) = shm_manager.get(&shmid) {
                     let buf = UserWritePtr::from_usize(buf);
-                    buf.write(&self.task, shm.shmid_ds);
+                    buf.write(&self.task, shm.shmid_ds)?;
                     Ok(0)
                 } else {
                     // shmid is not a valid identifier

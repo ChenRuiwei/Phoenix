@@ -83,11 +83,11 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                         m.handle_page_fault(VirtAddr::from(stval), access_type)
                     });
                     if let Err(_e) = result {
-                        log::error!(
+                        log::warn!(
                             "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
                         );
-                        backtrace::backtrace();
-                        log::error!("{:x?}", task.trap_context_mut());
+                        // backtrace::backtrace();
+                        log::warn!("{:x?}", task.trap_context_mut());
                         // task.with_memory_space(|m| m.print_all());
                         log::warn!("bad memory access, send SIGSEGV to task");
                         task.receive_siginfo(
