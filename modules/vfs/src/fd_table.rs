@@ -175,6 +175,8 @@ impl FdTable {
     pub fn remove(&mut self, fd: Fd) -> SysResult<()> {
         if fd >= self.table.len() {
             Err(SysError::EBADF)
+        } else if self.table[fd].is_none() {
+            Err(SysError::EBADF)
         } else {
             self.table[fd] = None;
             Ok(())
