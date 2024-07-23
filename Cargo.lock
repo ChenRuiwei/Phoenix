@@ -709,6 +709,7 @@ version = "0.1.0"
 dependencies = [
  "arch",
  "async_utils",
+ "crate_interface",
  "device-core",
  "log",
  "smoltcp",

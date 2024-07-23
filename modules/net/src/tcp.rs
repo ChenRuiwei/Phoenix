@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use core::{
     cell::UnsafeCell,
+    f32::consts::E,
     future::Future,
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
     task::Waker,
@@ -19,7 +20,7 @@ use super::{
     addr::{is_unspecified, UNSPECIFIED_ENDPOINT},
     SocketSetWrapper, ETH0, LISTEN_TABLE, SOCKET_SET,
 };
-use crate::{Mutex, NetPollState};
+use crate::{has_signal, Mutex, NetPollState};
 
 // State transitions:
 // CLOSED -(connect)-> BUSY -> CONNECTING -> CONNECTED -(shutdown)-> BUSY ->
@@ -554,7 +555,11 @@ impl TcpSocket {
                     Ok(t) => return Ok(t),
                     Err(SysError::EAGAIN) => {
                         // TODO:判断是否有信号
-                        suspend_now().await
+                        suspend_now().await;
+                        if has_signal() {
+                            warn!("[TcpSocket::block_on] has signal");
+                            return Err(SysError::EINTR);
+                        }
                     }
                     Err(e) => return Err(e),
                 }
@@ -576,7 +581,11 @@ impl TcpSocket {
                     Ok(t) => return Ok(t),
                     Err(SysError::EAGAIN) => {
                         // TODO:判断是否有信号
-                        yield_now().await
+                        suspend_now().await;
+                        if has_signal() {
+                            warn!("[TcpSocket::block_on_async] has signal");
+                            return Err(SysError::EINTR);
+                        }
                     }
                     Err(e) => return Err(e),
                 }

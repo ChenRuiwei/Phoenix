@@ -8,7 +8,7 @@ use core::{
     task::{Context, Poll},
 };
 
-use async_utils::{dyn_future, yield_now, Async};
+use async_utils::{dyn_future, yield_now, Async, Select2Futures, SelectOutput};
 use memory::VirtAddr;
 use signal::SigSet;
 use systype::{SysError, SysResult, SyscallResult};
@@ -20,6 +20,7 @@ use vfs_core::{File, PollEvents};
 use super::Syscall;
 use crate::{
     mm::{UserMut, UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr},
+    task::signal::IntrBySignalFuture,
     trap::context,
 };
 
@@ -159,14 +160,11 @@ impl Syscall<'_> {
         } else {
             Some(timeout.read(&task)?.into())
         };
-        let new_mask;
-        let old_mask;
-        if sigmask.not_null() {
-            new_mask = Some(sigmask.read(&task)?);
-            old_mask = Some(mem::replace(task.sig_mask(), new_mask.unwrap()))
+
+        let new_mask = if sigmask.is_null() {
+            None
         } else {
-            new_mask = None;
-            old_mask = None;
+            Some(sigmask.read(task)?)
         };
         log::info!(
             "[sys_ppoll] fds:{poll_fds:?}, nfds:{nfds}, timeout:{timeout:?}, sigmask:{new_mask:?}"
@@ -180,10 +178,17 @@ impl Syscall<'_> {
             polls.push((events, file));
         }
 
+        let old_mask = if let Some(mask) = new_mask {
+            Some(mem::replace(task.sig_mask(), mask))
+        } else {
+            None
+        };
+
         let poll_future = PPollFuture { polls };
 
         let mut poll_fds_slice = unsafe { UserSlice::<PollFd>::new_unchecked(fds_va, nfds) };
-
+        task.set_interruptable();
+        task.set_wake_up_signal(!*task.sig_mask_ref());
         let ret_vec = if let Some(timeout) = timeout {
             match TimeLimitedTaskFuture::new(timeout, poll_future).await {
                 TimeLimitedTaskOutput::Ok(ret_vec) => ret_vec,
@@ -193,8 +198,16 @@ impl Syscall<'_> {
                 }
             }
         } else {
-            poll_future.await
+            let intr_future = IntrBySignalFuture {
+                task: task.clone(),
+                mask: *task.sig_mask_ref(),
+            };
+            match Select2Futures::new(poll_future, intr_future).await {
+                SelectOutput::Output1(ret_vec) => ret_vec,
+                SelectOutput::Output2(_) => return Err(SysError::EINTR),
+            }
         };
+        task.set_running();
 
         let ret = ret_vec.len();
         for (i, result) in ret_vec {
@@ -221,7 +234,7 @@ impl Syscall<'_> {
         writefds: UserRdWrPtr<FdSet>,
         exceptfds: UserRdWrPtr<FdSet>,
         timeout: UserReadPtr<TimeSpec>,
-        sigmask: usize,
+        sigmask: UserReadPtr<SigSet>,
     ) -> SyscallResult {
         let task = self.task;
         if nfds < 0 {
@@ -233,8 +246,13 @@ impl Syscall<'_> {
         } else {
             Some(timeout.read(task)?.into())
         };
+        let new_mask = if sigmask.is_null() {
+            None
+        } else {
+            Some(sigmask.read(task)?)
+        };
 
-        log::info!("[sys_pselect6] nfds:{nfds}, readfds:{readfds}, writefds:{writefds}, exceptfds:{exceptfds}, timeout:{timeout:?}, sigmask:{sigmask}");
+        log::info!("[sys_pselect6] nfds:{nfds}, readfds:{readfds}, writefds:{writefds}, exceptfds:{exceptfds}, timeout:{timeout:?}, sigmask:{new_mask:?}");
 
         let mut readfds = if readfds.is_null() {
             None
@@ -282,6 +300,13 @@ impl Syscall<'_> {
         writefds.as_mut().map(|fds| fds.clear());
         exceptfds.as_mut().map(|fds| fds.clear());
 
+        let old_mask = if let Some(mask) = new_mask {
+            Some(mem::replace(task.sig_mask(), mask))
+        } else {
+            None
+        };
+        task.set_interruptable();
+        task.set_wake_up_signal(!*task.sig_mask_ref());
         let pselect_future = PSelectFuture { polls };
         let ret_vec = if let Some(timeout) = timeout {
             match TimeLimitedTaskFuture::new(timeout, pselect_future).await {
@@ -292,8 +317,21 @@ impl Syscall<'_> {
                 }
             }
         } else {
-            pselect_future.await
+            let intr_future = IntrBySignalFuture {
+                task: task.clone(),
+                mask: *task.sig_mask_ref(),
+            };
+            match Select2Futures::new(pselect_future, intr_future).await {
+                SelectOutput::Output1(ret_vec) => ret_vec,
+                SelectOutput::Output2(_) => return Err(SysError::EINTR),
+            }
         };
+        task.set_running();
+
+        // restore old signal mask
+        if let Some(mask) = old_mask {
+            *task.sig_mask() = mask;
+        }
 
         let mut ret = 0;
         for (fd, events) in ret_vec {

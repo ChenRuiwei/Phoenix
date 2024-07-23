@@ -6,6 +6,7 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::{cell::RefCell, future::Future, ops::DerefMut, panic};
 
 use arch::time::get_time_us;
+use crate_interface::call_interface;
 use device_core::{error::DevError, NetBufPtrOps, NetDriverOps};
 use listen_table::*;
 use log::*;
@@ -393,6 +394,15 @@ pub fn bench_transmit() {
 /// Benchmark raw socket receive bandwidth.
 pub fn bench_receive() {
     ETH0.get().unwrap().dev.lock().bench_receive_bandwidth();
+}
+
+#[crate_interface::def_interface]
+pub trait HasSignalIf: Send + Sync {
+    fn has_signal() -> bool;
+}
+
+pub(crate) fn has_signal() -> bool {
+    call_interface!(HasSignalIf::has_signal())
 }
 
 pub fn init_network(net_dev: Box<dyn NetDriverOps>, is_loopback: bool) {

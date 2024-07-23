@@ -17,7 +17,7 @@ use super::{
     addr::{is_unspecified, UNSPECIFIED_ENDPOINT},
     SocketSetWrapper, SOCKET_SET,
 };
-use crate::{addr::LOCAL_ENDPOINT_V4, Mutex, NetPollState};
+use crate::{addr::LOCAL_ENDPOINT_V4, has_signal, Mutex, NetPollState};
 
 /// A UDP socket that provides POSIX-like APIs.
 pub struct UdpSocket {
@@ -313,7 +313,7 @@ impl UdpSocket {
                 } else {
                     // no more data
                     log::info!("[recv_impl] no more data");
-                    socket.register_send_waker(&waker);
+                    socket.register_recv_waker(&waker);
                     Err(SysError::EAGAIN)
                 }
             })
@@ -333,9 +333,11 @@ impl UdpSocket {
                 match f() {
                     Ok(t) => return Ok(t),
                     Err(SysError::EAGAIN) => {
-                        // TODO:判断是否有信号
-                        // yield_now().await
                         suspend_now().await;
+                        if has_signal() {
+                            warn!("[UdpSocket::block_on] has signal");
+                            return Err(SysError::EINTR);
+                        }
                     }
                     Err(e) => return Err(e),
                 }

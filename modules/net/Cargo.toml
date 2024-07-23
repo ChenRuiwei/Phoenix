@@ -17,6 +17,7 @@ async_utils = { path = "../../crates/async_utils/" }
 
 spin = "0.9"
 log = "0.4"
+crate_interface = "0.1"
 
 [dependencies.smoltcp]
 path = "../smoltcp"

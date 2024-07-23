@@ -95,9 +95,15 @@ impl Task {
         );
         self.with_mut_sig_pending(|pending| {
             pending.add(si);
-            if self.is_interruptable() && pending.should_wake.contain_signal(si.sig) {
-                log::info!("[Task::recv] tid {} has been woken", { self.tid() });
+            if pending.should_wake.contain_signal(si.sig) && self.is_interruptable() {
+                log::info!("[Task::recv] has been woken");
                 self.wake();
+            } else {
+                log::info!(
+                    "[Task::recv] hasn't been woken, should_wake {:?}, state {:?}",
+                    pending.should_wake,
+                    self.state()
+                );
             }
         });
     }
@@ -328,5 +334,26 @@ impl TimerEvent for RealITimer {
         }
 
         None
+    }
+}
+
+pub struct IntrBySignalFuture {
+    pub task: Arc<Task>,
+    pub mask: SigSet,
+}
+
+impl Future for IntrBySignalFuture {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let has_signal = self
+            .task
+            .with_sig_pending(|pending| pending.has_expect_signals(!self.mask));
+        if has_signal {
+            log::warn!("[IntrBySignalFuture] received interupt signal");
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
     }
 }

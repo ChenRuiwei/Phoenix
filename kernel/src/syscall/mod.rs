@@ -203,7 +203,7 @@ impl<'a> Syscall<'a> {
                     args[2].into(),
                     args[3].into(),
                     args[4].into(),
-                    args[5],
+                    args[5].into(),
                 )
                 .await
             }
