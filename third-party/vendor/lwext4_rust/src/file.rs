@@ -364,6 +364,27 @@ impl Ext4File {
         Ok(block_idx)
     }
 
+    pub fn link_read(&mut self, buff: &mut [u8]) -> Result<usize, i32> {
+        let mut rw_count = 0;
+        let r = unsafe {
+            ext4_readlink(
+                self.file_path.as_ptr(),
+                buff.as_mut_ptr() as _,
+                buff.len(),
+                &mut rw_count,
+            )
+        };
+
+        if r != EOK as i32 {
+            error!("ext4_readlink: rc = {}", r);
+            return Err(r);
+        }
+
+        debug!("readlink {:?}, len={}", self.get_path(), rw_count);
+
+        Ok(rw_count)
+    }
+
     /// ******* DIRECTORY OPERATION ********
 
     /// Create new directory
