@@ -142,7 +142,7 @@ impl FdTable {
 
     fn extend_to(&mut self, len: usize) -> SysResult<()> {
         if len > self.rlimit.rlim_max {
-            return Err(SysError::EMFILE);
+            return Err(SysError::EBADF);
         } else if self.table.len() >= len {
             return Ok(());
         } else {
@@ -195,7 +195,7 @@ impl FdTable {
     }
 
     pub fn put(&mut self, fd: Fd, fd_info: FdInfo) -> SysResult<()> {
-        self.extend_to(fd)?;
+        self.extend_to((fd.checked_add(1).ok_or(SysError::EBADF)?))?;
         self.table[fd] = Some(fd_info);
         Ok(())
     }

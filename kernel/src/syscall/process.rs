@@ -395,7 +395,7 @@ impl Syscall<'_> {
             TASK_MANAGER.get(pid).ok_or(SysError::ESRCH)?
         };
 
-        Ok(target_task.pid().into())
+        Ok(0)
     }
 
     // TODO:

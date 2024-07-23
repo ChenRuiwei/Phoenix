@@ -105,7 +105,7 @@ impl Write for Stdout {
     }
 }
 
-static PRINT_LOCK: SpinLock<()> = SpinLock::new(());
+static PRINT_LOCK: SpinNoIrqLock<()> = SpinNoIrqLock::new(());
 pub fn _print(args: fmt::Arguments) {
     let _guard = PRINT_LOCK.lock();
     Stdout.write_fmt(args).unwrap();

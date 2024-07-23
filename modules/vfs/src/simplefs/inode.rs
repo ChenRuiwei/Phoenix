@@ -1,8 +1,9 @@
 use alloc::sync::Arc;
 
-use page::PageCache;
+use config::mm::{round_up_to_page, PAGE_SIZE};
+use page::{Page, PageCache};
 use systype::SysResult;
-use vfs_core::{Inode, InodeMeta, InodeMode, Stat, SuperBlock};
+use vfs_core::{Inode, InodeMeta, InodeMode, InodeState, Stat, SuperBlock};
 
 pub struct SimpleFileInode {
     meta: InodeMeta,
@@ -11,11 +12,10 @@ pub struct SimpleFileInode {
 impl SimpleFileInode {
     pub fn new(mode: InodeMode, super_block: Arc<dyn SuperBlock>, size: usize) -> Arc<Self> {
         debug_assert!(mode.to_type().is_file());
-        let mut meta =  InodeMeta::new(mode, super_block, size);
+        let mut meta = InodeMeta::new(mode, super_block, size);
         meta.page_cache = Some(PageCache::new());
-        Arc::new(Self {
-            meta,
-        })
+        meta.inner.lock().state = InodeState::Removed;
+        Arc::new(Self { meta })
     }
 }
 
@@ -49,7 +49,21 @@ impl Inode for SimpleFileInode {
     }
 
     fn base_truncate(&self, len: usize) -> SysResult<()> {
-        Ok(())
+        if len == self.size() {
+            return Ok(());
+        } else if len < self.size() {
+            todo!()
+        } else {
+            let page_cache = self.meta().page_cache.as_ref().unwrap();
+            let offset_aligned_start = round_up_to_page(self.size());
+            for offset_aligned in (offset_aligned_start..len).step_by(PAGE_SIZE) {
+                let page = Page::new();
+                page.fill_zero();
+                page_cache.insert_page(offset_aligned, page.clone());
+            }
+            self.set_size(len);
+            Ok(())
+        }
     }
 }
 
@@ -94,5 +108,4 @@ impl Inode for SimpleDirInode {
             unused: 0,
         })
     }
-
 }

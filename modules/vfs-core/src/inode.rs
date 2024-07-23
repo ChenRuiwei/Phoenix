@@ -91,6 +91,14 @@ pub trait Inode: Send + Sync + DowncastSync {
     fn base_get_blk_idx(&self, offset: usize) -> SysResult<usize> {
         todo!()
     }
+
+    fn size(&self) -> usize {
+        self.meta().inner.lock().size
+    }
+
+    fn set_size(&self, size: usize) {
+        self.meta().inner.lock().size = size;
+    }
 }
 
 impl dyn Inode {
@@ -106,24 +114,21 @@ impl dyn Inode {
         self.meta().mode.to_type()
     }
 
-    pub fn page_cache<'a>(self: &'a Arc<dyn Inode>) -> Option<&'a PageCache> {
-        self.meta().page_cache.as_ref()
-    }
-
-    pub fn size(&self) -> usize {
-        self.meta().inner.lock().size
-    }
-
-    pub fn set_size(&self, size: usize) {
-        self.meta().inner.lock().size = size;
-    }
-
     pub fn state(&self) -> InodeState {
         self.meta().inner.lock().state
     }
 
+    pub fn page_cache<'a>(self: &'a Arc<dyn Inode>) -> Option<&'a PageCache> {
+        self.meta().page_cache.as_ref()
+    }
+
     pub fn set_state(&self, state: InodeState) {
-        self.meta().inner.lock().state = state;
+        let mut inner = self.meta().inner.lock();
+        if inner.state == InodeState::Removed {
+            return;
+        } else {
+            inner.state = state;
+        }
     }
 
     pub fn truncate(&self, len: usize) -> SyscallResult {
