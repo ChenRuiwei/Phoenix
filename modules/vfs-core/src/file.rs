@@ -91,23 +91,23 @@ pub trait File: Send + Sync + DowncastSync {
             .base_read_at(offset_aligned, page.bytes_array())
             .await?;
 
-        let virtio_blk = device
-            .downcast_arc::<VirtIoBlkDev>()
-            .unwrap_or_else(|_| unreachable!());
-        let mut buffer_caches = virtio_blk.cache.lock();
-        for offset in (offset_aligned..offset_aligned + len).step_by(BLOCK_SIZE) {
-            let block_id = inode.get_blk_idx(offset)?;
-            let buffer_head = buffer_caches.get_buffer_head_or_create(block_id as usize);
-            if buffer_head.has_cached() {
-                log::warn!("read page conflict");
-                // only block cache can be transfered to file cache, e.g. a directory is
-                // mis recognized as block cache
-                assert!(buffer_head.page().kind().is_block_cache());
-                buffer_caches.pages.pop(&block_page_id(block_id));
-                // block page should be dropped here
-            }
-            page.insert_buffer_head(buffer_head);
-        }
+        // let virtio_blk = device
+        //     .downcast_arc::<VirtIoBlkDev>()
+        //     .unwrap_or_else(|_| unreachable!());
+        // let mut buffer_caches = virtio_blk.cache.lock();
+        // for offset in (offset_aligned..offset_aligned + len).step_by(BLOCK_SIZE) {
+        //     let block_id = inode.get_blk_idx(offset)?;
+        //     let buffer_head = buffer_caches.get_buffer_head_or_create(block_id as
+        // usize);     if buffer_head.has_cached() {
+        //         log::warn!("read page conflict");
+        //         // only block cache can be transfered to file cache, e.g. a directory
+        // is         // mis recognized as block cache
+        //         assert!(buffer_head.page().kind().is_block_cache());
+        //         buffer_caches.pages.pop(&block_page_id(block_id));
+        //         // block page should be dropped here
+        //     }
+        //     page.insert_buffer_head(buffer_head);
+        // }
 
         page_cache.insert_page(offset_aligned, page.clone());
 
@@ -228,36 +228,37 @@ pub trait File: Send + Sync + DowncastSync {
                 "[File::write_at] write beyond file, offset_it:{offset_it}, size:{}",
                 self.size()
             );
-            self.base_write_at(self.size(), &buf[self.size() - offset..])
-                .await?;
+            // self.base_write_at(self.size(), &buf[self.size() - offset..])
+            //     .await?;
             let old_size = self.size();
             let new_size = offset_it;
-            let virtio_blk = device
-                .downcast_arc::<VirtIoBlkDev>()
-                .unwrap_or_else(|_| unreachable!());
-            let mut buffer_caches = virtio_blk.cache.lock();
-            for offset_aligned_page in (round_down_to_page(old_size)..new_size).step_by(PAGE_SIZE) {
-                let page = page_cache.get_page(offset_aligned_page).unwrap();
-                for i in page.buffer_head_cnts()..MAX_BUFFERS_PER_PAGE {
-                    let offset_aligned_block = offset_aligned_page + i * BLOCK_SIZE;
-                    if offset_aligned_block < new_size {
-                        let blk_idx = inode.get_blk_idx(offset_aligned_block)?;
-                        log::debug!("offset {offset_aligned_block}, blk idx {blk_idx}");
-                        let buffer_head = buffer_caches.get_buffer_head_or_create(blk_idx);
-                        if buffer_head.has_cached() {
-                            log::warn!("write page conflict");
-                            // only block cache can be transfered to file cache, e.g. a directory is
-                            // mis recognized as block cache
-                            assert!(buffer_head.page().kind().is_block_cache());
-                            buffer_caches.pages.pop(&block_page_id(blk_idx));
-                            // block page should be dropped here
-                        }
-                        page.insert_buffer_head(buffer_head);
-                    } else {
-                        break;
-                    }
-                }
-            }
+            // let virtio_blk = device
+            //     .downcast_arc::<VirtIoBlkDev>()
+            //     .unwrap_or_else(|_| unreachable!());
+            // let mut buffer_caches = virtio_blk.cache.lock();
+            // for offset_aligned_page in
+            // (round_down_to_page(old_size)..new_size).step_by(PAGE_SIZE) {
+            //     let page = page_cache.get_page(offset_aligned_page).unwrap();
+            //     for i in page.buffer_head_cnts()..MAX_BUFFERS_PER_PAGE {
+            //         let offset_aligned_block = offset_aligned_page + i * BLOCK_SIZE;
+            //         if offset_aligned_block < new_size {
+            //             let blk_idx = inode.get_blk_idx(offset_aligned_block)?;
+            //             log::debug!("offset {offset_aligned_block}, blk idx {blk_idx}");
+            //             let buffer_head =
+            // buffer_caches.get_buffer_head_or_create(blk_idx);             if
+            // buffer_head.has_cached() {                 log::warn!("write page
+            // conflict");                 // only block cache can be transfered
+            // to file cache, e.g. a directory is                 // mis
+            // recognized as block cache
+            // assert!(buffer_head.page().kind().is_block_cache());
+            // buffer_caches.pages.pop(&block_page_id(blk_idx));
+            // // block page should be dropped here             }
+            //             page.insert_buffer_head(buffer_head);
+            //         } else {
+            //             break;
+            //         }
+            //     }
+            // }
             inode.set_size(new_size);
         }
         Ok(buf.len())
@@ -383,7 +384,8 @@ impl dyn File {
 
     /// Given interested events, keep track of these events and return events
     /// that is ready.
-    // TODO:
+    // NOTE: async function but always returns `Ready`. Why async, to take the
+    // waker.
     pub async fn poll(&self, events: PollEvents) -> PollEvents {
         log::info!("[File::poll] path:{}", self.dentry().path());
         self.base_poll(events).await

@@ -37,7 +37,6 @@ impl Ext4Inode {
             meta: InodeMeta::new(InodeMode::from_type(itype), super_block.clone(), size),
             file: Arc::new(Mutex::new(file)),
         });
-        super_block.push_inode(inode.clone());
         inode
     }
 }
