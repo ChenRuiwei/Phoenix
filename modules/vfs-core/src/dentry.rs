@@ -8,7 +8,7 @@ use core::{default, mem::MaybeUninit, str::FromStr};
 use sync::mutex::spin_mutex::SpinMutex;
 use systype::{SysError, SysResult, SyscallResult};
 
-use crate::{inode::Inode, File, InodeMode, InodeState, Mutex, RenameFlags, SuperBlock};
+use crate::{inode::Inode, File, InodeMode, InodeState, InodeType, Mutex, RenameFlags, SuperBlock};
 
 pub struct DentryMeta {
     /// Name of this file or directory.

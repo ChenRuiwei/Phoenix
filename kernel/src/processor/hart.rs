@@ -19,7 +19,6 @@ pub struct Hart {
     hart_id: usize,
     task: Option<Arc<Task>>,
     env: EnvContext,
-    pub last_task_pid: Pid,
 }
 
 impl Hart {
@@ -28,7 +27,6 @@ impl Hart {
             hart_id: 0,
             task: None,
             env: EnvContext::new(),
-            last_task_pid: 0,
         }
     }
 
@@ -79,13 +77,10 @@ impl Hart {
         self.set_task(Arc::clone(task));
         task.time_stat().record_switch_in();
         core::mem::swap(self.env_mut(), env);
-        // PERF: do not switch page table if it belongs to the same user
+        // NOTE: must switch page table even if it belongs to the same user in smp
+        // situation
         // PERF: support ASID for page table
-        if task.pid() != self.last_task_pid {
-            unsafe { task.switch_page_table() };
-        } else {
-            // log::warn!("优化了，此时不需要切换页表");
-        }
+        unsafe { task.switch_page_table() };
         unsafe { enable_interrupt() };
         log::trace!("[enter_user_task_switch] enter user task");
     }
@@ -94,13 +89,12 @@ impl Hart {
         log::trace!("[leave_user_task_switch] leave user task");
         unsafe { disable_interrupt() };
         unsafe { env.auto_sum() };
-        // PERF: no need to switch to kernel page table
-        // unsafe { mm::switch_kernel_page_table() };
+        // NOTE: must switch to kernel page table for smp situation
+        unsafe { mm::switch_kernel_page_table() };
         core::mem::swap(self.env_mut(), env);
         let task = self.task();
         task.time_stat().record_switch_out();
         task.trap_context_mut().user_fx.yield_task();
-        self.last_task_pid = task.pid();
         self.clear_task();
         unsafe { enable_interrupt() };
     }

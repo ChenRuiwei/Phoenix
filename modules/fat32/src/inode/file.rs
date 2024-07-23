@@ -20,7 +20,6 @@ impl FatFileInode {
             ),
             file: Arc::new(Mutex::new(file)),
         });
-        super_block.push_inode(inode.clone());
         inode
     }
 }

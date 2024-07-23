@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use core::{cell::SyncUnsafeCell, cmp::min, hash::Hash, task::Waker};
+use core::{cell::SyncUnsafeCell, cmp::min, hash::Hash, ops::DerefMut, task::Waker};
 
 use hashbrown::HashMap;
 use memory::{PhysAddr, VirtAddr};
@@ -17,11 +17,11 @@ pub struct RobustListHead {
     pub list_op_pending: usize,
 }
 
-pub static FUTEX_MANAGER: Lazy<SyncUnsafeCell<FutexManager>> =
-    Lazy::new(|| SyncUnsafeCell::new(FutexManager::new()));
+pub static FUTEX_MANAGER: Lazy<SpinNoIrqLock<FutexManager>> =
+    Lazy::new(|| SpinNoIrqLock::new(FutexManager::new()));
 
-pub fn futex_manager() -> &'static mut FutexManager {
-    unsafe { &mut *FUTEX_MANAGER.get() }
+pub fn futex_manager() -> impl DerefMut<Target = FutexManager> {
+    FUTEX_MANAGER.lock()
 }
 
 #[derive(Debug, Hash, PartialEq, PartialOrd, Eq, Copy, Clone)]
@@ -43,27 +43,27 @@ impl FutexWaiter {
 }
 
 /// `futex`: 一个32位的值，又称为`futex word`，将其地址传递给futex()系统调用
-pub struct FutexManager(HashMap<FutexHashKey, SpinNoIrqLock<Vec<FutexWaiter>>>);
+pub struct FutexManager(HashMap<FutexHashKey, Vec<FutexWaiter>>);
 
 impl FutexManager {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
+
     pub fn add_waiter(&mut self, key: &FutexHashKey, waiter: FutexWaiter) {
         log::info!("[futex::add_waiter] {:?} in {:?} ", waiter, key);
-        if let Some(waiters) = self.0.get(key) {
-            waiters.lock().push(waiter);
+        if let Some(waiters) = self.0.get_mut(key) {
+            waiters.push(waiter);
         } else {
             let mut waiters = Vec::new();
             waiters.push(waiter);
-            self.0.insert(*key, SpinNoIrqLock::new(waiters));
+            self.0.insert(*key, waiters);
         }
     }
 
     /// 用于移除任务，任务可能是过期了，也可能是被信号中断了
     pub fn remove_waiter(&mut self, key: &FutexHashKey, tid: Tid) {
-        if let Some(waiters) = self.0.get(key) {
-            let mut waiters = waiters.lock();
+        if let Some(waiters) = self.0.get_mut(key) {
             for i in 0..waiters.len() {
                 if waiters[i].tid == tid {
                     waiters.swap_remove(i);
@@ -74,8 +74,7 @@ impl FutexManager {
     }
 
     pub fn wake(&mut self, key: &FutexHashKey, n: u32) -> SyscallResult {
-        if let Some(waiters) = self.0.get(key) {
-            let mut waiters = waiters.lock();
+        if let Some(waiters) = self.0.get_mut(key) {
             let n = min(n as usize, waiters.len());
             for _ in 0..n {
                 let waiter = waiters.pop().unwrap();
@@ -91,6 +90,7 @@ impl FutexManager {
             );
             Ok(n)
         } else {
+            log::debug!("can not find key {key:?}");
             Err(SysError::EINVAL)
         }
     }
@@ -101,17 +101,12 @@ impl FutexManager {
         new: FutexHashKey,
         n_req: usize,
     ) -> SyscallResult {
-        let mut old_waiters = self
-            .0
-            .get(&old)
-            .ok_or_else(|| {
-                log::info!("[futex] no waiters in key {:?}", old);
-                SysError::EINVAL
-            })?
-            .lock();
+        let mut old_waiters = self.0.remove(&old).ok_or_else(|| {
+            log::info!("[futex] no waiters in key {:?}", old);
+            SysError::EINVAL
+        })?;
         let n = min(n_req as usize, old_waiters.len());
-        if let Some(new_waiters) = self.0.get(&new) {
-            let mut new_waiters = new_waiters.lock();
+        if let Some(new_waiters) = self.0.get_mut(&new) {
             for _ in 0..n {
                 new_waiters.push(old_waiters.pop().unwrap());
             }
@@ -120,9 +115,13 @@ impl FutexManager {
             for _ in 0..n {
                 new_waiters.push(old_waiters.pop().unwrap());
             }
-            drop(old_waiters);
-            self.0.insert(new, SpinNoIrqLock::new(new_waiters));
+            self.0.insert(new, new_waiters);
         }
+
+        if !old_waiters.is_empty() {
+            self.0.insert(old, old_waiters);
+        }
+
         Ok(n)
     }
 }

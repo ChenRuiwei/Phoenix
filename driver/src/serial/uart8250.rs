@@ -287,12 +287,3 @@ impl UartDriver for Uart {
         }
     }
 }
-
-impl Write for Uart {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        for byte in s.bytes() {
-            self.send(byte);
-        }
-        Ok(())
-    }
-}

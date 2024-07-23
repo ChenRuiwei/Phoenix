@@ -15,7 +15,7 @@ use self::{
 };
 use crate::simplefs::{
     dentry::{self, SimpleDentry},
-    inode::SimpleInode,
+    inode::{SimpleDirInode, SimpleFileInode},
 };
 
 pub fn init_procfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
@@ -65,7 +65,7 @@ impl FileSystemType for ProcFsType {
     ) -> SysResult<Arc<dyn Dentry>> {
         let sb = ProcSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
-        let mount_inode = SimpleInode::new(InodeMode::DIR, sb.clone(), 0);
+        let mount_inode = SimpleDirInode::new(InodeMode::DIR, sb.clone(), 0);
         mount_dentry.set_inode(mount_inode.clone());
         if let Some(parent) = parent {
             parent.insert(mount_dentry.clone());

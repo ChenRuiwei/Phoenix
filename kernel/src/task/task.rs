@@ -7,12 +7,16 @@ use alloc::{
 use driver::sbi::shutdown;
 use core::{
     cell::SyncUnsafeCell,
+    ops::DerefMut,
     sync::atomic::{AtomicI32, AtomicUsize, Ordering},
     task::Waker,
 };
 
 use arch::{memory::sfence_vma_all, time::get_time_us};
-use config::{mm::DL_INTERP_OFFSET, process::{INIT_PROC_PID, USER_STACK_SIZE}};
+use config::{
+    mm::DL_INTERP_OFFSET,
+    process::{INIT_PROC_PID, USER_STACK_SIZE},
+};
 use memory::{vaddr_to_paddr, VirtAddr};
 use signal::{
     action::{SigHandlers, SigPending},
@@ -219,8 +223,8 @@ impl Task {
         self.parent.lock().clone()
     }
 
-    pub fn children(&self) -> BTreeMap<Tid, Arc<Self>> {
-        self.children.lock().clone()
+    pub fn children(&self) -> impl DerefMut<Target = BTreeMap<Tid, Arc<Self>>> + '_ {
+        self.children.lock()
     }
 
     pub fn state(&self) -> TaskState {
@@ -499,12 +503,12 @@ impl Task {
             let key = FutexHashKey::Shared {
                 paddr: vaddr_to_paddr(address.into()),
             };
-            futex_manager().wake(&key, 1);
+            let _ = futex_manager().wake(&key, 1);
             let key = FutexHashKey::Private {
                 mm: self.raw_mm_pointer(),
                 vaddr: address.into(),
             };
-            futex_manager().wake(&key, 1);
+            let _ = futex_manager().wake(&key, 1);
         }
 
         let mut tg = self.thread_group.lock();
@@ -521,6 +525,15 @@ impl Task {
             return;
         }
 
+        if self.is_leader {
+            debug_assert!(tg.len() == 1);
+        } else {
+            debug_assert!(tg.len() == 2);
+            // NOTE: leader will be removed by parent calling `sys_wait4`
+            tg.remove(self);
+            TASK_MANAGER.remove(self.tid());
+        }
+
         // exit the process, e.g. reparent all children, and send SIGCHLD to parent
         log::info!("[Task::do_exit] exit the whole process");
 
@@ -535,10 +548,10 @@ impl Task {
                 *c.parent.lock() = Some(Arc::downgrade(&init_proc));
             }
             init_proc.children.lock().extend(children.clone());
+            children.clear();
         });
 
         // NOTE: leader will be removed by parent calling `sys_wait4`
-        // TODO: drop most of resource
         if let Some(parent) = self.parent() {
             let parent = parent.upgrade().unwrap();
             parent.receive_siginfo(
@@ -563,6 +576,9 @@ impl Task {
                 SHARED_MEMORY_MANAGER.detach(*shm_id, self.pid());
             }
         });
+
+        // TODO: drop most resources here instead of wait4 function parent
+        // called
     }
 
     /// The dirfd argument is used in conjunction with the pathname argument as

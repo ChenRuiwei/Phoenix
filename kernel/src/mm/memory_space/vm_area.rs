@@ -283,6 +283,7 @@ impl VmArea {
         for vpn in range_vpn {
             let page = Page::new();
             page_table.map(vpn, page.ppn(), pte_flags);
+            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
             self.pages.insert(vpn, page);
         }
     }
@@ -291,7 +292,7 @@ impl VmArea {
         let vpns: Vec<_> = self.pages.keys().cloned().collect();
         for vpn in vpns {
             page_table.unmap(vpn);
-            unsafe { sfence_vma_vaddr(vpn.into()) };
+            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
             self.pages.remove(&vpn);
         }
     }
@@ -474,7 +475,17 @@ impl VmArea {
                             self.pages.insert(vpn, page);
                             unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                         } else {
-                            todo!()
+                            let page = block_on(async { file.get_page_at(offset_aligned).await })?
+                                .unwrap();
+                            let (pte_flags, ppn) = {
+                                let mut new_flags: PTEFlags = self.map_perm.into();
+                                new_flags |= PTEFlags::COW;
+                                new_flags.remove(PTEFlags::W);
+                                (new_flags, page.ppn())
+                            };
+                            page_table.map(vpn, ppn, pte_flags);
+                            self.pages.insert(vpn, page);
+                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                         }
                     } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
                         if self.mmap_flags.contains(MmapFlags::MAP_SHARED) {

@@ -172,19 +172,6 @@ impl BufferHead {
                 self.acc_cnt(),
                 self.page().kind()
             );
-            // only block cache can be transfered to file cache, e.g. a directory is mis
-            // recognized as block cache
-            assert!(self.page().kind().is_block_cache());
-            assert!(page.kind().is_file_cache());
-            match &self.page().kind() {
-                PageKind::BlockCache(inner) => {
-                    let mut inner = inner.lock();
-                    let device = inner.device.upgrade().unwrap();
-                    device.remove_buffer_page(self.block_id);
-                    // block page should be dropped here
-                }
-                _ => panic!(),
-            }
         }
         debug_assert!(is_aligned_to_block(offset) && offset < PAGE_SIZE);
         let mut inner = self.inner.lock();

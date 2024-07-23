@@ -63,13 +63,16 @@ pub fn run_until_idle() {
     }
 }
 
-pub fn has_task() -> bool {
-    TASK_QUEUE.len() >= 1
-}
-
-/// Return the number of the tasks executed
 pub fn run_one() {
     if let Some(task) = TASK_QUEUE.fetch() {
         task.run();
     }
+}
+
+pub fn has_task() -> bool {
+    TASK_QUEUE.len() >= 1
+}
+
+pub fn task_len() -> usize {
+    TASK_QUEUE.len()
 }

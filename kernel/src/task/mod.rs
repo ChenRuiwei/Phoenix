@@ -67,7 +67,6 @@ macro_rules! generate_with_methods {
             $(
                 #[allow(unused)]
                 pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
-                    // TODO: let logging more specific
                     log::trace!("with_{}", stringify!($name));
                     f(&self.$name.lock())
                 }

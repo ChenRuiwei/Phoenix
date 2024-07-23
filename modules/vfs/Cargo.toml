@@ -8,13 +8,14 @@ edition = "2021"
 [dependencies]
 vfs-core = { path = "../vfs-core/" }
 fat32 = { path = "../fat32/" }
+page = { path = "../page/" }
 ext4 = { path = "../ext4/" }
 sync = { path = "../sync/" }
 driver = { path = "../../driver/" }
 device-core = { path = "../device-core/" }
 config = { path = "../../config/" }
 systype = { path = "../systype/" }
-async_utils = { path = "../../crates/async_utils/" }
+async-utils = { path = "../../crates/async-utils/" }
 ring-buffer = { path = "../../crates/ring-buffer/" }
 
 bitflags = "2.5"

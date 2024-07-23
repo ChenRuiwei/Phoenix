@@ -81,6 +81,13 @@ pub fn init() {
             InodeMode::FILE | InodeMode::OTHER_MASK | InodeMode::GROUP_MASK | InodeMode::OWNER_MASK,
         )
         .unwrap();
+    // // WARN: for "lmbench_all lat_sig -P 1 prot lat_sig" test
+    // diskfs_root
+    //     .create(
+    //         "sort.src",
+    //         InodeMode::FILE | InodeMode::OTHER_MASK | InodeMode::GROUP_MASK |
+    // InodeMode::OWNER_MASK,     )
+    //     .unwrap();
 
     log::info!("[vfs] mounting dev fs");
     let devfs = FS_MANAGER.lock().get("devfs").unwrap().clone();

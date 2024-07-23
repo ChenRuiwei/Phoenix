@@ -8,17 +8,20 @@
 
 extern crate alloc;
 
+#[macro_use]
+extern crate macro_utils;
+
 use alloc::sync::Arc;
 use core::fmt::{self, Write};
 
 use async_utils::block_on;
 use crate_interface::call_interface;
 use device_core::{BlockDriverOps, CharDevice, DeviceMajor};
-use early_print::EarlyStdout;
 use manager::DeviceManager;
 use memory::PageTable;
+use sbi_print::SbiStdout;
 use spin::Once;
-use sync::mutex::SpinLock;
+use sync::mutex::{SpinLock, SpinNoIrqLock};
 
 use self::sbi::console_putchar;
 use crate::serial::{Serial, UART0};
@@ -54,7 +57,7 @@ pub fn init() {
         })
         .next()
         .unwrap();
-    unsafe { *UART0.lock() = Some(serial) };
+    unsafe { UART0 = Some(serial) };
     // CHAR_DEVICE.call_once(|| manager.char_device[0].clone());
 }
 
@@ -82,27 +85,29 @@ pub fn init_device_manager() {
 
 #[crate_interface::def_interface]
 pub trait KernelPageTableIf: Send + Sync {
-    fn kernel_page_table() -> &'static mut PageTable;
+    fn kernel_page_table_mut() -> &'static mut PageTable;
 }
 
-pub(crate) fn kernel_page_table() -> &'static mut PageTable {
-    call_interface!(KernelPageTableIf::kernel_page_table())
+pub(crate) fn kernel_page_table_mut() -> &'static mut PageTable {
+    call_interface!(KernelPageTableIf::kernel_page_table_mut())
 }
 
 struct Stdout;
 
 impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        if let Some(serial) = unsafe { UART0.lock().as_mut() } {
+        if let Some(serial) = unsafe { UART0.as_mut() } {
             block_on(async { serial.write(s.as_bytes()).await });
             Ok(())
         } else {
-            EarlyStdout.write_str(s)
+            SbiStdout.write_str(s)
         }
     }
 }
 
+static PRINT_LOCK: SpinNoIrqLock<()> = SpinNoIrqLock::new(());
 pub fn _print(args: fmt::Arguments) {
+    let _guard = PRINT_LOCK.lock();
     Stdout.write_fmt(args).unwrap();
 }
 

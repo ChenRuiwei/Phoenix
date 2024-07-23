@@ -6,7 +6,7 @@ use config::mm::VIRT_RAM_OFFSET;
 use fdt::Fdt;
 use memory::pte::PTEFlags;
 
-use crate::{kernel_page_table, manager::DeviceManager};
+use crate::{kernel_page_table_mut, manager::DeviceManager};
 
 pub struct PLIC {
     /// MMIO base address.
@@ -62,7 +62,7 @@ impl DeviceManager {
             let mmio_base = plic_reg.starting_address as usize;
             let mmio_size = plic_reg.size.unwrap();
             log::info!("plic base_address:{mmio_base:#x}, size:{mmio_size:#x}");
-            kernel_page_table().ioremap(mmio_base, mmio_size, PTEFlags::R | PTEFlags::W);
+            kernel_page_table_mut().ioremap(mmio_base, mmio_size, PTEFlags::R | PTEFlags::W);
             self.plic = Some(PLIC::new(mmio_base, mmio_size));
         } else {
             log::error!("[PLIC probe] faild to find plic");

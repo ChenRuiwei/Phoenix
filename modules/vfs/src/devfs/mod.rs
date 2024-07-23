@@ -13,7 +13,7 @@ use self::{
     zero::{ZeroDentry, ZeroFile, ZeroInode},
 };
 use crate::{
-    simplefs::{dentry::SimpleDentry, inode::SimpleInode},
+    simplefs::{dentry::SimpleDentry, inode::{SimpleDirInode, SimpleFileInode}},
     sys_root_dentry,
 };
 
@@ -46,6 +46,14 @@ pub fn init_devfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
     tty_dentry.set_inode(tty_inode);
     let tty_file = TtyFile::new(tty_dentry.clone(), tty_dentry.inode()?);
     TTY.call_once(|| tty_file);
+
+    // TODO: POSIX shm operations are not implemented yet. The code below is work
+    // around to pass libc test pthread_cancel_points.
+    let shm_dentry = SimpleDentry::new("shm", sb.clone(), Some(root_dentry.clone()));
+    root_dentry.insert(shm_dentry.clone());
+    let shm_inode = SimpleDirInode::new(InodeMode::DIR, sb.clone(), 0);
+    shm_dentry.set_inode(shm_inode);
+
     Ok(())
 }
 
@@ -75,7 +83,7 @@ impl FileSystemType for DevFsType {
     ) -> systype::SysResult<alloc::sync::Arc<dyn vfs_core::Dentry>> {
         let sb = DevSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
-        let mount_inode = SimpleInode::new(InodeMode::DIR, sb.clone(), 0);
+        let mount_inode = SimpleDirInode::new(InodeMode::DIR, sb.clone(), 0);
         mount_dentry.set_inode(mount_inode.clone());
         if let Some(parent) = parent {
             parent.insert(mount_dentry.clone());

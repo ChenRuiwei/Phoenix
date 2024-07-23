@@ -11,8 +11,10 @@
 #![feature(stdsimd)]
 #![feature(riscv_ext_intrinsics)]
 #![feature(map_try_insert)]
-#![allow(clippy::mut_from_ref)]
+#![feature(byte_slice_trim_ascii)]
 #![feature(new_uninit)]
+
+#![allow(clippy::mut_from_ref)]
 
 mod boot;
 mod impls;
@@ -31,8 +33,8 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use ::net::init_network;
 use driver::BLOCK_DEVICE;
+use executor::task_len;
 use timer::timelimited_task::ksleep_s;
 
 use crate::{processor::hart, task::TASK_MANAGER};

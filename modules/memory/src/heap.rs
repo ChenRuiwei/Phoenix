@@ -7,9 +7,9 @@ use core::{
 
 use buddy_system_allocator::Heap as BuddyHeap;
 use config::mm::KERNEL_HEAP_SIZE;
-use early_print::early_println;
 #[cfg(all(feature = "linked", not(feature = "buddy")))]
 use linked_list_allocator::Heap as LinkedHeap;
+use sbi_print::sbi_println;
 use sync::mutex::SpinNoIrqLock;
 
 #[cfg(all(feature = "buddy", not(feature = "linked")))]
@@ -35,7 +35,7 @@ pub fn handle_alloc_error(layout: core::alloc::Layout) -> ! {
     let alloc_actual = inner.stats_alloc_actual();
     let total_bytes = inner.stats_total_bytes();
 
-    early_println!(
+    sbi_println!(
         "Heap allocation error, layout = {:?}, alloc_user: {}, alloc_actual: {}, total_bytes: {}",
         layout,
         alloc_user,
