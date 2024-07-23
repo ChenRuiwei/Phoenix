@@ -109,16 +109,28 @@ pub type SocketBuffer<'a> = RingBuffer<'a, u8>;
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum State {
+    /// 初始状态，表示TCP连接未建立或已经被关闭
     Closed,
+    /// 服务器正在监听来自客户端的连接请求
     Listen,
+    /// 客户端已经发送了SYN（同步）包，等待服务器的SYN-ACK（同步-确认）响应
     SynSent,
+    /// 服务器收到了客户端的SYN包，并发送了SYN-ACK响应，等待客户端的ACK（确认）
     SynReceived,
+    /// 这是正常数据传输的状态，表示三次握手已经完成，
+    /// 客户端和服务器之间的连接已经建立，双方可以进行数据传输
     Established,
+    /// （客户端）一方主动关闭连接，发送了FIN（结束）包，等待对方的ACK或FIN-ACK
     FinWait1,
+    /// （客户端）一方在收到对方的ACK包后，等待对方发送FIN包
     FinWait2,
+    /// (服务器）一方接收到了对方的FIN包，并发送了ACK包，等待应用程序关闭连接
     CloseWait,
+    /// 双方同时发送了FIN包，等待对方的ACK
     Closing,
+    /// 被动关闭连接的一方在发送FIN包后，等待对方的ACK
     LastAck,
+    /// (客户端）一方在发送ACK包后等待一段时间，确保对方收到了ACK包
     TimeWait,
 }
 
@@ -901,6 +913,9 @@ impl<'a> Socket<'a> {
     /// full-duplex connection; only the remote end can close it. If you no
     /// longer wish to receive any data and would like to reuse the socket
     /// right away, use [abort](#method.abort).
+    ///
+    /// 用于关闭TCP连接的发送部分（也称为发送半关闭），
+    /// 这意味着不再发送数据包给对端，但仍然可以接收来自对端的数据
     pub fn close(&mut self) {
         match self.state {
             // In the LISTEN state there is no established connection.
@@ -910,11 +925,16 @@ impl<'a> Socket<'a> {
             State::SynSent => self.set_state(State::Closed),
             // In the SYN-RECEIVED, ESTABLISHED and CLOSE-WAIT states the transmit half
             // of the connection is open, and needs to be explicitly closed with a FIN.
+            // 在这两个状态下，连接已经建立，发送部分是打开的。需要发送FIN包来关闭发送部分
             State::SynReceived | State::Established => self.set_state(State::FinWait1),
+            // 在这个状态下，对端已经关闭了连接的发送部分（发送了FIN包），
+            // 我们需要发送FIN包来关闭我们的发送部分
             State::CloseWait => self.set_state(State::LastAck),
             // In the FIN-WAIT-1, FIN-WAIT-2, CLOSING, LAST-ACK, TIME-WAIT and CLOSED states,
             // the transmit half of the connection is already closed, and no further
             // action is needed.
+            // 在FIN-WAIT-1、FIN-WAIT-2、CLOSING、LAST-ACK、TIME-WAIT和CLOSED状态下，
+            // 发送部分已经关闭，无需进一步操作
             State::FinWait1
             | State::FinWait2
             | State::Closing
@@ -931,6 +951,9 @@ impl<'a> Socket<'a> {
     ///
     /// In terms of the TCP state machine, the socket may be in any state and is
     /// moved to the `CLOSED` state.
+    /// 
+    /// 无论当前连接处于TCP状态机的哪个状态，调用abort函数都会立即将连接状态设置为Closed。这个操作不需要遵循TCP标准的四次挥手（FIN-ACK）过程。
+    /// 调用abort函数后，会向对端发送一个RST包。RST包的作用是通知对端连接已经被强制终止，不再进行任何数据传输。
     pub fn abort(&mut self) {
         self.set_state(State::Closed);
     }

@@ -10,9 +10,8 @@ use systype::{SysError, SysResult, SyscallResult};
 use unix::UnixSocket;
 use vfs_core::*;
 
-use crate::processor::hart::current_task;
-
 use super::*;
+use crate::processor::hart::current_task;
 
 pub enum Sock {
     Tcp(TcpSocket),
@@ -39,7 +38,7 @@ impl Sock {
 
     pub fn listen(&self) -> SysResult<()> {
         match self {
-            Sock::Tcp(tcp) => {tcp.listen(current_task().waker_ref().as_ref().unwrap())},
+            Sock::Tcp(tcp) => tcp.listen(current_task().waker_ref().as_ref().unwrap()),
             Sock::Udp(udp) => Err(SysError::EOPNOTSUPP),
             Sock::Unix(_) => unimplemented!(),
         }
@@ -212,6 +211,10 @@ impl File for Socket {
             if netstate.writable {
                 res |= PollEvents::OUT;
             }
+        }
+        if netstate.hangup {
+            log::warn!("[Socket::bask_poll] PollEvents is hangup");
+            res |= PollEvents::HUP;
         }
         log::info!("[Socket::base_poll] ret events:{res:?} {netstate:?}");
         res

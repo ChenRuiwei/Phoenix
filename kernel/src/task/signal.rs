@@ -96,11 +96,12 @@ impl Task {
         self.with_mut_sig_pending(|pending| {
             pending.add(si);
             if pending.should_wake.contain_signal(si.sig) && self.is_interruptable() {
-                log::info!("[Task::recv] has been woken");
+                log::info!("[Task::recv] tid {} has been woken", self.tid());
                 self.wake();
             } else {
                 log::info!(
-                    "[Task::recv] hasn't been woken, should_wake {:?}, state {:?}",
+                    "[Task::recv] tid {} hasn't been woken, should_wake {:?}, state {:?}",
+                    self.tid(),
                     pending.should_wake,
                     self.state()
                 );

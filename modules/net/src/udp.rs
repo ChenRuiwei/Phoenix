@@ -222,6 +222,7 @@ impl UdpSocket {
             return NetPollState {
                 readable: false,
                 writable: false,
+                hangup: false,
             };
         }
         let waker = get_waker().await;
@@ -234,7 +235,11 @@ impl UdpSocket {
             if !writable {
                 socket.register_send_waker(&waker);
             }
-            NetPollState { readable, writable }
+            NetPollState {
+                readable,
+                writable,
+                hangup: false,
+            }
         })
     }
 }

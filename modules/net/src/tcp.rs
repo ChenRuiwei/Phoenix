@@ -275,8 +275,15 @@ impl TcpSocket {
             // no other threads can read or write it.
             let handle = unsafe { self.handle.get().read().unwrap() };
             SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
-                warn!("TCP socket {}: shutting down", handle);
+                warn!(
+                    "TCP handle #{handle}: shutting down, before state is {:?}",
+                    socket.state()
+                );
                 socket.close();
+                warn!(
+                    "TCP handle #{handle}: shutting down, after state is {:?}",
+                    socket.state()
+                );
             });
             unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT) }; // clear bound address
             SOCKET_SET.poll_interfaces();
@@ -377,10 +384,12 @@ impl TcpSocket {
         match self.get_state() {
             STATE_CONNECTING => self.poll_connect().await,
             STATE_CONNECTED => self.poll_stream().await,
-            STATE_LISTENING => self.poll_listener().await,
+            STATE_LISTENING => self.poll_listener(),
+            STATE_CLOSED => self.poll_closed(),
             _ => NetPollState {
                 readable: false,
                 writable: false,
+                hangup: false,
             },
         }
     }
@@ -503,6 +512,7 @@ impl TcpSocket {
         NetPollState {
             readable: false,
             writable,
+            hangup: false,
         }
     }
 
@@ -523,17 +533,47 @@ impl TcpSocket {
             if !writable {
                 socket.register_send_waker(&waker);
             }
-            NetPollState { readable, writable }
+            NetPollState {
+                readable,
+                writable,
+                hangup: false,
+            }
         })
     }
 
-    async fn poll_listener(&self) -> NetPollState {
+    fn poll_listener(&self) -> NetPollState {
         // SAFETY: `self.local_addr` should be initialized in a listening socket.
         let local_addr = unsafe { self.local_addr.get().read() };
         let readable = LISTEN_TABLE.can_accept(local_addr.port);
         NetPollState {
             readable,
             writable: false,
+            hangup: false,
+        }
+    }
+
+    fn poll_closed(&self) -> NetPollState {
+        use tcp::State::*;
+        let handle = unsafe { self.handle.get().read() };
+        if let Some(handle) = handle {
+            SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
+                log::warn!(
+                    "[TcpSocket::poll_closed] handle #{handle} state {}",
+                    socket.state()
+                );
+                let hangup = matches!(socket.state(), CloseWait | FinWait2 | TimeWait);
+                NetPollState {
+                    readable: false,
+                    writable: false,
+                    hangup,
+                }
+            })
+        } else {
+            NetPollState {
+                readable: false,
+                writable: false,
+                hangup: false,
+            }
         }
     }
 

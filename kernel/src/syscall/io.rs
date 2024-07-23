@@ -335,7 +335,7 @@ impl Syscall<'_> {
 
         let mut ret = 0;
         for (fd, events) in ret_vec {
-            if events.contains(PollEvents::IN) {
+            if events.contains(PollEvents::IN) | events.contains(PollEvents::HUP) {
                 readfds.as_mut().map(|fds| fds.set(fd));
                 ret += 1;
             }
