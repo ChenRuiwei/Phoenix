@@ -515,17 +515,25 @@ impl Task {
 
         let mut tg = self.thread_group.lock();
 
-        if !self.is_leader {
-            // NOTE: leader will be removed by parent calling `sys_wait4`
-            tg.remove(self);
-            TASK_MANAGER.remove(self.tid());
-        }
-
         if (!self.leader().is_zombie())
             || (self.is_leader && tg.len() > 1)
             || (!self.is_leader && tg.len() > 2)
         {
+            if !self.is_leader {
+                // NOTE: leader will be removed by parent calling `sys_wait4`
+                tg.remove(self);
+                TASK_MANAGER.remove(self.tid());
+            }
             return;
+        }
+
+        if self.is_leader {
+            debug_assert!(tg.len() == 1);
+        } else {
+            debug_assert!(tg.len() == 2);
+            // NOTE: leader will be removed by parent calling `sys_wait4`
+            tg.remove(self);
+            TASK_MANAGER.remove(self.tid());
         }
 
         // exit the process, e.g. reparent all children, and send SIGCHLD to parent
@@ -547,7 +555,6 @@ impl Task {
         });
 
         // NOTE: leader will be removed by parent calling `sys_wait4`
-        // TODO: drop most of resource
         if let Some(parent) = self.parent() {
             let parent = parent.upgrade().unwrap();
             parent.receive_siginfo(
@@ -572,6 +579,9 @@ impl Task {
                 SHARED_MEMORY_MANAGER.detach(*shm_id, self.pid());
             }
         });
+
+        // TODO: drop most resources here instead of wait4 function parent
+        // called
     }
 
     /// The dirfd argument is used in conjunction with the pathname argument as
