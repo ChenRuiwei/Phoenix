@@ -6,6 +6,7 @@ use alloc::{
 };
 use core::{
     cell::SyncUnsafeCell,
+    ops::DerefMut,
     sync::atomic::{AtomicI32, AtomicUsize, Ordering},
     task::Waker,
 };
@@ -221,8 +222,8 @@ impl Task {
         self.parent.lock().clone()
     }
 
-    pub fn children(&self) -> BTreeMap<Tid, Arc<Self>> {
-        self.children.lock().clone()
+    pub fn children(&self) -> impl DerefMut<Target = BTreeMap<Tid, Arc<Self>>> + '_ {
+        self.children.lock()
     }
 
     pub fn state(&self) -> TaskState {
@@ -514,15 +515,16 @@ impl Task {
 
         let mut tg = self.thread_group.lock();
 
+        if !self.is_leader {
+            // NOTE: leader will be removed by parent calling `sys_wait4`
+            tg.remove(self);
+            TASK_MANAGER.remove(self.tid());
+        }
+
         if (!self.leader().is_zombie())
             || (self.is_leader && tg.len() > 1)
             || (!self.is_leader && tg.len() > 2)
         {
-            if !self.is_leader {
-                // NOTE: leader will be removed by parent calling `sys_wait4`
-                tg.remove(self);
-                TASK_MANAGER.remove(self.tid());
-            }
             return;
         }
 
@@ -541,6 +543,7 @@ impl Task {
                 *c.parent.lock() = Some(Arc::downgrade(&init_proc));
             }
             init_proc.children.lock().extend(children.clone());
+            children.clear();
         });
 
         // NOTE: leader will be removed by parent calling `sys_wait4`
