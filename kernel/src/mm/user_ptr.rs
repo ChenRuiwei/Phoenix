@@ -13,12 +13,16 @@ use core::{
 };
 
 use memory::VirtAddr;
+use net::{IpAddress, IpEndpoint};
 use riscv::register::scause;
 use systype::{SysError, SysResult};
 
 use super::memory_space::vm_area::MapPerm;
 use crate::{
-    net::{SaFamily, SockAddr, SockAddrIn, SockAddrIn6},
+    net::{
+        addr::{SockAddrIn, SockAddrIn6},
+        SaFamily,
+    },
     processor::{env::SumGuard, hart::current_task_ref},
     task::Task,
     trap::{
@@ -226,7 +230,7 @@ impl<T: Clone + Copy + 'static, P: Policy> UserPtr<T, P> {
         Self::new(core::ptr::null_mut())
     }
 
-    pub fn from_usize(vaddr: usize) -> Self {
+    fn from_usize(vaddr: usize) -> Self {
         Self::new(vaddr as *mut T)
     }
 
@@ -605,41 +609,61 @@ impl From<usize> for FutexAddr {
     }
 }
 
-/// The `addr` parameter is a pointer to a `SockAddr` structure passed by the
-/// system call, and `addr_len` is the length of the address pointed to by this
-/// pointer.
-///
-/// First, the function checks whether the address pointed to by the pointer has
-/// read permissions. Then, based on the `sa_family` member of theSockAddr
-/// structure, it determines which variant of the `SockAddr` enum the
-/// user-provided parameter corresponds to.
-pub fn audit_sockaddr(addr: usize, addrlen: usize, task: &Arc<Task>) -> SysResult<SockAddr> {
-    let _guard = SumGuard::new();
-    task.just_ensure_user_area(addr.into(), addrlen, PageFaultAccessType::RO)?;
-    let family_ptr = addr as *const u16;
-    let family_value = unsafe { *family_ptr };
-    let family = SaFamily::try_from(family_value as usize)?;
-    match family {
-        SaFamily::AF_UNIX => unimplemented!(),
-        SaFamily::AF_INET => {
-            if addrlen < mem::size_of::<SockAddrIn>() {
-                return Err(SysError::EINVAL);
+impl Task {
+    /// translate SockAddr to IpEndpoint
+    ///
+    /// The `addr` parameter is a pointer to a `SockAddr` structure passed by
+    /// the system call, and `addr_len` is the length of the address pointed
+    /// to by this pointer.
+    ///
+    /// First, the function checks whether the address pointed to by the pointer
+    /// has read permissions. Then, based on the `sa_family` member of
+    /// theSockAddr structure, it determines which variant of the `SockAddr`
+    /// enum the user-provided parameter corresponds to.
+    pub fn audit_sockaddr(&self, addr: usize, addrlen: usize) -> SysResult<IpEndpoint> {
+        let _guard = SumGuard::new();
+        self.just_ensure_user_area(addr.into(), addrlen, PageFaultAccessType::RO)?;
+        let family = SaFamily::try_from(unsafe { *(addr as *const u16) })?;
+        match family {
+            SaFamily::AF_INET => {
+                if addrlen < mem::size_of::<SockAddrIn>() {
+                    return Err(SysError::EINVAL);
+                }
+                let sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
+                // this will convert network byte order to host byte order
+                Ok(IpEndpoint::from(sock_addr_in))
             }
-            let mut sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
-            // log::debug!("[audit_sockaddr] before {sock_addr_in:?}");
-            // TODO:not sure big endian about port and address
-            // sock_addr_in.port = sock_addr_in.port.to_be();
-            // let ip = u32::from_be_bytes(sock_addr_in.addr.to_le_bytes());
-            // sock_addr_in.addr = Ipv4Addr::from(ip);
-            // log::debug!("[audit_sockaddr] after {sock_addr_in:?}");
-            Ok(SockAddr::SockAddrIn(sock_addr_in))
-        }
-        SaFamily::AF_INET6 => {
-            if addrlen < mem::size_of::<SockAddrIn6>() {
-                return Err(SysError::EINVAL);
+            SaFamily::AF_INET6 => {
+                if addrlen < mem::size_of::<SockAddrIn6>() {
+                    return Err(SysError::EINVAL);
+                }
+                let sock_addr_in6: SockAddrIn6 = unsafe { *(addr as *const _) };
+                // this will convert network byte order to host byte order
+                Ok(IpEndpoint::from(sock_addr_in6))
             }
-            let sock_addr_in6 = unsafe { *(addr as *const SockAddrIn6) };
-            Ok(SockAddr::SockAddrIn6(sock_addr_in6))
+            SaFamily::AF_UNIX => unimplemented!(),
         }
+    }
+
+    pub fn write_sockaddr(
+        self: &Arc<Task>,
+        addr: usize,
+        addrlen: usize,
+        endpoint: IpEndpoint,
+    ) -> SysResult<()> {
+        if addr == 0 {
+            return Ok(());
+        }
+        match endpoint.addr {
+            IpAddress::Ipv4(_) => {
+                UserWritePtr::<SockAddrIn>::from(addr).write(self, endpoint.into())?;
+                UserWritePtr::<usize>::from(addrlen).write(self, mem::size_of::<SockAddrIn>())?;
+            }
+            IpAddress::Ipv6(_) => {
+                UserWritePtr::<SockAddrIn6>::from(addr).write(self, endpoint.into());
+                UserWritePtr::<usize>::from(addrlen).write(self, mem::size_of::<SockAddrIn6>())?;
+            }
+        }
+        Ok(())
     }
 }

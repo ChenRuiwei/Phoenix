@@ -10,6 +10,7 @@ use self::{
     null::{NullDentry, NullInode},
     rtc::{RtcDentry, RtcInode},
     tty::{TtyDentry, TtyFile, TtyInode, TTY},
+    urandom::{UrandomDentry, UrandomInode},
     zero::{ZeroDentry, ZeroFile, ZeroInode},
 };
 use crate::{
@@ -20,6 +21,7 @@ use crate::{
 mod null;
 mod rtc;
 pub mod tty;
+mod urandom;
 mod zero;
 
 pub fn init_devfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
@@ -39,6 +41,11 @@ pub fn init_devfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
     root_dentry.insert(rtc_dentry.clone());
     let rtc_inode = RtcInode::new(sb.clone());
     rtc_dentry.set_inode(rtc_inode);
+
+    let urandom_dentry = UrandomDentry::new("urandom", sb.clone(), Some(root_dentry.clone()));
+    root_dentry.insert(urandom_dentry.clone());
+    let urandom_inode = UrandomInode::new(sb.clone());
+    urandom_dentry.set_inode(urandom_inode);
 
     let tty_dentry = TtyDentry::new("tty", sb.clone(), Some(root_dentry.clone()));
     root_dentry.insert(tty_dentry.clone());

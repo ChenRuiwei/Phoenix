@@ -9,12 +9,13 @@ use arch::time::get_time_us;
 use device_core::{error::DevError, NetBufPtrOps, NetDriverOps};
 use listen_table::*;
 use log::*;
+pub use smoltcp::wire::{IpAddress, IpEndpoint, IpListenEndpoint, Ipv4Address, Ipv6Address};
 use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
     phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken},
     socket::{self, AnySocket},
     time::Instant,
-    wire::{EthernetAddress, HardwareAddress, IpAddress, IpCidr},
+    wire::{EthernetAddress, HardwareAddress, IpCidr},
 };
 use spin::{Lazy, Once};
 use sync::mutex::SpinNoIrqLock;
@@ -360,6 +361,7 @@ fn snoop_tcp_packet(
         if is_first {
             // create a socket for the first incoming TCP packet, as the later accept()
             // returns.
+            error!("[snoop_tcp_packet] receive TCP");
             LISTEN_TABLE.incoming_tcp_packet(src_addr, dst_addr, sockets);
         }
     }

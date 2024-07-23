@@ -940,4 +940,10 @@ impl Syscall<'_> {
         );
         file.inode().truncate(length as usize)
     }
+
+    /// Modify the permissions of a file or directory relative to a certain
+    /// directory or location
+    pub fn sys_fchmodat(&self) -> SyscallResult {
+        Ok(0)
+    }
 }

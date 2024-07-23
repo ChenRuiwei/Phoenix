@@ -4,60 +4,124 @@ use core::any::Any;
 use async_trait::async_trait;
 use downcast_rs::{impl_downcast, DowncastSync};
 use log::warn;
-use net::{poll_interfaces, NetPollState};
+use net::{poll_interfaces, tcp::TcpSocket, udp::UdpSocket, IpEndpoint, NetPollState};
 use spin::Mutex;
 use systype::{SysError, SysResult, SyscallResult};
-use tcp::TcpSock;
-use udp::UdpSock;
-use unix::UnixSock;
+use unix::UnixSocket;
 use vfs_core::*;
+
+use crate::processor::hart::current_task;
 
 use super::*;
 
-#[async_trait]
-pub trait ProtoOps: Sync + Send + Any + DowncastSync {
-    fn bind(&self, _myaddr: SockAddr) -> SysResult<()>;
-    fn listen(&self) -> SysResult<()> {
-        Err(SysError::EOPNOTSUPP)
-    }
-    async fn accept(&self) -> SysResult<Arc<dyn ProtoOps>> {
-        Err(SysError::EOPNOTSUPP)
-    }
-    async fn connect(&self, _vaddr: SockAddr) -> SysResult<()> {
-        Err(SysError::EOPNOTSUPP)
-    }
-    fn peer_addr(&self) -> SysResult<SockAddr> {
-        Err(SysError::EOPNOTSUPP)
-    }
-    fn local_addr(&self) -> SysResult<SockAddr> {
-        Err(SysError::EOPNOTSUPP)
-    }
-    async fn sendto(&self, _buf: &[u8], _vaddr: Option<SockAddr>) -> SysResult<usize> {
-        Err(SysError::EOPNOTSUPP)
-    }
-    async fn recvfrom(&self, _buf: &mut [u8]) -> SysResult<(usize, SockAddr)> {
-        Err(SysError::EOPNOTSUPP)
-    }
-    async fn poll(&self) -> NetPollState {
-        log::error!("[net poll] unimplemented");
-        NetPollState {
-            readable: false,
-            writable: false,
+pub enum Sock {
+    Tcp(TcpSocket),
+    Udp(UdpSocket),
+    Unix(UnixSocket),
+}
+
+impl Sock {
+    pub fn set_nonblocking(&self) {
+        match self {
+            Sock::Tcp(tcp) => tcp.set_nonblocking(true),
+            Sock::Udp(udp) => udp.set_nonblocking(true),
+            Sock::Unix(_) => unimplemented!(),
         }
     }
-    fn shutdown(&self, how: SocketShutdownFlag) -> SysResult<()> {
-        Err(SysError::EOPNOTSUPP)
+
+    pub fn bind(&self, local_addr: IpEndpoint) -> SysResult<()> {
+        match self {
+            Sock::Tcp(tcp) => tcp.bind(local_addr),
+            Sock::Udp(udp) => udp.bind(local_addr),
+            Sock::Unix(_) => unimplemented!(),
+        }
+    }
+
+    pub fn listen(&self) -> SysResult<()> {
+        match self {
+            Sock::Tcp(tcp) => {tcp.listen(current_task().waker_ref().as_ref().unwrap())},
+            Sock::Udp(udp) => Err(SysError::EOPNOTSUPP),
+            Sock::Unix(_) => unimplemented!(),
+        }
+    }
+
+    pub async fn accept(&self) -> SysResult<TcpSocket> {
+        match self {
+            Sock::Tcp(tcp) => {
+                let new_tcp = tcp.accept().await?;
+                Ok(new_tcp)
+            }
+            Sock::Udp(udp) => Err(SysError::EOPNOTSUPP),
+            Sock::Unix(_) => unimplemented!(),
+        }
+    }
+
+    pub async fn connect(&self, remote_addr: IpEndpoint) -> SysResult<()> {
+        match self {
+            Sock::Tcp(tcp) => tcp.connect(remote_addr).await,
+            Sock::Udp(udp) => udp.connect(remote_addr),
+            Sock::Unix(_) => unimplemented!(),
+        }
+    }
+
+    pub fn peer_addr(&self) -> SysResult<IpEndpoint> {
+        match self {
+            Sock::Tcp(tcp) => tcp.peer_addr(),
+            Sock::Udp(udp) => udp.peer_addr(),
+            Sock::Unix(_) => unimplemented!(),
+        }
+    }
+
+    pub fn local_addr(&self) -> SysResult<IpEndpoint> {
+        match self {
+            Sock::Tcp(tcp) => tcp.local_addr(),
+            Sock::Udp(udp) => udp.local_addr(),
+            Sock::Unix(_) => unimplemented!(),
+        }
+    }
+    pub async fn sendto(&self, buf: &[u8], remote_addr: Option<IpEndpoint>) -> SysResult<usize> {
+        match self {
+            Sock::Tcp(tcp) => tcp.send(buf).await,
+            Sock::Udp(udp) => match remote_addr {
+                Some(addr) => udp.send_to(buf, addr).await,
+                None => udp.send(buf).await,
+            },
+            Sock::Unix(_) => unimplemented!(),
+        }
+    }
+    pub async fn recvfrom(&self, buf: &mut [u8]) -> SysResult<(usize, IpEndpoint)> {
+        match self {
+            Sock::Tcp(tcp) => {
+                let bytes = tcp.recv(buf).await?;
+                Ok((bytes, tcp.peer_addr()?))
+            }
+            Sock::Udp(udp) => udp.recv_from(buf).await,
+            Sock::Unix(_) => unimplemented!(),
+        }
+    }
+    pub async fn poll(&self) -> NetPollState {
+        match self {
+            Sock::Tcp(tcp) => tcp.poll().await,
+            Sock::Udp(udp) => udp.poll().await,
+            Sock::Unix(_) => unimplemented!(),
+        }
+    }
+
+    pub fn shutdown(&self, how: SocketShutdownFlag) -> SysResult<()> {
+        match self {
+            Sock::Tcp(tcp) => tcp.shutdown(),
+            Sock::Udp(udp) => udp.shutdown(),
+            Sock::Unix(_) => unimplemented!(),
+        }
     }
 }
 
-// Todo: Maybe it needn't
-impl_downcast!(sync ProtoOps);
 /// linux中，socket面向用户空间，sock面向内核空间
 pub struct Socket {
     /// socket类型
     pub types: SocketType,
     /// 套接字的核心，面向底层网络具体协议
-    pub sk: Arc<dyn ProtoOps>,
+    pub sk: Sock,
     /// TODO:
     pub meta: FileMeta,
 }
@@ -67,15 +131,16 @@ unsafe impl Send for Socket {}
 
 impl Socket {
     pub fn new(domain: SaFamily, types: SocketType, nonblock: bool) -> Self {
-        let sk: Arc<dyn ProtoOps> = match domain {
-            SaFamily::AF_UNIX => Arc::new(UnixSock {}),
+        let sk = match domain {
+            SaFamily::AF_UNIX => Sock::Unix(UnixSocket {}),
             SaFamily::AF_INET | SaFamily::AF_INET6 => match types {
-                SocketType::STREAM => Arc::new(TcpSock::new(nonblock)),
-                SocketType::DGRAM => Arc::new(UdpSock::new(nonblock)),
+                SocketType::STREAM => Sock::Tcp(TcpSocket::new()),
+                SocketType::DGRAM => Sock::Udp(UdpSocket::new()),
                 _ => unimplemented!(),
             },
         };
         let flags = if nonblock {
+            sk.set_nonblocking();
             OpenFlags::O_RDWR | OpenFlags::O_NONBLOCK
         } else {
             OpenFlags::O_RDWR
@@ -92,7 +157,7 @@ impl Socket {
         }
     }
 
-    pub fn from_another(another: &Self, sk: Arc<dyn ProtoOps>) -> Self {
+    pub fn from_another(another: &Self, sk: Sock) -> Self {
         Self {
             types: another.types,
             sk,

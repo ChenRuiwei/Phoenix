@@ -39,6 +39,8 @@ const FD_SETLEN: usize = FD_SETSIZE / (8 * size_of::<u64>());
 
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]
+/// A fixed length array, where each element is a 64 bit unsigned integer. It is
+/// used to store a bitmap of a set of file descriptors
 pub struct FdSet {
     fds_bits: [u64; FD_SETLEN],
 }
@@ -56,6 +58,9 @@ impl FdSet {
         }
     }
 
+    /// Add the given file descriptor to the collection. Calculate the index and
+    /// corresponding bit of the file descriptor in the array, and set the bit
+    /// to 1
     pub fn set(&mut self, fd: usize) {
         let idx = fd / 64;
         let bit = fd % 64;
@@ -63,6 +68,9 @@ impl FdSet {
         self.fds_bits[idx] |= mask;
     }
 
+    /// Check if the given file descriptor is in the collection. Calculate the
+    /// index and corresponding bit of the file descriptor in the array, and
+    /// check if the bit is 1
     pub fn is_set(&self, fd: usize) -> bool {
         let idx = fd / 64;
         let bit = fd % 64;
@@ -161,7 +169,7 @@ impl Syscall<'_> {
             old_mask = None;
         };
         log::info!(
-            "[sys_ppoll] fds:{poll_fds:?}, nfds:{nfds}, timeout:{timeout:?}, sigmast{new_mask:?}"
+            "[sys_ppoll] fds:{poll_fds:?}, nfds:{nfds}, timeout:{timeout:?}, sigmask:{new_mask:?}"
         );
         let mut polls = Vec::<(PollEvents, Arc<dyn File>)>::with_capacity(nfds as usize);
         for poll_fd in poll_fds.iter() {

@@ -1,10 +1,10 @@
 use core::{
-    net::SocketAddr,
+    ops::Deref,
     sync::atomic::{AtomicBool, Ordering},
 };
 
 use async_utils::{get_waker, suspend_now, yield_now};
-use log::{debug, warn};
+use log::{debug, info, warn};
 use smoltcp::{
     iface::SocketHandle,
     socket::udp::{self, BindError, SendError},
@@ -14,7 +14,7 @@ use spin::RwLock;
 use systype::{SysError, SysResult};
 
 use super::{
-    addr::{from_core_sockaddr, into_core_sockaddr, is_unspecified, UNSPECIFIED_ENDPOINT},
+    addr::{is_unspecified, UNSPECIFIED_ENDPOINT},
     SocketSetWrapper, SOCKET_SET,
 };
 use crate::{addr::LOCAL_ENDPOINT_V4, Mutex, NetPollState};
@@ -43,17 +43,17 @@ impl UdpSocket {
 
     /// Returns the local address and port, or
     /// [`Err(NotConnected)`](AxError::NotConnected) if not connected.
-    pub fn local_addr(&self) -> SysResult<SocketAddr> {
+    pub fn local_addr(&self) -> SysResult<IpEndpoint> {
         match self.local_addr.try_read() {
-            Some(addr) => addr.map(into_core_sockaddr).ok_or(SysError::ENOTCONN),
+            Some(addr) => addr.ok_or(SysError::ENOTCONN),
             None => Err(SysError::ENOTCONN),
         }
     }
 
     /// Returns the remote address and port, or
     /// [`Err(NotConnected)`](AxError::NotConnected) if not connected.
-    pub fn peer_addr(&self) -> SysResult<SocketAddr> {
-        self.remote_endpoint().map(into_core_sockaddr)
+    pub fn peer_addr(&self) -> SysResult<IpEndpoint> {
+        self.remote_endpoint()
     }
 
     /// Returns whether this socket is in nonblocking mode.
@@ -79,21 +79,24 @@ impl UdpSocket {
     ///
     /// It's must be called before [`send_to`](Self::send_to) and
     /// [`recv_from`](Self::recv_from).
-    pub fn bind(&self, mut local_addr: SocketAddr) -> SysResult<()> {
+    pub fn bind(&self, mut local_addr: IpEndpoint) -> SysResult<()> {
         let mut self_local_addr = self.local_addr.write();
 
-        if local_addr.port() == 0 {
-            local_addr.set_port(get_ephemeral_port()?);
+        if local_addr.port == 0 {
+            local_addr.port = get_ephemeral_port()?;
+            info!(
+                "[UdpSocket::bind] No specified port, use port {}]",
+                local_addr.port
+            );
         }
         if self_local_addr.is_some() {
             warn!("socket bind() failed: already bound");
             return Err(SysError::EINVAL);
         }
 
-        let local_endpoint = from_core_sockaddr(local_addr);
         let endpoint = IpListenEndpoint {
-            addr: (!is_unspecified(local_endpoint.addr)).then_some(local_endpoint.addr),
-            port: local_endpoint.port,
+            addr: (!is_unspecified(local_addr.addr)).then_some(local_addr.addr),
+            port: local_addr.port,
         };
         SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
             socket.bind(endpoint).map_err(|e| {
@@ -105,26 +108,29 @@ impl UdpSocket {
             })
         })?;
 
-        *self_local_addr = Some(local_endpoint);
-        debug!("UDP socket {}: bound on {}", self.handle, endpoint);
+        *self_local_addr = Some(local_addr);
+        info!(
+            "[Udpsocket::bind] handle {} bound on {endpoint}",
+            self.handle
+        );
         Ok(())
     }
 
     /// Sends data on the socket to the given address. On success, returns the
     /// number of bytes written.
-    pub async fn send_to(&self, buf: &[u8], remote_addr: SocketAddr) -> SysResult<usize> {
-        if remote_addr.port() == 0 || remote_addr.ip().is_unspecified() {
+    pub async fn send_to(&self, buf: &[u8], remote_addr: IpEndpoint) -> SysResult<usize> {
+        if remote_addr.port == 0 || remote_addr.addr.is_unspecified() {
             warn!("socket send_to() failed: invalid remote address");
             return Err(SysError::EINVAL);
         }
-        self.send_impl(buf, from_core_sockaddr(remote_addr)).await
+        self.send_impl(buf, remote_addr).await
     }
 
     /// Receives a single datagram message on the socket. On success, returns
     /// the number of bytes read and the origin.
-    pub async fn recv_from(&self, buf: &mut [u8]) -> SysResult<(usize, SocketAddr)> {
+    pub async fn recv_from(&self, buf: &mut [u8]) -> SysResult<(usize, IpEndpoint)> {
         self.recv_impl(|socket| match socket.recv_slice(buf) {
-            Ok((len, meta)) => Ok((len, into_core_sockaddr(meta.endpoint))),
+            Ok((len, meta)) => Ok((len, meta.endpoint)),
             Err(e) => {
                 warn!("[udp::recv_from] socket {} failed {e:?}", self.handle);
                 Err(SysError::EAGAIN)
@@ -136,9 +142,9 @@ impl UdpSocket {
     /// Receives a single datagram message on the socket, without removing it
     /// from the queue. On success, returns the number of bytes read and the
     /// origin.
-    pub async fn peek_from(&self, buf: &mut [u8]) -> SysResult<(usize, SocketAddr)> {
+    pub async fn peek_from(&self, buf: &mut [u8]) -> SysResult<(usize, IpEndpoint)> {
         self.recv_impl(|socket| match socket.peek_slice(buf) {
-            Ok((len, meta)) => Ok((len, into_core_sockaddr(meta.endpoint))),
+            Ok((len, meta)) => Ok((len, meta.endpoint)),
             Err(_) => {
                 warn!("socket recv_from() failed");
                 Err(SysError::EAGAIN)
@@ -154,15 +160,19 @@ impl UdpSocket {
     /// The local port will be generated automatically if the socket is not
     /// bound. It's must be called before [`send`](Self::send) and
     /// [`recv`](Self::recv).
-    pub fn connect(&self, addr: SocketAddr) -> SysResult<()> {
+    pub fn connect(&self, addr: IpEndpoint) -> SysResult<()> {
         let mut self_peer_addr = self.peer_addr.write();
-
         if self.local_addr.read().is_none() {
-            self.bind(into_core_sockaddr(UNSPECIFIED_ENDPOINT))?;
+            info!("[UdpSocket::connect] don't have local addr, bind to UNSPECIFIED_ENDPOINT");
+            self.bind(UNSPECIFIED_ENDPOINT)?;
         }
-
-        *self_peer_addr = Some(from_core_sockaddr(addr));
-        debug!("UDP socket {}: connected to {}", self.handle, addr);
+        *self_peer_addr = Some(addr);
+        info!(
+            "[UdpSocket::connect] handle {} local {} connected to remote {}",
+            self.handle,
+            self.local_addr.read().deref().unwrap(),
+            addr
+        );
         Ok(())
     }
 
@@ -195,7 +205,11 @@ impl UdpSocket {
     /// Close the socket.
     pub fn shutdown(&self) -> SysResult<()> {
         SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
-            warn!("UDP socket {}: shutting down", self.handle);
+            warn!(
+                "UDP socket {}: shutting down, remote {:?}",
+                self.handle,
+                self.peer_addr()
+            );
             socket.close();
         });
         SOCKET_SET.poll_interfaces();
@@ -241,7 +255,7 @@ impl UdpSocket {
                 self.handle
             );
             // TODO: UNSPECIFIED_ENDPOINT or LOCAL_ENDPOINT?
-            self.bind(into_core_sockaddr(UNSPECIFIED_ENDPOINT))?;
+            self.bind(UNSPECIFIED_ENDPOINT)?;
         }
         let waker = get_waker().await;
         let bytes = self
@@ -263,6 +277,10 @@ impl UdpSocket {
                         Ok(buf.len())
                     } else {
                         // tx buffer is full
+                        info!(
+                            "[UdpSocket::send_impl] handle{} can't send now, tx buffer is full",
+                            self.handle
+                        );
                         socket.register_send_waker(&waker);
 
                         Err(SysError::EAGAIN)

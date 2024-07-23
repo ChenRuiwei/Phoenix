@@ -325,10 +325,10 @@ impl Syscall<'_> {
             new_task.trap_context_mut().set_user_sp(stack.bits());
         }
         if flags.contains(CloneFlags::PARENT_SETTID) {
-            UserWritePtr::from_usize(parent_tid.bits()).write(task, new_tid)?;
+            UserWritePtr::from(parent_tid.bits()).write(task, new_tid)?;
         }
         if flags.contains(CloneFlags::CHILD_SETTID) {
-            UserWritePtr::from_usize(child_tid.bits()).write(&new_task, new_tid)?;
+            UserWritePtr::from(child_tid.bits()).write(&new_task, new_tid)?;
             new_task.tid_address().set_child_tid = Some(child_tid.bits());
         }
         if flags.contains(CloneFlags::CHILD_CLEARTID) {
