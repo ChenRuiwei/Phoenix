@@ -291,9 +291,17 @@ impl Syscall<'_> {
     pub fn sys_shutdown(&self, sockfd: usize, how: usize) -> SyscallResult {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
-        let how = SocketShutdownFlag::try_from(how)?;
-        log::info!("[sys_shutdown] sockfd:{sockfd} {how:?}");
-        socket.sk.shutdown(how)?;
+        // let how = SocketShutdownFlag::try_from(how)?;
+        log::info!(
+            "[sys_shutdown] sockfd:{sockfd} shutdown {}",
+            match how {
+                0 => "READ",
+                1 => "WRITE",
+                2 => "READ AND WRITE",
+                _ => "Invalid argument",
+            }
+        );
+        socket.sk.shutdown(how as u8)?;
         Ok(0)
     }
 

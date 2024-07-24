@@ -21,7 +21,10 @@ use super::{
     addr::{is_unspecified, UNSPECIFIED_ENDPOINT},
     SocketSetWrapper, ETH0, LISTEN_TABLE, SOCKET_SET,
 };
-use crate::{has_signal, Mutex, NetPollState};
+use crate::{
+    has_signal, Mutex, NetPollState, RCV_SHUTDOWN, SEND_SHUTDOWN, SHUTDOWN_MASK, SHUT_RD,
+    SHUT_RDWR, SHUT_WR,
+};
 
 // State transitions:
 // CLOSED -(connect)-> BUSY -> CONNECTING -> CONNECTED -(shutdown)-> BUSY ->
@@ -46,7 +49,11 @@ const STATE_LISTENING: u8 = 4;
 /// [`listen`]: TcpSocket::listen
 /// [`accept`]: TcpSocket::accept
 pub struct TcpSocket {
+    /// 使用 AtomicU8 实现无锁管理
     state: AtomicU8,
+    /// 用于表示socket的读写方向是否被显式关闭，而不是表示连接状态，
+    /// shutdown关闭读写之后，不能再重新通过connect的方式建立连接
+    shutdown: UnsafeCell<u8>,
     handle: UnsafeCell<Option<SocketHandle>>,
     local_addr: UnsafeCell<IpEndpoint>,
     peer_addr: UnsafeCell<IpEndpoint>,
@@ -62,6 +69,7 @@ impl TcpSocket {
     pub const fn new() -> Self {
         Self {
             state: AtomicU8::new(STATE_CLOSED),
+            shutdown: UnsafeCell::new(0),
             handle: UnsafeCell::new(None),
             local_addr: UnsafeCell::new(UNSPECIFIED_ENDPOINT),
             peer_addr: UnsafeCell::new(UNSPECIFIED_ENDPOINT),
@@ -77,6 +85,7 @@ impl TcpSocket {
     ) -> Self {
         Self {
             state: AtomicU8::new(STATE_CONNECTED),
+            shutdown: UnsafeCell::new(0),
             handle: UnsafeCell::new(Some(handle)),
             local_addr: UnsafeCell::new(local_addr),
             peer_addr: UnsafeCell::new(peer_addr),
@@ -269,7 +278,18 @@ impl TcpSocket {
     }
 
     /// Close the connection.
-    pub fn shutdown(&self) -> SysResult<()> {
+    pub fn shutdown(&self, how: u8) -> SysResult<()> {
+        // SAFETY: shutdown won't be called in multiple threads
+        unsafe {
+            let shutdown = self.shutdown.get();
+            match how {
+                SHUT_RD => *shutdown |= RCV_SHUTDOWN,
+                SHUT_WR => *shutdown |= SEND_SHUTDOWN,
+                SHUT_RDWR => *shutdown |= SHUTDOWN_MASK,
+                _ => return Err(SysError::EINVAL),
+            }
+        }
+
         // stream
         self.update_state(STATE_CONNECTED, STATE_CLOSED, || {
             // SAFETY: `self.handle` should be initialized in a connected socket, and
@@ -286,7 +306,8 @@ impl TcpSocket {
                     socket.state()
                 );
             });
-            unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT) }; // clear bound address
+            // unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT) }; // clear bound
+            // address
             SOCKET_SET.poll_interfaces();
             Ok(())
         })
@@ -310,15 +331,21 @@ impl TcpSocket {
 
     /// Receives data from the socket, stores it in the given buffer.
     pub async fn recv(&self, buf: &mut [u8]) -> SysResult<usize> {
+        let shutdown = unsafe { *self.shutdown.get() };
+        if shutdown & RCV_SHUTDOWN != 0 {
+            log::warn!("[TcpSocket::recv] shutdown closed read, recv return 0");
+            return Ok(0);
+        }
         if self.is_connecting() {
             return Err(SysError::EAGAIN);
-        } else if !self.is_connected() {
+        } else if !self.is_connected() && shutdown == 0 {
             warn!("socket recv() failed");
             return Err(SysError::ENOTCONN);
         }
 
         // SAFETY: `self.handle` should be initialized in a connected socket.
         let handle = unsafe { self.handle.get().read().unwrap() };
+        let waker = get_waker().await;
         self.block_on(|| {
             SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
                 if !socket.is_active() {
@@ -338,6 +365,7 @@ impl TcpSocket {
                     Ok(len)
                 } else {
                     // no more data
+                    socket.register_recv_waker(&waker);
                     Err(SysError::EAGAIN)
                 }
             })
@@ -347,15 +375,21 @@ impl TcpSocket {
 
     /// Transmits data in the given buffer.
     pub async fn send(&self, buf: &[u8]) -> SysResult<usize> {
+        let shutdown = unsafe { *self.shutdown.get() };
+        if shutdown & SEND_SHUTDOWN != 0 {
+            log::warn!("[TcpSocket::send] shutdown closed write, send return 0");
+            return Ok(0);
+        }
         if self.is_connecting() {
             return Err(SysError::EAGAIN);
-        } else if !self.is_connected() {
+        } else if !self.is_connected() && shutdown == 0 {
             warn!("socket send() failed");
             return Err(SysError::ENOTCONN);
         }
 
         // SAFETY: `self.handle` should be initialized in a connected socket.
         let handle = unsafe { self.handle.get().read().unwrap() };
+        let waker = get_waker().await;
         self.block_on(|| {
             SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
                 if !socket.is_active() || !socket.may_send() {
@@ -373,6 +407,7 @@ impl TcpSocket {
                     Ok(len)
                 } else {
                     // tx buffer is full
+                    socket.register_send_waker(&waker);
                     Err(SysError::EAGAIN)
                 }
             })
@@ -653,7 +688,7 @@ impl TcpSocket {
 
 impl Drop for TcpSocket {
     fn drop(&mut self) {
-        self.shutdown().ok();
+        self.shutdown(SHUTDOWN_MASK).ok();
         // Safe because we have mut reference to `self`.
         if let Some(handle) = unsafe { self.handle.get().read() } {
             SOCKET_SET.remove(handle);

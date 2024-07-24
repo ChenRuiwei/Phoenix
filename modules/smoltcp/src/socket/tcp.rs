@@ -120,9 +120,9 @@ pub enum State {
     /// 这是正常数据传输的状态，表示三次握手已经完成，
     /// 客户端和服务器之间的连接已经建立，双方可以进行数据传输
     Established,
-    /// （客户端）一方主动关闭连接，发送了FIN（结束）包，等待对方的ACK或FIN-ACK
+    /// (客户端)一方主动关闭连接，发送了FIN（结束）包，等待对方的ACK或FIN-ACK
     FinWait1,
-    /// （客户端）一方在收到对方的ACK包后，等待对方发送FIN包
+    /// (客户端)一方在收到对方的ACK包后，等待对方发送FIN包
     FinWait2,
     /// (服务器）一方接收到了对方的FIN包，并发送了ACK包，等待应用程序关闭连接
     CloseWait,
@@ -951,9 +951,12 @@ impl<'a> Socket<'a> {
     ///
     /// In terms of the TCP state machine, the socket may be in any state and is
     /// moved to the `CLOSED` state.
-    /// 
-    /// 无论当前连接处于TCP状态机的哪个状态，调用abort函数都会立即将连接状态设置为Closed。这个操作不需要遵循TCP标准的四次挥手（FIN-ACK）过程。
-    /// 调用abort函数后，会向对端发送一个RST包。RST包的作用是通知对端连接已经被强制终止，不再进行任何数据传输。
+    ///
+    /// 无论当前连接处于TCP状态机的哪个状态，
+    /// 调用abort函数都会立即将连接状态设置为Closed。
+    /// 这个操作不需要遵循TCP标准的四次挥手（FIN-ACK）过程。
+    /// 调用abort函数后，会向对端发送一个RST包。
+    /// RST包的作用是通知对端连接已经被强制终止，不再进行任何数据传输。
     pub fn abort(&mut self) {
         self.set_state(State::Closed);
     }

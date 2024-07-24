@@ -106,9 +106,9 @@ impl Sock {
         }
     }
 
-    pub fn shutdown(&self, how: SocketShutdownFlag) -> SysResult<()> {
+    pub fn shutdown(&self, how: u8) -> SysResult<()> {
         match self {
-            Sock::Tcp(tcp) => tcp.shutdown(),
+            Sock::Tcp(tcp) => tcp.shutdown(how),
             Sock::Udp(udp) => udp.shutdown(),
             Sock::Unix(_) => unimplemented!(),
         }

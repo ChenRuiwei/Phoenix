@@ -406,6 +406,18 @@ pub(crate) fn has_signal() -> bool {
     call_interface!(HasSignalIf::has_signal())
 }
 
+// 下面是来自系统调用的how flag
+pub const SHUT_RD: u8 = 0;
+pub const SHUT_WR: u8 = 1;
+pub const SHUT_RDWR: u8 = 2;
+
+/// 表示读方向已关闭（相当于SHUT_RD）
+pub const RCV_SHUTDOWN: u8 = 1;
+/// 表示写方向已关闭（相当于SHUT_WR）
+pub const SEND_SHUTDOWN: u8 = 2;
+/// 表示读和写方向都已关闭（相当于SHUT_RDWR）
+pub const SHUTDOWN_MASK: u8 = 3;
+
 pub fn init_network(net_dev: Box<dyn NetDriverOps>, is_loopback: bool) {
     info!("Initialize network subsystem...");
     let ether_addr = EthernetAddress(net_dev.mac_address().0);

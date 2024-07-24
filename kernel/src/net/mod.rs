@@ -207,26 +207,26 @@ impl TryFrom<usize> for TcpSocketOpt {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[allow(non_camel_case_types)]
-pub enum SocketShutdownFlag {
-    /// further receptions will be disallowed
-    SHUTRD = 0,
-    /// further transmissions will be disallowed
-    SHUTWR = 1,
-    /// further  receptions and transmissions will be disallowed
-    SHUTRDWR = 2,
-}
+// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+// #[allow(non_camel_case_types)]
+// pub enum SocketShutdownFlag {
+//     /// further receptions will be disallowed
+//     SHUT_RD = 0,
+//     /// further transmissions will be disallowed
+//     SHUT_WR = 1,
+//     /// further receptions and transmissions will be disallowed
+//     SHUT_RDWR = 2,
+// }
 
-impl TryFrom<usize> for SocketShutdownFlag {
-    type Error = SysError;
+// impl TryFrom<usize> for SocketShutdownFlag {
+//     type Error = SysError;
 
-    fn try_from(how: usize) -> Result<Self, Self::Error> {
-        match how {
-            0 => Ok(Self::SHUTRD),
-            1 => Ok(Self::SHUTWR),
-            2 => Ok(Self::SHUTRDWR),
-            _ => Err(Self::Error::EINVAL),
-        }
-    }
-}
+//     fn try_from(how: usize) -> Result<Self, Self::Error> {
+//         match how {
+//             0 => Ok(Self::SHUT_RD),
+//             1 => Ok(Self::SHUT_WR),
+//             2 => Ok(Self::SHUT_RDWR),
+//             _ => Err(Self::Error::EINVAL),
+//         }
+//     }
+// }
