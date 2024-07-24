@@ -269,7 +269,6 @@ impl TcpSocket {
         // SAFETY: `self.local_addr` should be initialized after `bind()`.
         let local_port = unsafe { self.local_addr.get().read().port };
         self.block_on(|| {
-            // TODO: 这里waker还没有注册到Socket上，可能会丢失 waker
             let (handle, (local_addr, peer_addr)) = LISTEN_TABLE.accept(local_port)?;
             info!("TCP socket accepted a new connection {}", peer_addr);
             Ok(TcpSocket::new_connected(handle, local_addr, peer_addr))
@@ -653,7 +652,7 @@ impl TcpSocket {
                 match f() {
                     Ok(t) => return Ok(t),
                     Err(SysError::EAGAIN) => {
-                        // TODO:判断是否有信号
+                        // TODO:这里应该换成suspend_now()，但是目前还是有bug，缺失唤醒
                         yield_now().await;
                         if has_signal() {
                             warn!("[TcpSocket::block_on] has signal");
@@ -695,7 +694,8 @@ impl TcpSocket {
 
 impl Drop for TcpSocket {
     fn drop(&mut self) {
-        self.shutdown(SHUTDOWN_MASK).ok();
+        log::info!("[TcpSocket::Drop] ");
+        self.shutdown(SHUT_RDWR).ok();
         // Safe because we have mut reference to `self`.
         if let Some(handle) = unsafe { self.handle.get().read() } {
             SOCKET_SET.remove(handle);
