@@ -233,8 +233,12 @@ impl<'a> Syscall<'a> {
             CLOCK_GETTIME => self.sys_clock_gettime(args[0], args[1].into()),
             CLOCK_SETTIME => self.sys_clock_settime(args[0], args[1].into()),
             CLOCK_GETRES => self.sys_clock_getres(args[0], args[1].into()),
-            GETITIMER => self.sys_getitimer(args[0], args[1].into()),
-            SETITIMER => self.sys_setitimer(args[0], args[1].into(), args[2].into()),
+            GETITIMER => self.sys_getitimer(args[0] as _, args[1].into()),
+            SETITIMER => self.sys_setitimer(args[0] as _, args[1].into(), args[2].into()),
+            CLOCK_NANOSLEEP => {
+                self.sys_clock_nanosleep(args[0], args[1], args[2].into(), args[3].into())
+                    .await
+            }
             // Futex
             FUTEX => {
                 self.sys_futex(

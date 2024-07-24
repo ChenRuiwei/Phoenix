@@ -16,7 +16,7 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     task::{
         signal::{SigAction, SIG_DFL, SIG_IGN},
-        TASK_MANAGER,
+        PROCESS_GROUP_MANAGER, TASK_MANAGER,
     },
 };
 
@@ -161,24 +161,21 @@ impl Syscall<'_> {
         match pid {
             0 => {
                 // 进程组
-                // unimplemented!()
-                let pid = self.task.pid();
-                if let Some(task) = TASK_MANAGER.get(pid as usize) {
-                    if task.is_leader() {
-                        task.receive_siginfo(
-                            SigInfo {
-                                sig,
-                                code: SigInfo::USER,
-                                details: SigDetails::Kill { pid },
-                            },
-                            false,
-                        );
-                    } else {
-                        // sys_kill is sent to process not thread
-                        return Err(SysError::ESRCH);
-                    }
-                } else {
-                    return Err(SysError::ESRCH);
+                let pgid = self.task.pgid();
+                for task in PROCESS_GROUP_MANAGER
+                    .get_group(pgid)
+                    .unwrap()
+                    .into_iter()
+                    .map(|t| t.upgrade().unwrap())
+                {
+                    task.receive_siginfo(
+                        SigInfo {
+                            sig,
+                            code: SigInfo::USER,
+                            details: SigDetails::Kill { pid: pgid },
+                        },
+                        false,
+                    );
                 }
             }
             -1 => {
@@ -218,7 +215,26 @@ impl Syscall<'_> {
             _ => {
                 // pid < -1
                 // sig is sent to every process in the process group whose ID is -pid.
-                unimplemented!()
+                let pgid = self.task.pgid();
+                for task in PROCESS_GROUP_MANAGER
+                    .get_group(pgid)
+                    .unwrap()
+                    .into_iter()
+                    .map(|t| t.upgrade().unwrap())
+                {
+                    if task.pid() == -pid as usize {
+                        task.receive_siginfo(
+                            SigInfo {
+                                sig,
+                                code: SigInfo::USER,
+                                details: SigDetails::Kill { pid: pgid },
+                            },
+                            false,
+                        );
+                        return Ok(0);
+                    }
+                }
+                return Err(SysError::ESRCH);
             }
         }
         Ok(0)

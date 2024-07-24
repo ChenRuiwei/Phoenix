@@ -1277,8 +1277,8 @@ pub mod iphc {
             len += 2; // The minimal header length
 
             len += match self.next_header {
-                NextHeader::Compressed => 0, /* The next header is compressed (we don't need to
-                                               * inline what the next header is) */
+                NextHeader::Compressed => 0, // The next header is compressed (we don't need to
+                // inline what the next header is)
                 NextHeader::Uncompressed(_) => 1, // The next header field is inlined
             };
 

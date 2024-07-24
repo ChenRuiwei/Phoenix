@@ -151,6 +151,48 @@ impl Syscall<'_> {
         Ok(0)
     }
 
+    pub async fn sys_clock_nanosleep(
+        &self,
+        clockid: usize,
+        flags: usize,
+        t: UserReadPtr<TimeSpec>,
+        rem: UserWritePtr<TimeSpec>,
+    ) -> SyscallResult {
+        /// for clock_nanosleep
+        pub const TIMER_ABSTIME: usize = 1;
+        let task = self.task;
+        match clockid {
+            // FIXME: what is CLOCK_MONOTONIC
+            CLOCK_REALTIME | CLOCK_MONOTONIC => {
+                let ts = t.read(task)?;
+                let req: Duration = ts.into();
+                let remain = if flags == TIMER_ABSTIME {
+                    let current = get_time_duration();
+                    // request time is absolutely
+                    if req.le(&current) {
+                        return Ok(0);
+                    }
+                    let sleep = req - current;
+                    task.suspend_timeout(req).await
+                } else {
+                    task.suspend_timeout(req).await
+                };
+                if remain.is_zero() {
+                    Ok(0)
+                } else {
+                    if rem.not_null() {
+                        rem.write(&task, remain.into())?;
+                    }
+                    Err(SysError::EINTR)
+                }
+            }
+            _ => {
+                log::error!("[sys_clock_nanosleep] unsupported clockid {}", clockid);
+                return Err(SysError::EINVAL);
+            }
+        }
+    }
+
     /// Kernel provides a timer mechanism called itimer for implementing
     /// interval timers. Interval timer allows processes to receive signals
     /// after a specified time interval

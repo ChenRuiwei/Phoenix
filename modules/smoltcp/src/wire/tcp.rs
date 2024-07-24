@@ -1062,10 +1062,10 @@ impl<'a, T: AsRef<[u8]> + ?Sized> fmt::Display for Packet<&'a T> {
                 TcpOption::MaxSegmentSize(value) => write!(f, " mss={value}")?,
                 TcpOption::WindowScale(value) => write!(f, " ws={value}")?,
                 TcpOption::SackPermitted => write!(f, " sACK")?,
-                TcpOption::SackRange(slice) => write!(f, " sACKr{slice:?}")?, /* debug print
-                                                                                * conveniently
-                                                                                * includes the
-                                                                                * []s */
+                TcpOption::SackRange(slice) => write!(f, " sACKr{slice:?}")?, // debug print
+                // conveniently
+                // includes the
+                // []s
                 TcpOption::Unknown { kind, .. } => write!(f, " opt({kind})")?,
             }
             options = next_options;

@@ -7,6 +7,7 @@ use vfs_core::{
 };
 
 use self::{
+    cpu_dma_latency::{CpuDmaLatencyDentry, CpuDmaLatencyInode},
     null::{NullDentry, NullInode},
     rtc::{RtcDentry, RtcInode},
     tty::{TtyDentry, TtyFile, TtyInode, TTY},
@@ -21,6 +22,7 @@ use crate::{
     sys_root_dentry,
 };
 
+mod cpu_dma_latency;
 mod null;
 mod rtc;
 pub mod tty;
@@ -44,6 +46,12 @@ pub fn init_devfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
     root_dentry.insert(rtc_dentry.clone());
     let rtc_inode = RtcInode::new(sb.clone());
     rtc_dentry.set_inode(rtc_inode);
+
+    let cpu_dma_latency_dentry =
+        CpuDmaLatencyDentry::new("cpu_dma_latency", sb.clone(), Some(root_dentry.clone()));
+    root_dentry.insert(cpu_dma_latency_dentry.clone());
+    let cpu_dma_latency_inode = CpuDmaLatencyInode::new(sb.clone());
+    cpu_dma_latency_dentry.set_inode(cpu_dma_latency_inode);
 
     let urandom_dentry = UrandomDentry::new("urandom", sb.clone(), Some(root_dentry.clone()));
     root_dentry.insert(urandom_dentry.clone());

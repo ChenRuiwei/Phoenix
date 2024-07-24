@@ -3,6 +3,7 @@ mod mounts;
 
 use alloc::sync::Arc;
 
+use async_utils::block_on;
 use device_core::BlockDriverOps;
 use systype::{SysResult, SyscallResult};
 use vfs_core::{
@@ -36,6 +37,18 @@ pub fn init_procfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
     let mounts_inode = MountsInode::new(root_dentry.super_block(), 0);
     mounts_dentry.set_inode(mounts_inode);
     root_dentry.insert(mounts_dentry);
+
+    let sys_dentry: Arc<dyn Dentry> =
+        SimpleDentry::new("sys", root_dentry.super_block(), Some(root_dentry.clone()));
+    let sys_inode = SimpleDirInode::new(InodeMode::DIR, root_dentry.super_block(), 0);
+    sys_dentry.set_inode(sys_inode);
+    root_dentry.insert(sys_dentry.clone());
+
+    let kernel_dentry = sys_dentry.create("kernel", InodeMode::DIR)?;
+    let pid_max_dentry = kernel_dentry.create("pid_max", InodeMode::FILE)?;
+    let pid_max_file = pid_max_dentry.open()?;
+    block_on(async { pid_max_file.write("32768\0".as_bytes()).await });
+
     Ok(())
 }
 

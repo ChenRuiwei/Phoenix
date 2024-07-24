@@ -739,6 +739,7 @@ dependencies = [
  "config",
  "device-core",
  "enum-as-inner",
+ "hashbrown",
  "intrusive-collections",
  "log",
  "lru",
