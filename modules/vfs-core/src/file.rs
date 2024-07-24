@@ -400,27 +400,57 @@ impl dyn File {
         Ok(())
     }
 
-    pub fn read_dir(&self) -> SysResult<Option<DirEntry>> {
+    pub fn read_dir(&self, buf: &mut [u8]) -> SyscallResult {
         self.load_dir()?;
-        if let Some(sub_dentry) = self
-            .dentry()
-            .children()
-            .values()
-            .filter(|c| !c.is_negetive())
-            .nth(self.pos())
-        {
-            self.seek(SeekFrom::Current(1))?;
-            let inode = sub_dentry.inode()?;
-            let dirent = DirEntry {
-                ino: inode.ino() as u64,
-                off: self.pos() as u64,
-                itype: inode.itype(),
-                name: sub_dentry.name_string(),
-            };
-            Ok(Some(dirent))
-        } else {
-            Ok(None)
+
+        #[derive(Debug, Clone, Copy)]
+        #[repr(C)]
+        struct LinuxDirent64 {
+            d_ino: u64,
+            d_off: u64,
+            d_reclen: u16,
+            d_type: u8,
+            // d_name follows here, which will be written later
         }
+        let buf_len = buf.len();
+        // NOTE: Considering C struct align, we can not use `size_of` directly, because
+        // `size_of::<LinuxDirent64>` equals 24, which is not what we want.
+        const LEN_BEFORE_NAME: usize = 19;
+        let mut writen_len = 0;
+        let mut buf_it = buf;
+        for dentry in self.dentry().children().values().skip(self.pos()) {
+            if dentry.is_negetive() {
+                self.seek(SeekFrom::Current(1))?;
+                continue;
+            }
+            // align to 8 bytes
+            let c_name_len = dentry.name().len() + 1;
+            let rec_len = (LEN_BEFORE_NAME + c_name_len + 7) & !0x7;
+            let inode = dentry.inode()?;
+            let linux_dirent = LinuxDirent64 {
+                d_ino: inode.ino() as u64,
+                d_off: self.pos() as u64,
+                d_type: inode.itype() as u8,
+                d_reclen: rec_len as u16,
+            };
+
+            log::debug!("[sys_getdents64] linux dirent {linux_dirent:?}");
+            if writen_len + rec_len > buf_len {
+                break;
+            }
+
+            self.seek(SeekFrom::Current(1))?;
+            let ptr = buf_it.as_mut_ptr() as *mut LinuxDirent64;
+            unsafe {
+                ptr.copy_from_nonoverlapping(&linux_dirent, 1);
+            }
+            buf_it[LEN_BEFORE_NAME..LEN_BEFORE_NAME + c_name_len - 1]
+                .copy_from_slice(dentry.name().as_bytes());
+            buf_it[LEN_BEFORE_NAME + c_name_len - 1] = b'\0';
+            buf_it = &mut buf_it[rec_len..];
+            writen_len += rec_len;
+        }
+        Ok(writen_len)
     }
 
     /// Read all data from this file synchronously.
