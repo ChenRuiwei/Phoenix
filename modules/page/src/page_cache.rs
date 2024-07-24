@@ -1,22 +1,20 @@
-use alloc::{
-    collections::{BTreeMap, LinkedList},
-    sync::{Arc, Weak},
-};
+use alloc::sync::{Arc, Weak};
 
 use config::mm::is_aligned_to_page;
+use hashbrown::HashMap;
 use sync::mutex::SpinNoIrqLock;
 
 use crate::Page;
 
 pub struct PageCache {
     /// Map from aligned file offset to page cache.
-    pages: SpinNoIrqLock<BTreeMap<usize, Arc<Page>>>,
+    pages: SpinNoIrqLock<HashMap<usize, Arc<Page>>>,
 }
 
 impl PageCache {
     pub fn new() -> Self {
         Self {
-            pages: SpinNoIrqLock::new(BTreeMap::new()),
+            pages: SpinNoIrqLock::new(HashMap::new()),
         }
     }
 
