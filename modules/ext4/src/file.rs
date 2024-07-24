@@ -43,7 +43,7 @@ impl File for Ext4File {
         //     self.inode().get_blk_idx(offset as u64)?
         // );
         match self.itype() {
-            InodeType::File=> {
+            InodeType::File => {
                 let mut file = self.file.lock();
                 file.file_seek(offset as i64, SEEK_SET)
                     .map_err(SysError::from_i32)?;
@@ -54,7 +54,11 @@ impl File for Ext4File {
             InodeType::SymLink => {
                 let mut file = self.file.lock();
                 let r = file.link_read(buf).map_err(SysError::from_i32);
-                log::info!("size:{}, buf:{:?}", self.size(),&buf[..cmp::min(buf.len(), 20)]);
+                log::info!(
+                    "size:{}, buf:{:?}",
+                    self.size(),
+                    &buf[..cmp::min(buf.len(), 20)]
+                );
                 r
             }
             _ => unreachable!(),

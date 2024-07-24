@@ -1,8 +1,10 @@
 use core::fmt;
 
-use crate::phy::{self, Device, DeviceCapabilities, Medium};
-use crate::time::Instant;
-use crate::wire::pretty_print::{PrettyIndent, PrettyPrint};
+use crate::{
+    phy::{self, Device, DeviceCapabilities, Medium},
+    time::Instant,
+    wire::pretty_print::{PrettyIndent, PrettyPrint},
+};
 
 /// A tracer device.
 ///
@@ -22,15 +24,17 @@ impl<D: Device> Tracer<D> {
 
     /// Get a reference to the underlying device.
     ///
-    /// Even if the device offers reading through a standard reference, it is inadvisable to
-    /// directly read from the device as doing so will circumvent the tracing.
+    /// Even if the device offers reading through a standard reference, it is
+    /// inadvisable to directly read from the device as doing so will
+    /// circumvent the tracing.
     pub fn get_ref(&self) -> &D {
         &self.inner
     }
 
     /// Get a mutable reference to the underlying device.
     ///
-    /// It is inadvisable to directly read from the device as doing so will circumvent the tracing.
+    /// It is inadvisable to directly read from the device as doing so will
+    /// circumvent the tracing.
     pub fn get_mut(&mut self) -> &mut D {
         &mut self.inner
     }

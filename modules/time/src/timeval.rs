@@ -26,6 +26,10 @@ impl Into<Duration> for TimeVal {
 }
 
 impl TimeVal {
+    pub const ZERO: Self = Self {
+        tv_sec: 0,
+        tv_usec: 0,
+    };
     pub fn from_usec(usec: usize) -> Self {
         Self {
             tv_sec: usec / 1_000_000,
@@ -56,11 +60,15 @@ pub struct ITimerVal {
 }
 
 impl ITimerVal {
+    pub const ZERO: Self = Self {
+        it_interval: TimeVal::ZERO,
+        it_value: TimeVal::ZERO,
+    };
     pub fn is_valid(&self) -> bool {
         self.it_interval.is_valid() && self.it_value.is_valid()
     }
 
-    pub fn is_activated(&self) -> bool {
+    pub fn is_enabled(&self) -> bool {
         !(self.it_interval.is_zero() && self.it_value.is_zero())
     }
 }

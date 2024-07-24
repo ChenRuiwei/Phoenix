@@ -32,8 +32,9 @@ use vfs_core::{is_absolute_path, AtFd, Dentry, File, InodeMode, Path};
 
 use super::{
     resource::CpuMask,
-    signal::ITimer,
+    signal::{ITimer, RealITimer},
     tid::{Pid, Tid, TidHandle},
+    PGid, PROCESS_GROUP_MANAGER,
 };
 use crate::{
     generate_accessors, generate_atomic_accessors, generate_state_methods, generate_with_methods,
@@ -122,6 +123,7 @@ pub struct Task {
     ///
     tid_address: SyncUnsafeCell<TidAddress>,
     cpus_allowed: SyncUnsafeCell<CpuMask>,
+    pgid: Shared<PGid>,
 }
 
 impl core::fmt::Debug for Task {
@@ -173,16 +175,18 @@ impl Task {
         memory_space: MemorySpace,
         thread_group: ThreadGroup,
         sig_pending: SigPending,
-        itimers: [ITimer; 3],
         robust: RobustListHead,
         sig_handlers: SigHandlers,
         state: TaskState,
-        shm_ids: BTreeMap<VirtAddr, usize>
+        shm_ids: BTreeMap<VirtAddr, usize>,
+        itimers: [ITimer;3]
     );
 
     pub fn new_init(memory_space: MemorySpace, trap_context: TrapContext) -> Arc<Self> {
+        let tid = alloc_tid();
+        let pgid = tid.0;
         let task = Arc::new(Self {
-            tid: alloc_tid(),
+            tid,
             leader: None,
             is_leader: true,
             state: SpinNoIrqLock::new(TaskState::Running),
@@ -201,20 +205,18 @@ impl Task {
             sig_stack: SyncUnsafeCell::new(None),
             time_stat: SyncUnsafeCell::new(TaskTimeStat::new()),
             sig_ucontext_ptr: AtomicUsize::new(0),
-            itimers: new_shared([
-                ITimer::new_real(),
-                ITimer::new_virtual(),
-                ITimer::new_prof(),
-            ]),
+            itimers: new_shared([ITimer::ZERO; 3]),
             robust: new_shared(RobustListHead::default()),
             tid_address: SyncUnsafeCell::new(TidAddress::new()),
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
             shm_ids: new_shared(BTreeMap::new()),
+            pgid: new_shared(pgid),
         });
 
         task.thread_group.lock().push(task.clone());
         task.memory_space.lock().set_task(&task);
         TASK_MANAGER.add(&task);
+        PROCESS_GROUP_MANAGER.add_group(&task);
 
         task
     }
@@ -269,6 +271,14 @@ impl Task {
         self.tid.0
     }
 
+    pub fn pgid(&self) -> PGid {
+        *self.pgid.lock()
+    }
+
+    pub fn set_pgid(&self, pgid: PGid) {
+        *self.pgid.lock() = pgid
+    }
+
     pub fn ppid(&self) -> Pid {
         self.parent()
             .expect("Call ppid without a parent")
@@ -318,6 +328,7 @@ impl Task {
         let itimers;
         let robust;
         let shm_ids;
+        let pgid;
         let sig_handlers = if flags.contains(CloneFlags::SIGHAND) {
             self.sig_handlers.clone()
         } else {
@@ -333,23 +344,21 @@ impl Task {
             cwd = self.cwd.clone();
             robust = self.robust.clone();
             shm_ids = self.shm_ids.clone();
+            pgid = self.pgid.clone();
         } else {
             is_leader = true;
             leader = None;
             parent = new_shared(Some(Arc::downgrade(self)));
             children = new_shared(BTreeMap::new());
             thread_group = new_shared(ThreadGroup::new());
-            itimers = new_shared([
-                ITimer::new_real(),
-                ITimer::new_virtual(),
-                ITimer::new_prof(),
-            ]);
+            itimers = new_shared([ITimer::ZERO; 3]);
             cwd = new_shared(self.cwd());
             robust = new_shared(RobustListHead::default());
             shm_ids = new_shared(BTreeMap::clone(&self.shm_ids.lock()));
             for (_, shm_id) in shm_ids.lock().iter() {
                 SHARED_MEMORY_MANAGER.attach(*shm_id, tid.0);
             }
+            pgid = new_shared(self.pgid());
         }
 
         let memory_space;
@@ -395,6 +404,7 @@ impl Task {
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
             // After a fork(2), the child inherits the attached shared memory segments.
             shm_ids,
+            pgid,
         });
 
         if !flags.contains(CloneFlags::THREAD) {
@@ -404,6 +414,7 @@ impl Task {
 
         if new.is_leader() {
             new.memory_space.lock().set_task(&new);
+            PROCESS_GROUP_MANAGER.add_process(new.pgid(), &new);
         }
 
         TASK_MANAGER.add(&new);

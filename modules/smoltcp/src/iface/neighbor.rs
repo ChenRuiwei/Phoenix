@@ -3,9 +3,11 @@
 
 use heapless::LinearMap;
 
-use crate::config::IFACE_NEIGHBOR_CACHE_COUNT;
-use crate::time::{Duration, Instant};
-use crate::wire::{HardwareAddress, IpAddress};
+use crate::{
+    config::IFACE_NEIGHBOR_CACHE_COUNT,
+    time::{Duration, Instant},
+    wire::{HardwareAddress, IpAddress},
+};
 
 /// A cached neighbor.
 ///
@@ -91,7 +93,8 @@ impl Cache {
                 net_trace!("filled {} => {} (was empty)", protocol_addr, hardware_addr);
             }
             Err((protocol_addr, neighbor)) => {
-                // If we're going down this branch, it means the cache is full, and we need to evict an entry.
+                // If we're going down this branch, it means the cache is full, and we need to
+                // evict an entry.
                 let old_protocol_addr = *self
                     .storage
                     .iter()
@@ -150,9 +153,10 @@ impl Cache {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::wire::ip::test::{MOCK_IP_ADDR_1, MOCK_IP_ADDR_2, MOCK_IP_ADDR_3, MOCK_IP_ADDR_4};
-
-    use crate::wire::EthernetAddress;
+    use crate::wire::{
+        ip::test::{MOCK_IP_ADDR_1, MOCK_IP_ADDR_2, MOCK_IP_ADDR_3, MOCK_IP_ADDR_4},
+        EthernetAddress,
+    };
 
     const HADDR_A: HardwareAddress = HardwareAddress::Ethernet(EthernetAddress([0, 0, 0, 0, 0, 1]));
     const HADDR_B: HardwareAddress = HardwareAddress::Ethernet(EthernetAddress([0, 0, 0, 0, 0, 2]));

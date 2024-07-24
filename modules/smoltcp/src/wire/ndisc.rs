@@ -2,12 +2,14 @@ use bitflags::bitflags;
 use byteorder::{ByteOrder, NetworkEndian};
 
 use super::{Error, Result};
-use crate::time::Duration;
-use crate::wire::icmpv6::{field, Message, Packet};
-use crate::wire::Ipv6Address;
-use crate::wire::RawHardwareAddress;
-use crate::wire::{NdiscOption, NdiscOptionRepr};
-use crate::wire::{NdiscPrefixInformation, NdiscRedirectedHeader};
+use crate::{
+    time::Duration,
+    wire::{
+        icmpv6::{field, Message, Packet},
+        Ipv6Address, NdiscOption, NdiscOptionRepr, NdiscPrefixInformation, NdiscRedirectedHeader,
+        RawHardwareAddress,
+    },
+};
 
 bitflags! {
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -67,8 +69,8 @@ impl<T: AsRef<[u8]>> Packet<T> {
     }
 }
 
-/// Common getters for the [Neighbor Solicitation], [Neighbor Advertisement], and
-/// [Redirect] message types.
+/// Common getters for the [Neighbor Solicitation], [Neighbor Advertisement],
+/// and [Redirect] message types.
 ///
 /// [Neighbor Solicitation]: https://tools.ietf.org/html/rfc4861#section-4.3
 /// [Neighbor Advertisement]: https://tools.ietf.org/html/rfc4861#section-4.4
@@ -148,8 +150,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
     }
 }
 
-/// Common setters for the [Neighbor Solicitation], [Neighbor Advertisement], and
-/// [Redirect] message types.
+/// Common setters for the [Neighbor Solicitation], [Neighbor Advertisement],
+/// and [Redirect] message types.
 ///
 /// [Neighbor Solicitation]: https://tools.ietf.org/html/rfc4861#section-4.3
 /// [Neighbor Advertisement]: https://tools.ietf.org/html/rfc4861#section-4.4
@@ -504,10 +506,13 @@ impl<'a> Repr<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::phy::ChecksumCapabilities;
-    use crate::wire::ip::test::{MOCK_IP_ADDR_1, MOCK_IP_ADDR_2};
-    use crate::wire::EthernetAddress;
-    use crate::wire::Icmpv6Repr;
+    use crate::{
+        phy::ChecksumCapabilities,
+        wire::{
+            ip::test::{MOCK_IP_ADDR_1, MOCK_IP_ADDR_2},
+            EthernetAddress, Icmpv6Repr,
+        },
+    };
 
     static ROUTER_ADVERT_BYTES: [u8; 24] = [
         0x86, 0x00, 0xa9, 0xde, 0x40, 0x80, 0x03, 0x84, 0x00, 0x00, 0x03, 0x84, 0x00, 0x00, 0x03,

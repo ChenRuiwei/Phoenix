@@ -1,10 +1,11 @@
-//! Implementation of the Trickle timer defined in [RFC 6206]. The algorithm allows node in a lossy
-//! shared medium to exchange information in a highly robust, energy efficient, simple, and
-//! scalable manner. Dynamicaly adjusting transmission windows allows Trickle to spread new
-//! information fast while sending only a few messages per hour when information does not change.
+//! Implementation of the Trickle timer defined in [RFC 6206]. The algorithm
+//! allows node in a lossy shared medium to exchange information in a highly
+//! robust, energy efficient, simple, and scalable manner. Dynamicaly adjusting
+//! transmission windows allows Trickle to spread new information fast while
+//! sending only a few messages per hour when information does not change.
 //!
-//! **NOTE**: the constants used for the default Trickle timer are the ones from the [Enhanced
-//! Trickle].
+//! **NOTE**: the constants used for the default Trickle timer are the ones from
+//! the [Enhanced Trickle].
 //!
 //! [RFC 6206]: https://datatracker.ietf.org/doc/html/rfc6206
 //! [Enhanced Trickle]: https://d1wqtxts1xzle7.cloudfront.net/71402623/E-Trickle_Enhanced_Trickle_Algorithm_for20211005-2078-1ckh34a.pdf?1633439582=&response-content-disposition=inline%3B+filename%3DE_Trickle_Enhanced_Trickle_Algorithm_for.pdf&Expires=1681472005&Signature=cC7l-Pyr5r64XBNCDeSJ2ha6oqWUtO6A-KlDOyC0UVaHxDV3h3FuVHRtcNp3O9BUfRK8jeuWCYGBkCZgQT4Zgb6XwgVB-3z4TF9o3qBRMteRyYO5vjVkpPBeN7mz4Tl746SsSCHDm2NMtr7UVtLYamriU3D0rryoqLqJXmnkNoJpn~~wJe2H5PmPgIwixTwSvDkfFLSVoESaYS9ZWHZwbW-7G7OxIw8oSYhx9xMBnzkpdmT7sJNmvDzTUhoOjYrHTRM23cLVS9~oOSpT7hKtKD4h5CSmrNK4st07KnT9~tUqEcvGO3aXdd4quRZeKUcCkCbTLvhOEYg9~QqgD8xwhA__&Key-Pair-Id=APKAJLOHF5GGSLRBV4ZA
@@ -31,14 +32,16 @@ pub(crate) struct TrickleTimer {
 impl TrickleTimer {
     /// Creat a new Trickle timer using the default values.
     ///
-    /// **NOTE**: the standard defines I as a random value between [Imin, Imax]. However, this
-    /// could result in a t value that is very close to Imax. Therefore, sending DIO messages will
-    /// be sporadic, which is not ideal when a network is started. It might take a long time before
-    /// the network is actually stable. Therefore, we don't draw a random numberm but just use Imin
-    /// for I. This only affects the start of the RPL tree and speeds up building it. Also, we
-    /// don't use the default values from the standard, but the values from the _Enhanced Trickle
-    /// Algorithm for Low-Power and Lossy Networks_ from Baraq Ghaleb et al. This is also what the
-    /// Contiki Trickle timer does.
+    /// **NOTE**: the standard defines I as a random value between [Imin, Imax].
+    /// However, this could result in a t value that is very close to Imax.
+    /// Therefore, sending DIO messages will be sporadic, which is not ideal
+    /// when a network is started. It might take a long time before
+    /// the network is actually stable. Therefore, we don't draw a random
+    /// numberm but just use Imin for I. This only affects the start of the
+    /// RPL tree and speeds up building it. Also, we don't use the default
+    /// values from the standard, but the values from the _Enhanced Trickle
+    /// Algorithm for Low-Power and Lossy Networks_ from Baraq Ghaleb et al.
+    /// This is also what the Contiki Trickle timer does.
     pub(crate) fn default(now: Instant, rand: &mut Rand) -> Self {
         use super::consts::{
             DEFAULT_DIO_INTERVAL_DOUBLINGS, DEFAULT_DIO_INTERVAL_MIN,
@@ -76,8 +79,9 @@ impl TrickleTimer {
         timer
     }
 
-    /// Poll the Trickle timer. Returns `true` when the Trickle timer singals that a message can be
-    /// transmitted. This happens when the Trickle timer expires.
+    /// Poll the Trickle timer. Returns `true` when the Trickle timer singals
+    /// that a message can be transmitted. This happens when the Trickle
+    /// timer expires.
     pub(crate) fn poll(&mut self, now: Instant, rand: &mut Rand) -> bool {
         let can_transmit = self.can_transmit() && self.t_expired(now);
 
@@ -92,20 +96,22 @@ impl TrickleTimer {
         can_transmit
     }
 
-    /// Returns the Instant at which the Trickle timer should be polled again. Polling the Trickle
-    /// timer before this Instant is not harmfull, however, polling after it is not correct.
+    /// Returns the Instant at which the Trickle timer should be polled again.
+    /// Polling the Trickle timer before this Instant is not harmfull,
+    /// however, polling after it is not correct.
     pub(crate) fn poll_at(&self) -> Instant {
         self.t_exp.min(self.i_exp)
     }
 
-    /// Signal the Trickle timer that a consistency has been heard, and thus increasing it's
-    /// counter.
+    /// Signal the Trickle timer that a consistency has been heard, and thus
+    /// increasing it's counter.
     pub(crate) fn hear_consistent(&mut self) {
         self.counter += 1;
     }
 
-    /// Signal the Trickle timer that an inconsistency has been heard. This resets the Trickle
-    /// timer when the current interval is not the smallest possible.
+    /// Signal the Trickle timer that an inconsistency has been heard. This
+    /// resets the Trickle timer when the current interval is not the
+    /// smallest possible.
     pub(crate) fn hear_inconsistency(&mut self, now: Instant, rand: &mut Rand) {
         let i = Duration::from_millis(2u32.pow(self.i_min) as u64);
         if self.i > i {
@@ -113,8 +119,9 @@ impl TrickleTimer {
         }
     }
 
-    /// Check if the Trickle timer can transmit or not. Returns `false` when the consistency
-    /// counter is bigger or equal to the default consistency constant.
+    /// Check if the Trickle timer can transmit or not. Returns `false` when the
+    /// consistency counter is bigger or equal to the default consistency
+    /// constant.
     pub(crate) fn can_transmit(&self) -> bool {
         self.k != 0 && self.counter < self.k
     }
@@ -255,8 +262,8 @@ mod tests {
                 };
                 assert!(!trickle.poll(now, &mut rand));
                 assert!(trickle.counter > DEFAULT_DIO_REDUNDANCY_CONSTANT);
-                // We should never have transmitted since the counter was higher than the default
-                // redundancy constant.
+                // We should never have transmitted since the counter was higher than the
+                // default redundancy constant.
                 assert_eq!(transmit_counter, 0);
             }
 

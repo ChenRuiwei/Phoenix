@@ -1,10 +1,12 @@
-use byteorder::{ByteOrder, NetworkEndian};
 use core::fmt;
 
+use byteorder::{ByteOrder, NetworkEndian};
+
 use super::{Error, Result};
-use crate::phy::ChecksumCapabilities;
-use crate::wire::ip::checksum;
-use crate::wire::{IpAddress, IpProtocol};
+use crate::{
+    phy::ChecksumCapabilities,
+    wire::{ip::checksum, IpAddress, IpProtocol},
+};
 
 /// A read/write wrapper around an User Datagram Protocol packet buffer.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -104,8 +106,8 @@ impl<T: AsRef<[u8]>> Packet<T> {
     /// Validate the packet checksum.
     ///
     /// # Panics
-    /// This function panics unless `src_addr` and `dst_addr` belong to the same family,
-    /// and that family is IPv4 or IPv6.
+    /// This function panics unless `src_addr` and `dst_addr` belong to the same
+    /// family, and that family is IPv4 or IPv6.
     ///
     /// # Fuzzing
     /// This function always returns `true` when fuzzing.
@@ -172,8 +174,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
     /// Compute and fill in the header checksum.
     ///
     /// # Panics
-    /// This function panics unless `src_addr` and `dst_addr` belong to the same family,
-    /// and that family is IPv4 or IPv6.
+    /// This function panics unless `src_addr` and `dst_addr` belong to the same
+    /// family, and that family is IPv4 or IPv6.
     pub fn fill_checksum(&mut self, src_addr: &IpAddress, dst_addr: &IpAddress) {
         self.set_checksum(0);
         let checksum = {
@@ -185,8 +187,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
         };
         // UDP checksum value of 0 means no checksum; if the checksum really is zero,
         // use all-ones, which indicates that the remote end must verify the checksum.
-        // Arithmetically, RFC 1071 checksums of all-zeroes and all-ones behave identically,
-        // so no action is necessary on the remote end.
+        // Arithmetically, RFC 1071 checksums of all-zeroes and all-ones behave
+        // identically, so no action is necessary on the remote end.
         self.set_checksum(if checksum == 0 { 0xffff } else { checksum })
     }
 
@@ -213,7 +215,8 @@ pub struct Repr {
 }
 
 impl Repr {
-    /// Parse an User Datagram Protocol packet and return a high-level representation.
+    /// Parse an User Datagram Protocol packet and return a high-level
+    /// representation.
     pub fn parse<T>(
         packet: &Packet<&T>,
         src_addr: &IpAddress,
@@ -243,16 +246,17 @@ impl Repr {
         })
     }
 
-    /// Return the length of the packet header that will be emitted from this high-level representation.
+    /// Return the length of the packet header that will be emitted from this
+    /// high-level representation.
     pub const fn header_len(&self) -> usize {
         HEADER_LEN
     }
 
     /// Emit a high-level representation into an User Datagram Protocol packet.
     ///
-    /// This never calculates the checksum, and is intended for internal-use only,
-    /// not for packets that are going to be actually sent over the network. For
-    /// example, when decompressing 6lowpan.
+    /// This never calculates the checksum, and is intended for internal-use
+    /// only, not for packets that are going to be actually sent over the
+    /// network. For example, when decompressing 6lowpan.
     pub(crate) fn emit_header<T: ?Sized>(&self, packet: &mut Packet<&mut T>, payload_len: usize)
     where
         T: AsRef<[u8]> + AsMut<[u8]>,

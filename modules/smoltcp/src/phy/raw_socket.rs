@@ -1,11 +1,15 @@
-use std::cell::RefCell;
-use std::io;
-use std::os::unix::io::{AsRawFd, RawFd};
-use std::rc::Rc;
-use std::vec::Vec;
+use std::{
+    cell::RefCell,
+    io,
+    os::unix::io::{AsRawFd, RawFd},
+    rc::Rc,
+    vec::Vec,
+};
 
-use crate::phy::{self, sys, Device, DeviceCapabilities, Medium};
-use crate::time::Instant;
+use crate::{
+    phy::{self, sys, Device, DeviceCapabilities, Medium},
+    time::Instant,
+};
 
 /// A socket that captures or transmits the complete frame.
 #[derive(Debug)]
@@ -41,7 +45,8 @@ impl RawSocket {
         #[cfg(feature = "medium-ethernet")]
         if medium == Medium::Ethernet {
             // SIOCGIFMTU returns the IP MTU (typically 1500 bytes.)
-            // smoltcp counts the entire Ethernet packet in the MTU, so add the Ethernet header size to it.
+            // smoltcp counts the entire Ethernet packet in the MTU, so add the Ethernet
+            // header size to it.
             mtu += crate::wire::EthernetFrame::<&[u8]>::header_len()
         }
 

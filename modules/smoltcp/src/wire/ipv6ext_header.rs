@@ -1,7 +1,6 @@
 #![allow(unused)]
 
-use super::IpProtocol;
-use super::{Error, Result};
+use super::{Error, IpProtocol, Result};
 
 mod field {
     #![allow(non_snake_case)]
@@ -130,7 +129,8 @@ pub struct Repr<'a> {
 }
 
 impl<'a> Repr<'a> {
-    /// Parse an IPv6 Extension Header Header and return a high-level representation.
+    /// Parse an IPv6 Extension Header Header and return a high-level
+    /// representation.
     pub fn parse<T>(header: &Header<&'a T>) -> Result<Self>
     where
         T: AsRef<[u8]> + ?Sized,
@@ -142,8 +142,8 @@ impl<'a> Repr<'a> {
         })
     }
 
-    /// Return the length, in bytes, of a header that will be emitted from this high-level
-    /// representation.
+    /// Return the length, in bytes, of a header that will be emitted from this
+    /// high-level representation.
     pub const fn header_len(&self) -> usize {
         2
     }

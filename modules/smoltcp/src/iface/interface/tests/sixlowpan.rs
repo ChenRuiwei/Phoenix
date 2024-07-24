@@ -77,8 +77,8 @@ fn test_echo_request_sixlowpan_128_bytes() {
     use crate::phy::Checksum;
 
     let (mut iface, mut sockets, mut device) = setup(Medium::Ieee802154);
-    // TODO: modify the example, such that we can also test if the checksum is correctly
-    // computed.
+    // TODO: modify the example, such that we can also test if the checksum is
+    // correctly computed.
     iface.inner.caps.checksum.icmpv6 = Checksum::None;
 
     assert_eq!(iface.inner.caps.medium, Medium::Ieee802154);

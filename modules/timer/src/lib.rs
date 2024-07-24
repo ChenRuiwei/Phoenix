@@ -10,11 +10,11 @@ use sync::mutex::SpinNoIrqLock;
 
 pub mod timelimited_task;
 
-pub type TimerCallback = fn(Box<dyn TimerData>);
-
 /// Timer data trait to generalize data storage
-pub trait TimerData: Send + Sync {
-    fn callback(self: Box<Self>);
+pub trait TimerEvent: Send + Sync {
+    /// This function allows the timer to perform specific operations upon
+    /// expiration, such as handling timeout events, etc.
+    fn callback(self: Box<Self>) -> Option<Timer>;
 }
 
 /// 定时器
@@ -26,43 +26,34 @@ pub struct Timer {
     /// equals the expires value, the timer is considered expired and triggers
     /// the corresponding processing function
     pub expire: Duration,
-    /// This function allows the timer to perform specific operations upon
-    /// expiration, such as handling timeout events, etc. The parameter of the
-    /// function is an unsigned long value, usually passing the value of the
-    /// `data` member
-    pub function: TimerCallback,
     /// The parameters passed to the callback function. It can be any data that
     /// needs to be used in callback functions, such as structure pointers, flag
     /// values, etc. This member enables callback functions to access specific
     /// contextual data when called, thereby performing more complex operations.
-    pub data: Box<dyn TimerData>,
-}
-fn simple_callback(data: Box<dyn TimerData>) {
-    data.callback()
+    pub data: Box<dyn TimerEvent>,
 }
 impl Timer {
-    pub fn new(expire: Duration, function: TimerCallback, data: Box<dyn TimerData>) -> Self {
-        Self {
-            expire,
-            function,
-            data,
-        }
+    pub fn new(expire: Duration, data: Box<dyn TimerEvent>) -> Self {
+        Self { expire, data }
     }
     pub fn new_waker_timer(expire: Duration, waker: Waker) -> Self {
         struct WakerData {
             waker: Waker,
         }
-        impl TimerData for WakerData {
-            fn callback(self: Box<Self>) {
+        impl TimerEvent for WakerData {
+            fn callback(self: Box<Self>) -> Option<Timer> {
                 self.waker.wake();
+                None
             }
         }
 
         Self {
             expire,
-            function: simple_callback,
             data: Box::new(WakerData { waker }),
         }
+    }
+    fn callback(self) -> Option<Timer> {
+        self.data.callback()
     }
 }
 
@@ -110,8 +101,10 @@ impl TimerManager {
                     current,
                     timer.0.expire
                 );
-                let mut timer = timers.pop().unwrap().0;
-                (timer.function)(timer.data);
+                let timer = timers.pop().unwrap().0;
+                if let Some(new_timer) = timer.callback() {
+                    timers.push(Reverse(new_timer));
+                }
             } else {
                 break;
             }

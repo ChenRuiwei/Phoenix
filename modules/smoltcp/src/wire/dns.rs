@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
+use core::{iter, iter::Iterator};
+
 use bitflags::bitflags;
 use byteorder::{ByteOrder, NetworkEndian};
-use core::iter;
-use core::iter::Iterator;
 
 use super::{Error, Result};
 #[cfg(feature = "proto-ipv4")]
@@ -190,16 +190,18 @@ impl<T: AsRef<[u8]>> Packet<T> {
                     }
 
                     // RFC1035 says: "In this scheme, an entire domain name or a list of labels at
-                    //      the end of a domain name is replaced with a pointer to a ***prior*** occurance
-                    //      of the same name.
+                    //      the end of a domain name is replaced with a pointer to a ***prior***
+                    // occurance      of the same name.
                     //
-                    // Is it unclear if this means the pointer MUST point backwards in the packet or not. Either way,
-                    // pointers that don't point backwards are never seen in the fields, so use this to check that
-                    // there are no pointer loops.
+                    // Is it unclear if this means the pointer MUST point backwards in the packet or
+                    // not. Either way, pointers that don't point backwards are
+                    // never seen in the fields, so use this to check that there
+                    // are no pointer loops.
 
                     // Split packet into parts before and after `ptr`.
-                    // parse the part after, keep only the part before in `packet`. This ensure we never
-                    // parse the same byte twice, therefore eliminating pointer loops.
+                    // parse the part after, keep only the part before in `packet`. This ensure we
+                    // never parse the same byte twice, therefore eliminating
+                    // pointer loops.
 
                     bytes = &packet[ptr..];
                     packet = &packet[..ptr];
@@ -256,7 +258,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
 }
 
 /// Parse part of a name from `bytes`, not following pointers.
-/// Returns the unused part of `bytes`, and the pointer offset if the sequence ends with a pointer.
+/// Returns the unused part of `bytes`, and the pointer offset if the sequence
+/// ends with a pointer.
 fn parse_name_part<'a>(
     mut bytes: &'a [u8],
     mut f: impl FnMut(&'a [u8]),
@@ -310,7 +313,8 @@ impl<'a> Question<'a> {
         Ok((rest, Question { name, type_ }))
     }
 
-    /// Return the length of a packet that will be emitted from this high-level representation.
+    /// Return the length of a packet that will be emitted from this high-level
+    /// representation.
     pub const fn buffer_len(&self) -> usize {
         self.name.len() + 4
     }
@@ -411,7 +415,8 @@ pub struct Repr<'a> {
 }
 
 impl<'a> Repr<'a> {
-    /// Return the length of a packet that will be emitted from this high-level representation.
+    /// Return the length of a packet that will be emitted from this high-level
+    /// representation.
     pub const fn buffer_len(&self) -> usize {
         field::HEADER_END + self.question.buffer_len()
     }
@@ -435,8 +440,9 @@ impl<'a> Repr<'a> {
 #[cfg(feature = "proto-ipv4")] // tests assume ipv4
 #[cfg(test)]
 mod test {
-    use super::*;
     use std::vec::Vec;
+
+    use super::*;
 
     #[test]
     fn test_parse_name() {
@@ -458,17 +464,17 @@ mod test {
                 .map(|_| v)
         };
 
-        //assert_eq!(parse_name_len(bytes, 0x0c), Ok(18));
+        // assert_eq!(parse_name_len(bytes, 0x0c), Ok(18));
         assert_eq!(
             name_vec(&bytes[0x0c..]),
             Ok(vec![&b"www"[..], &b"facebook"[..], &b"com"[..]])
         );
-        //assert_eq!(parse_name_len(bytes, 0x22), Ok(2));
+        // assert_eq!(parse_name_len(bytes, 0x22), Ok(2));
         assert_eq!(
             name_vec(&bytes[0x22..]),
             Ok(vec![&b"www"[..], &b"facebook"[..], &b"com"[..]])
         );
-        //assert_eq!(parse_name_len(bytes, 0x2e), Ok(17));
+        // assert_eq!(parse_name_len(bytes, 0x2e), Ok(17));
         assert_eq!(
             name_vec(&bytes[0x2e..]),
             Ok(vec![
@@ -478,7 +484,7 @@ mod test {
                 &b"com"[..]
             ])
         );
-        //assert_eq!(parse_name_len(bytes, 0x3f), Ok(2));
+        // assert_eq!(parse_name_len(bytes, 0x3f), Ok(2));
         assert_eq!(
             name_vec(&bytes[0x3f..]),
             Ok(vec![

@@ -1,7 +1,5 @@
-use crate::wire::Ipv6Address;
-
 use super::{lollipop::SequenceCounter, rank::Rank};
-use crate::config::RPL_PARENTS_BUFFER_COUNT;
+use crate::{config::RPL_PARENTS_BUFFER_COUNT, wire::Ipv6Address};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Parent {
@@ -39,8 +37,8 @@ pub(crate) struct ParentSet {
 }
 
 impl ParentSet {
-    /// Add a new parent to the parent set. The Rank of the new parent should be lower than the
-    /// Rank of the node that holds this parent set.
+    /// Add a new parent to the parent set. The Rank of the new parent should be
+    /// lower than the Rank of the node that holds this parent set.
     pub(crate) fn add(&mut self, address: Ipv6Address, parent: Parent) {
         if let Some(p) = self.parents.get_mut(&address) {
             *p = parent;
@@ -135,8 +133,8 @@ mod tests {
             );
         }
 
-        // This one is not added to the set, because its Rank is worse than any other parent in the
-        // set.
+        // This one is not added to the set, because its Rank is worse than any other
+        // parent in the set.
         let mut address = Ipv6Address::default();
         address.0[15] = 8;
         set.add(

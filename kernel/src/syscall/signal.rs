@@ -16,7 +16,7 @@ use crate::{
     mm::{UserReadPtr, UserWritePtr},
     task::{
         signal::{SigAction, SIG_DFL, SIG_IGN},
-        TASK_MANAGER,
+        PROCESS_GROUP_MANAGER, TASK_MANAGER,
     },
 };
 
@@ -136,25 +136,21 @@ impl Syscall<'_> {
 
     /// The kill() system call can be used to send any signal to any process
     /// group or process.
-    /// - If pid is positive, then signal sig is sent to the process with the ID
-    ///   specified by pid.
-    /// - If pid equals 0, then sig is sent to every process in the process
-    ///   group of the calling process.
-    /// - If pid equals -1, then sig is sent to every process for which the
-    ///   calling process has permission to send signals, except for process 1
-    ///   (init)
-    /// - If pid is less than -1, then sig is sent to every process in the
-    ///   process group whose ID is -pid.
-    /// - If sig is 0, then no signal is sent, but existence and permission
-    ///   checks are still performed; this can be used to check for the
-    ///   existence of a process ID or process group ID that the caller is
-    ///   permitted to signal.
+    /// - If pid > 0, Send a signal to the process with ID PID.
+    /// - If pid = 0, then sig is sent to every process in the process group of
+    ///   the calling process.
+    /// - If pid = -1, then sig is sent to every process for which the calling
+    ///   process has permission to send signals, except for process 1 (init)
+    /// - If pid < -1, then sig is sent to every process in the process group
+    ///   whose ID is -pid.
+    /// - If sig is 0, linux will perform permission check but our system skips
     ///
     /// **RETURN VALUE** :On success (at least one signal was sent), zero is
     /// returned. On error, -1 is returned, and errno is set appropriately
     pub fn sys_kill(&self, pid: isize, signum: i32) -> SyscallResult {
         if signum == 0 {
-            log::warn!("signum is zero, currently skip the permission check");
+            // log::warn!("signum is zero, currently skip the permission check");
+            // our system has no permission check
             return Ok(0);
         }
         let sig = Sig::from_i32(signum);
@@ -165,24 +161,21 @@ impl Syscall<'_> {
         match pid {
             0 => {
                 // 进程组
-                // unimplemented!()
-                let pid = self.task.pid();
-                if let Some(task) = TASK_MANAGER.get(pid as usize) {
-                    if task.is_leader() {
-                        task.receive_siginfo(
-                            SigInfo {
-                                sig,
-                                code: SigInfo::USER,
-                                details: SigDetails::Kill { pid },
-                            },
-                            false,
-                        );
-                    } else {
-                        // sys_kill is sent to process not thread
-                        return Err(SysError::ESRCH);
-                    }
-                } else {
-                    return Err(SysError::ESRCH);
+                let pgid = self.task.pgid();
+                for task in PROCESS_GROUP_MANAGER
+                    .get_group(pgid)
+                    .unwrap()
+                    .into_iter()
+                    .map(|t| t.upgrade().unwrap())
+                {
+                    task.receive_siginfo(
+                        SigInfo {
+                            sig,
+                            code: SigInfo::USER,
+                            details: SigDetails::Kill { pid: pgid },
+                        },
+                        false,
+                    );
                 }
             }
             -1 => {
@@ -222,7 +215,26 @@ impl Syscall<'_> {
             _ => {
                 // pid < -1
                 // sig is sent to every process in the process group whose ID is -pid.
-                unimplemented!()
+                let pgid = self.task.pgid();
+                for task in PROCESS_GROUP_MANAGER
+                    .get_group(pgid)
+                    .unwrap()
+                    .into_iter()
+                    .map(|t| t.upgrade().unwrap())
+                {
+                    if task.pid() == -pid as usize {
+                        task.receive_siginfo(
+                            SigInfo {
+                                sig,
+                                code: SigInfo::USER,
+                                details: SigDetails::Kill { pid: pgid },
+                            },
+                            false,
+                        );
+                        return Ok(0);
+                    }
+                }
+                return Err(SysError::ESRCH);
             }
         }
         Ok(0)

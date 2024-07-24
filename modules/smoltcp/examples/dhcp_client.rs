@@ -1,16 +1,15 @@
 #![allow(clippy::option_map_unit_fn)]
 mod utils;
 
-use log::*;
 use std::os::unix::io::AsRawFd;
 
-use smoltcp::iface::{Config, Interface, SocketSet};
-use smoltcp::socket::dhcpv4;
-use smoltcp::time::Instant;
-use smoltcp::wire::{EthernetAddress, IpCidr, Ipv4Address, Ipv4Cidr};
+use log::*;
 use smoltcp::{
+    iface::{Config, Interface, SocketSet},
     phy::{wait as phy_wait, Device, Medium},
-    time::Duration,
+    socket::dhcpv4,
+    time::{Duration, Instant},
+    wire::{EthernetAddress, IpCidr, Ipv4Address, Ipv4Cidr},
 };
 
 fn main() {
@@ -25,7 +24,7 @@ fn main() {
     let device = utils::parse_tuntap_options(&mut matches);
     let fd = device.as_raw_fd();
     let mut device =
-        utils::parse_middleware_options(&mut matches, device, /*loopback=*/ false);
+        utils::parse_middleware_options(&mut matches, device, /* loopback= */ false);
 
     // Create interface
     let mut config = match device.capabilities().medium {
@@ -42,8 +41,8 @@ fn main() {
     let mut dhcp_socket = dhcpv4::Socket::new();
 
     // Set a ridiculously short max lease time to show DHCP renews work properly.
-    // This will cause the DHCP client to start renewing after 5 seconds, and give up the
-    // lease after 10 seconds if renew hasn't succeeded.
+    // This will cause the DHCP client to start renewing after 5 seconds, and give
+    // up the lease after 10 seconds if renew hasn't succeeded.
     // IMPORTANT: This should be removed in production.
     dhcp_socket.set_max_lease_duration(Some(Duration::from_secs(10)));
 

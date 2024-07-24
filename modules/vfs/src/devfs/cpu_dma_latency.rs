@@ -1,4 +1,8 @@
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+    sync::Arc,
+};
 use core::cmp;
 
 use async_trait::async_trait;
@@ -11,11 +15,11 @@ use vfs_core::{
 
 use crate::{Mutex, FS_MANAGER};
 
-pub struct ZeroDentry {
+pub struct CpuDmaLatencyDentry {
     meta: DentryMeta,
 }
 
-impl ZeroDentry {
+impl CpuDmaLatencyDentry {
     pub fn new(
         name: &str,
         super_block: Arc<dyn SuperBlock>,
@@ -27,13 +31,13 @@ impl ZeroDentry {
     }
 }
 
-impl Dentry for ZeroDentry {
+impl Dentry for CpuDmaLatencyDentry {
     fn meta(&self) -> &DentryMeta {
         &self.meta
     }
 
     fn base_open(self: Arc<Self>) -> SysResult<Arc<dyn File>> {
-        Ok(Arc::new(ZeroFile {
+        Ok(Arc::new(CpuDmaLatencyFile {
             meta: FileMeta::new(self.clone(), self.inode()?),
         }))
     }
@@ -51,11 +55,11 @@ impl Dentry for ZeroDentry {
     }
 }
 
-pub struct ZeroInode {
+pub struct CpuDmaLatencyInode {
     meta: InodeMeta,
 }
 
-impl ZeroInode {
+impl CpuDmaLatencyInode {
     pub fn new(super_block: Arc<dyn SuperBlock>) -> Arc<Self> {
         let size = BLOCK_SIZE;
         Arc::new(Self {
@@ -64,7 +68,7 @@ impl ZeroInode {
     }
 }
 
-impl Inode for ZeroInode {
+impl Inode for CpuDmaLatencyInode {
     fn meta(&self) -> &InodeMeta {
         &self.meta
     }
@@ -94,12 +98,12 @@ impl Inode for ZeroInode {
     }
 }
 
-pub struct ZeroFile {
+pub struct CpuDmaLatencyFile {
     meta: FileMeta,
 }
 
 #[async_trait]
-impl File for ZeroFile {
+impl File for CpuDmaLatencyFile {
     fn meta(&self) -> &FileMeta {
         &self.meta
     }

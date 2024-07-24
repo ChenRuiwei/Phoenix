@@ -5,8 +5,7 @@
 use byteorder::{ByteOrder, NetworkEndian};
 
 use super::{Error, Result};
-use crate::wire::icmpv6::Packet;
-use crate::wire::ipv6::Address;
+use crate::wire::{icmpv6::Packet, ipv6::Address};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -46,7 +45,8 @@ impl InstanceId {
         }
     }
 
-    /// Returns `true` when the DODAG ID is the destination address of the IPv6 packet.
+    /// Returns `true` when the DODAG ID is the destination address of the IPv6
+    /// packet.
     #[inline]
     pub fn dodag_is_destination(&self) -> bool {
         match self {
@@ -55,10 +55,11 @@ impl InstanceId {
         }
     }
 
-    /// Returns `true` when the DODAG ID is the source address of the IPv6 packet.
+    /// Returns `true` when the DODAG ID is the source address of the IPv6
+    /// packet.
     ///
-    /// *NOTE*: this only makes sence when using a local RPL Instance ID and the packet is not a
-    /// RPL control message.
+    /// *NOTE*: this only makes sence when using a local RPL Instance ID and the
+    /// packet is not a RPL control message.
     #[inline]
     pub fn dodag_is_source(&self) -> bool {
         !self.dodag_is_destination()
@@ -81,21 +82,21 @@ mod field {
     pub const DIO_MOP: usize = 8;
     pub const DIO_PRF: usize = 8;
     pub const DIO_DTSN: usize = 9;
-    //pub const DIO_FLAGS: usize = 10;
-    //pub const DIO_RESERVED: usize = 11;
+    // pub const DIO_FLAGS: usize = 10;
+    // pub const DIO_RESERVED: usize = 11;
     pub const DIO_DODAG_ID: Field = 12..12 + 16;
 
     // Destination advertisment object (DAO)
     pub const DAO_K: usize = 5;
     pub const DAO_D: usize = 5;
-    //pub const DAO_FLAGS: usize = 5;
-    //pub const DAO_RESERVED: usize = 6;
+    // pub const DAO_FLAGS: usize = 5;
+    // pub const DAO_RESERVED: usize = 6;
     pub const DAO_SEQUENCE: usize = 7;
     pub const DAO_DODAG_ID: Field = 8..8 + 16;
 
     // Destination advertisment object ack (DAO-ACK)
     pub const DAO_ACK_D: usize = 5;
-    //pub const DAO_ACK_RESERVED: usize = 5;
+    // pub const DAO_ACK_RESERVED: usize = 5;
     pub const DAO_ACK_SEQUENCE: usize = 6;
     pub const DAO_ACK_STATUS: usize = 7;
     pub const DAO_ACK_DODAG_ID: Field = 8..8 + 16;
@@ -516,7 +517,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
     }
 }
 
-/// Getters for the Destination Advertisment Object acknowledgement (DAO-ACK) message.
+/// Getters for the Destination Advertisment Object acknowledgement (DAO-ACK)
+/// message.
 ///
 /// ```txt
 ///  0                   1                   2                   3
@@ -567,7 +569,8 @@ impl<T: AsRef<[u8]>> Packet<T> {
     }
 }
 
-/// Setters for the Destination Advertisment Object acknowledgement (DAO-ACK) message.
+/// Setters for the Destination Advertisment Object acknowledgement (DAO-ACK)
+/// message.
 impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
     /// Set the flag indicating that the DODAG ID is present or not.
     #[inline]
@@ -1876,9 +1879,10 @@ pub mod options {
         },
         RplTarget {
             prefix_length: u8,
-            prefix: crate::wire::Ipv6Address, // FIXME: this is not the correct type, because the
-                                              // field can be an IPv6 address, a prefix or a
-                                              // multicast group.
+            prefix: crate::wire::Ipv6Address, /* FIXME: this is not the correct type, because
+                                               * the
+                                               * field can be an IPv6 address, a prefix or a
+                                               * multicast group. */
         },
         TransitInformation {
             external: bool,
@@ -2225,8 +2229,9 @@ pub mod options {
 }
 
 pub mod data {
-    use super::{InstanceId, Result};
     use byteorder::{ByteOrder, NetworkEndian};
+
+    use super::{InstanceId, Result};
 
     mod field {
         use crate::wire::field::*;
@@ -2341,7 +2346,8 @@ pub mod data {
     }
 
     impl HopByHopOption {
-        /// Parse an IPv6 Extension Header Option and return a high-level representation.
+        /// Parse an IPv6 Extension Header Option and return a high-level
+        /// representation.
         pub fn parse<T>(opt: &Packet<&T>) -> Self
         where
             T: AsRef<[u8]> + ?Sized,
@@ -2355,12 +2361,14 @@ pub mod data {
             }
         }
 
-        /// Return the length of a header that will be emitted from this high-level representation.
+        /// Return the length of a header that will be emitted from this
+        /// high-level representation.
         pub const fn buffer_len(&self) -> usize {
             4
         }
 
-        /// Emit a high-level representation into an IPv6 Extension Header Option.
+        /// Emit a high-level representation into an IPv6 Extension Header
+        /// Option.
         pub fn emit<T: AsRef<[u8]> + AsMut<[u8]> + ?Sized>(&self, opt: &mut Packet<&mut T>) {
             opt.set_is_down(self.down);
             opt.set_has_rank_error(self.rank_error);
@@ -2387,11 +2395,14 @@ pub mod data {
 
 #[cfg(test)]
 mod tests {
-    use super::options::{Packet as OptionPacket, Repr as OptionRepr};
-    use super::Repr as RplRepr;
-    use super::*;
-    use crate::phy::ChecksumCapabilities;
-    use crate::wire::{icmpv6::*, *};
+    use super::{
+        options::{Packet as OptionPacket, Repr as OptionRepr},
+        Repr as RplRepr, *,
+    };
+    use crate::{
+        phy::ChecksumCapabilities,
+        wire::{icmpv6::*, *},
+    };
 
     #[test]
     fn dis_packet() {

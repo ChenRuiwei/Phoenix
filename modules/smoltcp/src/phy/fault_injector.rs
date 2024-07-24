@@ -1,7 +1,8 @@
-use crate::phy::{self, Device, DeviceCapabilities};
-use crate::time::{Duration, Instant};
-
 use super::PacketMeta;
+use crate::{
+    phy::{self, Device, DeviceCapabilities},
+    time::{Duration, Instant},
+};
 
 // We use our own RNG to stay compatible with #![no_std].
 // The use of the RNG below has a slight bias, but it doesn't matter.
@@ -44,7 +45,8 @@ impl State {
 
     fn corrupt<T: AsMut<[u8]>>(&mut self, mut buffer: T) {
         let buffer = buffer.as_mut();
-        // We introduce a single bitflip, as the most likely, and the hardest to detect, error.
+        // We introduce a single bitflip, as the most likely, and the hardest to detect,
+        // error.
         let index = (xorshift32(&mut self.rng_seed) as usize) % buffer.len();
         let bit = 1 << (xorshift32(&mut self.rng_seed) % 8) as u8;
         buffer[index] ^= bit;
@@ -89,9 +91,10 @@ impl State {
 
 /// A fault injector device.
 ///
-/// A fault injector is a device that alters packets traversing through it to simulate
-/// adverse network conditions (such as random packet loss or corruption), or software
-/// or hardware limitations (such as a limited number or size of usable network buffers).
+/// A fault injector is a device that alters packets traversing through it to
+/// simulate adverse network conditions (such as random packet loss or
+/// corruption), or software or hardware limitations (such as a limited number
+/// or size of usable network buffers).
 #[derive(Debug)]
 pub struct FaultInjector<D: Device> {
     inner: D,
@@ -101,7 +104,8 @@ pub struct FaultInjector<D: Device> {
 }
 
 impl<D: Device> FaultInjector<D> {
-    /// Create a fault injector device, using the given random number generator seed.
+    /// Create a fault injector device, using the given random number generator
+    /// seed.
     pub fn new(inner: D, seed: u32) -> FaultInjector<D> {
         FaultInjector {
             inner,

@@ -366,7 +366,7 @@ impl Syscall<'_> {
             IPC_STAT => {
                 let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
                 if let Some(shm) = shm_manager.get(&shmid) {
-                    let buf = UserWritePtr::from_usize(buf);
+                    let buf = UserWritePtr::from(buf);
                     buf.write(&self.task, shm.shmid_ds)?;
                     Ok(0)
                 } else {

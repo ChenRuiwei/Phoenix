@@ -4,9 +4,11 @@ use core::fmt;
 
 use managed::{ManagedMap, ManagedSlice};
 
-use crate::config::{REASSEMBLY_BUFFER_COUNT, REASSEMBLY_BUFFER_SIZE};
-use crate::storage::Assembler;
-use crate::time::{Duration, Instant};
+use crate::{
+    config::{REASSEMBLY_BUFFER_COUNT, REASSEMBLY_BUFFER_SIZE},
+    storage::Assembler,
+    time::{Duration, Instant},
+};
 
 #[cfg(feature = "alloc")]
 type Buffer = alloc::vec::Vec<u8>;
@@ -41,11 +43,12 @@ impl fmt::Display for AssemblerFullError {
 #[cfg(feature = "std")]
 impl std::error::Error for AssemblerFullError {}
 
-/// Holds different fragments of one packet, used for assembling fragmented packets.
+/// Holds different fragments of one packet, used for assembling fragmented
+/// packets.
 ///
-/// The buffer used for the `PacketAssembler` should either be dynamically sized (ex: Vec<u8>)
-/// or should be statically allocated based upon the MTU of the type of packet being
-/// assembled (ex: 1280 for a IPv6 frame).
+/// The buffer used for the `PacketAssembler` should either be dynamically sized
+/// (ex: Vec<u8>) or should be statically allocated based upon the MTU of the
+/// type of packet being assembled (ex: 1280 for a IPv6 frame).
 #[derive(Debug)]
 pub struct PacketAssembler<K> {
     key: Option<K>,
@@ -133,7 +136,8 @@ impl<K> PacketAssembler<K> {
     ///
     /// # Errors
     ///
-    /// - Returns [`Error::PacketAssemblerBufferTooSmall`] when trying to add data into the buffer at a non-existing
+    /// - Returns [`Error::PacketAssemblerBufferTooSmall`] when trying to add
+    ///   data into the buffer at a non-existing
     /// place.
     pub(crate) fn add(&mut self, data: &[u8], offset: usize) -> Result<(), AssemblerError> {
         #[cfg(not(feature = "alloc"))]
@@ -159,8 +163,9 @@ impl<K> PacketAssembler<K> {
         Ok(())
     }
 
-    /// Get an immutable slice of the underlying packet data, if reassembly complete.
-    /// This will mark the assembler as empty, so that it can be reused.
+    /// Get an immutable slice of the underlying packet data, if reassembly
+    /// complete. This will mark the assembler as empty, so that it can be
+    /// reused.
     pub(crate) fn assemble(&mut self) -> Option<&'_ [u8]> {
         if !self.is_complete() {
             return None;

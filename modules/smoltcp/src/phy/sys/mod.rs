@@ -1,8 +1,8 @@
 #![allow(unsafe_code)]
 
+use std::{io, mem, os::unix::io::RawFd, ptr};
+
 use crate::time::Duration;
-use std::os::unix::io::RawFd;
-use std::{io, mem, ptr};
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 #[path = "linux.rs"]
@@ -42,7 +42,8 @@ pub use self::raw_socket::RawSocketDesc;
 ))]
 pub use self::tuntap_interface::TunTapInterfaceDesc;
 
-/// Wait until given file descriptor becomes readable, but no longer than given timeout.
+/// Wait until given file descriptor becomes readable, but no longer than given
+/// timeout.
 pub fn wait(fd: RawFd, duration: Option<Duration>) -> io::Result<()> {
     unsafe {
         let mut readfds = {
@@ -98,7 +99,7 @@ pub fn wait(fd: RawFd, duration: Option<Duration>) -> io::Result<()> {
 #[derive(Debug)]
 struct ifreq {
     ifr_name: [libc::c_char; libc::IF_NAMESIZE],
-    ifr_data: libc::c_int, /* ifr_ifindex or ifr_mtu */
+    ifr_data: libc::c_int, // ifr_ifindex or ifr_mtu
 }
 
 #[cfg(all(

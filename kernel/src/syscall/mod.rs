@@ -67,7 +67,7 @@ impl<'a> Syscall<'a> {
             log::error!("Syscall number not included: {syscall_no}");
             unimplemented!()
         };
-        log::info!("[syscall] handle {syscall_no}");
+        log::debug!("[syscall] handle {syscall_no}");
         strace!(
             "{}, args: [{:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}]",
             syscall_no,
@@ -138,7 +138,10 @@ impl<'a> Syscall<'a> {
                 self.sys_pwrite64(args[0], args[1].into(), args[2], args[3])
                     .await
             }
-            OPENAT => self.sys_openat(args[0].into(), args[1].into(), args[2] as _, args[3] as _).await,
+            OPENAT => {
+                self.sys_openat(args[0].into(), args[1].into(), args[2] as _, args[3] as _)
+                    .await
+            }
             CLOSE => self.sys_close(args[0]),
             MKDIR => self.sys_mkdirat(args[0].into(), args[1].into(), args[2] as _),
             GETCWD => self.sys_getcwd(args[0].into(), args[1]),
@@ -192,6 +195,7 @@ impl<'a> Syscall<'a> {
             SYNC => self.sys_do_nothing("sync"),
             FSYNC => self.sys_do_nothing("fsync"),
             FTRUNCATE => self.sys_ftruncate(args[0], args[1] as _).await,
+            FCHMODAT => self.sys_fchmodat(),
             // IO
             PPOLL => {
                 self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3].into())
@@ -204,7 +208,7 @@ impl<'a> Syscall<'a> {
                     args[2].into(),
                     args[3].into(),
                     args[4].into(),
-                    args[5],
+                    args[5].into(),
                 )
                 .await
             }
@@ -231,6 +235,10 @@ impl<'a> Syscall<'a> {
             CLOCK_GETRES => self.sys_clock_getres(args[0], args[1].into()),
             GETITIMER => self.sys_getitimer(args[0] as _, args[1].into()),
             SETITIMER => self.sys_setitimer(args[0] as _, args[1].into(), args[2].into()),
+            CLOCK_NANOSLEEP => {
+                self.sys_clock_nanosleep(args[0], args[1], args[2].into(), args[3].into())
+                    .await
+            }
             // Futex
             FUTEX => {
                 self.sys_futex(

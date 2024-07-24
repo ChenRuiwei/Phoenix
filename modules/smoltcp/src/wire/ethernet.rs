@@ -1,5 +1,6 @@
-use byteorder::{ByteOrder, NetworkEndian};
 use core::fmt;
+
+use byteorder::{ByteOrder, NetworkEndian};
 
 use super::{Error, Result};
 
@@ -276,7 +277,8 @@ impl Repr {
         })
     }
 
-    /// Return the length of a header that will be emitted from this high-level representation.
+    /// Return the length of a header that will be emitted from this high-level
+    /// representation.
     pub const fn buffer_len(&self) -> usize {
         HEADER_LEN
     }

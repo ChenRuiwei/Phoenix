@@ -1,14 +1,13 @@
-/*! Time structures.
-
-The `time` module contains structures used to represent both
-absolute and relative time.
-
- - [Instant] is used to represent absolute time.
- - [Duration] is used to represent relative time.
-
-[Instant]: struct.Instant.html
-[Duration]: struct.Duration.html
-*/
+//! Time structures.
+//!
+//! The `time` module contains structures used to represent both
+//! absolute and relative time.
+//!
+//! - [Instant] is used to represent absolute time.
+//! - [Duration] is used to represent relative time.
+//!
+//! [Instant]: struct.Instant.html
+//! [Duration]: struct.Duration.html
 
 use core::{fmt, ops};
 
@@ -19,8 +18,7 @@ use core::{fmt, ops};
 /// since an arbitrary moment in time, such as system startup.
 ///
 /// * A value of `0` is inherently arbitrary.
-/// * A value less than `0` indicates a time before the starting
-///   point.
+/// * A value less than `0` indicates a time before the starting point.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Instant {
     micros: i64,

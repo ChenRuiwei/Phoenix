@@ -1,9 +1,9 @@
-use super::{Error, Result};
 use core::fmt;
 
 use byteorder::{ByteOrder, NetworkEndian};
 
 pub use super::IpProtocol as Protocol;
+use super::{Error, Result};
 
 /// A read/write wrapper around an IPv6 Fragment Header.
 #[derive(Debug, PartialEq, Eq)]
@@ -26,7 +26,8 @@ pub struct Header<T: AsRef<[u8]>> {
 mod field {
     use crate::wire::field::*;
 
-    // 16-bit field containing the fragment offset, reserved and more fragments values.
+    // 16-bit field containing the fragment offset, reserved and more fragments
+    // values.
     pub const FR_OF_M: Field = 0..2;
     // 32-bit field identifying the fragmented packet
     pub const IDENT: Field = 2..6;
@@ -144,8 +145,8 @@ impl<'a, T: AsRef<[u8]> + ?Sized> fmt::Display for Header<&'a T> {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Repr {
-    /// The offset of the data following this header, relative to the start of the Fragmentable
-    /// Part of the original packet.
+    /// The offset of the data following this header, relative to the start of
+    /// the Fragmentable Part of the original packet.
     pub frag_offset: u16,
     /// When there are more fragments following this header
     pub more_frags: bool,
@@ -166,8 +167,8 @@ impl Repr {
         })
     }
 
-    /// Return the length, in bytes, of a header that will be emitted from this high-level
-    /// representation.
+    /// Return the length, in bytes, of a header that will be emitted from this
+    /// high-level representation.
     pub const fn buffer_len(&self) -> usize {
         field::IDENT.end
     }

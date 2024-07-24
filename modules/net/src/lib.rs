@@ -3,18 +3,20 @@
 #![feature(new_uninit)]
 extern crate alloc;
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{cell::RefCell, ops::DerefMut, panic};
+use core::{cell::RefCell, future::Future, ops::DerefMut, panic};
 
 use arch::time::get_time_us;
+use crate_interface::call_interface;
 use device_core::{error::DevError, NetBufPtrOps, NetDriverOps};
 use listen_table::*;
 use log::*;
+pub use smoltcp::wire::{IpAddress, IpEndpoint, IpListenEndpoint, Ipv4Address, Ipv6Address};
 use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
     phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken},
     socket::{self, AnySocket},
     time::Instant,
-    wire::{EthernetAddress, HardwareAddress, IpAddress, IpCidr},
+    wire::{EthernetAddress, HardwareAddress, IpCidr},
 };
 use spin::{Lazy, Once};
 use sync::mutex::SpinNoIrqLock;
@@ -120,6 +122,34 @@ impl<'a> SocketSetWrapper<'a> {
         let set = self.0.lock();
         let socket = set.get(handle);
         f(socket)
+    }
+
+    pub async fn with_socket_async<T: AnySocket<'a>, R, F, Fut>(
+        &self,
+        handle: SocketHandle,
+        f: F,
+    ) -> R
+    where
+        F: FnOnce(&T) -> Fut,
+        Fut: Future<Output = R>,
+    {
+        let set = self.0.lock();
+        let socket = set.get(handle);
+        f(socket).await
+    }
+
+    pub async fn with_socket_mut_async<T: AnySocket<'a>, R, F, Fut>(
+        &self,
+        handle: SocketHandle,
+        f: F,
+    ) -> R
+    where
+        F: FnOnce(&mut T) -> Fut,
+        Fut: Future<Output = R>,
+    {
+        let mut set = self.0.lock();
+        let socket = set.get_mut(handle);
+        f(socket).await
     }
 
     pub fn with_socket_mut<T: AnySocket<'a>, R, F>(&self, handle: SocketHandle, f: F) -> R
@@ -277,9 +307,9 @@ impl<'a> RxToken for NetRxToken<'a> {
     {
         let mut rx_buf = self.1;
         warn!(
-            "[RxToken::consume] RECV {} bytes: {:02X?}",
+            "[RxToken::consume] RECV {} bytes",
             rx_buf.packet_len(),
-            rx_buf.packet()
+            // rx_buf.packet()
         );
         let result = f(rx_buf.packet_mut());
         self.0.borrow_mut().recycle_rx_buffer(rx_buf).unwrap();
@@ -300,9 +330,9 @@ impl<'a> TxToken for NetTxToken<'a> {
         let mut tx_buf = dev.alloc_tx_buffer(len).unwrap();
         let ret = f(tx_buf.packet_mut());
         warn!(
-            "[TxToken::consume] SEND {} bytes: {:02X?}",
+            "[TxToken::consume] SEND {} bytes",
             len,
-            tx_buf.packet()
+            // tx_buf.packet()
         );
         dev.transmit(tx_buf).unwrap();
         ret
@@ -332,6 +362,7 @@ fn snoop_tcp_packet(
         if is_first {
             // create a socket for the first incoming TCP packet, as the later accept()
             // returns.
+            info!("[snoop_tcp_packet] receive TCP");
             LISTEN_TABLE.incoming_tcp_packet(src_addr, dst_addr, sockets);
         }
     }
@@ -345,6 +376,7 @@ pub struct NetPollState {
     pub readable: bool,
     /// Object can be writen now.
     pub writable: bool,
+    pub hangup: bool,
 }
 
 /// Poll the network stack.
@@ -364,6 +396,27 @@ pub fn bench_transmit() {
 pub fn bench_receive() {
     ETH0.get().unwrap().dev.lock().bench_receive_bandwidth();
 }
+
+#[crate_interface::def_interface]
+pub trait HasSignalIf: Send + Sync {
+    fn has_signal() -> bool;
+}
+
+pub(crate) fn has_signal() -> bool {
+    call_interface!(HasSignalIf::has_signal())
+}
+
+// 下面是来自系统调用的how flag
+pub const SHUT_RD: u8 = 0;
+pub const SHUT_WR: u8 = 1;
+pub const SHUT_RDWR: u8 = 2;
+
+/// 表示读方向已关闭（相当于SHUT_RD）
+pub const RCV_SHUTDOWN: u8 = 1;
+/// 表示写方向已关闭（相当于SHUT_WR）
+pub const SEND_SHUTDOWN: u8 = 2;
+/// 表示读和写方向都已关闭（相当于SHUT_RDWR）
+pub const SHUTDOWN_MASK: u8 = 3;
 
 pub fn init_network(net_dev: Box<dyn NetDriverOps>, is_loopback: bool) {
     info!("Initialize network subsystem...");

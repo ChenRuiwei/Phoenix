@@ -16,7 +16,7 @@ use systype::{SysError, SysResult, SyscallResult};
 use super::Syscall;
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
-    task::{spawn_user_task, PGid, Pid, TASK_MANAGER},
+    task::{spawn_user_task, PGid, Pid, PROCESS_GROUP_MANAGER, TASK_MANAGER},
 };
 
 bitflags! {
@@ -202,6 +202,7 @@ impl Syscall<'_> {
             let tid = res_task.tid();
             task.remove_child(tid);
             TASK_MANAGER.remove(tid);
+            PROCESS_GROUP_MANAGER.remove(task);
             return Ok(tid);
         } else if option.contains(WaitOptions::WNOHANG) {
             return Ok(0);
@@ -249,6 +250,7 @@ impl Syscall<'_> {
             }
             task.remove_child(child_pid);
             TASK_MANAGER.remove(child_pid);
+            PROCESS_GROUP_MANAGER.remove(task);
             return Ok(child_pid);
         }
     }
@@ -330,10 +332,10 @@ impl Syscall<'_> {
             new_task.trap_context_mut().set_user_sp(stack.bits());
         }
         if flags.contains(CloneFlags::PARENT_SETTID) {
-            UserWritePtr::from_usize(parent_tid.bits()).write(task, new_tid)?;
+            UserWritePtr::from(parent_tid.bits()).write(task, new_tid)?;
         }
         if flags.contains(CloneFlags::CHILD_SETTID) {
-            UserWritePtr::from_usize(child_tid.bits()).write(&new_task, new_tid)?;
+            UserWritePtr::from(child_tid.bits()).write(&new_task, new_tid)?;
             new_task.tid_address().set_child_tid = Some(child_tid.bits());
         }
         if flags.contains(CloneFlags::CHILD_CLEARTID) {
@@ -383,8 +385,7 @@ impl Syscall<'_> {
         } else {
             TASK_MANAGER.get(pid).ok_or(SysError::ESRCH)?
         };
-
-        Ok(target_task.pid().into())
+        Ok(target_task.pgid())
     }
 
     /// setpgid() sets the PGID of the process specified by pid to pgid. If pid
@@ -396,13 +397,22 @@ impl Syscall<'_> {
     /// session (see setsid(2) and credentials(7)). In this case, the pgid
     /// specifies an existing process group to be joined and the session ID
     /// of that group must match the session ID of the joining process.
-    pub fn sys_setpgid(&self, pid: usize, _pgid: usize) -> SyscallResult {
+    pub fn sys_setpgid(&self, pid: usize, pgid: usize) -> SyscallResult {
         let target_task = if pid == 0 {
             self.task.clone()
         } else {
             TASK_MANAGER.get(pid).ok_or(SysError::ESRCH)?
         };
 
+        if pgid == 0 {
+            PROCESS_GROUP_MANAGER.add_group(&target_task);
+        } else {
+            if PROCESS_GROUP_MANAGER.get_group(pgid).is_none() {
+                PROCESS_GROUP_MANAGER.add_group(&target_task);
+            } else {
+                PROCESS_GROUP_MANAGER.add_process(pgid, &target_task);
+            }
+        }
         Ok(0)
     }
 

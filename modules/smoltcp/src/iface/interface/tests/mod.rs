@@ -11,10 +11,11 @@ use std::vec::Vec;
 use rstest::*;
 
 use super::*;
-
-use crate::iface::Interface;
-use crate::phy::{ChecksumCapabilities, Loopback};
-use crate::time::Instant;
+use crate::{
+    iface::Interface,
+    phy::{ChecksumCapabilities, Loopback},
+    time::Instant,
+};
 
 #[allow(unused)]
 fn fill_slice(s: &mut [u8], val: u8) {

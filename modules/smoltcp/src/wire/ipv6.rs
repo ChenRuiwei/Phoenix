@@ -1,14 +1,14 @@
 #![deny(missing_docs)]
 
-use byteorder::{ByteOrder, NetworkEndian};
 use core::fmt;
 
+use byteorder::{ByteOrder, NetworkEndian};
+
+pub use super::IpProtocol as Protocol;
 use super::{Error, Result};
 use crate::wire::ip::pretty_print_ip_payload;
 #[cfg(feature = "proto-ipv4")]
 use crate::wire::ipv4;
-
-pub use super::IpProtocol as Protocol;
 
 /// Minimum MTU required of all links supporting IPv6. See [RFC 8200 § 5].
 ///
@@ -23,7 +23,8 @@ pub const ADDR_SIZE: usize = 16;
 /// Size of IPv4-mapping prefix in octets.
 ///
 /// [RFC 8200 § 2]: https://www.rfc-editor.org/rfc/rfc4291#section-2
-pub const IPV4_MAPPED_PREFIX_SIZE: usize = ADDR_SIZE - 4; // 4 == ipv4::ADDR_SIZE , cannot DRY here because of dependency on a IPv4 module which is behind the feature
+pub const IPV4_MAPPED_PREFIX_SIZE: usize = ADDR_SIZE - 4; // 4 == ipv4::ADDR_SIZE , cannot DRY here because of dependency on a IPv4 module
+                                                          // which is behind the feature
 
 /// A sixteen-octet IPv6 address.
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
@@ -376,8 +377,8 @@ impl From<ipv4::Address> for Address {
     }
 }
 
-/// A specification of an IPv6 CIDR block, containing an address and a variable-length
-/// subnet masking prefix length.
+/// A specification of an IPv6 CIDR block, containing an address and a
+/// variable-length subnet masking prefix length.
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
 pub struct Cidr {
     address: Address,
@@ -465,19 +466,19 @@ pub struct Packet<T: AsRef<[u8]>> {
 // |         Payload Length        |  Next Header  |   Hop Limit   |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 // |                                                               |
-// +                                                               +
+// + +
 // |                                                               |
-// +                         Source Address                        +
+// + Source Address                        +
 // |                                                               |
-// +                                                               +
+// + +
 // |                                                               |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 // |                                                               |
-// +                                                               +
+// + +
 // |                                                               |
-// +                      Destination Address                      +
+// + Destination Address                      +
 // |                                                               |
-// +                                                               +
+// + +
 // |                                                               |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //
@@ -735,7 +736,8 @@ pub struct Repr {
 }
 
 impl Repr {
-    /// Parse an Internet Protocol version 6 packet and return a high-level representation.
+    /// Parse an Internet Protocol version 6 packet and return a high-level
+    /// representation.
     pub fn parse<T: AsRef<[u8]> + ?Sized>(packet: &Packet<&T>) -> Result<Repr> {
         // Ensure basic accessors will work
         packet.check_len()?;
@@ -751,13 +753,16 @@ impl Repr {
         })
     }
 
-    /// Return the length of a header that will be emitted from this high-level representation.
+    /// Return the length of a header that will be emitted from this high-level
+    /// representation.
     pub const fn buffer_len(&self) -> usize {
-        // This function is not strictly necessary, but it can make client code more readable.
+        // This function is not strictly necessary, but it can make client code more
+        // readable.
         field::DST_ADDR.end
     }
 
-    /// Emit a high-level representation into an Internet Protocol version 6 packet.
+    /// Emit a high-level representation into an Internet Protocol version 6
+    /// packet.
     pub fn emit<T: AsRef<[u8]> + AsMut<[u8]>>(&self, packet: &mut Packet<T>) {
         // Make no assumptions about the original state of the packet buffer.
         // Make sure to set every byte.
@@ -823,13 +828,10 @@ impl<T: AsRef<[u8]>> PrettyPrint for Packet<T> {
 
 #[cfg(test)]
 mod test {
-    use super::Error;
-    use super::{Address, Cidr};
-    use super::{Packet, Protocol, Repr};
-    use crate::wire::pretty_print::PrettyPrinter;
-
+    use super::{Address, Cidr, Error, Packet, Protocol, Repr};
     #[cfg(feature = "proto-ipv4")]
     use crate::wire::ipv4::Address as Ipv4Address;
+    use crate::wire::pretty_print::PrettyPrinter;
 
     static LINK_LOCAL_ADDR: Address = Address([
         0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

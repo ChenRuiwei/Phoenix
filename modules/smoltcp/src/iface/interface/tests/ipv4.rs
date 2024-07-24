@@ -579,7 +579,8 @@ fn test_icmpv4_socket(#[case] medium: Medium) {
     // socket.
     assert!(!sockets.get_mut::<icmp::Socket>(socket_handle).can_recv());
 
-    // Confirm we still get EchoReply from `smoltcp` even with the ICMP socket listening
+    // Confirm we still get EchoReply from `smoltcp` even with the ICMP socket
+    // listening
     let echo_reply = Icmpv4Repr::EchoReply {
         ident,
         seq_no,
@@ -879,7 +880,8 @@ fn test_raw_socket_with_udp_socket(#[case] medium: Medium) {
         None
     );
 
-    // Make sure the UDP socket can still receive in presence of a Raw socket that handles UDP
+    // Make sure the UDP socket can still receive in presence of a Raw socket that
+    // handles UDP
     let socket = sockets.get_mut::<udp::Socket>(udp_socket_handle);
     assert!(socket.can_recv());
     assert_eq!(

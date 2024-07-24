@@ -38,11 +38,7 @@ pub struct PipeInodeInner {
 
 impl PipeInode {
     pub fn new() -> Arc<Self> {
-        let meta = InodeMeta::new(
-            InodeMode::FIFO,
-            Arc::<usize>::new_uninit(),
-            PIPE_BUF_LEN,
-        );
+        let meta = InodeMeta::new(InodeMode::FIFO, Arc::<usize>::new_uninit(), PIPE_BUF_LEN);
         let inner = Mutex::new(PipeInodeInner {
             is_write_closed: false,
             is_read_closed: false,
@@ -99,14 +95,14 @@ impl Future for PipeWritePollFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut inner = self.pipe.inner.lock();
         let mut res = PollEvents::empty();
+        if inner.is_read_closed {
+            res |= PollEvents::ERR;
+            return Poll::Ready(res);
+        }
         if self.events.contains(PollEvents::OUT) && !inner.ring_buffer.is_full() {
             res |= PollEvents::OUT;
             Poll::Ready(res)
         } else {
-            if inner.is_read_closed {
-                res |= PollEvents::ERR;
-                return Poll::Ready(res);
-            }
             inner.write_waker.push_back(cx.waker().clone());
             Poll::Pending
         }
@@ -204,10 +200,11 @@ impl File for PipeWriteFile {
             .unwrap_or_else(|_| unreachable!());
         let mut inner = pipe.inner.lock();
         let mut res = PollEvents::empty();
+        if inner.is_read_closed {
+            res |= PollEvents::ERR;
+        }
         if events.contains(PollEvents::OUT) && !inner.ring_buffer.is_full() {
             res |= PollEvents::OUT;
-        } else if inner.is_read_closed {
-            res |= PollEvents::ERR;
         } else {
             inner.write_waker.push_back(waker);
         }
@@ -284,11 +281,11 @@ impl File for PipeReadFile {
         let waker = get_waker().await;
         let mut inner = pipe.inner.lock();
         let mut res = PollEvents::empty();
+        if inner.is_write_closed {
+            res |= PollEvents::HUP;
+        }
         if events.contains(PollEvents::IN) && !inner.ring_buffer.is_empty() {
             res |= PollEvents::IN;
-        } else if inner.is_write_closed {
-            res |= PollEvents::HUP;
-            Poll::Ready(res);
         } else {
             inner.read_waker.push_back(waker);
         }

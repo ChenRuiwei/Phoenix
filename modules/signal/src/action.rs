@@ -77,7 +77,7 @@ pub struct SigPending {
 }
 
 impl SigPending {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             queue: VecDeque::new(),
             bitmap: SigSet::empty(),

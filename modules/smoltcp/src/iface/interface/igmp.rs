@@ -1,9 +1,11 @@
-use super::{check, IgmpReportState, Interface, InterfaceInner, IpPacket};
-use crate::phy::{Device, PacketMeta};
-use crate::time::{Duration, Instant};
-use crate::wire::*;
-
 use core::result::Result;
+
+use super::{check, IgmpReportState, Interface, InterfaceInner, IpPacket};
+use crate::{
+    phy::{Device, PacketMeta},
+    time::{Duration, Instant},
+    wire::*,
+};
 
 /// Error type for `join_multicast_group`, `leave_multicast_group`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,8 +35,9 @@ impl std::error::Error for MulticastError {}
 impl Interface {
     /// Add an address to a list of subscribed multicast IP addresses.
     ///
-    /// Returns `Ok(announce_sent)` if the address was added successfully, where `annouce_sent`
-    /// indicates whether an initial immediate announcement has been sent.
+    /// Returns `Ok(announce_sent)` if the address was added successfully, where
+    /// `annouce_sent` indicates whether an initial immediate announcement
+    /// has been sent.
     pub fn join_multicast_group<D, T: Into<IpAddress>>(
         &mut self,
         device: &mut D,
@@ -63,7 +66,8 @@ impl Interface {
                         .transmit(timestamp)
                         .ok_or(MulticastError::Exhausted)?;
 
-                    // NOTE(unwrap): packet destination is multicast, which is always routable and doesn't require neighbor discovery.
+                    // NOTE(unwrap): packet destination is multicast, which is always routable and
+                    // doesn't require neighbor discovery.
                     self.inner
                         .dispatch_ip(tx_token, PacketMeta::default(), pkt, &mut self.fragmenter)
                         .unwrap();
@@ -81,8 +85,9 @@ impl Interface {
 
     /// Remove an address from the subscribed multicast IP addresses.
     ///
-    /// Returns `Ok(leave_sent)` if the address was removed successfully, where `leave_sent`
-    /// indicates whether an immediate leave packet has been sent.
+    /// Returns `Ok(leave_sent)` if the address was removed successfully, where
+    /// `leave_sent` indicates whether an immediate leave packet has been
+    /// sent.
     pub fn leave_multicast_group<D, T: Into<IpAddress>>(
         &mut self,
         device: &mut D,
@@ -105,7 +110,8 @@ impl Interface {
                         .transmit(timestamp)
                         .ok_or(MulticastError::Exhausted)?;
 
-                    // NOTE(unwrap): packet destination is multicast, which is always routable and doesn't require neighbor discovery.
+                    // NOTE(unwrap): packet destination is multicast, which is always routable and
+                    // doesn't require neighbor discovery.
                     self.inner
                         .dispatch_ip(tx_token, PacketMeta::default(), pkt, &mut self.fragmenter)
                         .unwrap();
@@ -121,7 +127,8 @@ impl Interface {
         }
     }
 
-    /// Check whether the interface listens to given destination multicast IP address.
+    /// Check whether the interface listens to given destination multicast IP
+    /// address.
     pub fn has_multicast_group<T: Into<IpAddress>>(&self, addr: T) -> bool {
         self.inner.has_multicast_group(addr)
     }
@@ -141,7 +148,8 @@ impl Interface {
                 if let Some(pkt) = self.inner.igmp_report_packet(version, group) {
                     // Send initial membership report
                     if let Some(tx_token) = device.transmit(self.inner.now) {
-                        // NOTE(unwrap): packet destination is multicast, which is always routable and doesn't require neighbor discovery.
+                        // NOTE(unwrap): packet destination is multicast, which is always routable
+                        // and doesn't require neighbor discovery.
                         self.inner
                             .dispatch_ip(tx_token, PacketMeta::default(), pkt, &mut self.fragmenter)
                             .unwrap();
@@ -171,7 +179,8 @@ impl Interface {
                         if let Some(pkt) = self.inner.igmp_report_packet(version, addr) {
                             // Send initial membership report
                             if let Some(tx_token) = device.transmit(self.inner.now) {
-                                // NOTE(unwrap): packet destination is multicast, which is always routable and doesn't require neighbor discovery.
+                                // NOTE(unwrap): packet destination is multicast, which is always
+                                // routable and doesn't require neighbor discovery.
                                 self.inner
                                     .dispatch_ip(
                                         tx_token,
@@ -207,7 +216,8 @@ impl Interface {
 }
 
 impl InterfaceInner {
-    /// Check whether the interface listens to given destination multicast IP address.
+    /// Check whether the interface listens to given destination multicast IP
+    /// address.
     ///
     /// If built without feature `proto-igmp` this function will
     /// always return `false`.
@@ -224,9 +234,10 @@ impl InterfaceInner {
 
     /// Host duties of the **IGMPv2** protocol.
     ///
-    /// Sets up `igmp_report_state` for responding to IGMP general/specific membership queries.
-    /// Membership must not be reported immediately in order to avoid flooding the network
-    /// after a query is broadcasted by a router; this is not currently done.
+    /// Sets up `igmp_report_state` for responding to IGMP general/specific
+    /// membership queries. Membership must not be reported immediately in
+    /// order to avoid flooding the network after a query is broadcasted by
+    /// a router; this is not currently done.
     pub(super) fn process_igmp<'frame>(
         &mut self,
         ipv4_repr: Ipv4Repr,

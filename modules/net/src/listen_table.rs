@@ -1,5 +1,8 @@
 use alloc::{boxed::Box, collections::VecDeque};
-use core::ops::{Deref, DerefMut};
+use core::{
+    ops::{Deref, DerefMut},
+    task::Waker,
+};
 
 use log::*;
 use smoltcp::{
@@ -20,13 +23,15 @@ struct ListenTableEntry {
     /// 在TCP连接建立过程中，服务器会收到客户端发送的SYN包，
     /// 并将其放入SYN队列中等待处理
     syn_queue: VecDeque<SocketHandle>,
+    waker: Waker,
 }
 
 impl ListenTableEntry {
-    pub fn new(listen_endpoint: IpListenEndpoint) -> Self {
+    pub fn new(listen_endpoint: IpListenEndpoint, waker: &Waker) -> Self {
         Self {
             listen_endpoint,
             syn_queue: VecDeque::with_capacity(LISTEN_QUEUE_SIZE),
+            waker: waker.clone(),
         }
     }
 
@@ -36,6 +41,10 @@ impl ListenTableEntry {
             Some(addr) => addr == dst,
             None => true,
         }
+    }
+
+    pub fn wake(self) {
+        self.waker.wake_by_ref()
     }
 }
 
@@ -72,12 +81,12 @@ impl ListenTable {
         self.tcp[port as usize].lock().is_none()
     }
 
-    pub fn listen(&self, listen_endpoint: IpListenEndpoint) -> SysResult<()> {
+    pub fn listen(&self, listen_endpoint: IpListenEndpoint, waker: &Waker) -> SysResult<()> {
         let port = listen_endpoint.port;
         assert_ne!(port, 0);
         let mut entry = self.tcp[port as usize].lock();
         if entry.is_none() {
-            *entry = Some(Box::new(ListenTableEntry::new(listen_endpoint)));
+            *entry = Some(Box::new(ListenTableEntry::new(listen_endpoint, waker)));
             Ok(())
         } else {
             warn!("socket listen() failed");
@@ -86,8 +95,11 @@ impl ListenTable {
     }
 
     pub fn unlisten(&self, port: u16) {
-        debug!("TCP socket unlisten on {}", port);
-        *self.tcp[port as usize].lock() = None;
+        info!("TCP socket unlisten on {}", port);
+        if let Some(entry) = self.tcp[port as usize].lock().take() {
+            entry.wake()
+        }
+        // *self.tcp[port as usize].lock() = None;
     }
 
     pub fn can_accept(&self, port: u16) -> bool {
@@ -95,7 +107,7 @@ impl ListenTable {
             entry.syn_queue.iter().any(|&handle| is_connected(handle))
         } else {
             // 因为在listen函数调用时已经将port设为监听状态了，这里应该不会查不到？？
-            error!("socket accept() failed: not listen. I suppose this wouldn't happen !!!");
+            error!("socket accept() failed: not listen. I think this wouldn't happen !!!");
             false
             // Err(SysError::EINVAL)
         }
@@ -152,10 +164,15 @@ impl ListenTable {
                 warn!("SYN queue overflow!");
                 return;
             }
+            entry.waker.wake_by_ref();
+            info!(
+                "[ListenTable::incoming_tcp_packet] wake the socket who listens port {}",
+                dst.port
+            );
             let mut socket = SocketSetWrapper::new_tcp_socket();
             if socket.listen(entry.listen_endpoint).is_ok() {
                 let handle = sockets.add(socket);
-                debug!(
+                info!(
                     "TCP socket {}: prepare for connection {} -> {}",
                     handle, src, entry.listen_endpoint
                 );

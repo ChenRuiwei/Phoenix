@@ -2,17 +2,18 @@ use core::cmp::min;
 #[cfg(feature = "async")]
 use core::task::Waker;
 
-use crate::iface::Context;
-use crate::socket::PollAt;
 #[cfg(feature = "async")]
 use crate::socket::WakerRegistration;
-
-use crate::storage::Empty;
-use crate::wire::{IpProtocol, IpRepr, IpVersion};
 #[cfg(feature = "proto-ipv4")]
 use crate::wire::{Ipv4Packet, Ipv4Repr};
 #[cfg(feature = "proto-ipv6")]
 use crate::wire::{Ipv6Packet, Ipv6Repr};
+use crate::{
+    iface::Context,
+    socket::PollAt,
+    storage::Empty,
+    wire::{IpProtocol, IpRepr, IpVersion},
+};
 
 /// Error returned by [`Socket::bind`]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -93,8 +94,8 @@ pub struct Socket<'a> {
 }
 
 impl<'a> Socket<'a> {
-    /// Create a raw IP socket bound to the given IP version and datagram protocol,
-    /// with the given buffers.
+    /// Create a raw IP socket bound to the given IP version and datagram
+    /// protocol, with the given buffers.
     pub fn new(
         ip_version: IpVersion,
         ip_protocol: IpProtocol,
@@ -120,11 +121,12 @@ impl<'a> Socket<'a> {
     ///
     /// Notes:
     ///
-    /// - Only one waker can be registered at a time. If another waker was previously registered,
-    ///   it is overwritten and will no longer be woken.
-    /// - The Waker is woken only once. Once woken, you must register it again to receive more wakes.
-    /// - "Spurious wakes" are allowed: a wake doesn't guarantee the result of `recv` has
-    ///   necessarily changed.
+    /// - Only one waker can be registered at a time. If another waker was
+    ///   previously registered, it is overwritten and will no longer be woken.
+    /// - The Waker is woken only once. Once woken, you must register it again
+    ///   to receive more wakes.
+    /// - "Spurious wakes" are allowed: a wake doesn't guarantee the result of
+    ///   `recv` has necessarily changed.
     #[cfg(feature = "async")]
     pub fn register_recv_waker(&mut self, waker: &Waker) {
         self.rx_waker.register(waker)
@@ -138,11 +140,12 @@ impl<'a> Socket<'a> {
     ///
     /// Notes:
     ///
-    /// - Only one waker can be registered at a time. If another waker was previously registered,
-    ///   it is overwritten and will no longer be woken.
-    /// - The Waker is woken only once. Once woken, you must register it again to receive more wakes.
-    /// - "Spurious wakes" are allowed: a wake doesn't guarantee the result of `send` has
-    ///   necessarily changed.
+    /// - Only one waker can be registered at a time. If another waker was
+    ///   previously registered, it is overwritten and will no longer be woken.
+    /// - The Waker is woken only once. Once woken, you must register it again
+    ///   to receive more wakes.
+    /// - "Spurious wakes" are allowed: a wake doesn't guarantee the result of
+    ///   `send` has necessarily changed.
     #[cfg(feature = "async")]
     pub fn register_send_waker(&mut self, waker: &Waker) {
         self.tx_waker.register(waker)
@@ -198,9 +201,9 @@ impl<'a> Socket<'a> {
 
     /// Enqueue a packet to send, and return a pointer to its payload.
     ///
-    /// This function returns `Err(Error::Exhausted)` if the transmit buffer is full,
-    /// and `Err(Error::Truncated)` if there is not enough transmit buffer capacity
-    /// to ever send this packet.
+    /// This function returns `Err(Error::Exhausted)` if the transmit buffer is
+    /// full, and `Err(Error::Truncated)` if there is not enough transmit
+    /// buffer capacity to ever send this packet.
     ///
     /// If the buffer is filled in a way that does not match the socket's
     /// IP version or protocol, the packet will be silently dropped.
@@ -255,7 +258,8 @@ impl<'a> Socket<'a> {
 
     /// Dequeue a packet, and return a pointer to the payload.
     ///
-    /// This function returns `Err(Error::Exhausted)` if the receive buffer is empty.
+    /// This function returns `Err(Error::Exhausted)` if the receive buffer is
+    /// empty.
     ///
     /// **Note:** The IP header is parsed and re-serialized, and may not match
     /// the header actually received bit for bit.
@@ -299,9 +303,10 @@ impl<'a> Socket<'a> {
         Ok(packet_buf)
     }
 
-    /// Peek at a packet in the receive buffer, copy the payload into the given slice,
-    /// and return the amount of octets copied without removing the packet from the receive buffer.
-    /// This function otherwise behaves identically to [recv_slice](#method.recv_slice).
+    /// Peek at a packet in the receive buffer, copy the payload into the given
+    /// slice, and return the amount of octets copied without removing the
+    /// packet from the receive buffer. This function otherwise behaves
+    /// identically to [recv_slice](#method.recv_slice).
     ///
     /// See also [peek](#method.peek).
     pub fn peek_slice(&mut self, data: &mut [u8]) -> Result<usize, RecvError> {

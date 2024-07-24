@@ -1,4 +1,8 @@
-use alloc::{ffi::CString, sync::Arc, vec::{self, Vec}};
+use alloc::{
+    ffi::CString,
+    sync::Arc,
+    vec::{self, Vec},
+};
 
 use lwext4_rust::{
     bindings::{EEXIST, O_CREAT, O_TRUNC, O_WRONLY},
@@ -6,7 +10,8 @@ use lwext4_rust::{
 };
 use systype::{SysError, SysResult};
 use vfs_core::{
-    Dentry, DentryMeta, DentryState, File, FileSystemType, FileSystemTypeMeta, Inode, InodeMode, InodeType, MountFlags, Path, RenameFlags, StatFs, SuperBlock, SuperBlockMeta
+    Dentry, DentryMeta, DentryState, File, FileSystemType, FileSystemTypeMeta, Inode, InodeMode,
+    InodeType, MountFlags, Path, RenameFlags, StatFs, SuperBlock, SuperBlockMeta,
 };
 
 use crate::{file::Ext4File, inode::Ext4Inode, LwExt4File};

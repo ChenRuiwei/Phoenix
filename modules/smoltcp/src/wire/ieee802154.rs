@@ -188,8 +188,8 @@ impl Address {
         }
     }
 
-    /// Convert an extended address to a link-local IPv6 address using the EUI-64 format from
-    /// RFC2464.
+    /// Convert an extended address to a link-local IPv6 address using the
+    /// EUI-64 format from RFC2464.
     pub fn as_link_local_address(&self) -> Option<Ipv6Address> {
         let mut bytes = [0; 16];
         bytes[0] = 0xfe;
@@ -862,7 +862,8 @@ impl Repr {
         })
     }
 
-    /// Return the length of a buffer required to hold a packet with the payload of a given length.
+    /// Return the length of a buffer required to hold a packet with the payload
+    /// of a given length.
     #[inline]
     pub const fn buffer_len(&self) -> usize {
         3 + 2

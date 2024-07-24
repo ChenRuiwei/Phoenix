@@ -312,7 +312,8 @@ fn icmp_echo_reply_as_input(#[case] medium: Medium) {
 #[case::ieee802154(Medium::Ieee802154)]
 #[cfg(feature = "medium-ieee802154")]
 fn unknown_proto_with_multicast_dst_address(#[case] medium: Medium) {
-    // Since the destination address is multicast, we should not answer with an ICMPv6 message.
+    // Since the destination address is multicast, we should not answer with an
+    // ICMPv6 message.
     let data = [
         0x60, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc, 0x40, 0xfd, 0xbe, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
         0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2, 0xff, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -341,7 +342,8 @@ fn unknown_proto_with_multicast_dst_address(#[case] medium: Medium) {
 #[case::ieee802154(Medium::Ieee802154)]
 #[cfg(feature = "medium-ieee802154")]
 fn unknown_proto(#[case] medium: Medium) {
-    // Since the destination address is multicast, we should not answer with an ICMPv6 message.
+    // Since the destination address is multicast, we should not answer with an
+    // ICMPv6 message.
     let data = [
         0x60, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc, 0x40, 0xfd, 0xbe, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
         0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2, 0xfd, 0xbe, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -629,7 +631,7 @@ fn test_handle_valid_ndisc_request(#[case] medium: Medium) {
 #[case(Medium::Ieee802154)]
 #[cfg(feature = "medium-ieee802154")]
 fn test_solicited_node_addrs(#[case] medium: Medium) {
-    let (mut iface, _, _) = setup(medium);
+    let (mut iface, ..) = setup(medium);
     let mut new_addrs = heapless::Vec::<IpCidr, IFACE_MAX_ADDR_COUNT>::new();
     new_addrs
         .push(IpCidr::new(IpAddress::v6(0xfe80, 0, 0, 0, 1, 2, 0, 2), 64))
@@ -663,8 +665,7 @@ fn test_solicited_node_addrs(#[case] medium: Medium) {
 #[case(Medium::Ieee802154)]
 #[cfg(all(feature = "socket-udp", feature = "medium-ieee802154"))]
 fn test_icmp_reply_size(#[case] medium: Medium) {
-    use crate::wire::Icmpv6DstUnreachable;
-    use crate::wire::IPV6_MIN_MTU as MIN_MTU;
+    use crate::wire::{Icmpv6DstUnreachable, IPV6_MIN_MTU as MIN_MTU};
     const MAX_PAYLOAD_LEN: usize = 1192;
 
     let (mut iface, mut sockets, _device) = setup(medium);

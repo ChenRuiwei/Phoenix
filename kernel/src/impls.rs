@@ -6,6 +6,7 @@ use driver::KernelPageTableIf;
 use log::Level;
 use logging::{level_to_color_code, ColorCode, LogIf};
 use memory::PageTable;
+use net::HasSignalIf;
 
 use crate::{
     mm::{kernel_page_table, kernel_page_table_mut},
@@ -68,5 +69,15 @@ struct KernelPageTableIfImpl;
 impl KernelPageTableIf for KernelPageTableIfImpl {
     fn kernel_page_table_mut() -> &'static mut PageTable {
         kernel_page_table_mut()
+    }
+}
+
+struct HasSignalIfImpl;
+#[crate_interface::impl_interface]
+impl HasSignalIf for HasSignalIfImpl {
+    fn has_signal() -> bool {
+        let task = current_task_ref();
+        let mask = *task.sig_mask_ref();
+        task.with_sig_pending(|pending| pending.has_expect_signals(!mask))
     }
 }

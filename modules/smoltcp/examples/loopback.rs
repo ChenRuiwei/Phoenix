@@ -7,17 +7,20 @@
 mod utils;
 
 use core::str;
-use log::{debug, error, info};
 
-use smoltcp::iface::{Config, Interface, SocketSet};
-use smoltcp::phy::{Device, Loopback, Medium};
-use smoltcp::socket::tcp;
-use smoltcp::time::{Duration, Instant};
-use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
+use log::{debug, error, info};
+use smoltcp::{
+    iface::{Config, Interface, SocketSet},
+    phy::{Device, Loopback, Medium},
+    socket::tcp,
+    time::{Duration, Instant},
+    wire::{EthernetAddress, IpAddress, IpCidr},
+};
 
 #[cfg(not(feature = "std"))]
 mod mock {
     use core::cell::Cell;
+
     use smoltcp::time::{Duration, Instant};
 
     #[derive(Debug)]
@@ -41,9 +44,12 @@ mod mock {
 
 #[cfg(feature = "std")]
 mod mock {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
     use smoltcp::time::{Duration, Instant};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
 
     // should be AtomicU64 but that's unstable
     #[derive(Debug, Clone)]
@@ -79,7 +85,7 @@ fn main() {
         utils::add_middleware_options(&mut opts, &mut free);
 
         let mut matches = utils::parse_options(&opts, free);
-        utils::parse_middleware_options(&mut matches, device, /*loopback=*/ true)
+        utils::parse_middleware_options(&mut matches, device, /* loopback= */ true)
     };
 
     // Create interface
@@ -101,9 +107,9 @@ fn main() {
     // Create sockets
     let server_socket = {
         // It is not strictly necessary to use a `static mut` and unsafe code here, but
-        // on embedded systems that smoltcp targets it is far better to allocate the data
-        // statically to verify that it fits into RAM rather than get undefined behavior
-        // when stack overflows.
+        // on embedded systems that smoltcp targets it is far better to allocate the
+        // data statically to verify that it fits into RAM rather than get
+        // undefined behavior when stack overflows.
         static mut TCP_SERVER_RX_DATA: [u8; 1024] = [0; 1024];
         static mut TCP_SERVER_TX_DATA: [u8; 1024] = [0; 1024];
         let tcp_rx_buffer = tcp::SocketBuffer::new(unsafe { &mut TCP_SERVER_RX_DATA[..] });

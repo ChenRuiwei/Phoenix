@@ -19,8 +19,8 @@ pub use memory::page_table::PageTable;
 use memory::{frame, heap, pte::PTEFlags, VirtAddr};
 pub use memory_space::MemorySpace;
 pub use user_ptr::{
-    audit_sockaddr, FutexAddr, PageFaultAccessType, UserMut, UserRdWrPtr, UserReadPtr, UserRef,
-    UserSlice, UserWritePtr,
+    FutexAddr, PageFaultAccessType, UserMut, UserRdWrPtr, UserReadPtr, UserRef, UserSlice,
+    UserWritePtr,
 };
 
 use self::memory_space::vm_area::MapPerm;
