@@ -146,6 +146,35 @@ impl Syscall<'_> {
         Ok(0)
     }
 
+    pub async fn sys_clock_nanosleep(
+        &self,
+        clockid: usize,
+        flags: usize,
+        t: UserReadPtr<TimeSpec>,
+        rem: UserWritePtr<TimeSpec>,
+    ) -> SyscallResult {
+        let task = self.task;
+        assert_eq!(flags, 0);
+        match clockid {
+            CLOCK_REALTIME => {
+                let ts = t.read(task)?;
+                let remain = task.suspend_timeout(ts.into()).await;
+                if remain.is_zero() {
+                    Ok(0)
+                } else {
+                    if rem.not_null() {
+                        rem.write(&task, remain.into())?;
+                    }
+                    Err(SysError::EINTR)
+                }
+            }
+            _ => {
+                log::error!("[sys_clock_nanosleep] unsupported clockid{}", clockid);
+                return Err(SysError::EINVAL);
+            }
+        }
+    }
+
     /// provide access to interval timers, that is, timers that initially expire
     /// at some point in the future, and (optionally) at regular intervals
     /// after that. When a timer expires, a signal is generated for the

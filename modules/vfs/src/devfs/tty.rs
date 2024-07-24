@@ -195,7 +195,7 @@ impl TtyFile {
         Arc::new(Self {
             meta: FileMeta::new(dentry, inode),
             inner: SpinNoIrqLock::new(TtyInner {
-                fg_pgid: 2 as u32,
+                fg_pgid: 1 as u32,
                 win_size: WinSize::new(),
                 termios: Termios::new(),
             }),

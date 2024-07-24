@@ -206,10 +206,14 @@ impl Syscall<'_> {
                 return Err(SysError::EEXIST);
             }
             let parent = dentry.parent().expect("can not be root dentry");
-            parent.create(dentry.name(), InodeMode::FILE)?;
+            parent.create(dentry.name(), InodeMode::FILE | mode)?;
         }
 
-        let file = match dentry.inode()?.itype() {
+        let inode = dentry.inode()?;
+        if flags.contains(OpenFlags::O_DIRECTORY) && !inode.itype().is_dir() {
+            return Err(SysError::ENOTDIR);
+        }
+        let file = match inode.itype() {
             InodeType::SymLink => {
                 let mut path_buf: Vec<u8> = vec![0; 512];
                 let len = dentry.open()?.read(&mut path_buf).await?;

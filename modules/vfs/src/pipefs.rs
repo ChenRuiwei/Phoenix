@@ -95,14 +95,14 @@ impl Future for PipeWritePollFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut inner = self.pipe.inner.lock();
         let mut res = PollEvents::empty();
+        if inner.is_read_closed {
+            res |= PollEvents::ERR;
+            return Poll::Ready(res);
+        }
         if self.events.contains(PollEvents::OUT) && !inner.ring_buffer.is_full() {
             res |= PollEvents::OUT;
             Poll::Ready(res)
         } else {
-            if inner.is_read_closed {
-                res |= PollEvents::ERR;
-                return Poll::Ready(res);
-            }
             inner.write_waker.push_back(cx.waker().clone());
             Poll::Pending
         }
