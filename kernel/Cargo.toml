@@ -46,8 +46,6 @@ downcast-rs = { version = "1.2", default-features = false }
 [build-dependencies]
 config = { path = "../config" }
 
-[profile.release]
-debug = true
 
 [features]
 strace = []
