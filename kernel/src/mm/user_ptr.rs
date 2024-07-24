@@ -627,6 +627,7 @@ impl Task {
         match family {
             SaFamily::AF_INET => {
                 if addrlen < mem::size_of::<SockAddrIn>() {
+                    log::error!("[audit_sockaddr] AF_INET addrlen error");
                     return Err(SysError::EINVAL);
                 }
                 let sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
@@ -635,6 +636,7 @@ impl Task {
             }
             SaFamily::AF_INET6 => {
                 if addrlen < mem::size_of::<SockAddrIn6>() {
+                    log::error!("[audit_sockaddr] AF_INET6 addrlen error");
                     return Err(SysError::EINVAL);
                 }
                 let sock_addr_in6: SockAddrIn6 = unsafe { *(addr as *const _) };
@@ -656,12 +658,14 @@ impl Task {
         }
         match endpoint.addr {
             IpAddress::Ipv4(_) => {
-                UserWritePtr::<SockAddrIn>::from(addr).write(self, endpoint.into())?;
-                UserWritePtr::<usize>::from(addrlen).write(self, mem::size_of::<SockAddrIn>())?;
+                UserWritePtr::<SockAddrIn>::from(addr).write(self, SockAddrIn::from(endpoint))?;
+                UserWritePtr::<u32>::from(addrlen)
+                    .write(self, mem::size_of::<SockAddrIn>() as u32)?;
             }
             IpAddress::Ipv6(_) => {
-                UserWritePtr::<SockAddrIn6>::from(addr).write(self, endpoint.into());
-                UserWritePtr::<usize>::from(addrlen).write(self, mem::size_of::<SockAddrIn6>())?;
+                UserWritePtr::<SockAddrIn6>::from(addr).write(self, endpoint.into())?;
+                UserWritePtr::<u32>::from(addrlen)
+                    .write(self, mem::size_of::<SockAddrIn6>() as u32)?;
             }
         }
         Ok(())

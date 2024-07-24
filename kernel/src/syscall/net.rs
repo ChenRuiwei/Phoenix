@@ -2,6 +2,7 @@ use alloc::{sync::Arc, vec::Vec};
 use core::mem::{self};
 
 use addr::{SockAddrIn, SockAddrIn6};
+use async_utils::yield_now;
 use log::info;
 use socket::*;
 use systype::{SysError, SysResult, SyscallResult};
@@ -77,6 +78,8 @@ impl Syscall<'_> {
         let socket = task.sockfd_lookup(sockfd)?;
         log::info!("[sys_connect] fd{sockfd} trys to connect {remote_addr}");
         socket.sk.connect(remote_addr).await?;
+        // TODO:
+        yield_now().await;
         Ok(0)
     }
 
@@ -142,6 +145,7 @@ impl Syscall<'_> {
         let task = self.task;
         let buf = buf.into_slice(&task, len)?;
         let socket = task.sockfd_lookup(sockfd)?;
+        task.set_interruptable();
         let bytes = match socket.types {
             SocketType::STREAM => {
                 if dest_addr != 0 {
@@ -159,6 +163,7 @@ impl Syscall<'_> {
             }
             _ => unimplemented!(),
         };
+        task.set_running();
         Ok(bytes)
     }
 
@@ -195,11 +200,13 @@ impl Syscall<'_> {
         );
         let mut temp = Vec::with_capacity(len);
         unsafe { temp.set_len(len) };
+        task.set_interruptable();
         // TODO: not sure if `len` is enough when call `socket.recvfrom`
         let (bytes, remote_addr) = socket.sk.recvfrom(&mut temp).await?;
+        task.set_running();
         let mut buf = buf.into_mut_slice(&task, bytes)?;
         buf[..bytes].copy_from_slice(&temp[..bytes]);
-        task.write_sockaddr(src_addr, addrlen, remote_addr);
+        task.write_sockaddr(src_addr, addrlen, remote_addr)?;
 
         Ok(bytes)
     }
@@ -235,15 +242,18 @@ impl Syscall<'_> {
         optlen: usize,
     ) -> SyscallResult {
         let task = self.task;
-        let optval = UserWritePtr::<usize>::from(optval);
         match SocketLevel::try_from(level)? {
             SocketLevel::SOL_SOCKET => {
                 const SEND_BUFFER_SIZE: usize = 64 * 1024;
                 const RECV_BUFFER_SIZE: usize = 64 * 1024;
                 match SocketOpt::try_from(optname)? {
-                    SocketOpt::RCVBUF => optval.write(&task, RECV_BUFFER_SIZE)?,
-                    SocketOpt::SNDBUF => optval.write(&task, SEND_BUFFER_SIZE)?,
-                    SocketOpt::ERROR => optval.write(&task, 0)?,
+                    SocketOpt::RCVBUF => {
+                        UserWritePtr::<usize>::from(optval).write(&task, RECV_BUFFER_SIZE)?
+                    }
+                    SocketOpt::SNDBUF => {
+                        UserWritePtr::<usize>::from(optval).write(&task, SEND_BUFFER_SIZE)?
+                    }
+                    SocketOpt::ERROR => UserWritePtr::<usize>::from(optval).write(&task, 0)?,
                     opt => {
                         log::error!(
                             "[sys_getsockopt] unsupported SOL_SOCKET opt {opt:?} optlen:{optlen}"
@@ -254,8 +264,14 @@ impl Syscall<'_> {
             SocketLevel::IPPROTO_IP | SocketLevel::IPPROTO_TCP => {
                 const MAX_SEGMENT_SIZE: usize = 1460;
                 match TcpSocketOpt::try_from(optname)? {
-                    TcpSocketOpt::MAXSEG => optval.write(&task, MAX_SEGMENT_SIZE)?,
-                    TcpSocketOpt::NODELAY => optval.write(&task, 0)?,
+                    TcpSocketOpt::MAXSEG => {
+                        UserWritePtr::<usize>::from(optval).write(&task, MAX_SEGMENT_SIZE)?
+                    }
+                    TcpSocketOpt::NODELAY => UserWritePtr::<usize>::from(optval).write(&task, 0)?,
+                    TcpSocketOpt::INFO => {}
+                    TcpSocketOpt::CONGESTION => {
+                        UserWritePtr::from(optval).write_cstr(&task, "reno");
+                    }
                     opt => {
                         log::error!(
                             "[sys_getsockopt] unsupported IPPROTO_TCP opt {opt:?} optlen:{optlen}"

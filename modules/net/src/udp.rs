@@ -317,7 +317,7 @@ impl UdpSocket {
                     Err(SysError::ENOTCONN)
                 } else {
                     // no more data
-                    log::info!("[recv_impl] no more data");
+                    log::info!("[recv_impl] no more data, register waker and suspend now");
                     socket.register_recv_waker(&waker);
                     Err(SysError::EAGAIN)
                 }

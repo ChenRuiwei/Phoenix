@@ -30,12 +30,12 @@ impl TryFrom<u16> for SaFamily {
     }
 }
 
-impl Into<u16> for SaFamily {
-    fn into(self) -> u16 {
-        match self {
-            SaFamily::AF_UNIX => 1u16,
-            SaFamily::AF_INET => 2u16,
-            SaFamily::AF_INET6 => 10u16,
+impl From<SaFamily> for u16 {
+    fn from(value: SaFamily) -> Self {
+        match value {
+            SaFamily::AF_UNIX => 1,
+            SaFamily::AF_INET => 2,
+            SaFamily::AF_INET6 => 10,
         }
     }
 }

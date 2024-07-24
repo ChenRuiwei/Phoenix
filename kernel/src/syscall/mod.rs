@@ -65,7 +65,7 @@ impl<'a> Syscall<'a> {
             log::error!("Syscall number not included: {syscall_no}");
             unimplemented!()
         };
-        log::info!("[syscall] handle {syscall_no}");
+        log::debug!("[syscall] handle {syscall_no}");
         strace!(
             "{}, args: [{:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}]",
             syscall_no,

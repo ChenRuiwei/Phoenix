@@ -296,10 +296,6 @@ impl Syscall<'_> {
             }
         }
 
-        readfds.as_mut().map(|fds| fds.clear());
-        writefds.as_mut().map(|fds| fds.clear());
-        exceptfds.as_mut().map(|fds| fds.clear());
-
         let old_mask = if let Some(mask) = new_mask {
             Some(mem::replace(task.sig_mask(), mask))
         } else {
@@ -326,6 +322,11 @@ impl Syscall<'_> {
                 SelectOutput::Output2(_) => return Err(SysError::EINTR),
             }
         };
+
+        readfds.as_mut().map(|fds| fds.clear());
+        writefds.as_mut().map(|fds| fds.clear());
+        exceptfds.as_mut().map(|fds| fds.clear());
+
         task.set_running();
 
         // restore old signal mask

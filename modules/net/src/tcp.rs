@@ -3,8 +3,9 @@ use core::{
     cell::UnsafeCell,
     f32::consts::E,
     future::Future,
+    pin::Pin,
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
-    task::Waker,
+    task::{Context, Poll, Waker},
 };
 
 use async_utils::{get_waker, suspend_now, yield_now};
@@ -276,12 +277,12 @@ impl TcpSocket {
             let handle = unsafe { self.handle.get().read().unwrap() };
             SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
                 warn!(
-                    "TCP handle #{handle}: shutting down, before state is {:?}",
+                    "TCP handle {handle}: shutting down, before state is {:?}",
                     socket.state()
                 );
                 socket.close();
                 warn!(
-                    "TCP handle #{handle}: shutting down, after state is {:?}",
+                    "TCP handle {handle}: shutting down, after state is {:?}",
                     socket.state()
                 );
             });
@@ -394,6 +395,22 @@ impl TcpSocket {
         }
     }
 }
+
+// pub struct TcpRecvFuture<'a> {
+//     socket: &'a TcpSocket,
+//     buf: &'a [u8],
+// }
+
+// impl<'a> Future for TcpRecvFuture<'a> {
+//     type Output = SyscallResult;
+
+//     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>
+// {         SOCKET_SET.poll_interfaces();
+//         if self.socket.is_connecting() {
+//             return Poll::Pending;
+//         }
+//     }
+// }
 
 /// Private methods
 impl TcpSocket {

@@ -307,9 +307,9 @@ impl<'a> RxToken for NetRxToken<'a> {
     {
         let mut rx_buf = self.1;
         warn!(
-            "[RxToken::consume] RECV {} bytes: {:02X?}",
+            "[RxToken::consume] RECV {} bytes",
             rx_buf.packet_len(),
-            rx_buf.packet()
+            // rx_buf.packet()
         );
         let result = f(rx_buf.packet_mut());
         self.0.borrow_mut().recycle_rx_buffer(rx_buf).unwrap();
@@ -330,9 +330,9 @@ impl<'a> TxToken for NetTxToken<'a> {
         let mut tx_buf = dev.alloc_tx_buffer(len).unwrap();
         let ret = f(tx_buf.packet_mut());
         warn!(
-            "[TxToken::consume] SEND {} bytes: {:02X?}",
+            "[TxToken::consume] SEND {} bytes",
             len,
-            tx_buf.packet()
+            // tx_buf.packet()
         );
         dev.transmit(tx_buf).unwrap();
         ret
@@ -362,7 +362,7 @@ fn snoop_tcp_packet(
         if is_first {
             // create a socket for the first incoming TCP packet, as the later accept()
             // returns.
-            error!("[snoop_tcp_packet] receive TCP");
+            info!("[snoop_tcp_packet] receive TCP");
             LISTEN_TABLE.incoming_tcp_packet(src_addr, dst_addr, sockets);
         }
     }
