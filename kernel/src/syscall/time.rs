@@ -153,12 +153,25 @@ impl Syscall<'_> {
         t: UserReadPtr<TimeSpec>,
         rem: UserWritePtr<TimeSpec>,
     ) -> SyscallResult {
+        /// for clock_nanosleep
+        pub const TIMER_ABSTIME: usize = 1;
         let task = self.task;
-        assert_eq!(flags, 0);
         match clockid {
-            CLOCK_REALTIME => {
+            // FIXME: what is CLOCK_MONOTONIC
+            CLOCK_REALTIME | CLOCK_MONOTONIC => {
                 let ts = t.read(task)?;
-                let remain = task.suspend_timeout(ts.into()).await;
+                let req: Duration = ts.into();
+                let remain = if flags == TIMER_ABSTIME {
+                    let current = get_time_duration();
+                    // request time is absolutely
+                    if req.le(&current) {
+                        return Ok(0);
+                    }
+                    let sleep = req - current;
+                    task.suspend_timeout(req).await
+                } else {
+                    task.suspend_timeout(req).await
+                };
                 if remain.is_zero() {
                     Ok(0)
                 } else {
@@ -169,7 +182,7 @@ impl Syscall<'_> {
                 }
             }
             _ => {
-                log::error!("[sys_clock_nanosleep] unsupported clockid{}", clockid);
+                log::error!("[sys_clock_nanosleep] unsupported clockid {}", clockid);
                 return Err(SysError::EINVAL);
             }
         }
