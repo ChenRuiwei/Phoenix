@@ -331,12 +331,15 @@ impl TcpSocket {
 
     /// Receives data from the socket, stores it in the given buffer.
     pub async fn recv(&self, buf: &mut [u8]) -> SysResult<usize> {
+        use tcp::State::*;
+
         let shutdown = unsafe { *self.shutdown.get() };
         if shutdown & RCV_SHUTDOWN != 0 {
             log::warn!("[TcpSocket::recv] shutdown closed read, recv return 0");
             return Ok(0);
         }
         if self.is_connecting() {
+            // TODO: waker
             return Err(SysError::EAGAIN);
         } else if !self.is_connected() && shutdown == 0 {
             warn!("socket recv() failed");
@@ -348,6 +351,10 @@ impl TcpSocket {
         let waker = get_waker().await;
         self.block_on(|| {
             SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
+                log::info!("[TcpSocket::recv] handle{handle} state {}", socket.state());
+                // if matches!(socket.state(), CloseWait | TimeWait) {
+                //     Ok(0)
+                // } else
                 if !socket.is_active() {
                     // not open
                     warn!("socket recv() failed");
@@ -610,7 +617,7 @@ impl TcpSocket {
         if let Some(handle) = handle {
             SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
                 log::warn!(
-                    "[TcpSocket::poll_closed] handle #{handle} state {}",
+                    "[TcpSocket::poll_closed] handle {handle} state {}",
                     socket.state()
                 );
                 let hangup = matches!(socket.state(), CloseWait | FinWait2 | TimeWait);
@@ -647,7 +654,7 @@ impl TcpSocket {
                     Ok(t) => return Ok(t),
                     Err(SysError::EAGAIN) => {
                         // TODO:判断是否有信号
-                        suspend_now().await;
+                        yield_now().await;
                         if has_signal() {
                             warn!("[TcpSocket::block_on] has signal");
                             return Err(SysError::EINTR);

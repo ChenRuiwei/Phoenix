@@ -42,6 +42,10 @@ impl ListenTableEntry {
             None => true,
         }
     }
+
+    pub fn wake(self) {
+        self.waker.wake_by_ref()
+    }
 }
 
 impl Drop for ListenTableEntry {
@@ -91,8 +95,11 @@ impl ListenTable {
     }
 
     pub fn unlisten(&self, port: u16) {
-        debug!("TCP socket unlisten on {}", port);
-        *self.tcp[port as usize].lock() = None;
+        info!("TCP socket unlisten on {}", port);
+        if let Some(entry) = self.tcp[port as usize].lock().take() {
+            entry.wake()
+        }
+        // *self.tcp[port as usize].lock() = None;
     }
 
     pub fn can_accept(&self, port: u16) -> bool {
