@@ -7,8 +7,10 @@
 use byteorder::{ByteOrder, NetworkEndian};
 
 use super::{Error, Result};
-use crate::wire::icmpv6::{field, Message, Packet};
-use crate::wire::Ipv6Address;
+use crate::wire::{
+    icmpv6::{field, Message, Packet},
+    Ipv6Address,
+};
 
 enum_with_unknown! {
     /// MLDv2 Multicast Listener Report Record Type. See [RFC 3810 § 5.2.12] for
@@ -337,7 +339,8 @@ impl<'a> Repr<'a> {
         }
     }
 
-    /// Return the length of a packet that will be emitted from this high-level representation.
+    /// Return the length of a packet that will be emitted from this high-level
+    /// representation.
     pub const fn buffer_len(&self) -> usize {
         match self {
             Repr::Query { data, .. } => field::QUERY_NUM_SRCS.end + data.len(),
@@ -392,9 +395,10 @@ impl<'a> Repr<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::phy::ChecksumCapabilities;
-    use crate::wire::icmpv6::Message;
-    use crate::wire::Icmpv6Repr;
+    use crate::{
+        phy::ChecksumCapabilities,
+        wire::{icmpv6::Message, Icmpv6Repr},
+    };
 
     static QUERY_PACKET_BYTES: [u8; 44] = [
         0x82, 0x00, 0x73, 0x74, 0x04, 0x00, 0x00, 0x00, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,

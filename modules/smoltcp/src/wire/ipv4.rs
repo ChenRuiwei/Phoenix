@@ -1,11 +1,13 @@
-use byteorder::{ByteOrder, NetworkEndian};
 use core::fmt;
 
-use super::{Error, Result};
-use crate::phy::ChecksumCapabilities;
-use crate::wire::ip::{checksum, pretty_print_ip_payload};
+use byteorder::{ByteOrder, NetworkEndian};
 
 pub use super::IpProtocol as Protocol;
+use super::{Error, Result};
+use crate::{
+    phy::ChecksumCapabilities,
+    wire::ip::{checksum, pretty_print_ip_payload},
+};
 
 /// Minimum MTU required of all links supporting IPv4. See [RFC 791 § 3.1].
 ///
@@ -145,8 +147,8 @@ impl defmt::Format for Address {
     }
 }
 
-/// A specification of an IPv4 CIDR block, containing an address and a variable-length
-/// subnet masking prefix length.
+/// A specification of an IPv4 CIDR block, containing an address and a
+/// variable-length subnet masking prefix length.
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
 pub struct Cidr {
     address: Address,
@@ -628,7 +630,8 @@ pub struct Repr {
 }
 
 impl Repr {
-    /// Parse an Internet Protocol version 4 packet and return a high-level representation.
+    /// Parse an Internet Protocol version 4 packet and return a high-level
+    /// representation.
     pub fn parse<T: AsRef<[u8]> + ?Sized>(
         packet: &Packet<&T>,
         checksum_caps: &ChecksumCapabilities,
@@ -650,9 +653,10 @@ impl Repr {
 
         let payload_len = packet.total_len() as usize - packet.header_len() as usize;
 
-        // All DSCP values are acceptable, since they are of no concern to receiving endpoint.
-        // All ECN values are acceptable, since ECN requires opt-in from both endpoints.
-        // All TTL values are acceptable, since we do not perform routing.
+        // All DSCP values are acceptable, since they are of no concern to receiving
+        // endpoint. All ECN values are acceptable, since ECN requires opt-in
+        // from both endpoints. All TTL values are acceptable, since we do not
+        // perform routing.
         Ok(Repr {
             src_addr: packet.src_addr(),
             dst_addr: packet.dst_addr(),
@@ -662,13 +666,15 @@ impl Repr {
         })
     }
 
-    /// Return the length of a header that will be emitted from this high-level representation.
+    /// Return the length of a header that will be emitted from this high-level
+    /// representation.
     pub const fn buffer_len(&self) -> usize {
         // We never emit any options.
         field::DST_ADDR.end
     }
 
-    /// Emit a high-level representation into an Internet Protocol version 4 packet.
+    /// Emit a high-level representation into an Internet Protocol version 4
+    /// packet.
     pub fn emit<T: AsRef<[u8]> + AsMut<[u8]>>(
         &self,
         packet: &mut Packet<T>,

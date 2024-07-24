@@ -1,10 +1,12 @@
-use byteorder::{ByteOrder, NetworkEndian};
 use core::{cmp, fmt};
 
+use byteorder::{ByteOrder, NetworkEndian};
+
 use super::{Error, Result};
-use crate::phy::ChecksumCapabilities;
-use crate::wire::ip::checksum;
-use crate::wire::{Ipv4Packet, Ipv4Repr};
+use crate::{
+    phy::ChecksumCapabilities,
+    wire::{ip::checksum, Ipv4Packet, Ipv4Repr},
+};
 
 enum_with_unknown! {
     /// Internet protocol control message type.
@@ -160,7 +162,8 @@ enum_with_unknown! {
     }
 }
 
-/// A read/write wrapper around an Internet Control Message Protocol version 4 packet buffer.
+/// A read/write wrapper around an Internet Control Message Protocol version 4
+/// packet buffer.
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Packet<T: AsRef<[u8]>> {
@@ -242,7 +245,8 @@ impl<T: AsRef<[u8]>> Packet<T> {
     /// Return the identifier field (for echo request and reply packets).
     ///
     /// # Panics
-    /// This function may panic if this packet is not an echo request or reply packet.
+    /// This function may panic if this packet is not an echo request or reply
+    /// packet.
     #[inline]
     pub fn echo_ident(&self) -> u16 {
         let data = self.buffer.as_ref();
@@ -252,7 +256,8 @@ impl<T: AsRef<[u8]>> Packet<T> {
     /// Return the sequence number field (for echo request and reply packets).
     ///
     /// # Panics
-    /// This function may panic if this packet is not an echo request or reply packet.
+    /// This function may panic if this packet is not an echo request or reply
+    /// packet.
     #[inline]
     pub fn echo_seq_no(&self) -> u16 {
         let data = self.buffer.as_ref();
@@ -318,7 +323,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
     /// Set the identifier field (for echo request and reply packets).
     ///
     /// # Panics
-    /// This function may panic if this packet is not an echo request or reply packet.
+    /// This function may panic if this packet is not an echo request or reply
+    /// packet.
     #[inline]
     pub fn set_echo_ident(&mut self, value: u16) {
         let data = self.buffer.as_mut();
@@ -328,7 +334,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
     /// Set the sequence number field (for echo request and reply packets).
     ///
     /// # Panics
-    /// This function may panic if this packet is not an echo request or reply packet.
+    /// This function may panic if this packet is not an echo request or reply
+    /// packet.
     #[inline]
     pub fn set_echo_seq_no(&mut self, value: u16) {
         let data = self.buffer.as_mut();
@@ -362,7 +369,8 @@ impl<T: AsRef<[u8]>> AsRef<[u8]> for Packet<T> {
     }
 }
 
-/// A high-level representation of an Internet Control Message Protocol version 4 packet header.
+/// A high-level representation of an Internet Control Message Protocol version
+/// 4 packet header.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[non_exhaustive]
@@ -467,7 +475,8 @@ impl<'a> Repr<'a> {
         }
     }
 
-    /// Return the length of a packet that will be emitted from this high-level representation.
+    /// Return the length of a packet that will be emitted from this high-level
+    /// representation.
     pub const fn buffer_len(&self) -> usize {
         match self {
             &Repr::EchoRequest { data, .. } | &Repr::EchoReply { data, .. } => {
@@ -480,8 +489,8 @@ impl<'a> Repr<'a> {
         }
     }
 
-    /// Emit a high-level representation into an Internet Control Message Protocol version 4
-    /// packet.
+    /// Emit a high-level representation into an Internet Control Message
+    /// Protocol version 4 packet.
     pub fn emit<T>(&self, packet: &mut Packet<&mut T>, checksum_caps: &ChecksumCapabilities)
     where
         T: AsRef<[u8]> + AsMut<[u8]> + ?Sized,

@@ -1,10 +1,13 @@
-use crate::phy::{self, Device, DeviceCapabilities};
-use crate::time::Instant;
+use crate::{
+    phy::{self, Device, DeviceCapabilities},
+    time::Instant,
+};
 
 // This could be fixed once associated consts are stable.
 const MTU: usize = 1536;
 
-/// Represents a fuzzer. It is expected to replace bytes in the packet with fuzzed data.
+/// Represents a fuzzer. It is expected to replace bytes in the packet with
+/// fuzzed data.
 pub trait Fuzzer {
     /// Modify a single packet with fuzzed data.
     fn fuzz_packet(&self, packet_data: &mut [u8]);
@@ -12,9 +15,10 @@ pub trait Fuzzer {
 
 /// A fuzz injector device.
 ///
-/// A fuzz injector is a device that alters packets traversing through it according to the
-/// directions of a guided fuzzer. It is designed to support fuzzing internal state machines inside
-/// smoltcp, and is not for production use.
+/// A fuzz injector is a device that alters packets traversing through it
+/// according to the directions of a guided fuzzer. It is designed to support
+/// fuzzing internal state machines inside smoltcp, and is not for production
+/// use.
 #[allow(unused)]
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -78,7 +82,7 @@ where
     fn transmit(&mut self, timestamp: Instant) -> Option<Self::TxToken<'_>> {
         self.inner.transmit(timestamp).map(|token| TxToken {
             fuzzer: &mut self.fuzz_tx,
-            token: token,
+            token,
         })
     }
 }

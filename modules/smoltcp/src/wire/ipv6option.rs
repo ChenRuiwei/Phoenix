@@ -1,8 +1,8 @@
+use core::fmt;
+
 use super::{Error, Result};
 #[cfg(feature = "proto-rpl")]
 use super::{RplHopByHopPacket, RplHopByHopRepr};
-
-use core::fmt;
 
 enum_with_unknown! {
     /// IPv6 Extension Header Option Type
@@ -93,7 +93,8 @@ mod field {
 }
 
 impl<T: AsRef<[u8]>> Ipv6Option<T> {
-    /// Create a raw octet buffer with an IPv6 Extension Header Option structure.
+    /// Create a raw octet buffer with an IPv6 Extension Header Option
+    /// structure.
     pub const fn new_unchecked(buffer: T) -> Ipv6Option<T> {
         Ipv6Option { buffer }
     }
@@ -236,7 +237,8 @@ pub enum Repr<'a> {
 }
 
 impl<'a> Repr<'a> {
-    /// Parse an IPv6 Extension Header Option and return a high-level representation.
+    /// Parse an IPv6 Extension Header Option and return a high-level
+    /// representation.
     pub fn parse<T>(opt: &Ipv6Option<&'a T>) -> Result<Repr<'a>>
     where
         T: AsRef<[u8]> + ?Sized,
@@ -264,7 +266,8 @@ impl<'a> Repr<'a> {
         }
     }
 
-    /// Return the length of a header that will be emitted from this high-level representation.
+    /// Return the length of a header that will be emitted from this high-level
+    /// representation.
     pub const fn buffer_len(&self) -> usize {
         match *self {
             Repr::Pad1 => 1,

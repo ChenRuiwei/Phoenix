@@ -1,7 +1,4 @@
-use crate::time::Instant;
-use crate::wire::Ipv6Address;
-
-use crate::config::RPL_RELATIONS_BUFFER_COUNT;
+use crate::{config::RPL_RELATIONS_BUFFER_COUNT, time::Instant, wire::Ipv6Address};
 
 #[derive(Debug)]
 pub struct Relation {
@@ -16,8 +13,8 @@ pub struct Relations {
 }
 
 impl Relations {
-    /// Add a new relation to the buffer. If there was already a relation in the buffer, then
-    /// update it.
+    /// Add a new relation to the buffer. If there was already a relation in the
+    /// buffer, then update it.
     pub fn add_relation(
         &mut self,
         destination: Ipv6Address,

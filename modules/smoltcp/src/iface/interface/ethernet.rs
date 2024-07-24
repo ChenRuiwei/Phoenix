@@ -1,13 +1,7 @@
-use super::check;
-use super::DispatchError;
-use super::EthernetPacket;
-use super::FragmentsBuffer;
-use super::InterfaceInner;
-use super::SocketSet;
 use core::result::Result;
 
-use crate::phy::TxToken;
-use crate::wire::*;
+use super::{check, DispatchError, EthernetPacket, FragmentsBuffer, InterfaceInner, SocketSet};
+use crate::{phy::TxToken, wire::*};
 
 impl InterfaceInner {
     #[cfg(feature = "medium-ethernet")]
@@ -20,7 +14,8 @@ impl InterfaceInner {
     ) -> Option<EthernetPacket<'frame>> {
         let eth_frame = check!(EthernetFrame::new_checked(frame));
 
-        // Ignore any packets not directed to our hardware address or any of the multicast groups.
+        // Ignore any packets not directed to our hardware address or any of the
+        // multicast groups.
         if !eth_frame.dst_addr().is_broadcast()
             && !eth_frame.dst_addr().is_multicast()
             && HardwareAddress::Ethernet(eth_frame.dst_addr()) != self.hardware_addr

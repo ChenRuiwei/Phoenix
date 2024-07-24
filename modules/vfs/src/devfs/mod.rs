@@ -14,7 +14,10 @@ use self::{
     zero::{ZeroDentry, ZeroFile, ZeroInode},
 };
 use crate::{
-    simplefs::{dentry::SimpleDentry, inode::{SimpleDirInode, SimpleFileInode}},
+    simplefs::{
+        dentry::SimpleDentry,
+        inode::{SimpleDirInode, SimpleFileInode},
+    },
     sys_root_dentry,
 };
 

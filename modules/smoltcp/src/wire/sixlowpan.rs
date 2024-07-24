@@ -1,12 +1,10 @@
-//! Implementation of [RFC 6282] which specifies a compression format for IPv6 datagrams over
-//! IEEE802.154-based networks.
+//! Implementation of [RFC 6282] which specifies a compression format for IPv6
+//! datagrams over IEEE802.154-based networks.
 //!
 //! [RFC 6282]: https://datatracker.ietf.org/doc/html/rfc6282
 
 use super::{Error, Result};
-use crate::wire::ieee802154::Address as LlAddress;
-use crate::wire::ipv6;
-use crate::wire::IpProtocol;
+use crate::wire::{ieee802154::Address as LlAddress, ipv6, IpProtocol};
 
 const ADDRESS_CONTEXT_LENGTH: usize = 8;
 
@@ -14,9 +12,9 @@ const ADDRESS_CONTEXT_LENGTH: usize = 8;
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct AddressContext(pub [u8; ADDRESS_CONTEXT_LENGTH]);
 
-/// The representation of an unresolved address. 6LoWPAN compression of IPv6 addresses can be with
-/// and without context information. The decompression with context information is not yet
-/// implemented.
+/// The representation of an unresolved address. 6LoWPAN compression of IPv6
+/// addresses can be with and without context information. The decompression
+/// with context information is not yet implemented.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum UnresolvedAddress<'a> {
@@ -35,13 +33,14 @@ pub enum AddressMode<'a> {
     /// carried in-line.
     InLine64bits(&'a [u8]),
     /// The first 112 bits of the address are elided. The value of the first
-    /// 64 bits is the link-local prefix padded with zeros. The following 64 bits
-    /// are 0000:00ff:fe00:XXXX, where XXXX are the 16 bits carried in-line.
+    /// 64 bits is the link-local prefix padded with zeros. The following 64
+    /// bits are 0000:00ff:fe00:XXXX, where XXXX are the 16 bits carried
+    /// in-line.
     InLine16bits(&'a [u8]),
     /// The address is fully elided. The first 64 bits of the address are
     /// the link-local prefix padded with zeros. The remaining 64 bits are
-    /// computed from the encapsulating header (e.g., 802.15.4 or IPv6 source address)
-    /// as specified in Section 3.2.2.
+    /// computed from the encapsulating header (e.g., 802.15.4 or IPv6 source
+    /// address) as specified in Section 3.2.2.
     FullyElided,
     /// The address takes the form ffXX::00XX:XXXX:XXXX
     Multicast48bits(&'a [u8]),
@@ -181,8 +180,8 @@ impl SixlowpanPacket {
     /// This can either be a fragment header or an IPHC header.
     ///
     /// # Errors
-    /// Returns `[Error::Unrecognized]` when neither the Fragment Header dispatch or the IPHC
-    /// dispatch is recognized.
+    /// Returns `[Error::Unrecognized]` when neither the Fragment Header
+    /// dispatch or the IPHC dispatch is recognized.
     pub fn dispatch(buffer: impl AsRef<[u8]>) -> Result<Self> {
         let raw = buffer.as_ref();
 
@@ -206,12 +205,13 @@ pub mod frag {
     //!
     //! [RFC 4944 § 5.3]: https://datatracker.ietf.org/doc/html/rfc4944#section-5.3
 
-    use super::{DISPATCH_FIRST_FRAGMENT_HEADER, DISPATCH_FRAGMENT_HEADER};
-    use crate::wire::{Error, Result};
-    use crate::wire::{Ieee802154Address, Ieee802154Repr};
     use byteorder::{ByteOrder, NetworkEndian};
 
-    /// Key used for identifying all the link fragments that belong to the same packet.
+    use super::{DISPATCH_FIRST_FRAGMENT_HEADER, DISPATCH_FRAGMENT_HEADER};
+    use crate::wire::{Error, Ieee802154Address, Ieee802154Repr, Result};
+
+    /// Key used for identifying all the link fragments that belong to the same
+    /// packet.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct Key {
@@ -345,7 +345,8 @@ pub mod frag {
             }
         }
 
-        /// Returns `true` when this header is from the first fragment of a link.
+        /// Returns `true` when this header is from the first fragment of a
+        /// link.
         pub fn is_first_fragment(&self) -> bool {
             self.dispatch() == DISPATCH_FIRST_FRAGMENT_HEADER
         }
@@ -512,12 +513,13 @@ pub mod iphc {
     //!
     //! [RFC 6282 § 3.1]: https://datatracker.ietf.org/doc/html/rfc6282#section-3.1
 
+    use byteorder::{ByteOrder, NetworkEndian};
+
     use super::{
         AddressContext, AddressMode, Error, NextHeader, Result, UnresolvedAddress,
         DISPATCH_IPHC_HEADER,
     };
     use crate::wire::{ieee802154::Address as LlAddress, ipv6, IpProtocol};
-    use byteorder::{ByteOrder, NetworkEndian};
 
     mod field {
         use crate::wire::field::*;
@@ -550,8 +552,8 @@ pub mod iphc {
     /// A read/write wrapper around a 6LoWPAN IPHC header.
     /// [RFC 6282 § 3.1] specifies the format of the header.
     ///
-    /// The header always start with the following base format (from [RFC 6282 § 3.1.1]):
-    /// ```txt
+    /// The header always start with the following base format (from [RFC 6282 §
+    /// 3.1.1]): ```txt
     ///    0                                       1
     ///    0   1   2   3   4   5   6   7   8   9   0   1   2   3   4   5
     ///  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
@@ -569,7 +571,8 @@ pub mod iphc {
     /// - DAC: Destination Address Compression
     /// - DAM: Destination Address Mode
     ///
-    /// Depending on the flags in the base format, the following fields are added to the header:
+    /// Depending on the flags in the base format, the following fields are
+    /// added to the header:
     /// - Traffic Class and Flow Label
     /// - Next Header
     /// - Hop Limit
@@ -993,7 +996,8 @@ pub mod iphc {
 
         /// Set the Next Header.
         ///
-        /// **NOTE**: `idx` is the offset at which the Next Header needs to be written to.
+        /// **NOTE**: `idx` is the offset at which the Next Header needs to be
+        /// written to.
         fn set_next_header(&mut self, nh: NextHeader, mut idx: usize) -> usize {
             match nh {
                 NextHeader::Uncompressed(nh) => {
@@ -1009,7 +1013,8 @@ pub mod iphc {
 
         /// Set the Hop Limit.
         ///
-        /// **NOTE**: `idx` is the offset at which the Next Header needs to be written to.
+        /// **NOTE**: `idx` is the offset at which the Next Header needs to be
+        /// written to.
         fn set_hop_limit(&mut self, hl: u8, mut idx: usize) -> usize {
             match hl {
                 255 => self.set_hlim_field(0b11),
@@ -1025,9 +1030,11 @@ pub mod iphc {
             idx
         }
 
-        /// Set the Source Address based on the IPv6 address and the Link-Local address.
+        /// Set the Source Address based on the IPv6 address and the Link-Local
+        /// address.
         ///
-        /// **NOTE**: `idx` is the offset at which the Next Header needs to be written to.
+        /// **NOTE**: `idx` is the offset at which the Next Header needs to be
+        /// written to.
         fn set_src_address(
             &mut self,
             src_addr: ipv6::Address,
@@ -1091,9 +1098,11 @@ pub mod iphc {
             idx
         }
 
-        /// Set the Destination Address based on the IPv6 address and the Link-Local address.
+        /// Set the Destination Address based on the IPv6 address and the
+        /// Link-Local address.
         ///
-        /// **NOTE**: `idx` is the offset at which the Next Header needs to be written to.
+        /// **NOTE**: `idx` is the offset at which the Next Header needs to be
+        /// written to.
         fn set_dst_address(
             &mut self,
             dst_addr: ipv6::Address,
@@ -1229,8 +1238,8 @@ pub mod iphc {
     impl Repr {
         /// Parse a 6LoWPAN IPHC header and return a high-level representation.
         ///
-        /// The `ll_src_addr` and `ll_dst_addr` are the link-local addresses used for resolving the
-        /// IPv6 packets.
+        /// The `ll_src_addr` and `ll_dst_addr` are the link-local addresses
+        /// used for resolving the IPv6 packets.
         pub fn parse<T: AsRef<[u8]> + ?Sized>(
             packet: &Packet<&T>,
             ll_src_addr: Option<LlAddress>,
@@ -1261,13 +1270,15 @@ pub mod iphc {
             })
         }
 
-        /// Return the length of a header that will be emitted from this high-level representation.
+        /// Return the length of a header that will be emitted from this
+        /// high-level representation.
         pub fn buffer_len(&self) -> usize {
             let mut len = 0;
             len += 2; // The minimal header length
 
             len += match self.next_header {
-                NextHeader::Compressed => 0, // The next header is compressed (we don't need to inline what the next header is)
+                NextHeader::Compressed => 0, /* The next header is compressed (we don't need to
+                                               * inline what the next header is) */
                 NextHeader::Uncompressed(_) => 1, // The next header field is inlined
             };
 
@@ -1462,6 +1473,9 @@ pub mod nhc {
     //! Implementation of Next Header Compression from [RFC 6282 § 4].
     //!
     //! [RFC 6282 § 4]: https://datatracker.ietf.org/doc/html/rfc6282#section-4
+    use byteorder::{ByteOrder, NetworkEndian};
+    use ipv6::Address;
+
     use super::{Error, NextHeader, Result, DISPATCH_EXT_HEADER, DISPATCH_UDP_HEADER};
     use crate::{
         phy::ChecksumCapabilities,
@@ -1472,8 +1486,6 @@ pub mod nhc {
             IpProtocol,
         },
     };
-    use byteorder::{ByteOrder, NetworkEndian};
-    use ipv6::Address;
 
     macro_rules! get_field {
         ($name:ident, $mask:expr, $shift:expr) => {
@@ -1524,8 +1536,8 @@ pub mod nhc {
         /// This can either be an Extenstion header or an 6LoWPAN Udp header.
         ///
         /// # Errors
-        /// Returns `[Error::Unrecognized]` when neither the Extension Header dispatch or the Udp
-        /// dispatch is recognized.
+        /// Returns `[Error::Unrecognized]` when neither the Extension Header
+        /// dispatch or the Udp dispatch is recognized.
         pub fn dispatch(buffer: impl AsRef<[u8]>) -> Result<Self> {
             let raw = buffer.as_ref();
             if raw.is_empty() {
@@ -1578,7 +1590,8 @@ pub mod nhc {
     }
 
     impl<T: AsRef<[u8]>> ExtHeaderPacket<T> {
-        /// Input a raw octet buffer with a 6LoWPAN NHC Extension Header structure.
+        /// Input a raw octet buffer with a 6LoWPAN NHC Extension Header
+        /// structure.
         pub const fn new_unchecked(buffer: T) -> Self {
             ExtHeaderPacket { buffer }
         }
@@ -1737,7 +1750,8 @@ pub mod nhc {
     }
 
     impl ExtHeaderRepr {
-        /// Parse a 6LoWPAN NHC Extension Header packet and return a high-level representation.
+        /// Parse a 6LoWPAN NHC Extension Header packet and return a high-level
+        /// representation.
         pub fn parse<T: AsRef<[u8]> + ?Sized>(packet: &ExtHeaderPacket<&T>) -> Result<Self> {
             // Ensure basic accessors will work.
             packet.check_len()?;
@@ -1753,7 +1767,8 @@ pub mod nhc {
             })
         }
 
-        /// Return the length of a header that will be emitted from this high-level representation.
+        /// Return the length of a header that will be emitted from this
+        /// high-level representation.
         pub fn buffer_len(&self) -> usize {
             let mut len = 1; // The minimal header size
 
@@ -1766,7 +1781,8 @@ pub mod nhc {
             len
         }
 
-        /// Emit a high-level representaiton into a 6LoWPAN NHC Extension Header packet.
+        /// Emit a high-level representaiton into a 6LoWPAN NHC Extension Header
+        /// packet.
         pub fn emit<T: AsRef<[u8]> + AsMut<[u8]>>(&self, packet: &mut ExtHeaderPacket<T>) {
             packet.set_dispatch_field();
             packet.set_extension_header_id(self.ext_header_id);
@@ -1778,13 +1794,11 @@ pub mod nhc {
     #[cfg(test)]
     mod tests {
         use super::*;
-
-        use crate::wire::{Ipv6RoutingHeader, Ipv6RoutingRepr};
-
         #[cfg(feature = "proto-rpl")]
         use crate::wire::{
             Ipv6Option, Ipv6OptionRepr, Ipv6OptionsIterator, RplHopByHopRepr, RplInstanceId,
         };
+        use crate::wire::{Ipv6RoutingHeader, Ipv6RoutingRepr};
 
         #[cfg(feature = "proto-rpl")]
         const RPL_HOP_BY_HOP_PACKET: [u8; 9] =
@@ -2049,7 +2063,8 @@ pub mod nhc {
                 let start = self.nhc_fields_start() + self.ports_size();
                 Some(NetworkEndian::read_u16(&data[start..start + 2]))
             } else {
-                // The checksum is elided and needs to be recomputed on the 6LoWPAN termination point.
+                // The checksum is elided and needs to be recomputed on the 6LoWPAN termination
+                // point.
                 None
             }
         }
@@ -2126,7 +2141,7 @@ pub mod nhc {
                     idx += 2;
                     data[idx] = (dst_port - 0xf000) as u8;
                 }
-                (_, _) => {
+                (..) => {
                     // We cannot compress any port.
                     self.set_ports_field(0b00);
                     let data = self.buffer.as_mut();
@@ -2151,7 +2166,8 @@ pub mod nhc {
     pub struct UdpNhcRepr(pub UdpRepr);
 
     impl<'a> UdpNhcRepr {
-        /// Parse a 6LoWPAN NHC UDP packet and return a high-level representation.
+        /// Parse a 6LoWPAN NHC UDP packet and return a high-level
+        /// representation.
         pub fn parse<T: AsRef<[u8]> + ?Sized>(
             packet: &UdpNhcPacket<&'a T>,
             src_addr: &ipv6::Address,
@@ -2192,7 +2208,8 @@ pub mod nhc {
             }))
         }
 
-        /// Return the length of a packet that will be emitted from this high-level representation.
+        /// Return the length of a packet that will be emitted from this
+        /// high-level representation.
         pub fn header_len(&self) -> usize {
             let mut len = 1; // The minimal header size
 
@@ -2202,7 +2219,7 @@ pub mod nhc {
             match (self.src_port, self.dst_port) {
                 (0xf0b0..=0xf0bf, 0xf0b0..=0xf0bf) => len + 1,
                 (0xf000..=0xf0ff, _) | (_, 0xf000..=0xf0ff) => len + 3,
-                (_, _) => len + 4,
+                (..) => len + 4,
             }
         }
 
@@ -2360,9 +2377,10 @@ mod test {
 
     #[test]
     fn sixlowpan_three_fragments() {
-        use crate::wire::ieee802154::Frame as Ieee802154Frame;
-        use crate::wire::ieee802154::Repr as Ieee802154Repr;
-        use crate::wire::Ieee802154Address;
+        use crate::wire::{
+            ieee802154::{Frame as Ieee802154Frame, Repr as Ieee802154Repr},
+            Ieee802154Address,
+        };
 
         let key = frag::Key {
             ll_src_addr: Ieee802154Address::Extended([50, 147, 130, 47, 40, 8, 62, 217]),

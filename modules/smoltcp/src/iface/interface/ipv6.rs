@@ -1,15 +1,7 @@
-use super::check;
-use super::icmp_reply_payload_len;
-use super::InterfaceInner;
-use super::SocketSet;
-use super::{IpPacket, IpPayload};
-
+use super::{check, icmp_reply_payload_len, InterfaceInner, IpPacket, IpPayload, SocketSet};
 #[cfg(feature = "socket-icmp")]
 use crate::socket::icmp;
-use crate::socket::AnySocket;
-
-use crate::phy::PacketMeta;
-use crate::wire::*;
+use crate::{phy::PacketMeta, socket::AnySocket, wire::*};
 
 impl InterfaceInner {
     #[cfg(feature = "proto-ipv6")]

@@ -1,10 +1,12 @@
 use super::*;
+use crate::{
+    phy::ChecksumCapabilities,
+    wire::{Ipv6Packet as Ipv6PacketWire, *},
+};
 
-use crate::phy::ChecksumCapabilities;
-use crate::wire::{Ipv6Packet as Ipv6PacketWire, *};
-
-// Max len of non-fragmented packets after decompression (including ipv6 header and payload)
-// TODO: lower. Should be (6lowpan mtu) - (min 6lowpan header size) + (max ipv6 header size)
+// Max len of non-fragmented packets after decompression (including ipv6 header
+// and payload) TODO: lower. Should be (6lowpan mtu) - (min 6lowpan header size)
+// + (max ipv6 header size)
 pub(crate) const MAX_DECOMPRESSED_LEN: usize = 1500;
 
 impl InterfaceInner {
@@ -306,8 +308,8 @@ impl InterfaceInner {
                 // When `poll` is called again, we check if frag was fully sent, otherwise we
                 // call `dispatch_ieee802154_frag`, which will transmit the other fragments.
 
-                // `dispatch_ieee802154_frag` requires some information about the total packet size,
-                // the link local source and destination address...
+                // `dispatch_ieee802154_frag` requires some information about the total packet
+                // size, the link local source and destination address...
                 let pkt = frag;
 
                 if pkt.buffer.len() < total_size {
@@ -371,14 +373,14 @@ impl InterfaceInner {
 
                 pkt.packet_len = total_size;
 
-                // The datagram size that we need to set in the first fragment header is equal to the
-                // IPv6 payload length + 40.
+                // The datagram size that we need to set in the first fragment header is equal
+                // to the IPv6 payload length + 40.
                 pkt.sixlowpan.datagram_size = (packet.ip_repr().payload_len() + 40) as u16;
 
                 // We generate a random tag.
                 let tag = self.get_sixlowpan_fragment_tag();
-                // We save the tag for the other fragments that will be created when calling `poll`
-                // multiple times.
+                // We save the tag for the other fragments that will be created when calling
+                // `poll` multiple times.
                 pkt.sixlowpan.datagram_tag = tag;
 
                 let frag1 = SixlowpanFragRepr::FirstFragment {
@@ -392,9 +394,10 @@ impl InterfaceInner {
                 };
 
                 // We calculate how much data we can send in the first fragment and the other
-                // fragments. The eventual IPv6 sizes of these fragments need to be a multiple of eight
-                // (except for the last fragment) since the offset field in the fragment is an offset
-                // in multiples of 8 octets. This is explained in [RFC 4944 § 5.3].
+                // fragments. The eventual IPv6 sizes of these fragments need to be a multiple
+                // of eight (except for the last fragment) since the offset
+                // field in the fragment is an offset in multiples of 8 octets.
+                // This is explained in [RFC 4944 § 5.3].
                 //
                 // [RFC 4944 § 5.3]: https://datatracker.ietf.org/doc/html/rfc4944#section-5.3
 

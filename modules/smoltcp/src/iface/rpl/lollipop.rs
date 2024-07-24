@@ -1,8 +1,9 @@
-//! Implementation of sequence counters defined in [RFC 6550 § 7.2]. Values from 128 and greater
-//! are used as a linear sequence to indicate a restart and bootstrap the counter. Values less than
-//! or equal to 127 are used as a circular sequence number space of size 128. When operating in the
-//! circular region, if sequence numbers are detected to be too far apart, then they are not
-//! comparable.
+//! Implementation of sequence counters defined in [RFC 6550 § 7.2]. Values from
+//! 128 and greater are used as a linear sequence to indicate a restart and
+//! bootstrap the counter. Values less than or equal to 127 are used as a
+//! circular sequence number space of size 128. When operating in the
+//! circular region, if sequence numbers are detected to be too far apart, then
+//! they are not comparable.
 //!
 //! [RFC 6550 § 7.2]: https://datatracker.ietf.org/doc/html/rfc6550#section-7.2
 
@@ -12,8 +13,8 @@ pub struct SequenceCounter(u8);
 
 impl Default for SequenceCounter {
     fn default() -> Self {
-        // RFC6550 7.2 recommends 240 (256 - SEQUENCE_WINDOW) as the initialization value of the
-        // counter.
+        // RFC6550 7.2 recommends 240 (256 - SEQUENCE_WINDOW) as the initialization
+        // value of the counter.
         Self(240)
     }
 }
@@ -21,8 +22,8 @@ impl Default for SequenceCounter {
 impl SequenceCounter {
     /// Create a new sequence counter.
     ///
-    /// Use `Self::default()` when a new sequence counter needs to be created with a value that is
-    /// recommended in RFC6550 7.2, being 240.
+    /// Use `Self::default()` when a new sequence counter needs to be created
+    /// with a value that is recommended in RFC6550 7.2, being 240.
     pub fn new(value: u8) -> Self {
         Self(value)
     }
@@ -34,11 +35,13 @@ impl SequenceCounter {
 
     /// Increment the sequence counter.
     ///
-    /// When the sequence counter is greater than or equal to 128, the maximum value is 255.
-    /// When the sequence counter is less than 128, the maximum value is 127.
+    /// When the sequence counter is greater than or equal to 128, the maximum
+    /// value is 255. When the sequence counter is less than 128, the
+    /// maximum value is 127.
     ///
-    /// When an increment of the sequence counter would cause the counter to increment beyond its
-    /// maximum value, the counter MUST wrap back to zero.
+    /// When an increment of the sequence counter would cause the counter to
+    /// increment beyond its maximum value, the counter MUST wrap back to
+    /// zero.
     pub fn increment(&mut self) {
         let max = if self.0 >= 128 { 255 } else { 127 };
 
@@ -74,8 +77,9 @@ impl PartialEq for SequenceCounter {
 
 impl PartialOrd for SequenceCounter {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        use super::consts::SEQUENCE_WINDOW;
         use core::cmp::Ordering;
+
+        use super::consts::SEQUENCE_WINDOW;
 
         let a = self.value() as usize;
         let b = other.value() as usize;

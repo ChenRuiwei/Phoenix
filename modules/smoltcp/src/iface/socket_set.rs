@@ -1,4 +1,5 @@
 use core::fmt;
+
 use managed::ManagedSlice;
 
 use super::socket_meta::Meta;
@@ -58,7 +59,8 @@ impl<'a> SocketSet<'a> {
     /// Add a socket to the set, and return its handle.
     ///
     /// # Panics
-    /// This function panics if the storage is fixed-size (not a `Vec`) and is full.
+    /// This function panics if the storage is fixed-size (not a `Vec`) and is
+    /// full.
     pub fn add<T: AnySocket<'a>>(&mut self, socket: T) -> SocketHandle {
         fn put<'a>(index: usize, slot: &mut SocketStorage<'a>, socket: Socket<'a>) -> SocketHandle {
             net_trace!("[{}]: adding", index);
@@ -120,7 +122,8 @@ impl<'a> SocketSet<'a> {
     /// Remove a socket from the set, without changing its state.
     ///
     /// # Panics
-    /// This function may panic if the handle does not belong to this socket set.
+    /// This function may panic if the handle does not belong to this socket
+    /// set.
     pub fn remove(&mut self, handle: SocketHandle) -> Socket<'a> {
         net_trace!("[{}]: removing", handle.0);
         match self.sockets[handle.0].inner.take() {

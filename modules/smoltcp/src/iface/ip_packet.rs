@@ -1,5 +1,4 @@
-use crate::phy::DeviceCapabilities;
-use crate::wire::*;
+use crate::{phy::DeviceCapabilities, wire::*};
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, PartialEq)]

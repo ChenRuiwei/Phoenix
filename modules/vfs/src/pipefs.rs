@@ -38,11 +38,7 @@ pub struct PipeInodeInner {
 
 impl PipeInode {
     pub fn new() -> Arc<Self> {
-        let meta = InodeMeta::new(
-            InodeMode::FIFO,
-            Arc::<usize>::new_uninit(),
-            PIPE_BUF_LEN,
-        );
+        let meta = InodeMeta::new(InodeMode::FIFO, Arc::<usize>::new_uninit(), PIPE_BUF_LEN);
         let inner = Mutex::new(PipeInodeInner {
             is_write_closed: false,
             is_read_closed: false,

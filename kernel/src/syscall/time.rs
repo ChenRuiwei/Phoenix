@@ -208,7 +208,7 @@ impl Syscall<'_> {
         which: usize,
         curr_value: UserWritePtr<ITimerVal>,
     ) -> SyscallResult {
-        if which < 0 || which > 2 {
+        if which > 2 {
             return Err(SysError::EINVAL);
         }
         if curr_value.not_null() {

@@ -14,7 +14,8 @@ impl fmt::Display for TooManyHolesError {
 #[cfg(feature = "std")]
 impl std::error::Error for TooManyHolesError {}
 
-/// A contiguous chunk of absent data, followed by a contiguous chunk of present data.
+/// A contiguous chunk of absent data, followed by a contiguous chunk of present
+/// data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Contig {
     hole_size: usize,
@@ -93,7 +94,8 @@ impl Contig {
 
 /// A buffer (re)assembler.
 ///
-/// Currently, up to a hardcoded limit of 4 or 32 holes can be tracked in the buffer.
+/// Currently, up to a hardcoded limit of 4 or 32 holes can be tracked in the
+/// buffer.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Assembler {
     contigs: [Contig; ASSEMBLER_MAX_SEGMENT_COUNT],
@@ -128,7 +130,8 @@ impl defmt::Format for Assembler {
 }
 
 // Invariant on Assembler::contigs:
-// - There's an index `i` where all contigs before have data, and all contigs after don't (are unused).
+// - There's an index `i` where all contigs before have data, and all contigs
+//   after don't (are unused).
 // - All contigs with data must have hole_size != 0, except the first.
 
 impl Assembler {
@@ -148,7 +151,8 @@ impl Assembler {
         self.contigs[0]
     }
 
-    /// Return length of the front contiguous range without removing it from the assembler
+    /// Return length of the front contiguous range without removing it from the
+    /// assembler
     pub fn peek_front(&self) -> usize {
         let front = self.front();
         if front.has_hole() {
@@ -197,7 +201,8 @@ impl Assembler {
     }
 
     /// Add a new contiguous range to the assembler,
-    /// or return `Err(TooManyHolesError)` if too many discontiguities are already recorded.
+    /// or return `Err(TooManyHolesError)` if too many discontiguities are
+    /// already recorded.
     pub fn add(&mut self, mut offset: usize, size: usize) -> Result<(), TooManyHolesError> {
         if size == 0 {
             return Ok(());
@@ -208,7 +213,8 @@ impl Assembler {
         // Find index of the contig containing the start of the range.
         loop {
             if i == self.contigs.len() {
-                // The new range is after all the previous ranges, but there/s no space to add it.
+                // The new range is after all the previous ranges, but there/s no space to add
+                // it.
                 return Err(TooManyHolesError);
             }
             let contig = &mut self.contigs[i];
@@ -299,8 +305,8 @@ impl Assembler {
     ///
     /// This is equivalent to calling `add` then `remove_front` individually,
     /// except it's guaranteed to not fail when offset = 0.
-    /// This is required for TCP: we must never drop the next expected segment, or
-    /// the protocol might get stuck.
+    /// This is required for TCP: we must never drop the next expected segment,
+    /// or the protocol might get stuck.
     pub fn add_then_remove_front(
         &mut self,
         offset: usize,
@@ -320,13 +326,15 @@ impl Assembler {
 
     /// Iterate over all of the contiguous data ranges.
     ///
-    /// This is used in calculating what data ranges have been received. The offset indicates the
-    /// number of bytes of contiguous data received before the beginnings of this Assembler.
+    /// This is used in calculating what data ranges have been received. The
+    /// offset indicates the number of bytes of contiguous data received
+    /// before the beginnings of this Assembler.
     ///
     ///    Data        Hole        Data
     /// |--- 100 ---|--- 200 ---|--- 100 ---|
     ///
-    /// An offset of 1500 would return the ranges: ``(1500, 1600), (1800, 1900)``
+    /// An offset of 1500 would return the ranges: ``(1500, 1600), (1800,
+    /// 1900)``
     pub fn iter_data(&self, first_offset: usize) -> AssemblerIter {
         AssemblerIter::new(self, first_offset)
     }
@@ -376,8 +384,9 @@ impl<'a> Iterator for AssemblerIter<'a> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use std::vec::Vec;
+
+    use super::*;
 
     impl From<Vec<(usize, usize)>> for Assembler {
         fn from(vec: Vec<(usize, usize)>) -> Assembler {
@@ -700,7 +709,7 @@ mod test {
 
         for max_size in [2, 5, 10, 100] {
             for _ in 0..300 {
-                //println!("===");
+                // println!("===");
                 let mut assr = Assembler::new();
                 let mut map = [false; MAX_INDEX];
 
@@ -708,7 +717,7 @@ mod test {
                     let offset = rand::thread_rng().gen_range(0..MAX_INDEX - max_size - 1);
                     let size = rand::thread_rng().gen_range(1..=max_size);
 
-                    //println!("add {}..{} {}", offset, offset + size, size);
+                    // println!("add {}..{} {}", offset, offset + size, size);
                     // Real impl
                     let res = assr.add(offset, size);
 

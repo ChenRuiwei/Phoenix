@@ -1,11 +1,12 @@
-use byteorder::{ByteOrder, NetworkEndian};
 use core::fmt;
 
-use super::{Error, Result};
-use crate::time::Duration;
-use crate::wire::ip::checksum;
+use byteorder::{ByteOrder, NetworkEndian};
 
-use crate::wire::Ipv4Address;
+use super::{Error, Result};
+use crate::{
+    time::Duration,
+    wire::{ip::checksum, Ipv4Address},
+};
 
 enum_with_unknown! {
     /// Internet Group Management Protocol v1/v2 message version/type.
@@ -21,7 +22,8 @@ enum_with_unknown! {
     }
 }
 
-/// A read/write wrapper around an Internet Group Management Protocol v1/v2 packet buffer.
+/// A read/write wrapper around an Internet Group Management Protocol v1/v2
+/// packet buffer.
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Packet<T: AsRef<[u8]>> {
@@ -170,7 +172,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
     }
 }
 
-/// A high-level representation of an Internet Group Management Protocol v1/v2 header.
+/// A high-level representation of an Internet Group Management Protocol v1/v2
+/// header.
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Repr {
@@ -245,13 +248,15 @@ impl Repr {
         }
     }
 
-    /// Return the length of a packet that will be emitted from this high-level representation.
+    /// Return the length of a packet that will be emitted from this high-level
+    /// representation.
     pub const fn buffer_len(&self) -> usize {
         // always 8 bytes
         field::GROUP_ADDRESS.end
     }
 
-    /// Emit a high-level representation into an Internet Group Management Protocol v2 packet.
+    /// Emit a high-level representation into an Internet Group Management
+    /// Protocol v2 packet.
     pub fn emit<T>(&self, packet: &mut Packet<&mut T>)
     where
         T: AsRef<[u8]> + AsMut<[u8]> + ?Sized,

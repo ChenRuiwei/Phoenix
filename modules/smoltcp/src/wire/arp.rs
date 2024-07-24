@@ -1,9 +1,9 @@
-use byteorder::{ByteOrder, NetworkEndian};
 use core::fmt;
 
-use super::{Error, Result};
+use byteorder::{ByteOrder, NetworkEndian};
 
 pub use super::EthernetProtocol as Protocol;
+use super::{Error, Result};
 
 enum_with_unknown! {
     /// ARP hardware type.
@@ -268,8 +268,9 @@ pub enum Repr {
 }
 
 impl Repr {
-    /// Parse an Address Resolution Protocol packet and return a high-level representation,
-    /// or return `Err(Error)` if the packet is not recognized.
+    /// Parse an Address Resolution Protocol packet and return a high-level
+    /// representation, or return `Err(Error)` if the packet is not
+    /// recognized.
     pub fn parse<T: AsRef<[u8]>>(packet: &Packet<T>) -> Result<Repr> {
         match (
             packet.hardware_type(),
@@ -288,14 +289,16 @@ impl Repr {
         }
     }
 
-    /// Return the length of a packet that will be emitted from this high-level representation.
+    /// Return the length of a packet that will be emitted from this high-level
+    /// representation.
     pub const fn buffer_len(&self) -> usize {
         match *self {
             Repr::EthernetIpv4 { .. } => field::TPA(6, 4).end,
         }
     }
 
-    /// Emit a high-level representation into an Address Resolution Protocol packet.
+    /// Emit a high-level representation into an Address Resolution Protocol
+    /// packet.
     pub fn emit<T: AsRef<[u8]> + AsMut<[u8]>>(&self, packet: &mut Packet<T>) {
         match *self {
             Repr::EthernetIpv4 {

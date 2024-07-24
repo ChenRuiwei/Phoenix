@@ -1,15 +1,18 @@
-use byteorder::{ByteOrder, NetworkEndian};
 use core::{cmp, fmt, i32, ops};
 
+use byteorder::{ByteOrder, NetworkEndian};
+
 use super::{Error, Result};
-use crate::phy::ChecksumCapabilities;
-use crate::wire::ip::checksum;
-use crate::wire::{IpAddress, IpProtocol};
+use crate::{
+    phy::ChecksumCapabilities,
+    wire::{ip::checksum, IpAddress, IpProtocol},
+};
 
 /// A TCP sequence number.
 ///
-/// A sequence number is a monotonically advancing integer modulo 2<sup>32</sup>.
-/// Sequence numbers do not have a discontiguity when compared pairwise across a signed overflow.
+/// A sequence number is a monotonically advancing integer modulo
+/// 2<sup>32</sup>. Sequence numbers do not have a discontiguity when compared
+/// pairwise across a signed overflow.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub struct SeqNumber(pub i32);
 
@@ -334,9 +337,8 @@ impl<T: AsRef<[u8]>> Packet<T> {
         Ok(false)
     }
 
-    /// Return the selective acknowledgement ranges, if any. If there are none in the packet, an
-    /// array of ``None`` values will be returned.
-    ///
+    /// Return the selective acknowledgement ranges, if any. If there are none
+    /// in the packet, an array of ``None`` values will be returned.
     pub fn selective_ack_ranges(&self) -> Result<[Option<(u32, u32)>; 3]> {
         let data = self.buffer.as_ref();
         let mut options = &data[field::OPTIONS(self.header_len())];
@@ -353,8 +355,8 @@ impl<T: AsRef<[u8]>> Packet<T> {
     /// Validate the packet checksum.
     ///
     /// # Panics
-    /// This function panics unless `src_addr` and `dst_addr` belong to the same family,
-    /// and that family is IPv4 or IPv6.
+    /// This function panics unless `src_addr` and `dst_addr` belong to the same
+    /// family, and that family is IPv4 or IPv6.
     ///
     /// # Fuzzing
     /// This function always returns `true` when fuzzing.
@@ -577,8 +579,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
     /// Compute and fill in the header checksum.
     ///
     /// # Panics
-    /// This function panics unless `src_addr` and `dst_addr` belong to the same family,
-    /// and that family is IPv4 or IPv6.
+    /// This function panics unless `src_addr` and `dst_addr` belong to the same
+    /// family, and that family is IPv4 or IPv6.
     pub fn fill_checksum(&mut self, src_addr: &IpAddress, dst_addr: &IpAddress) {
         self.set_checksum(0);
         let checksum = {
@@ -687,7 +689,7 @@ impl<'a> TcpOption<'a> {
                         });
                         option = TcpOption::SackRange(sack_ranges);
                     }
-                    (_, _) => option = TcpOption::Unknown { kind, data },
+                    (..) => option = TcpOption::Unknown { kind, data },
                 }
             }
         }
@@ -810,7 +812,8 @@ pub struct Repr<'a> {
 }
 
 impl<'a> Repr<'a> {
-    /// Parse a Transmission Control Protocol packet and return a high-level representation.
+    /// Parse a Transmission Control Protocol packet and return a high-level
+    /// representation.
     pub fn parse<T>(
         packet: &Packet<&'a T>,
         src_addr: &IpAddress,
@@ -845,9 +848,10 @@ impl<'a> Repr<'a> {
             false => None,
         };
         // The PSH flag is ignored.
-        // The URG flag and the urgent field is ignored. This behavior is standards-compliant,
-        // however, most deployed systems (e.g. Linux) are *not* standards-compliant, and would
-        // cut the byte at the urgent pointer from the stream.
+        // The URG flag and the urgent field is ignored. This behavior is
+        // standards-compliant, however, most deployed systems (e.g. Linux) are
+        // *not* standards-compliant, and would cut the byte at the urgent
+        // pointer from the stream.
 
         let mut max_seg_size = None;
         let mut window_scale = None;
@@ -888,19 +892,20 @@ impl<'a> Repr<'a> {
         Ok(Repr {
             src_port: packet.src_port(),
             dst_port: packet.dst_port(),
-            control: control,
+            control,
             seq_number: packet.seq_number(),
-            ack_number: ack_number,
+            ack_number,
             window_len: packet.window_len(),
-            window_scale: window_scale,
-            max_seg_size: max_seg_size,
-            sack_permitted: sack_permitted,
-            sack_ranges: sack_ranges,
+            window_scale,
+            max_seg_size,
+            sack_permitted,
+            sack_ranges,
             payload: packet.payload(),
         })
     }
 
-    /// Return the length of a header that will be emitted from this high-level representation.
+    /// Return the length of a header that will be emitted from this high-level
+    /// representation.
     ///
     /// This should be used for buffer space calculations.
     /// The TCP header length is a multiple of 4.
@@ -929,12 +934,14 @@ impl<'a> Repr<'a> {
         length
     }
 
-    /// Return the length of a packet that will be emitted from this high-level representation.
+    /// Return the length of a packet that will be emitted from this high-level
+    /// representation.
     pub fn buffer_len(&self) -> usize {
         self.header_len() + self.payload.len()
     }
 
-    /// Emit a high-level representation into a Transmission Control Protocol packet.
+    /// Emit a high-level representation into a Transmission Control Protocol
+    /// packet.
     pub fn emit<T>(
         &self,
         packet: &mut Packet<&mut T>,
@@ -1055,7 +1062,10 @@ impl<'a, T: AsRef<[u8]> + ?Sized> fmt::Display for Packet<&'a T> {
                 TcpOption::MaxSegmentSize(value) => write!(f, " mss={value}")?,
                 TcpOption::WindowScale(value) => write!(f, " ws={value}")?,
                 TcpOption::SackPermitted => write!(f, " sACK")?,
-                TcpOption::SackRange(slice) => write!(f, " sACKr{slice:?}")?, // debug print conveniently includes the []s
+                TcpOption::SackRange(slice) => write!(f, " sACKr{slice:?}")?, /* debug print
+                                                                                * conveniently
+                                                                                * includes the
+                                                                                * []s */
                 TcpOption::Unknown { kind, .. } => write!(f, " opt({kind})")?,
             }
             options = next_options;
@@ -1269,7 +1279,8 @@ mod test {
     fn test_header_len_multiple_of_4() {
         let mut repr = packet_repr();
         repr.window_scale = Some(0); // This TCP Option needs 3 bytes.
-        assert_eq!(repr.header_len() % 4, 0); // Should e.g. be 28 instead of 27.
+        assert_eq!(repr.header_len() % 4, 0); // Should e.g. be 28 instead of
+                                              // 27.
     }
 
     macro_rules! assert_option_parses {

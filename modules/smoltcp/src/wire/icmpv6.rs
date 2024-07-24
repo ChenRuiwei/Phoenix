@@ -1,16 +1,19 @@
-use byteorder::{ByteOrder, NetworkEndian};
 use core::{cmp, fmt};
 
+use byteorder::{ByteOrder, NetworkEndian};
+
 use super::{Error, Result};
-use crate::phy::ChecksumCapabilities;
-use crate::wire::ip::checksum;
-use crate::wire::MldRepr;
 #[cfg(any(feature = "medium-ethernet", feature = "medium-ieee802154"))]
 use crate::wire::NdiscRepr;
 #[cfg(feature = "proto-rpl")]
 use crate::wire::RplRepr;
-use crate::wire::{IpAddress, IpProtocol, Ipv6Packet, Ipv6Repr};
-use crate::wire::{IPV6_HEADER_LEN, IPV6_MIN_MTU};
+use crate::{
+    phy::ChecksumCapabilities,
+    wire::{
+        ip::checksum, IpAddress, IpProtocol, Ipv6Packet, Ipv6Repr, MldRepr, IPV6_HEADER_LEN,
+        IPV6_MIN_MTU,
+    },
+};
 
 /// Error packets must not exceed min MTU
 const MAX_ERROR_PACKET_LEN: usize = IPV6_MIN_MTU - IPV6_HEADER_LEN;
@@ -191,7 +194,8 @@ impl fmt::Display for TimeExceeded {
     }
 }
 
-/// A read/write wrapper around an Internet Control Message Protocol version 6 packet buffer.
+/// A read/write wrapper around an Internet Control Message Protocol version 6
+/// packet buffer.
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Packet<T: AsRef<[u8]>> {
@@ -497,7 +501,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
     /// Set the identifier field (for echo request and reply packets).
     ///
     /// # Panics
-    /// This function may panic if this packet is not an echo request or reply packet.
+    /// This function may panic if this packet is not an echo request or reply
+    /// packet.
     #[inline]
     pub fn set_echo_ident(&mut self, value: u16) {
         let data = self.buffer.as_mut();
@@ -507,7 +512,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
     /// Set the sequence number field (for echo request and reply packets).
     ///
     /// # Panics
-    /// This function may panic if this packet is not an echo request or reply packet.
+    /// This function may panic if this packet is not an echo request or reply
+    /// packet.
     #[inline]
     pub fn set_echo_seq_no(&mut self, value: u16) {
         let data = self.buffer.as_mut();
@@ -527,7 +533,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Packet<T> {
     /// Set the pointer field (for parameter problem messages).
     ///
     /// # Panics
-    /// This function may panic if this packet is not a parameter problem message.
+    /// This function may panic if this packet is not a parameter problem
+    /// message.
     #[inline]
     pub fn set_param_problem_ptr(&mut self, value: u32) {
         let data = self.buffer.as_mut();
@@ -562,7 +569,8 @@ impl<T: AsRef<[u8]>> AsRef<[u8]> for Packet<T> {
     }
 }
 
-/// A high-level representation of an Internet Control Message Protocol version 6 packet header.
+/// A high-level representation of an Internet Control Message Protocol version
+/// 6 packet header.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[non_exhaustive]
@@ -621,9 +629,10 @@ impl<'a> Repr<'a> {
         where
             T: AsRef<[u8]> + ?Sized,
         {
-            // The packet must be truncated to fit the min MTU. Since we don't know the offset of
-            // the ICMPv6 header in the L2 frame, we should only check whether the payload's IPv6
-            // header is present, the rest is allowed to be truncated.
+            // The packet must be truncated to fit the min MTU. Since we don't know the
+            // offset of the ICMPv6 header in the L2 frame, we should only check
+            // whether the payload's IPv6 header is present, the rest is allowed
+            // to be truncated.
             let ip_packet = if packet.payload().len() >= IPV6_HEADER_LEN {
                 Ipv6Packet::new_unchecked(packet.payload())
             } else {
@@ -698,7 +707,8 @@ impl<'a> Repr<'a> {
         }
     }
 
-    /// Return the length of a packet that will be emitted from this high-level representation.
+    /// Return the length of a packet that will be emitted from this high-level
+    /// representation.
     pub fn buffer_len(&self) -> usize {
         match self {
             &Repr::DstUnreachable { header, data, .. }
@@ -719,8 +729,8 @@ impl<'a> Repr<'a> {
         }
     }
 
-    /// Emit a high-level representation into an Internet Control Message Protocol version 6
-    /// packet.
+    /// Emit a high-level representation into an Internet Control Message
+    /// Protocol version 6 packet.
     pub fn emit<T>(
         &self,
         src_addr: &IpAddress,
@@ -738,8 +748,9 @@ impl<'a> Repr<'a> {
             let mut ip_packet = Ipv6Packet::new_unchecked(packet.payload_mut());
             header.emit(&mut ip_packet);
             let payload = &mut ip_packet.into_inner()[header.buffer_len()..];
-            // FIXME: this should rather be checked at link level, as we can't know in advance how
-            // much space we have for the packet due to IPv6 options and etc
+            // FIXME: this should rather be checked at link level, as we can't know in
+            // advance how much space we have for the packet due to IPv6 options
+            // and etc
             let payload_len = cmp::min(
                 data.len(),
                 MAX_ERROR_PACKET_LEN - icmp_header_len - IPV6_HEADER_LEN,
@@ -829,7 +840,8 @@ impl<'a> Repr<'a> {
         if checksum_caps.icmpv6.tx() {
             packet.fill_checksum(src_addr, dst_addr);
         } else {
-            // make sure we get a consistently zeroed checksum, since implementations might rely on it
+            // make sure we get a consistently zeroed checksum, since implementations might
+            // rely on it
             packet.set_checksum(0);
         }
     }
@@ -838,8 +850,10 @@ impl<'a> Repr<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::wire::ip::test::{MOCK_IP_ADDR_1, MOCK_IP_ADDR_2};
-    use crate::wire::{IpProtocol, Ipv6Address, Ipv6Repr};
+    use crate::wire::{
+        ip::test::{MOCK_IP_ADDR_1, MOCK_IP_ADDR_2},
+        IpProtocol, Ipv6Address, Ipv6Repr,
+    };
 
     static ECHO_PACKET_BYTES: [u8; 12] = [
         0x80, 0x00, 0x19, 0xb3, 0x12, 0x34, 0xab, 0xcd, 0xaa, 0x00, 0x00, 0xff,

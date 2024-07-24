@@ -1,27 +1,31 @@
 //! Implementation of the Rank comparison in RPL.
 //!
-//! A Rank can be thought of as a fixed-point number, where the position of the radix point between
-//! the integer part and the fractional part is determined by `MinHopRankIncrease`.
-//! `MinHopRankIncrease` is the minimum increase in Rank between a node and any of its DODAG
-//! parents.
+//! A Rank can be thought of as a fixed-point number, where the position of the
+//! radix point between the integer part and the fractional part is determined
+//! by `MinHopRankIncrease`. `MinHopRankIncrease` is the minimum increase in
+//! Rank between a node and any of its DODAG parents.
 //! This value is provisined by the DODAG root.
 //!
 //! When Rank is compared, the integer portion of the Rank is to be used.
 //!
 //! Meaning of the comparison:
-//! - **Rank M is less than Rank N**: the position of M is closer to the DODAG root than the position
+//! - **Rank M is less than Rank N**: the position of M is closer to the DODAG
+//!   root than the position
 //! of N. Node M may safely be a DODAG parent for node N.
-//! - **Ranks are equal**: the positions of both nodes within the DODAG and with respect to the DODAG
-//! are similar or identical. Routing through a node with equal Rank may cause a routing loop.
-//! - **Rank M is greater than Rank N**: the position of node M is farther from the DODAG root
-//! than the position of N. Node M may in fact be in the sub-DODAG of node N. If node N selects
-//! node M as a DODAG parent, there is a risk of creating a loop.
+//! - **Ranks are equal**: the positions of both nodes within the DODAG and with
+//!   respect to the DODAG
+//! are similar or identical. Routing through a node with equal Rank may cause a
+//! routing loop.
+//! - **Rank M is greater than Rank N**: the position of node M is farther from
+//!   the DODAG root
+//! than the position of N. Node M may in fact be in the sub-DODAG of node N. If
+//! node N selects node M as a DODAG parent, there is a risk of creating a loop.
 
 use super::consts::DEFAULT_MIN_HOP_RANK_INCREASE;
 
-/// The Rank is the expression of the relative position within a DODAG Version with regard to
-/// neighbors, and it is not necessarily a good indication or a proper expression of a distance or
-/// a path cost to the root.
+/// The Rank is the expression of the relative position within a DODAG Version
+/// with regard to neighbors, and it is not necessarily a good indication or a
+/// proper expression of a distance or a path cost to the root.
 #[derive(Debug, Clone, Copy, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Rank {
@@ -43,8 +47,8 @@ impl Rank {
     pub const ROOT: Self = Rank::new(DEFAULT_MIN_HOP_RANK_INCREASE, DEFAULT_MIN_HOP_RANK_INCREASE);
 
     /// Create a new Rank from some value and a `MinHopRankIncrease`.
-    /// The `MinHopRankIncrease` is used for calculating the integer part for comparing to other
-    /// Ranks.
+    /// The `MinHopRankIncrease` is used for calculating the integer part for
+    /// comparing to other Ranks.
     pub const fn new(value: u16, min_hop_rank_increase: u16) -> Self {
         assert!(min_hop_rank_increase > 0);
 

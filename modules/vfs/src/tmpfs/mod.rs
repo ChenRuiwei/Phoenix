@@ -7,7 +7,10 @@ use vfs_core::{
     SuperBlockMeta,
 };
 
-use crate::simplefs::{dentry::SimpleDentry, inode::{SimpleDirInode, SimpleFileInode}};
+use crate::simplefs::{
+    dentry::SimpleDentry,
+    inode::{SimpleDirInode, SimpleFileInode},
+};
 
 pub struct TmpFsType {
     meta: FileSystemTypeMeta,

@@ -4,14 +4,18 @@ use core::task::Waker;
 use heapless::Vec;
 use managed::ManagedSlice;
 
-use crate::config::{DNS_MAX_NAME_SIZE, DNS_MAX_RESULT_COUNT, DNS_MAX_SERVER_COUNT};
-use crate::socket::{Context, PollAt};
-use crate::time::{Duration, Instant};
-use crate::wire::dns::{Flags, Opcode, Packet, Question, Rcode, Record, RecordData, Repr, Type};
-use crate::wire::{self, IpAddress, IpProtocol, IpRepr, UdpRepr};
-
 #[cfg(feature = "async")]
 use super::WakerRegistration;
+use crate::{
+    config::{DNS_MAX_NAME_SIZE, DNS_MAX_RESULT_COUNT, DNS_MAX_SERVER_COUNT},
+    socket::{Context, PollAt},
+    time::{Duration, Instant},
+    wire::{
+        self,
+        dns::{Flags, Opcode, Packet, Question, Rcode, Record, RecordData, Repr, Type},
+        IpAddress, IpProtocol, IpRepr, UdpRepr,
+    },
+};
 
 const DNS_PORT: u16 = 53;
 const MDNS_DNS_PORT: u16 = 5353;
@@ -140,7 +144,8 @@ pub struct Socket<'a> {
     servers: Vec<IpAddress, DNS_MAX_SERVER_COUNT>,
     queries: ManagedSlice<'a, Option<DnsQuery>>,
 
-    /// The time-to-live (IPv4) or hop limit (IPv6) value used in outgoing packets.
+    /// The time-to-live (IPv4) or hop limit (IPv6) value used in outgoing
+    /// packets.
     hop_limit: Option<u8>,
 }
 
@@ -170,21 +175,24 @@ impl<'a> Socket<'a> {
         self.servers = Vec::from_slice(servers).unwrap();
     }
 
-    /// Return the time-to-live (IPv4) or hop limit (IPv6) value used in outgoing packets.
+    /// Return the time-to-live (IPv4) or hop limit (IPv6) value used in
+    /// outgoing packets.
     ///
     /// See also the [set_hop_limit](#method.set_hop_limit) method
     pub fn hop_limit(&self) -> Option<u8> {
         self.hop_limit
     }
 
-    /// Set the time-to-live (IPv4) or hop limit (IPv6) value used in outgoing packets.
+    /// Set the time-to-live (IPv4) or hop limit (IPv6) value used in outgoing
+    /// packets.
     ///
-    /// A socket without an explicitly set hop limit value uses the default [IANA recommended]
-    /// value (64).
+    /// A socket without an explicitly set hop limit value uses the default
+    /// [IANA recommended] value (64).
     ///
     /// # Panics
     ///
-    /// This function panics if a hop limit value of 0 is given. See [RFC 1122 § 3.2.1.7].
+    /// This function panics if a hop limit value of 0 is given. See [RFC 1122 §
+    /// 3.2.1.7].
     ///
     /// [IANA recommended]: https://www.iana.org/assignments/ip-parameters/ip-parameters.xhtml
     /// [RFC 1122 § 3.2.1.7]: https://tools.ietf.org/html/rfc1122#section-3.2.1.7
@@ -348,7 +356,8 @@ impl<'a> Socket<'a> {
 
     /// Assign a waker to a query slot
     ///
-    /// The waker will be woken when the query completes, either successfully or failed.
+    /// The waker will be woken when the query completes, either successfully or
+    /// failed.
     ///
     /// # Panics
     ///

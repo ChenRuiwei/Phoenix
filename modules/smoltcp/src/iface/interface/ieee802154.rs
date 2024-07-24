@@ -1,7 +1,5 @@
 use super::*;
-
-use crate::phy::TxToken;
-use crate::wire::*;
+use crate::{phy::TxToken, wire::*};
 
 impl InterfaceInner {
     pub(super) fn process_ieee802154<'output, 'payload: 'output>(
@@ -18,9 +16,9 @@ impl InterfaceInner {
             return None;
         }
 
-        // Drop frames when the user has set a PAN id and the PAN id from frame is not equal to this
-        // When the user didn't set a PAN id (so it is None), then we accept all PAN id's.
-        // We always accept the broadcast PAN id.
+        // Drop frames when the user has set a PAN id and the PAN id from frame is not
+        // equal to this When the user didn't set a PAN id (so it is None), then
+        // we accept all PAN id's. We always accept the broadcast PAN id.
         if self.pan_id.is_some()
             && ieee802154_repr.dst_pan_id != self.pan_id
             && ieee802154_repr.dst_pan_id != Some(Ieee802154Pan::BROADCAST)

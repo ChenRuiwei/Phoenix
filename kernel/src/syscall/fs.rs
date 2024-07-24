@@ -211,10 +211,13 @@ impl Syscall<'_> {
 
         let file = match dentry.inode()?.itype() {
             InodeType::SymLink => {
-                let mut path_buf:Vec<u8> = vec![0; 512];
+                let mut path_buf: Vec<u8> = vec![0; 512];
                 let len = dentry.open()?.read(&mut path_buf).await?;
-                path_buf.truncate(len+1);
-                let path = CString::from_vec_with_nul(path_buf).unwrap().into_string().unwrap();
+                path_buf.truncate(len + 1);
+                let path = CString::from_vec_with_nul(path_buf)
+                    .unwrap()
+                    .into_string()
+                    .unwrap();
                 let path = if is_absolute_path(&path) {
                     Path::new(sys_root_dentry(), sys_root_dentry(), &path)
                 } else {
@@ -222,8 +225,8 @@ impl Syscall<'_> {
                 };
                 let new_dentry = path.walk()?;
                 new_dentry.open()?
-            },
-            _ =>  dentry.open()?
+            }
+            _ => dentry.open()?,
         };
         file.set_flags(flags);
         task.with_mut_fd_table(|table| table.alloc(file, flags))
