@@ -48,6 +48,7 @@ impl EnvContext {
     }
 
     pub unsafe fn auto_sum(&self) {
+        log::trace!("[EnvContext::auto_sum] sum_cnt: {}", self.sum_cnt);
         if self.sum_cnt == 0 {
             riscv::register::sstatus::clear_sum();
         } else {

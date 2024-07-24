@@ -1,4 +1,4 @@
-use alloc::sync::Arc;
+use alloc::{ffi::CString, sync::Arc, vec::{self, Vec}};
 
 use lwext4_rust::{
     bindings::{EEXIST, O_CREAT, O_TRUNC, O_WRONLY},
@@ -6,8 +6,7 @@ use lwext4_rust::{
 };
 use systype::{SysError, SysResult};
 use vfs_core::{
-    Dentry, DentryMeta, DentryState, File, FileSystemType, FileSystemTypeMeta, Inode, InodeMode,
-    InodeType, MountFlags, RenameFlags, StatFs, SuperBlock, SuperBlockMeta,
+    Dentry, DentryMeta, DentryState, File, FileSystemType, FileSystemTypeMeta, Inode, InodeMode, InodeType, MountFlags, Path, RenameFlags, StatFs, SuperBlock, SuperBlockMeta
 };
 
 use crate::{file::Ext4File, inode::Ext4Inode, LwExt4File};
@@ -63,6 +62,10 @@ impl Dentry for Ext4Dentry {
             sub_dentry.set_inode(new_inode);
         } else if file.check_inode_exist(&fpath, InodeTypes::EXT4_DE_REG_FILE) {
             let new_file = LwExt4File::new(&fpath, InodeTypes::EXT4_DE_REG_FILE);
+            let new_inode = Ext4Inode::new(sb, new_file);
+            sub_dentry.set_inode(new_inode);
+        } else if file.check_inode_exist(&fpath, InodeTypes::EXT4_DE_SYMLINK) {
+            let new_file = LwExt4File::new(&fpath, InodeTypes::EXT4_DE_SYMLINK);
             let new_inode = Ext4Inode::new(sb, new_file);
             sub_dentry.set_inode(new_inode);
         }

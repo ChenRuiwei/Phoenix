@@ -140,7 +140,7 @@ impl Task {
 }
 
 extern "C" {
-    fn sigreturn_trampoline();
+    fn _sigreturn_trampoline();
 }
 
 /// Signal dispositions and actions are process-wide: if an unhandled signal is
@@ -239,8 +239,8 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
                 }
                 cx.sepc = entry;
                 // ra (when the sigaction set by user finished,it will return to
-                // sigreturn_trampoline, which calls sys_sigreturn)
-                cx.user_x[1] = sigreturn_trampoline as usize;
+                // _sigreturn_trampoline, which calls sys_sigreturn)
+                cx.user_x[1] = _sigreturn_trampoline as usize;
                 // sp (it will be used later by sys_sigreturn to restore ucontext)
                 cx.user_x[2] = new_sp;
                 cx.user_x[4] = ucontext.uc_mcontext.user_x[4];

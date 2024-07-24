@@ -13,7 +13,7 @@ systype = { path = "../systype/" }
 sync = { path = "../sync/" }
 arch = { path = "../../arch/" }
 device-core = { path = "../device-core/" }
-async_utils = { path = "../../crates/async_utils/" }
+async-utils = { path = "../../crates/async-utils/" }
 
 spin = "0.9"
 log = "0.4"

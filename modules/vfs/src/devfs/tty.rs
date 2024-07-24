@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use async_utils::{block_on, get_waker, yield_now};
 use device_core::{CharDevice, DeviceMajor};
 use driver::{_print, get_device_manager, get_device_manager_mut, serial::Serial};
-use ringbuffer::{AllocRingBuffer, RingBuffer};
 use spin::Once;
 use strum::FromRepr;
 use sync::mutex::{SleepLock, SpinNoIrqLock};

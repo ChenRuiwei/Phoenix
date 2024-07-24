@@ -26,8 +26,6 @@ impl SuperBlockMeta {
             device,
             root_dentry: Once::new(),
             fs_type: Arc::downgrade(&fs_type),
-            // inodes: Mutex::new(Vec::new()),
-            // dirty: Mutex::new(Vec::new()),
         }
     }
 }
@@ -57,10 +55,6 @@ impl dyn SuperBlock {
     /// Get the root dentry.
     pub fn root_dentry(&self) -> Arc<dyn Dentry> {
         self.meta().root_dentry.get().unwrap().clone()
-    }
-
-    pub fn push_inode(&self, inode: Arc<dyn Inode>) {
-        // self.meta().inodes.lock().push(inode)
     }
 
     pub fn device(&self) -> Arc<dyn BlockDriverOps> {

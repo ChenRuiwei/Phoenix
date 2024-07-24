@@ -126,4 +126,22 @@ impl File for RtcFile {
     fn flush(&self) -> SysResult<usize> {
         todo!()
     }
+
+    fn ioctl(&self, _cmd: usize, arg: usize) -> SyscallResult {
+        unsafe {
+            *(arg as *mut RtcTime) = RtcTime::default();
+        }
+        Ok(0)
+    }
+}
+
+#[derive(Default)]
+#[repr(C)]
+pub struct RtcTime {
+    tm_sec: i32,
+    tm_min: i32,
+    tm_hour: i32,
+    tm_mday: i32,
+    tm_mon: i32,
+    tm_year: i32,
 }

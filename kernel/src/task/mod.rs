@@ -9,7 +9,7 @@ mod tid;
 use alloc::{sync::Arc, vec::Vec};
 
 use async_utils::block_on;
-use config::mm::USER_STACK_SIZE;
+use config::process::USER_STACK_SIZE;
 pub use manager::TASK_MANAGER;
 pub use schedule::{spawn_kernel_task, spawn_user_task};
 pub use task::Task;
@@ -73,7 +73,6 @@ macro_rules! generate_with_methods {
             $(
                 #[allow(unused)]
                 pub fn [<with_ $name>]<T>(&self, f: impl FnOnce(&$ty) -> T) -> T {
-                    // TODO: let logging more specific
                     log::trace!("with_{}", stringify!($name));
                     f(&self.$name.lock())
                 }

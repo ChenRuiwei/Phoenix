@@ -185,7 +185,7 @@ impl Syscall<'_> {
     /// O_TMPFILE is specified in flags; if it is not supplied, some
     /// arbitrary bytes from the stack will be applied as the file mode.
     // TODO:
-    pub fn sys_openat(
+    pub async fn sys_openat(
         &self,
         dirfd: AtFd,
         pathname: UserReadPtr<u8>,
@@ -208,7 +208,23 @@ impl Syscall<'_> {
             let parent = dentry.parent().expect("can not be root dentry");
             parent.create(dentry.name(), InodeMode::FILE)?;
         }
-        let file = dentry.open()?;
+
+        let file = match dentry.inode()?.itype() {
+            InodeType::SymLink => {
+                let mut path_buf:Vec<u8> = vec![0; 512];
+                let len = dentry.open()?.read(&mut path_buf).await?;
+                path_buf.truncate(len+1);
+                let path = CString::from_vec_with_nul(path_buf).unwrap().into_string().unwrap();
+                let path = if is_absolute_path(&path) {
+                    Path::new(sys_root_dentry(), sys_root_dentry(), &path)
+                } else {
+                    Path::new(sys_root_dentry(), dentry.parent().unwrap(), &path)
+                };
+                let new_dentry = path.walk()?;
+                new_dentry.open()?
+            },
+            _ =>  dentry.open()?
+        };
         file.set_flags(flags);
         task.with_mut_fd_table(|table| table.alloc(file, flags))
     }

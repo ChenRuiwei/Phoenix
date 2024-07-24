@@ -1,10 +1,10 @@
 use config::{
     mm::{KERNEL_STACK_SIZE, PAGE_SIZE, PTE_NUM_IN_ONE_PAGE, PTE_SIZE, VIRT_RAM_OFFSET},
-    processor::HART_NUM,
+    processor::MAX_HARTS,
 };
 
 #[link_section = ".bss.stack"]
-static mut BOOT_STACK: [u8; KERNEL_STACK_SIZE * HART_NUM] = [0u8; KERNEL_STACK_SIZE * HART_NUM];
+static mut BOOT_STACK: [u8; KERNEL_STACK_SIZE * MAX_HARTS] = [0u8; KERNEL_STACK_SIZE * MAX_HARTS];
 
 #[repr(C, align(4096))]
 struct BootPageTable([u64; PTE_NUM_IN_ONE_PAGE]);

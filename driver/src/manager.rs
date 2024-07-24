@@ -4,8 +4,8 @@ use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 use arch::interrupts::{disable_interrupt, enable_external_interrupt};
 use config::{
-    mm::{DTB_ADDR, VIRT_RAM_OFFSET},
-    processor::HART_NUM,
+    mm::{DTB_ADDR, K_SEG_DTB_BEG, VIRT_RAM_OFFSET},
+    processor::MAX_HARTS,
 };
 use device_core::{BaseDriverOps, DevId};
 use log::{info, warn};
@@ -34,9 +34,8 @@ impl DeviceManager {
 
     /// mmio memory region map finished in this function
     pub fn probe(&mut self) {
-        let device_tree = unsafe {
-            fdt::Fdt::from_ptr((DTB_ADDR + VIRT_RAM_OFFSET) as _).expect("Parse DTB failed")
-        };
+        let device_tree =
+            unsafe { fdt::Fdt::from_ptr(K_SEG_DTB_BEG as _).expect("Parse DTB failed") };
         if let Some(bootargs) = device_tree.chosen().bootargs() {
             println!("Bootargs: {:?}", bootargs);
         }
@@ -79,7 +78,7 @@ impl DeviceManager {
     }
 
     pub fn enable_device_interrupts(&mut self) {
-        for i in 0..HART_NUM * 2 {
+        for i in 0..MAX_HARTS * 2 {
             for dev in self.devices.values() {
                 if let Some(irq) = dev.irq_no() {
                     self.plic().enable_irq(irq, i);

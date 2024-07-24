@@ -16,7 +16,6 @@ impl FatDirInode {
             meta: InodeMeta::new(InodeMode::from_type(InodeType::Dir), super_block.clone(), 0),
             dir: new_shared(dir),
         });
-        super_block.push_inode(inode.clone());
         inode
     }
 }

@@ -2,8 +2,9 @@ use alloc::{
     sync::Arc,
     vec::{self, Vec},
 };
+use core::fmt;
 
-use config::fs::MAX_FD_NUM;
+use config::fs::MAX_FDS;
 use systype::{RLimit, SysError, SysResult};
 use vfs_core::{File, OpenFlags};
 
@@ -43,6 +44,15 @@ pub struct FdInfo {
     file: Arc<dyn File>,
 }
 
+impl fmt::Debug for FdInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FdInfo")
+            .field("flags", &self.flags)
+            .field("file path", &self.file.dentry().path())
+            .finish()
+    }
+}
+
 impl FdInfo {
     pub fn new(file: Arc<dyn File>, flags: FdFlags) -> Self {
         Self { flags, file }
@@ -67,7 +77,7 @@ impl FdInfo {
 
 impl FdTable {
     pub fn new() -> Self {
-        let mut table: Vec<Option<FdInfo>> = Vec::with_capacity(MAX_FD_NUM);
+        let mut table: Vec<Option<FdInfo>> = Vec::with_capacity(MAX_FDS);
 
         let tty_file = TTY.get().unwrap().clone();
         let stdin = tty_file.clone();
@@ -84,8 +94,8 @@ impl FdTable {
         Self {
             table,
             rlimit: RLimit {
-                rlim_cur: MAX_FD_NUM,
-                rlim_max: MAX_FD_NUM,
+                rlim_cur: MAX_FDS,
+                rlim_max: MAX_FDS,
             },
         }
     }
@@ -118,9 +128,12 @@ impl FdTable {
         if inner_slot.is_some() {
             return inner_slot;
         } else if inner_slot.is_none() && start < self.rlimit.rlim_max {
+            // if table len not enough, push enough empty slots
             for _ in self.table.len()..start {
                 self.table.push(None);
             }
+            // inner_slot is none means we need to add more one slot
+            self.table.push(None);
             return Some(self.table.len() - 1);
         } else {
             return None;
@@ -129,7 +142,7 @@ impl FdTable {
 
     fn extend_to(&mut self, len: usize) -> SysResult<()> {
         if len > self.rlimit.rlim_max {
-            return Err(SysError::EMFILE);
+            return Err(SysError::EBADF);
         } else if self.table.len() >= len {
             return Ok(());
         } else {
@@ -184,7 +197,7 @@ impl FdTable {
     }
 
     pub fn put(&mut self, fd: Fd, fd_info: FdInfo) -> SysResult<()> {
-        self.extend_to(fd)?;
+        self.extend_to((fd.checked_add(1).ok_or(SysError::EBADF)?))?;
         self.table[fd] = Some(fd_info);
         Ok(())
     }
@@ -214,6 +227,7 @@ impl FdTable {
             .ok_or_else(|| SysError::EMFILE)?;
         let fd_info = FdInfo::new(file, flags.into());
         self.put(new_fd, fd_info)?;
+        debug_assert!(new_fd >= lower_bound);
         Ok(new_fd)
     }
 

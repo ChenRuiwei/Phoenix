@@ -127,6 +127,10 @@ impl Syscall<'_> {
             return Err(SysError::EINVAL);
         }
 
+        if flags.contains(MmapFlags::MAP_FIXED) {
+            task.with_mut_memory_space(|m| m.unmap(addr..(addr + length).round_up()))?;
+        }
+
         match flags.intersection(MmapFlags::MAP_TYPE_MASK) {
             MmapFlags::MAP_SHARED => {
                 if flags.contains(MmapFlags::MAP_ANONYMOUS) {
@@ -149,8 +153,9 @@ impl Syscall<'_> {
             }
             MmapFlags::MAP_PRIVATE => {
                 if flags.contains(MmapFlags::MAP_ANONYMOUS) {
-                    let start_va = task
-                        .with_mut_memory_space(|m| m.alloc_mmap_anonymous(perm, flags, length))?;
+                    let start_va = task.with_mut_memory_space(|m| {
+                        m.alloc_mmap_anonymous(addr, length, perm, flags)
+                    })?;
                     Ok(start_va.bits())
                 } else {
                     let file = task.with_fd_table(|table| table.get_file(fd))?;
@@ -362,7 +367,7 @@ impl Syscall<'_> {
                 let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
                 if let Some(shm) = shm_manager.get(&shmid) {
                     let buf = UserWritePtr::from(buf);
-                    buf.write(&self.task, shm.shmid_ds);
+                    buf.write(&self.task, shm.shmid_ds)?;
                     Ok(0)
                 } else {
                     // shmid is not a valid identifier

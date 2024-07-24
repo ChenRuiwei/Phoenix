@@ -21,7 +21,7 @@ use virtio_drivers::{
 };
 use virtio_net::NetDevice;
 
-use crate::{kernel_page_table, manager::DeviceManager, BLOCK_DEVICE};
+use crate::{kernel_page_table_mut, manager::DeviceManager, BLOCK_DEVICE};
 
 pub struct VirtioHalImpl;
 
@@ -111,7 +111,7 @@ impl DeviceManager {
             header = NonNull::new(base_vaddr as *mut VirtIOHeader).unwrap();
 
             // First map mmio memory since we need to read header.
-            kernel_page_table().ioremap(base_paddr, size, PTEFlags::R | PTEFlags::W);
+            kernel_page_table_mut().ioremap(base_paddr, size, PTEFlags::R | PTEFlags::W);
             match unsafe { MmioTransport::new(header) } {
                 Ok(transport) => match transport.device_type() {
                     VirtIoDevType::Block => {
@@ -123,21 +123,21 @@ impl DeviceManager {
                             continue;
                         }
                     }
-                    VirtIoDevType::Network => {
-                        match NetDevice::try_new(transport){
-                            Ok(net) =>{
-                                init_network(net, false);
-                                init_net = true;
-                                continue;
-                            },
-                            Err(e) =>
-                            error!(
-                                "[virtio-net] failed to initialize MMIO device at [PA:{:#x}, PA:{:#x}), {e:?}",
-                                base_paddr,
-                                base_paddr + size
-                            )
-                        };
-                    }
+                    // VirtIoDevType::Network => {
+                    //     match NetDevice::try_new(transport){
+                    //         Ok(net) =>{
+                    //             init_network(net, false);
+                    //             init_net = true;
+                    //             continue;
+                    //         },
+                    //         Err(e) =>
+                    //         error!(
+                    //             "[virtio-net] failed to initialize MMIO device at [PA:{:#x},
+                    // PA:{:#x}), {e:?}",             base_paddr,
+                    //             base_paddr + size
+                    //         )
+                    //     };
+                    // }
                     _ => {
                         warn!(
                             "Unsupported VirtIO device type: {:?}",
@@ -152,7 +152,7 @@ impl DeviceManager {
                     );
                 }
             };
-            kernel_page_table().iounmap(base_vaddr, size);
+            kernel_page_table_mut().iounmap(base_vaddr, size);
         }
 
         if !init_net {

@@ -1,11 +1,12 @@
 use alloc::sync::Arc;
+use core::fmt::Error;
 
 use systype::{SysError, SysResult};
-use vfs_core::{Dentry, DentryMeta, File, InodeMode, InodeType, SuperBlock};
+use vfs_core::{Dentry, DentryMeta, File, Inode, InodeMode, InodeType, SuperBlock};
 
 use super::{
     file::{SimpleDirFile, SimpleFileFile},
-    inode::SimpleInode,
+    inode::{SimpleDirInode, SimpleFileInode},
 };
 
 pub struct SimpleDentry {
@@ -51,7 +52,11 @@ impl Dentry for SimpleDentry {
     fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         let sb = self.super_block();
         let sub_dentry = self.into_dyn().get_child_or_create(name);
-        let sub_inode = SimpleInode::new(mode, sb, 0);
+        let sub_inode: Arc<dyn Inode> = match mode.to_type() {
+            InodeType::Dir => SimpleDirInode::new(mode, sb, 0),
+            InodeType::File => SimpleFileInode::new(mode, sb, 0),
+            _ => return Err(SysError::EPERM),
+        };
         sub_dentry.set_inode(sub_inode);
         Ok(sub_dentry)
     }

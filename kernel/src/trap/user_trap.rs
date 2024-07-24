@@ -52,8 +52,6 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                     let ret = Syscall::new(task)
                         .syscall(syscall_no, cx.syscall_args())
                         .await;
-                    // cx is changed during sys_exec, so we have to call it again
-                    cx = task.trap_context_mut();
                     cx.save_last_user_a0();
                     cx.set_user_a0(ret);
                     if ret == -(SysError::EINTR as isize) as usize {
@@ -85,7 +83,11 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                         m.handle_page_fault(VirtAddr::from(stval), access_type)
                     });
                     if let Err(_e) = result {
-                        // backtrace();
+                        log::warn!(
+                            "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
+                        );
+                        // backtrace::backtrace();
+                        log::warn!("{:x?}", task.trap_context_mut());
                         // task.with_memory_space(|m| m.print_all());
                         log::warn!("bad memory access, send SIGSEGV to task");
                         task.receive_siginfo(

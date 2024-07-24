@@ -7,7 +7,7 @@ use vfs_core::{
     SuperBlockMeta,
 };
 
-use crate::simplefs::{dentry::SimpleDentry, inode::SimpleInode};
+use crate::simplefs::{dentry::SimpleDentry, inode::{SimpleDirInode, SimpleFileInode}};
 
 pub struct TmpFsType {
     meta: FileSystemTypeMeta,
@@ -35,7 +35,7 @@ impl FileSystemType for TmpFsType {
     ) -> SysResult<Arc<dyn Dentry>> {
         let sb = TmpSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
-        let mount_inode = SimpleInode::new(InodeMode::DIR, sb.clone(), 0);
+        let mount_inode = SimpleDirInode::new(InodeMode::DIR, sb.clone(), 0);
         mount_dentry.set_inode(mount_inode.clone());
         if let Some(parent) = parent {
             parent.insert(mount_dentry.clone());

@@ -5,7 +5,7 @@ use alloc::{
     vec::Vec,
 };
 use core::{
-    arch::riscv64,
+    arch::riscv64::{self},
     borrow::Borrow,
     cell::{RefCell, SyncUnsafeCell, UnsafeCell},
     cmp,
@@ -18,10 +18,11 @@ use config::{
     board::MEMORY_END,
     mm::{
         align_offset_to_page, is_aligned_to_page, round_down_to_page, DL_INTERP_OFFSET,
-        MMAP_PRE_ALLOC_PAGES, PAGE_SIZE, USER_ELF_PRE_ALLOC_PAGE_CNT, USER_STACK_PRE_ALLOC_SIZE,
-        USER_STACK_SIZE, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END,
-        U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
+        MMAP_PRE_ALLOC_PAGES, PAGE_SIZE, USER_ELF_PRE_ALLOC_PAGE_CNT, U_SEG_FILE_BEG,
+        U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END,
+        U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
     },
+    process::USER_STACK_PRE_ALLOC_SIZE,
 };
 use log::info;
 use memory::{page_table, pte::PTEFlags, PageTable, PhysAddr, VirtAddr, VirtPageNum};
@@ -33,7 +34,7 @@ use vfs_core::{Dentry, File};
 use xmas_elf::ElfFile;
 
 use self::{range_map::RangeMap, vm_area::VmArea};
-use super::PageFaultAccessType;
+use super::{kernel_page_table, PageFaultAccessType};
 use crate::{
     mm::{
         memory_space::vm_area::{MapPerm, VmAreaType},
@@ -49,16 +50,6 @@ use crate::{
 
 mod range_map;
 pub mod vm_area;
-
-/// Kernel space for all processes.
-///
-/// There is no need to lock `KERNEL_PAGE_TABLE` since it won't be changed.
-pub static KERNEL_PAGE_TABLE: Lazy<SyncUnsafeCell<PageTable>> =
-    Lazy::new(|| SyncUnsafeCell::new(PageTable::new_kernel()));
-
-pub unsafe fn switch_kernel_page_table() {
-    &(*KERNEL_PAGE_TABLE.get()).switch();
-}
 
 /// Virtual memory space for kernel and user.
 pub struct MemorySpace {
@@ -86,9 +77,7 @@ impl MemorySpace {
     /// Create a new user memory space that inherits kernel page table.
     pub fn new_user() -> Self {
         Self {
-            page_table: SyncUnsafeCell::new(PageTable::from_kernel(unsafe {
-                &*KERNEL_PAGE_TABLE.get()
-            })),
+            page_table: SyncUnsafeCell::new(PageTable::from_kernel(kernel_page_table())),
             areas: SyncUnsafeCell::new(RangeMap::new()),
             task: None,
         }
@@ -193,7 +182,7 @@ impl MemorySpace {
                             self.page_table_mut()
                                 .map(vpn, new_page.ppn(), map_perm.into());
                             vm_area.pages.insert(vpn, new_page);
-                            unsafe { sfence_vma_vaddr(vpn.into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                         } else {
                             let (pte_flags, ppn) = {
                                 let mut new_flags: PTEFlags = map_perm.into();
@@ -203,7 +192,7 @@ impl MemorySpace {
                             };
                             self.page_table_mut().map(vpn, ppn, pte_flags);
                             vm_area.pages.insert(vpn, page);
-                            unsafe { sfence_vma_vaddr(vpn.into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                         }
                         pre_alloc_page_cnt += 1;
                     } else {
@@ -282,13 +271,12 @@ impl MemorySpace {
             log::info!("interp {}", interp);
 
             if interp.eq("/lib/ld-musl-riscv64-sf.so.1") || interp.eq("/lib/ld-musl-riscv64.so.1") {
-                // interp =
-                // "/lib/libc.so".to_string();
-                // interps.push("/libc.so".to_string());
                 interps.clear();
                 interps.push("/lib/musl/libc.so".to_string());
+            } else if interp.eq("/lib/ld-linux-riscv64-lp64d.so.1") {
+                interps.clear();
+                interps.push("/lib/glibc/ld-2.31.so".to_string());
             }
-
             let mut interp_dentry: SysResult<Arc<dyn Dentry>> = Err(SysError::ENOENT);
             for interp in interps.into_iter() {
                 if let Ok(dentry) = self.task().resolve_path(&interp) {
@@ -567,16 +555,20 @@ impl MemorySpace {
 
     pub fn alloc_mmap_anonymous(
         &mut self,
+        addr: VirtAddr,
+        length: usize,
         perm: MapPerm,
         flags: MmapFlags,
-        length: usize,
     ) -> SysResult<VirtAddr> {
         const MMAP_RANGE: Range<VirtAddr> =
             VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
-        let range = self
-            .areas()
-            .find_free_range(MMAP_RANGE, length)
-            .expect("mmap range is full");
+        let range = if flags.contains(MmapFlags::MAP_FIXED) {
+            addr..addr + length
+        } else {
+            self.areas_mut()
+                .find_free_range(MMAP_RANGE, length)
+                .expect("mmap range is full")
+        };
         let start = range.start;
         let mut vma = VmArea::new_mmap(range, perm, flags, None, 0);
         self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
@@ -600,7 +592,6 @@ impl MemorySpace {
             VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
 
         let range = if flags.contains(MmapFlags::MAP_FIXED) {
-            self.unmap(addr..addr + length)?;
             addr..addr + length
         } else {
             self.areas_mut()
@@ -622,13 +613,19 @@ impl MemorySpace {
                 let vpn = range_vpn.next().unwrap();
                 // TODO: support copy on write for private mapping
                 if flags.contains(MmapFlags::MAP_PRIVATE) {
-                    let new_page = Page::new();
-                    new_page.copy_from_slice(page.bytes_array());
-                    page_table.map(vpn, new_page.ppn(), perm.into());
-                    vma.pages.insert(vpn, new_page);
+                    let (pte_flags, ppn) = {
+                        let mut new_flags: PTEFlags = perm.into();
+                        new_flags |= PTEFlags::COW;
+                        new_flags.remove(PTEFlags::W);
+                        (new_flags, page.ppn())
+                    };
+                    page_table.map(vpn, ppn, pte_flags);
+                    vma.pages.insert(vpn, page);
+                    unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                 } else {
                     page_table.map(vpn, page.ppn(), perm.into());
                     vma.pages.insert(vpn, page);
+                    unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
                 }
             } else {
                 break;
@@ -664,6 +661,8 @@ impl MemorySpace {
     }
 
     pub fn unmap(&mut self, range: Range<VirtAddr>) -> SysResult<()> {
+        debug_assert!(range.start.is_aligned());
+        debug_assert!(range.end.is_aligned());
         log::debug!("[MemorySpace::unmap] remove area {:?}", range.clone());
 
         // First find the left most vm_area containing `range.start`.

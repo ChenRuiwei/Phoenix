@@ -16,13 +16,9 @@ pub const KERNEL_START: usize = VIRT_START + KERNEL_OFFSET;
 pub const KERNEL_STACK_SIZE: usize = 64 * 1024;
 pub const KERNEL_HEAP_SIZE: usize = 64 * 1024 * 1024;
 
-register_mut_const!(pub DTB_ADDR, usize, 0);
-
-/// boot
 pub const HART_START_ADDR: usize = 0x80200000;
 
-pub const USER_STACK_SIZE: usize = 8 * 1024 * 1024;
-pub const USER_STACK_PRE_ALLOC_SIZE: usize = 4 * PAGE_SIZE;
+register_mut_const!(pub DTB_ADDR, usize, 0);
 
 pub const USER_ELF_PRE_ALLOC_PAGE_CNT: usize = 0;
 
@@ -84,13 +80,10 @@ pub const K_SEG_PHY_MEM_END: usize = 0xffff_ffff_8000_0000;
 pub const K_SEG_TEXT_BEG: usize = 0xffff_ffff_8000_0000;
 pub const K_SEG_TEXT_END: usize = 0xffff_ffff_c000_0000;
 
-// Hardware IO segment (750 MiB)
-pub const K_SEG_HARDWARE_BEG: usize = 0xffff_ffff_c000_0000;
-pub const K_SEG_HARDWARE_END: usize = 0xffff_ffff_f000_0000;
-
 // DTB fixed mapping
-pub const K_SEG_DTB: usize = 0xffff_ffff_f000_0000;
-pub const K_SEG_END: usize = 0xffff_ffff_ffff_ffff;
+pub const K_SEG_DTB_BEG: usize = K_SEG_DTB_END - MAX_DTB_SIZE;
+pub const K_SEG_DTB_END: usize = 0xffff_ffff_f000_0000;
+pub const MAX_DTB_SIZE: usize = PAGE_SIZE * PAGE_SIZE;
 
 pub fn align_offset_to_page(offset: usize) -> (usize, usize) {
     let offset_aligned = offset & !PAGE_MASK;
@@ -111,7 +104,7 @@ pub fn round_down_to_page(offset: usize) -> usize {
 }
 
 pub fn round_up_to_page(offset: usize) -> usize {
-    round_down_to_page(offset) + PAGE_SIZE
+    round_down_to_page(offset + PAGE_MASK)
 }
 
 pub fn block_page_id(block_id: usize) -> usize {

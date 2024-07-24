@@ -50,17 +50,17 @@ checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
 
 [[package]]
 name = "async-trait"
-version = "0.1.80"
+version = "0.1.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6fa2087f2753a7da8cc1c0dbfcf89579dd57458e36769de5ac750b4671737ca"
+checksum = "6e0c28dcc82d7c8ead5cb13beb15405b57b8546e93215673ff8ca0349a028107"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.68",
+ "syn 2.0.72",
 ]
 
 [[package]]
-name = "async_utils"
+name = "async-utils"
 version = "0.1.0"
 dependencies = [
  "log",
@@ -86,7 +86,7 @@ name = "backtrace"
 version = "0.1.0"
 dependencies = [
  "arch",
- "early-print",
+ "sbi-print",
 ]
 
 [[package]]
@@ -110,7 +110,7 @@ checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
 [[package]]
 name = "bitmap-allocator"
 version = "0.1.0"
-source = "git+https://github.com/rcore-os/bitmap-allocator#88e871a54f28a3d6795478f237466b3332e2fb1d"
+source = "git+https://github.com/rcore-os/bitmap-allocator#d5e8cf9a6d8697ed7641ade40d9b4b0cef6dca5e"
 dependencies = [
  "bit_field",
 ]
@@ -145,13 +145,13 @@ dependencies = [
 
 [[package]]
 name = "crate_interface"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d54b79db793871881b52a1eb5dc6fd869743122e34795f12db8e183dcb6a4f28"
+checksum = "1bc2aab5f8027e4b744b40c4a66403a71292695e83f7e16b3e0a5045d3b2093c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.68",
+ "syn 2.0.72",
 ]
 
 [[package]]
@@ -196,7 +196,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "syn 2.0.68",
+ "syn 2.0.72",
 ]
 
 [[package]]
@@ -229,31 +229,26 @@ version = "0.1.0"
 dependencies = [
  "arch",
  "async-trait",
- "async_utils",
+ "async-utils",
  "bitflags 2.6.0",
  "config",
  "crate_interface",
  "device-core",
- "early-print",
  "fdt",
  "log",
+ "macro-utils",
  "memory",
  "net",
  "page",
+ "paste",
  "plic",
- "ringbuffer",
+ "ring-buffer",
  "rustversion",
+ "sbi-print",
  "spin",
  "sync",
  "systype",
  "virtio-drivers",
-]
-
-[[package]]
-name = "early-print"
-version = "0.1.0"
-dependencies = [
- "sbi-rt",
 ]
 
 [[package]]
@@ -277,7 +272,7 @@ dependencies = [
  "heck 0.4.1",
  "proc-macro2",
  "quote",
- "syn 2.0.68",
+ "syn 2.0.72",
 ]
 
 [[package]]
@@ -413,7 +408,7 @@ checksum = "87750cf4b7a4c0625b1529e4c543c2182106e4dedc60a2a6455e00d212c489ac"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.68",
+ "syn 2.0.72",
 ]
 
 [[package]]
@@ -574,7 +569,7 @@ version = "0.1.0"
 dependencies = [
  "arch",
  "async-trait",
- "async_utils",
+ "async-utils",
  "backtrace",
  "bit_field",
  "bitflags 2.6.0",
@@ -584,7 +579,6 @@ dependencies = [
  "crate_interface",
  "downcast-rs",
  "driver",
- "early-print",
  "executor",
  "hashbrown",
  "log",
@@ -594,8 +588,9 @@ dependencies = [
  "numeric-enum-macro",
  "page",
  "paste",
- "recycle_allocator",
+ "recycle-allocator",
  "riscv",
+ "sbi-print",
  "signal",
  "spin",
  "strum",
@@ -660,10 +655,17 @@ dependencies = [
 [[package]]
 name = "lwext4_rust"
 version = "0.2.0"
-source = "git+https://github.com/ChenRuiwei/lwext4_rust.git#201d8fd9c21e814a63f9e6e887c03d7e81b3eec1"
+source = "git+https://github.com/ChenRuiwei/lwext4_rust.git?rev=d829824#d8298248a04e4a742ef2174a1f66c161e9664f44"
 dependencies = [
  "log",
  "printf-compat",
+]
+
+[[package]]
+name = "macro-utils"
+version = "0.1.0"
+dependencies = [
+ "paste",
 ]
 
 [[package]]
@@ -696,10 +698,10 @@ dependencies = [
  "bitmap-allocator",
  "buddy_system_allocator",
  "config",
- "early-print",
  "linked_list_allocator",
  "log",
  "riscv",
+ "sbi-print",
  "sync",
 ]
 
@@ -708,7 +710,7 @@ name = "net"
 version = "0.1.0"
 dependencies = [
  "arch",
- "async_utils",
+ "async-utils",
  "crate_interface",
  "device-core",
  "log",
@@ -867,7 +869,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "recycle_allocator"
+name = "recycle-allocator"
 version = "0.1.0"
 
 [[package]]
@@ -900,10 +902,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 
 [[package]]
-name = "ringbuffer"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3df6368f71f205ff9c33c076d170dd56ebf68e8161c733c0caa07a7a5509ed53"
+name = "ring-buffer"
+version = "0.1.0"
 
 [[package]]
 name = "riscv"
@@ -955,6 +955,13 @@ name = "rustversion"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "955d28af4278de8121b7ebeb796b6a45735dc01436d898801014aced2773a3d6"
+
+[[package]]
+name = "sbi-print"
+version = "0.1.0"
+dependencies = [
+ "sbi-rt",
+]
 
 [[package]]
 name = "sbi-rt"
@@ -1062,7 +1069,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
- "syn 2.0.68",
+ "syn 2.0.72",
 ]
 
 [[package]]
@@ -1078,9 +1085,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.68"
+version = "2.0.72"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "901fa70d88b9d6c98022e23b4136f9f3e54e4662c3bc1bd1d84a42a9a0f0c1e9"
+checksum = "dc4b9b9bf2add8093d3f2c0204471e951b2285580335de42f9d2534f3ae7a8af"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1091,7 +1098,7 @@ dependencies = [
 name = "sync"
 version = "0.1.0"
 dependencies = [
- "async_utils",
+ "async-utils",
  "bitflags 2.6.0",
  "log",
  "riscv",
@@ -1116,22 +1123,22 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.61"
+version = "1.0.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c546c80d6be4bc6a00c0f01730c08df82eaa7a7a61f11d656526506112cc1709"
+checksum = "c0342370b38b6a11b6cc11d6a805569958d54cfa061a29969c3b5ce2ea405724"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.61"
+version = "1.0.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46c3384250002a6d5af4d114f2845d37b57521033f30d5c3f46c4d70e1197533"
+checksum = "a4558b58466b9ad7ca0f102865eccc95938dca1a74a856f2b57b6629050da261"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.68",
+ "syn 2.0.72",
 ]
 
 [[package]]
@@ -1227,7 +1234,7 @@ name = "vfs"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "async_utils",
+ "async-utils",
  "bitflags 2.6.0",
  "config",
  "device-core",
@@ -1235,7 +1242,8 @@ dependencies = [
  "ext4",
  "fat32",
  "log",
- "ringbuffer",
+ "page",
+ "ring-buffer",
  "spin",
  "strum",
  "sync",
@@ -1268,9 +1276,9 @@ dependencies = [
 
 [[package]]
 name = "virtio-drivers"
-version = "0.7.3"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e7f49914233c1d3b612f891e986b0c1e0e8a54d7076a0f2501a5e8a53e7054f"
+checksum = "aa40e09453618c7a927c08c5a990497a2954da7c2aaa6c65e0d4f0fc975f6114"
 dependencies = [
  "bitflags 2.6.0",
  "log",
@@ -1382,9 +1390,9 @@ checksum = "2fe21bcc34ca7fe6dd56cc2cb1261ea59d6b93620215aefb5ea6032265527784"
 
 [[package]]
 name = "zerocopy"
-version = "0.7.34"
+version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae87e3fcd617500e5d106f0380cf7b77f3c6092aae37191433159dda23cfb087"
+checksum = "1b9b4fd18abc82b8136838da5d50bae7bdea537c574d8dc1a34ed098d6c166f0"
 dependencies = [
  "byteorder",
  "zerocopy-derive",
@@ -1392,11 +1400,11 @@ dependencies = [
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.7.34"
+version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15e934569e47891f7d9411f1a451d947a60e000ab3bd24fbb970f000387d1b3b"
+checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.68",
+ "syn 2.0.72",
 ]

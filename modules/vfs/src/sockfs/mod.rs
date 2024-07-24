@@ -4,7 +4,7 @@ use device_core::BlockDriverOps;
 use systype::SysResult;
 use vfs_core::*;
 
-use crate::simplefs::{dentry::SimpleDentry, inode::SimpleInode};
+use crate::simplefs::{dentry::SimpleDentry, inode::{SimpleDirInode, SimpleFileInode}};
 
 /// 参考https://zhuanlan.zhihu.com/p/497849394 【Linux内核 | socket底层的来龙去脉】
 pub struct SockFsType {
@@ -34,7 +34,7 @@ impl FileSystemType for SockFsType {
         let sb = SockSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
         // SockFs的第一个Inode是DIR类型的
-        let mount_inode = SimpleInode::new(InodeMode::DIR, sb.clone(), 0);
+        let mount_inode = SimpleDirInode::new(InodeMode::DIR, sb.clone(), 0);
         mount_dentry.set_inode(mount_inode.clone());
         if let Some(parent) = parent {
             parent.insert(mount_dentry.clone());

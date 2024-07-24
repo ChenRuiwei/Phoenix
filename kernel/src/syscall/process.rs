@@ -103,6 +103,7 @@ impl Syscall<'_> {
         task.with_thread_group(|tg| {
             for t in tg.iter() {
                 t.set_zombie();
+                log::info!("tid {} set zombie", t.tid());
             }
         });
         task.set_exit_code((exit_code & 0xFF) << 8);
@@ -157,31 +158,37 @@ impl Syscall<'_> {
             p => WaitFor::PGid(p as PGid),
         };
         log::info!("[sys_wait4] target: {target:?}, option: {option:?}");
-        // 首先检查一遍等待的进程是否已经是zombie了
-        let children = task.children();
-        if children.is_empty() {
-            log::info!("[sys_wait4] fail: no child");
-            return Err(SysError::ECHILD);
-        }
-        let res_task = match target {
-            WaitFor::AnyChild => children
-                .values()
-                .find(|c| c.is_zombie() && c.with_thread_group(|tg| tg.len() == 1)),
-            WaitFor::Pid(pid) => {
-                if let Some(child) = children.get(&pid) {
-                    if child.is_zombie() && child.with_thread_group(|tg| tg.len() == 1) {
-                        Some(child)
-                    } else {
-                        None
-                    }
-                } else {
-                    log::info!("[sys_wait4] fail: no child with pid {pid}");
-                    return Err(SysError::ECHILD);
-                }
+
+        let res_task = {
+            // 首先检查一遍等待的进程是否已经是zombie了
+            let children = task.children();
+            if children.is_empty() {
+                log::info!("[sys_wait4] fail: no child");
+                return Err(SysError::ECHILD);
             }
-            WaitFor::PGid(_) => unimplemented!(),
-            WaitFor::AnyChildInGroup => unimplemented!(),
+
+            match target {
+                WaitFor::AnyChild => children
+                    .values()
+                    .find(|c| c.is_zombie() && c.with_thread_group(|tg| tg.len() == 1)),
+                WaitFor::Pid(pid) => {
+                    if let Some(child) = children.get(&pid) {
+                        if child.is_zombie() && child.with_thread_group(|tg| tg.len() == 1) {
+                            Some(child)
+                        } else {
+                            None
+                        }
+                    } else {
+                        log::info!("[sys_wait4] fail: no child with pid {pid}");
+                        return Err(SysError::ECHILD);
+                    }
+                }
+                WaitFor::PGid(_) => unimplemented!(),
+                WaitFor::AnyChildInGroup => unimplemented!(),
+            }
+            .cloned()
         };
+
         if let Some(res_task) = res_task {
             task.time_stat()
                 .update_child_time(res_task.time_stat().user_system_time());
@@ -199,6 +206,7 @@ impl Syscall<'_> {
         } else if option.contains(WaitOptions::WNOHANG) {
             return Ok(0);
         } else {
+            log::info!("[sys_wait4] waiting for sigchld");
             // 如果等待的进程还不是zombie，那么本进程进行await，
             // 直到等待的进程do_exit然后发送SIGCHLD信号唤醒自己
             let (child_pid, exit_code, child_utime, child_stime) = loop {
@@ -285,8 +293,6 @@ impl Syscall<'_> {
 
         log::info!("[sys_execve]: path: {path:?}, argv: {argv:?}, envp: {envp:?}",);
 
-        // TODO: should we add envp
-
         if path.ends_with(".sh") {
             path = "/busybox".to_string();
             argv.insert(0, "busybox".to_string());
@@ -299,7 +305,6 @@ impl Syscall<'_> {
         Ok(0)
     }
 
-    // TODO:
     pub fn sys_clone(
         &self,
         flags: usize,
@@ -398,7 +403,7 @@ impl Syscall<'_> {
             TASK_MANAGER.get(pid).ok_or(SysError::ESRCH)?
         };
 
-        Ok(target_task.pid().into())
+        Ok(0)
     }
 
     // TODO:
