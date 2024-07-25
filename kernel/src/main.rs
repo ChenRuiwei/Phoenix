@@ -92,7 +92,16 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
     };
 
     println!("[kernel] ---------- hart {hart_id} start to fetch task... ---------- ");
+    let mut try_count = 0usize;
     loop {
-        executor::run_until_idle();
+        let tasks = executor::run_until_idle();
+        if tasks == 0 {
+            try_count += 1;
+        } else {
+            try_count = 0;
+        }
+        if try_count >= 0x10000000 {
+            panic!("no tasks")
+        }
     }
 }
