@@ -309,6 +309,9 @@ impl Syscall<'_> {
                 TimeLimitedTaskOutput::Ok(ret_vec) => ret_vec,
                 TimeLimitedTaskOutput::TimeOut => {
                     log::debug!("[sys_pselect6]: timeout");
+                    readfds.as_mut().map(|fds| fds.clear());
+                    writefds.as_mut().map(|fds| fds.clear());
+                    exceptfds.as_mut().map(|fds| fds.clear());
                     return Ok(0);
                 }
             }
@@ -322,7 +325,7 @@ impl Syscall<'_> {
                 SelectOutput::Output2(_) => return Err(SysError::EINTR),
             }
         };
-
+        // NOTE: we can not clear before since EINTR will redo the syscall
         readfds.as_mut().map(|fds| fds.clear());
         writefds.as_mut().map(|fds| fds.clear());
         exceptfds.as_mut().map(|fds| fds.clear());
@@ -336,11 +339,13 @@ impl Syscall<'_> {
 
         let mut ret = 0;
         for (fd, events) in ret_vec {
-            if events.contains(PollEvents::IN) | events.contains(PollEvents::HUP) {
+            if events.contains(PollEvents::IN | PollEvents::HUP) {
+                log::info!("read ready fd {fd}");
                 readfds.as_mut().map(|fds| fds.set(fd));
                 ret += 1;
             }
             if events.contains(PollEvents::OUT) {
+                log::info!("write ready fd {fd}");
                 writefds.as_mut().map(|fds| fds.set(fd));
                 ret += 1;
             }
