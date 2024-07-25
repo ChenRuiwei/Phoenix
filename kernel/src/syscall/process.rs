@@ -215,8 +215,7 @@ impl Syscall<'_> {
                 task.set_wake_up_signal(!*task.sig_mask_ref() | SigSet::SIGCHLD);
                 suspend_now().await;
                 task.set_running();
-                let si =
-                    task.with_mut_sig_pending(|pending| pending.dequeue_expect(SigSet::SIGCHLD));
+                let si = task.with_mut_sig_pending(|pending| pending.get_expect(SigSet::SIGCHLD));
                 if let Some(info) = si {
                     if let SigDetails::CHLD {
                         pid,

@@ -111,7 +111,9 @@ impl Task {
 
     pub fn set_wake_up_signal(&self, except: SigSet) {
         debug_assert!(self.is_interruptable());
-        self.with_mut_sig_pending(|pending| pending.should_wake = except)
+        self.with_mut_sig_pending(|pending| {
+            pending.should_wake = except | SigSet::SIGKILL | SigSet::SIGSTOP
+        })
     }
 
     fn notify_parent(self: &Arc<Self>, code: i32, signum: Sig) {
@@ -152,7 +154,7 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
 
     while let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
         let action = task.with_sig_handlers(|handlers| handlers.get(si.sig));
-        log::info!("[do signal] Handlering signal: {:?} {:?}", si, action);
+        log::info!("[do signal] Handling signal: {:?} {:?}", si, action);
         if intr && action.flags.contains(SigActionFlag::SA_RESTART) {
             cx.sepc -= 4;
             cx.restore_last_user_a0();
