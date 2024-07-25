@@ -57,10 +57,13 @@ where
     async_task::spawn(future, WithInfo(schedule))
 }
 
-pub fn run_until_idle() {
+pub fn run_until_idle() -> usize {
+    let mut len = 0;
     while let Some(task) = TASK_QUEUE.fetch() {
         task.run();
+        len += 1
     }
+    len
 }
 
 pub fn run_one() {
