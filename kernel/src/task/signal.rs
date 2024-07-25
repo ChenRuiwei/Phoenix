@@ -312,20 +312,20 @@ impl TimerEvent for RealITimer {
     // TODO: not sure
     fn callback(self: Box<Self>) -> Option<Timer> {
         if let Some(task) = self.task.upgrade() {
-            task.receive_siginfo(
-                SigInfo {
-                    sig: Sig::SIGALRM,
-                    code: SigInfo::KERNEL,
-                    details: SigDetails::None,
-                },
-                false,
-            );
             return task.with_mut_itimers(|itimers| {
                 let mut real = &mut itimers[0];
                 if real.interval == Duration::ZERO {
                     real.enabled = false;
                     return None;
                 }
+                task.receive_siginfo(
+                    SigInfo {
+                        sig: Sig::SIGALRM,
+                        code: SigInfo::KERNEL,
+                        details: SigDetails::None,
+                    },
+                    false,
+                );
                 real.next_expire = get_time_duration() + real.interval;
                 Some(Timer {
                     expire: real.next_expire,

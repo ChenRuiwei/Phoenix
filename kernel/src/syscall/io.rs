@@ -304,23 +304,36 @@ impl Syscall<'_> {
         };
         task.set_interruptable();
         task.set_wake_up_signal(!*task.sig_mask_ref());
+        let intr_future = IntrBySignalFuture {
+            task: task.clone(),
+            mask: *task.sig_mask_ref(),
+        };
         let pselect_future = PSelectFuture { polls };
         let ret_vec = if let Some(timeout) = timeout {
-            match TimeLimitedTaskFuture::new(timeout, pselect_future).await {
-                TimeLimitedTaskOutput::Ok(ret_vec) => ret_vec,
-                TimeLimitedTaskOutput::TimeOut => {
-                    log::debug!("[sys_pselect6]: timeout");
-                    readfds.as_mut().map(|fds| fds.clear());
-                    writefds.as_mut().map(|fds| fds.clear());
-                    exceptfds.as_mut().map(|fds| fds.clear());
-                    return Ok(0);
-                }
+            match Select2Futures::new(
+                TimeLimitedTaskFuture::new(timeout, pselect_future),
+                intr_future,
+            )
+            .await
+            {
+                SelectOutput::Output1(time_output) => match time_output {
+                    TimeLimitedTaskOutput::Ok(ret_vec) => ret_vec,
+                    TimeLimitedTaskOutput::TimeOut => {
+                        log::debug!("[sys_pselect6]: timeout");
+                        readfds.as_mut().map(|fds| fds.clear());
+                        writefds.as_mut().map(|fds| fds.clear());
+                        exceptfds.as_mut().map(|fds| fds.clear());
+                        task.set_running();
+                        // restore old signal mask
+                        if let Some(mask) = old_mask {
+                            *task.sig_mask() = mask;
+                        }
+                        return Ok(0);
+                    }
+                },
+                SelectOutput::Output2(_) => return Err(SysError::EINTR),
             }
         } else {
-            let intr_future = IntrBySignalFuture {
-                task: task.clone(),
-                mask: *task.sig_mask_ref(),
-            };
             match Select2Futures::new(pselect_future, intr_future).await {
                 SelectOutput::Output1(ret_vec) => ret_vec,
                 SelectOutput::Output2(_) => return Err(SysError::EINTR),
