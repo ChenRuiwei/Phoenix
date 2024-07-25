@@ -507,7 +507,7 @@ impl Task {
         }
 
         if let Some(address) = self.tid_address_ref().clear_child_tid {
-            log::info!("[do_exit] clear_child_tid: {}", address);
+            log::info!("[do_exit] clear_child_tid: {:x}", address);
             UserWritePtr::from(address)
                 .write(self, 0)
                 .expect("tid address write error");
@@ -548,14 +548,18 @@ impl Task {
         // exit the process, e.g. reparent all children, and send SIGCHLD to parent
         log::info!("[Task::do_exit] exit the whole process");
 
-        log::debug!("[Task::do_exit] set children to be zombie and reparent them to init");
+        log::debug!("[Task::do_exit] reparent children to init");
+        debug_assert_ne!(self.tid(), INIT_PROC_PID);
         self.with_mut_children(|children| {
             if children.is_empty() {
                 return;
             }
             let init_proc = TASK_MANAGER.init_proc();
             for c in children.values() {
-                c.set_zombie();
+                log::debug!(
+                    "[Task::do_eixt] reparent child process pid {} to init",
+                    c.pid()
+                );
                 *c.parent.lock() = Some(Arc::downgrade(&init_proc));
             }
             init_proc.children.lock().extend(children.clone());

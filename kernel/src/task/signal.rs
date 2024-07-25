@@ -111,7 +111,9 @@ impl Task {
 
     pub fn set_wake_up_signal(&self, except: SigSet) {
         debug_assert!(self.is_interruptable());
-        self.with_mut_sig_pending(|pending| pending.should_wake = except)
+        self.with_mut_sig_pending(|pending| {
+            pending.should_wake = except | SigSet::SIGKILL | SigSet::SIGSTOP
+        })
     }
 
     fn notify_parent(self: &Arc<Self>, code: i32, signum: Sig) {
@@ -152,7 +154,7 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
 
     while let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
         let action = task.with_sig_handlers(|handlers| handlers.get(si.sig));
-        log::info!("[do signal] Handlering signal: {:?} {:?}", si, action);
+        log::info!("[do signal] Handling signal: {:?} {:?}", si, action);
         if intr && action.flags.contains(SigActionFlag::SA_RESTART) {
             cx.sepc -= 4;
             cx.restore_last_user_a0();
@@ -312,20 +314,20 @@ impl TimerEvent for RealITimer {
     // TODO: not sure
     fn callback(self: Box<Self>) -> Option<Timer> {
         if let Some(task) = self.task.upgrade() {
-            task.receive_siginfo(
-                SigInfo {
-                    sig: Sig::SIGALRM,
-                    code: SigInfo::KERNEL,
-                    details: SigDetails::None,
-                },
-                false,
-            );
             return task.with_mut_itimers(|itimers| {
                 let mut real = &mut itimers[0];
                 if real.interval == Duration::ZERO {
                     real.enabled = false;
                     return None;
                 }
+                task.receive_siginfo(
+                    SigInfo {
+                        sig: Sig::SIGALRM,
+                        code: SigInfo::KERNEL,
+                        details: SigDetails::None,
+                    },
+                    false,
+                );
                 real.next_expire = get_time_duration() + real.interval;
                 Some(Timer {
                     expire: real.next_expire,
