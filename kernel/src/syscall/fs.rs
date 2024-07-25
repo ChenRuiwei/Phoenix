@@ -7,7 +7,7 @@ use core::{
 };
 
 use arch::time::get_time_duration;
-use async_utils::{dyn_future, Async};
+use async_utils::{dyn_future, Async, Select2Futures, SelectOutput};
 use config::board::BLOCK_SIZE;
 use driver::BLOCK_DEVICE;
 use memory::VirtAddr;
@@ -25,6 +25,7 @@ use super::Syscall;
 use crate::{
     mm::{UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr},
     processor::env::within_sum,
+    task::signal::IntrBySignalFuture,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -123,8 +124,19 @@ impl Syscall<'_> {
         let file = task.with_fd_table(|table| table.get_file(fd))?;
         log::info!("[sys_read] reading file {}", file.dentry().path());
         let mut buf = buf.into_mut_slice(&task, count)?;
-        let ret = file.read(&mut buf).await?;
-        Ok(ret)
+
+        task.set_interruptable();
+        task.set_wake_up_signal(!*task.sig_mask_ref());
+        let intr_future = IntrBySignalFuture {
+            task: task.clone(),
+            mask: *task.sig_mask_ref(),
+        };
+        let ret = match Select2Futures::new(file.read(&mut buf), intr_future).await {
+            SelectOutput::Output1(ret) => ret,
+            SelectOutput::Output2(_) => Err(SysError::EINTR),
+        };
+        task.set_running();
+        ret
     }
 
     pub async fn sys_write(&self, fd: usize, buf: UserReadPtr<u8>, count: usize) -> SyscallResult {
