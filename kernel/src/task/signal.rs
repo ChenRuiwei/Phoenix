@@ -152,7 +152,7 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
 
     while let Some(si) = task.with_mut_sig_pending(|pending| pending.dequeue_signal(&old_mask)) {
         let action = task.with_sig_handlers(|handlers| handlers.get(si.sig));
-        log::info!("[do signal] Handlering signal: {:?} {:?}", si, action);
+        log::info!("[do signal] Handling signal: {:?} {:?}", si, action);
         if intr && action.flags.contains(SigActionFlag::SA_RESTART) {
             cx.sepc -= 4;
             cx.restore_last_user_a0();

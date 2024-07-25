@@ -509,7 +509,7 @@ impl Task {
         );
 
         if let Some(address) = self.tid_address_ref().clear_child_tid {
-            log::info!("[do_exit] clear_child_tid: {}", address);
+            log::info!("[do_exit] clear_child_tid: {:x}", address);
             UserWritePtr::from(address)
                 .write(self, 0)
                 .expect("tid address write error");
@@ -558,6 +558,10 @@ impl Task {
             }
             let init_proc = TASK_MANAGER.init_proc();
             for c in children.values() {
+                log::info!(
+                    "[Task::do_eixt] set child process pid {} to zombie and reparent",
+                    c.pid()
+                );
                 c.set_zombie();
                 *c.parent.lock() = Some(Arc::downgrade(&init_proc));
             }
