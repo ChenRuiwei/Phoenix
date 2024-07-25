@@ -277,6 +277,7 @@ impl Syscall<'_> {
         };
 
         let mut polls = Vec::<(Fd, PollEvents, Arc<dyn File>)>::with_capacity(nfds as usize);
+        // PERF: loop is low performance
         for fd in 0..nfds as usize {
             let mut events = PollEvents::empty();
             readfds.as_ref().map(|fds| {
@@ -339,7 +340,7 @@ impl Syscall<'_> {
 
         let mut ret = 0;
         for (fd, events) in ret_vec {
-            if events.contains(PollEvents::IN | PollEvents::HUP) {
+            if events.contains(PollEvents::IN) || events.contains(PollEvents::HUP) {
                 log::info!("read ready fd {fd}");
                 readfds.as_mut().map(|fds| fds.set(fd));
                 ret += 1;
