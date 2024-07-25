@@ -7,7 +7,8 @@ edition = "2021"
 
 [dependencies]
 sync = { path = "../sync/" }
-spin = { version = "0.9", features = ["lazy"] }
 arch = { path = "../../arch" }
-time = { path = "../time"}
+time = { path = "../time" }
+
 log = "0.4"
+spin = { version = "0.9", features = ["lazy"] }

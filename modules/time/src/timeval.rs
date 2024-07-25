@@ -64,6 +64,7 @@ impl ITimerVal {
         it_interval: TimeVal::ZERO,
         it_value: TimeVal::ZERO,
     };
+
     pub fn is_valid(&self) -> bool {
         self.it_interval.is_valid() && self.it_value.is_valid()
     }

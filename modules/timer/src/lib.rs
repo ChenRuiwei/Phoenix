@@ -32,10 +32,12 @@ pub struct Timer {
     /// contextual data when called, thereby performing more complex operations.
     pub data: Box<dyn TimerEvent>,
 }
+
 impl Timer {
     pub fn new(expire: Duration, data: Box<dyn TimerEvent>) -> Self {
         Self { expire, data }
     }
+
     pub fn new_waker_timer(expire: Duration, waker: Waker) -> Self {
         struct WakerData {
             waker: Waker,
@@ -52,6 +54,7 @@ impl Timer {
             data: Box::new(WakerData { waker }),
         }
     }
+
     fn callback(self) -> Option<Timer> {
         self.data.callback()
     }
@@ -89,6 +92,7 @@ impl TimerManager {
     }
 
     pub fn add_timer(&self, timer: Timer) {
+        log::debug!("add new timer, next expiration {:?}", timer.expire);
         self.timers.lock().push(Reverse(timer));
     }
 
