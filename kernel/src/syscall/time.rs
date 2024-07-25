@@ -15,7 +15,7 @@ use timer::{Timer, TIMER_MANAGER};
 use super::Syscall;
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
-    task::signal::RealITimer,
+    task::signal::{alloc_timer_id, RealITimer},
 };
 
 impl Syscall<'_> {
@@ -212,7 +212,9 @@ impl Syscall<'_> {
         if !new.is_valid() {
             return Err(SysError::EINVAL);
         }
-        let (old, next_expire, add_timer) = task.with_mut_itimers(|itimers| {
+
+        let timer_id = alloc_timer_id();
+        let (old, next_expire) = task.with_mut_itimers(|itimers| {
             // only supports real itimer now
             let mut itimer = &mut itimers[which];
             let old = ITimerVal {
@@ -222,22 +224,32 @@ impl Syscall<'_> {
                     .saturating_sub(get_time_duration())
                     .into(),
             };
-            let new_enabled = new.is_enabled();
-            let add_timer = !itimer.enabled && new_enabled;
-            itimer.enabled = new_enabled;
-            itimer.interval = new.it_interval.into();
-            itimer.next_expire = get_time_duration() + new.it_value.into();
-            (old, itimer.next_expire, add_timer)
+
+            if new.it_value.is_zero() {
+                // timer is disarmed
+                itimer.interval = new.it_interval.into();
+                itimer.next_expire = Duration::ZERO;
+                itimer.id = timer_id;
+                (old, itimer.next_expire)
+            } else {
+                itimer.interval = new.it_interval.into();
+                itimer.next_expire = get_time_duration() + new.it_value.into();
+                itimer.id = timer_id;
+                (old, itimer.next_expire)
+            }
         });
-        if add_timer {
+
+        if !new.it_value.is_zero() {
             let timer = Timer::new(
                 next_expire,
                 Box::new(RealITimer {
                     task: Arc::downgrade(self.task),
+                    id: timer_id,
                 }),
             );
             TIMER_MANAGER.add_timer(timer);
         }
+
         log::info!("[sys_setitimer] new: {new:?} old: {old:?}");
         if old_value.not_null() {
             old_value.write(&task, old)?;
