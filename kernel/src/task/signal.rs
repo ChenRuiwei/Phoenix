@@ -111,7 +111,9 @@ impl Task {
 
     pub fn set_wake_up_signal(&self, except: SigSet) {
         debug_assert!(self.is_interruptable());
-        self.with_mut_sig_pending(|pending| pending.should_wake = except)
+        self.with_mut_sig_pending(|pending| {
+            pending.should_wake = except | SigSet::SIGKILL | SigSet::SIGSTOP
+        })
     }
 
     fn notify_parent(self: &Arc<Self>, code: i32, signum: Sig) {

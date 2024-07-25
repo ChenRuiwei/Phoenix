@@ -138,6 +138,21 @@ impl SigPending {
         None
     }
 
+    pub fn get_expect(&mut self, expect: SigSet) -> Option<SigInfo> {
+        let x = self.bitmap & expect;
+        if x.is_empty() {
+            return None;
+        }
+        for i in 0..self.queue.len() {
+            let si = self.queue[i];
+            if x.contain_signal(si.sig) {
+                return Some(si);
+            }
+        }
+        log::error!("[get_expect] I suppose it won't go here");
+        None
+    }
+
     pub fn has_expect_signals(&self, expect: SigSet) -> bool {
         !(expect & self.bitmap).is_empty()
     }
@@ -185,7 +200,7 @@ impl SigHandlers {
         debug_assert!(!sig.is_kill_or_stop());
         self.actions[sig.index()] = new;
         match new.atype {
-            ActionType::User { .. } => self.bitmap.add_signal(sig),
+            ActionType::User { .. } | ActionType::Kill => self.bitmap.add_signal(sig),
             _ => self.bitmap.remove_signal(sig),
         }
     }

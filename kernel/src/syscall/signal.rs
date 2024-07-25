@@ -310,8 +310,15 @@ impl Syscall<'_> {
         mask.remove(SigSet::SIGKILL | SigSet::SIGSTOP);
         let oldmask = mem::replace(task.sig_mask(), mask);
         let invoke_signal = task.with_sig_handlers(|handlers| handlers.bitmap());
+        task.with_mut_sig_pending(|pending| {
+            if pending.has_expect_signals(mask | invoke_signal) {
+                Err(SysError::EINTR)
+            } else {
+                pending.should_wake = mask | invoke_signal;
+                Ok(())
+            }
+        })?;
         task.set_interruptable();
-        task.set_wake_up_signal(mask | invoke_signal);
         suspend_now().await;
         *task.sig_mask() = oldmask;
         task.set_running();
@@ -342,9 +349,18 @@ impl Syscall<'_> {
         let task = self.task;
         let mut set = set.read(&task)?;
         set.remove(SigSet::SIGKILL | SigSet::SIGSTOP);
-
+        let sig = task.with_mut_sig_pending(|pending| {
+            if let Some(si) = pending.get_expect(set) {
+                Some(si.sig)
+            } else {
+                pending.should_wake = set | SigSet::SIGKILL | SigSet::SIGSTOP;
+                None
+            }
+        });
+        if let Some(sig) = sig {
+            return Ok(sig.raw());
+        }
         task.set_interruptable();
-        task.set_wake_up_signal(set);
         if timeout.not_null() {
             let timeout = timeout.read(&task)?;
             if !timeout.is_valid() {
