@@ -102,6 +102,24 @@ impl From<MapPerm> for PTEFlags {
     }
 }
 
+impl From<xmas_elf::program::Flags> for MapPerm {
+    fn from(flags: xmas_elf::program::Flags) -> Self {
+        let mut area_flags = MapPerm::U;
+
+        if flags.is_read() {
+            area_flags |= MapPerm::R;
+        }
+        if flags.is_write() {
+            area_flags |= MapPerm::W;
+        }
+        if flags.is_execute() {
+            area_flags |= MapPerm::X;
+        }
+
+        area_flags
+    }
+}
+
 /// A contiguous virtual memory area.
 #[derive(Clone)]
 pub struct VmArea {

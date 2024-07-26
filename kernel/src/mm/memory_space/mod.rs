@@ -37,15 +37,16 @@ use self::{range_map::RangeMap, vm_area::VmArea};
 use super::{kernel_page_table, PageFaultAccessType};
 use crate::{
     mm::{
+        elf::{
+            aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR, AT_RANDOM},
+            info,
+        },
         memory_space::vm_area::{MapPerm, VmAreaType},
         user_ptr::UserSlice,
     },
     processor::env::{within_sum, SumGuard},
     syscall::MmapFlags,
-    task::{
-        aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR, AT_RANDOM},
-        Task,
-    },
+    task::Task,
 };
 
 mod range_map;
@@ -211,6 +212,157 @@ impl MemorySpace {
         }
 
         (max_end_vpn, header_va.into())
+    }
+
+    /// Return: entry_point, auxv
+    pub async fn parse_and_map_elf_file_async(
+        &mut self,
+        elf_file: Arc<dyn File>,
+    ) -> SysResult<(VirtAddr, Vec<AuxHeader>)> {
+        use info::{parse, PhType};
+
+        let elf = parse(&elf_file).await?;
+        let mut elf_begin = VirtAddr::from(usize::MAX);
+
+        for i in 0..elf.ph_count() {
+            let ph = elf.program_header(i).await?;
+            if ph.type_()? != PhType::Load {
+                continue;
+            }
+
+            let mem_begin = VirtAddr::from(ph.virtual_addr as usize);
+            let mem_end = VirtAddr::from((ph.virtual_addr + ph.mem_size) as usize);
+
+            let aligned_mem_begin = mem_begin.floor().to_va();
+            let aligned_mem_end = mem_end.ceil().to_va();
+            let aligned_mem_size = aligned_mem_end - aligned_mem_begin;
+
+            let map_perm: MapPerm = ph.flags.into();
+            let file_offset = ph.offset as usize;
+            let mut vm_area = VmArea::new(
+                aligned_mem_begin..aligned_mem_end,
+                map_perm,
+                VmAreaType::Elf,
+            );
+
+            if ph.mem_size == ph.file_size {
+                let align_begin_offset = mem_begin - aligned_mem_begin;
+                let aligned_file_offset = file_offset - align_begin_offset;
+                let file_clone = elf_file.clone();
+                assert!(!map_perm.contains(MapPerm::W));
+                // NOTE: only add cow flag in elf page newly mapped.
+                // FIXME: mprotect is not checked yet
+                // WARN: the underlying elf file page cache may be edited, may cause unknown
+                // behavior
+                let mut pre_alloc_page_cnt = 0;
+                for vpn in vm_area.range_vpn() {
+                    let start_offset = ph.offset as usize;
+                    let offset = start_offset + (vpn - vm_area.start_vpn()) * PAGE_SIZE;
+                    let offset_aligned = round_down_to_page(offset);
+                    if let Some(page) =
+                        block_on(async { elf_file.get_page_at(offset_aligned).await }).unwrap()
+                    {
+                        if pre_alloc_page_cnt < USER_ELF_PRE_ALLOC_PAGE_CNT {
+                            let new_page = Page::new();
+                            // WARN: area outer than region may should be set to zero
+                            new_page.copy_from_slice(page.bytes_array());
+                            self.page_table_mut()
+                                .map(vpn, new_page.ppn(), map_perm.into());
+                            vm_area.pages.insert(vpn, new_page);
+                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                        } else {
+                            let (pte_flags, ppn) = {
+                                let mut new_flags: PTEFlags = map_perm.into();
+                                new_flags |= PTEFlags::COW;
+                                new_flags.remove(PTEFlags::W);
+                                (new_flags, page.ppn())
+                            };
+                            self.page_table_mut().map(vpn, ppn, pte_flags);
+                            vm_area.pages.insert(vpn, page);
+                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                        }
+                        pre_alloc_page_cnt += 1;
+                    } else {
+                        break;
+                    }
+                }
+                self.push_vma_lazily(vm_area);
+            } else {
+                // Some LOAD segments may be empty (e.g. .bss sections).
+                // or worse, the file size is smaller than the mem size but not zero.
+
+                // amb---mb-------------------------------me---ame
+                //       fb---------------fe
+
+                // ensure the memory area [amb, ame) is mapped
+
+                self.push_vma(vm_area);
+                let _auto_sum = SumGuard::new();
+                unsafe {
+                    let mut ptr = mem_begin.as_mut_ptr();
+                    log::debug!("Start load segment: {:#x}", ptr as usize);
+
+                    // fill [fb, fe) with file content
+                    let len = ph.file_size as usize;
+                    let slice = core::slice::from_raw_parts_mut(ptr, len);
+                    assert_eq!(elf_file.read_at(file_offset, slice).await?, len);
+                    ptr = ptr.add(len);
+                    log::debug!("Finish [mb/fb, fe): {:#x}", ptr as usize);
+
+                    // fill [fe, me) with zeros
+                    let len = mem_end - (mem_begin + ph.file_size as usize);
+                    ptr.write_bytes(0, len);
+                    ptr = ptr.add(len);
+                    log::debug!("Finish [fe, me): {:#x}", ptr as usize);
+
+                    // left [amb, mb) and [me, ame) untouched
+
+                    debug_assert!(ptr as usize == mem_end.bits());
+                }
+
+                // const SHOULD_PRINT_HASH: bool = false;
+                // if SHOULD_PRINT_HASH {
+                //     use crate::{memory::address::iter_vpn, tools::exam_hash};
+                //     iter_vpn(aligned_mem_begin..aligned_mem_end, |vpn| {
+                //         log::info!(
+                //             "vpn: {:x}, hash: {:#x}",
+                //             vpn,
+                //             exam_hash(unsafe { vpn.addr().as_page_slice() })
+                //         )
+                //     })
+                // }
+            }
+
+            // 更新 elf 的起始地址
+            if mem_begin < elf_begin {
+                elf_begin = mem_begin;
+            }
+        }
+
+        if elf_begin.bits() == usize::MAX {
+            panic!("Elf has no loadable segment!");
+        }
+
+        let mut auxv = generate_early_auxv(
+            elf.pt2.ph_entry_size as usize,
+            elf.pt2.ph_count as usize,
+            elf.pt2.entry_point as usize,
+        );
+
+        auxv.push(AuxHeader::new(AT_BASE, 0));
+
+        auxv.push(AuxHeader::new(
+            AT_RANDOM,
+            (elf_begin + elf.pt2.ph_offset as usize).bits(),
+        ));
+        auxv.push(AuxHeader::new(
+            AT_PHDR,
+            (elf_begin + elf.pt2.ph_offset as usize).bits(),
+        ));
+
+        let entry_point = VirtAddr::from(elf.pt2.entry_point as usize);
+
+        Ok((entry_point, auxv))
     }
 
     pub fn parse_and_map_elf(

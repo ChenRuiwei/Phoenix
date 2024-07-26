@@ -1,4 +1,3 @@
-pub mod aux;
 mod manager;
 pub mod resource;
 mod schedule;

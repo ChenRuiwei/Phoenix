@@ -42,13 +42,13 @@ use crate::{
         shm::SHARED_MEMORY_MANAGER,
     },
     mm::{
+        elf::aux::{AuxHeader, AT_BASE},
         memory_space::{self, init_stack},
         MemorySpace, UserReadPtr, UserWritePtr,
     },
     processor::env::within_sum,
     syscall::{self, CloneFlags},
     task::{
-        aux::{AuxHeader, AT_BASE},
         manager::TASK_MANAGER,
         schedule,
         tid::{alloc_tid, TidAddress},

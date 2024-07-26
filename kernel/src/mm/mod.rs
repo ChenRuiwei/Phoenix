@@ -6,6 +6,7 @@
 //!
 //! Every task or process has a memory_space to control its virtual memory.
 
+pub mod elf;
 pub mod memory_space;
 mod user_ptr;
 

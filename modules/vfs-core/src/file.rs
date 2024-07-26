@@ -1,6 +1,7 @@
 use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
 use core::{
     cmp,
+    mem::{self, MaybeUninit},
     sync::atomic::{AtomicUsize, Ordering},
     usize,
 };
@@ -459,6 +460,21 @@ impl dyn File {
         let mut buf = vec![0; self.size()];
         self.read_at(0, &mut buf).await?;
         Ok(buf)
+    }
+
+    pub async fn read_obj<T: Sized>(&self, offset: usize) -> SysResult<T> {
+        let size = mem::size_of::<T>();
+
+        let mut t = MaybeUninit::<T>::uninit();
+        let buf =
+            unsafe { core::slice::from_raw_parts_mut(t.as_mut_ptr() as *mut T as *mut u8, size) };
+
+        let n = self.read_at(offset, buf).await?;
+        if n < size {
+            Err(SysError::EFAULT)
+        } else {
+            Ok(unsafe { t.assume_init() })
+        }
     }
 }
 
