@@ -594,12 +594,7 @@ impl Task {
                         SigInfo {
                             sig: Sig::SIGCHLD,
                             code: SigInfo::CLD_EXITED,
-                            details: SigDetails::CHLD {
-                                pid: c.pid(),
-                                status: c.exit_code(),
-                                utime: c.time_stat().user_time(),
-                                stime: c.time_stat().sys_time(),
-                            },
+                            details: SigDetails::None,
                         },
                         false,
                     )
@@ -617,12 +612,7 @@ impl Task {
                 SigInfo {
                     sig: Sig::SIGCHLD,
                     code: SigInfo::CLD_EXITED,
-                    details: SigDetails::CHLD {
-                        pid: self.pid(),
-                        status: self.exit_code(),
-                        utime: self.time_stat().user_time(),
-                        stime: self.time_stat().sys_time(),
-                    },
+                    details: SigDetails::None,
                 },
                 false,
             );
