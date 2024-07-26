@@ -562,6 +562,23 @@ impl Task {
                     "[Task::do_eixt] reparent child process pid {} to init",
                     c.pid()
                 );
+                if c.is_zombie() {
+                    // NOTE: self has not called wait to clear zombie children, we need to notify
+                    // init to clear these zombie children.
+                    init_proc.receive_siginfo(
+                        SigInfo {
+                            sig: Sig::SIGCHLD,
+                            code: SigInfo::CLD_EXITED,
+                            details: SigDetails::CHLD {
+                                pid: c.pid(),
+                                status: c.exit_code(),
+                                utime: c.time_stat().user_time(),
+                                stime: c.time_stat().sys_time(),
+                            },
+                        },
+                        false,
+                    )
+                }
                 *c.parent.lock() = Some(Arc::downgrade(&init_proc));
             }
             init_proc.children.lock().extend(children.clone());

@@ -44,4 +44,8 @@ impl RecycleAllocator {
         );
         self.recycled.push(Reverse(id));
     }
+
+    pub fn recycled_len(&self) -> usize {
+        self.recycled.len()
+    }
 }

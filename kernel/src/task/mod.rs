@@ -13,7 +13,7 @@ use config::process::USER_STACK_SIZE;
 pub use manager::{PROCESS_GROUP_MANAGER, TASK_MANAGER};
 pub use schedule::{spawn_kernel_task, spawn_user_task};
 pub use task::Task;
-pub use tid::{PGid, Pid, Tid};
+pub use tid::{PGid, Pid, Tid, TID_ALLOCATOR};
 use vfs::sys_root_dentry;
 use vfs_core::Path;
 

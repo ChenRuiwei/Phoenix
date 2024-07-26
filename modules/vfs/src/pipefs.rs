@@ -127,7 +127,10 @@ impl Drop for PipeWriteFile {
             .inode()
             .downcast_arc::<PipeInode>()
             .unwrap_or_else(|_| unreachable!());
-        log::info!("[PipeWriteFile::drop] pipe write end is closed");
+        log::info!(
+            "[PipeWriteFile::drop] pipe ino {} write end is closed",
+            pipe.meta().ino
+        );
         let mut inner = pipe.inner.lock();
         inner.is_write_closed = true;
         while let Some(waker) = inner.read_waker.pop_front() {
@@ -153,7 +156,10 @@ impl Drop for PipeReadFile {
             .inode()
             .downcast_arc::<PipeInode>()
             .unwrap_or_else(|_| unreachable!());
-        log::info!("[PipeReadFile::drop] pipe read end is closed");
+        log::info!(
+            "[PipeReadFile::drop] pipe ino {} read end is closed",
+            pipe.meta().ino
+        );
         let mut inner = pipe.inner.lock();
         inner.is_read_closed = true;
         while let Some(waker) = inner.write_waker.pop_front() {
@@ -177,7 +183,10 @@ impl File for PipeWriteFile {
             .inode()
             .downcast_arc::<PipeInode>()
             .unwrap_or_else(|_| unreachable!());
-
+        log::info!(
+            "[PipeWriteFile::base_write_at] read pipe ino {}",
+            pipe.meta().ino
+        );
         let revents = PipeWritePollFuture::new(pipe.clone(), PollEvents::OUT).await;
         if revents.contains(PollEvents::ERR) {
             return Err(SysError::EPIPE);
@@ -254,6 +263,10 @@ impl File for PipeReadFile {
             .inode()
             .downcast_arc::<PipeInode>()
             .unwrap_or_else(|_| unreachable!());
+        log::info!(
+            "[PipeReadFile::base_read_at] read pipe ino {}",
+            pipe.meta().ino
+        );
         let events = PollEvents::IN;
         let revents = PipeReadPollFuture::new(pipe.clone(), events).await;
         if revents.contains(PollEvents::HUP) {

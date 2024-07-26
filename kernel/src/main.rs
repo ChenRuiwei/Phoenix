@@ -36,7 +36,10 @@ use driver::BLOCK_DEVICE;
 use executor::task_len;
 use timer::timelimited_task::ksleep_s;
 
-use crate::{processor::hart, task::TASK_MANAGER};
+use crate::{
+    processor::hart,
+    task::{TASK_MANAGER, TID_ALLOCATOR},
+};
 
 extern crate alloc;
 
@@ -85,12 +88,19 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
         //         ksleep_s(3).await;
         //     }
         // });
-        task::spawn_kernel_task(async move {
-            loop {
-                log::error!("current time {:?}", get_time_duration());
-                ksleep_s(5).await;
-            }
-        });
+        // task::spawn_kernel_task(async move {
+        //     loop {
+        //         log::error!("current time {:?}", get_time_duration());
+        //         ksleep_s(5).await;
+        //     }
+        // });
+        //
+        // task::spawn_kernel_task(async move {
+        //     loop {
+        //         log::error!("current tid len {:?}", TASK_MANAGER.tasks());
+        //         ksleep_s(5).await;
+        //     }
+        // });
 
         #[cfg(feature = "smp")]
         boot::start_harts(hart_id);
