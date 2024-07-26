@@ -28,18 +28,11 @@ const TESTCASES: [&str; 10] = [
 fn run_cmd(cmd: &str) {
     if fork() == 0 {
         execve(
-            "busybox\0",
+            "busybox",
+            &["busybox", "sh", "-c", cmd],
             &[
-                "busybox\0".as_ptr(),
-                "sh\0".as_ptr(),
-                "-c\0".as_ptr(),
-                cmd.as_ptr(),
-                core::ptr::null::<u8>(),
-            ],
-            &[
-                "PATH=/:/bin\0".as_ptr(),
-                "LD_LIBRARY_PATH=/:/lib:/lib/glibc/:/lib/musl\0".as_ptr(),
-                core::ptr::null::<u8>(),
+                "PATH=/:/bin",
+                "LD_LIBRARY_PATH=/:/lib:/lib/glibc/:/lib/musl",
             ],
         );
     } else {
@@ -50,12 +43,11 @@ fn run_cmd(cmd: &str) {
 
 #[no_mangle]
 fn main() -> i32 {
-    run_cmd("busybox touch sort.src\0");
-    run_cmd("busybox cp /lib/dlopen_dso.so dlopen_dso.so\0");
+    run_cmd("busybox touch sort.src");
+    run_cmd("busybox cp /lib/dlopen_dso.so dlopen_dso.so");
     if fork() == 0 {
-        for testcase in TESTCASES {
-            let testname = testcase.to_string() + "\0";
-            run_cmd(&testname);
+        for test in TESTCASES {
+            run_cmd(&test);
         }
     } else {
         loop {
