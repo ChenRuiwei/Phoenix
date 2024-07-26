@@ -31,7 +31,6 @@ pub struct BufferCache {
     // block data.
     pub pages: LruCache<usize, Arc<Page>>,
     /// Block idx to `BufferHead`.
-    // TODO: add lru support, otherwise may occupy too much heap space
     // NOTE: Stores all accesses to block device. Some of them will be attached
     // to pages above, while others with file related will be attached to pages
     // stored in address space.

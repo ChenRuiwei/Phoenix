@@ -54,13 +54,7 @@ fn main() -> i32 {
         for testcase in TESTCASES {
             let pid = fork();
             if pid == 0 {
-                let testname = testcase.to_string() + "\0";
-                if execve(
-                    &testname,
-                    &[testname.as_ptr(), core::ptr::null::<u8>()],
-                    &[core::ptr::null::<u8>()],
-                ) != 0
-                {
+                if execve(testcase, &[testcase], &[]) != 0 {
                     println!("Error when executing!");
                     return 0;
                 }

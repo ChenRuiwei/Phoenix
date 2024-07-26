@@ -79,12 +79,12 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
             task::spawn_init_proc();
         });
 
-        task::spawn_kernel_task(async move {
-            loop {
-                log::error!("current time {:?}", get_time_duration());
-                ksleep_s(5).await;
-            }
-        });
+        // task::spawn_kernel_task(async move {
+        //     loop {
+        //         log::error!("current time {:?}", get_time_duration());
+        //         ksleep_s(5).await;
+        //     }
+        // });
 
         #[cfg(feature = "smp")]
         boot::start_harts(hart_id);

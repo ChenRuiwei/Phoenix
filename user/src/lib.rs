@@ -16,7 +16,7 @@ pub mod types;
 extern crate bitflags;
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{ffi::CString, vec::Vec};
 
 use bitflags::Flags;
 use buddy_system_allocator::LockedHeap;
@@ -163,12 +163,15 @@ pub fn create_thread(flags: CloneFlags) -> isize {
 pub fn kill(pid: isize, sig: Sig) -> isize {
     sys_kill(pid as usize, sig.raw() as i32)
 }
-pub fn execve(cmd: &str, args: &[*const u8], env: &[*const u8]) -> isize {
-    sys_execve(
-        cmd.as_ptr(),
-        args.as_ptr() as *const usize,
-        env.as_ptr() as *const usize,
-    )
+pub fn execve(path: &str, argv: &[&str], envp: &[&str]) -> isize {
+    let path = CString::new(path).unwrap();
+    let argv: Vec<_> = argv.iter().map(|s| CString::new(*s).unwrap()).collect();
+    let envp: Vec<_> = envp.iter().map(|s| CString::new(*s).unwrap()).collect();
+    let mut argv = argv.iter().map(|s| s.as_ptr() as usize).collect::<Vec<_>>();
+    let mut envp = envp.iter().map(|s| s.as_ptr() as usize).collect::<Vec<_>>();
+    argv.push(0);
+    envp.push(0);
+    sys_execve(path.as_ptr() as *const u8, argv.as_ptr(), envp.as_ptr())
 }
 
 pub fn wait(exit_code: &mut i32) -> isize {
