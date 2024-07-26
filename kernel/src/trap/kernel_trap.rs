@@ -4,49 +4,105 @@ use arch::{
     interrupts::set_trap_handler_vector,
     time::{get_time_duration, set_next_timer_irq, set_timer_irq},
 };
+use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Scause, Trap},
-    sepc, stval, stvec,
+    sepc, sstatus, stval, stvec,
 };
+use signal::{Sig, SigDetails, SigInfo};
 use timer::TIMER_MANAGER;
 
-use crate::{processor::hart::local_hart, when_debug};
+use crate::{
+    mm::PageFaultAccessType,
+    processor::hart::{current_task, current_task_ref, local_hart},
+    when_debug,
+};
+
+fn panic_on_unknown_trap() {
+    panic!(
+        "[kernel] sstatus sum {}, {:?}(scause:{}) in application, bad addr = {:#x}, bad instruction = {:#x}, kernel panicked!!",
+        sstatus::read().sum(),
+        scause::read().cause(),
+        scause::read().bits(),
+        stval::read(),
+        sepc::read(),
+    );
+}
 
 /// Kernel trap handler
 #[no_mangle]
 pub fn kernel_trap_handler() {
+    let stval = stval::read();
     let scause = scause::read();
-    let _stval = stval::read();
+    let sepc = sepc::read();
+    let cause = scause.cause();
     match scause.cause() {
-        Trap::Interrupt(Interrupt::SupervisorExternal) => {
-            log::info!("[kernel] receive externel interrupt");
-            driver::get_device_manager_mut().handle_irq();
-        }
-        Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            // log::warn!("[kernel_trap] receive timer interrupt");
-            TIMER_MANAGER.check(get_time_duration());
-            unsafe { set_next_timer_irq() };
-            #[cfg(feature = "preempt")]
-            {
-                if !executor::has_task() {
-                    return;
+        Trap::Interrupt(i) => {
+            match i {
+                Interrupt::SupervisorExternal => {
+                    log::info!("[kernel] receive externel interrupt");
+                    driver::get_device_manager_mut().handle_irq();
                 }
-                unsafe { set_timer_irq(5) };
-                let mut old_hart = local_hart().enter_preempt_switch();
-                log::warn!("kernel preempt");
-                executor::run_one();
-                log::warn!("kernel preempt fininshed");
-                local_hart().leave_preempt_switch(&mut old_hart);
+                Interrupt::SupervisorTimer => {
+                    // log::warn!("[kernel_trap] receive timer interrupt");
+                    TIMER_MANAGER.check(get_time_duration());
+                    unsafe { set_next_timer_irq() };
+                    #[cfg(feature = "preempt")]
+                    {
+                        if !executor::has_task() {
+                            return;
+                        }
+                        unsafe { set_timer_irq(5) };
+                        let mut old_hart = local_hart().enter_preempt_switch();
+                        log::warn!("kernel preempt");
+                        executor::run_one();
+                        log::warn!("kernel preempt fininshed");
+                        local_hart().leave_preempt_switch(&mut old_hart);
+                    }
+                }
+                _ => panic_on_unknown_trap(),
             }
         }
-        _ => {
-            panic!(
-                "[kernel] {:?}(scause:{}) in application, bad addr = {:#x}, bad instruction = {:#x}, kernel panicked!!",
-                scause::read().cause(),
-                scause::read().bits(),
-                stval::read(),
-                sepc::read(),
-            );
+        Trap::Exception(e) => {
+            match e {
+                Exception::StorePageFault
+                | Exception::InstructionPageFault
+                | Exception::LoadPageFault => {
+                    let access_type = match e {
+                        Exception::InstructionPageFault => PageFaultAccessType::RX,
+                        Exception::LoadPageFault => PageFaultAccessType::RO,
+                        Exception::StorePageFault => PageFaultAccessType::RW,
+                        _ => unreachable!(),
+                    };
+                    // There are serveral kinds of page faults:
+                    // 1. mmap area
+                    // 2. sbrk area
+                    // 3. fork cow area
+                    // 4. user stack
+                    // 5. execve elf file
+                    // 6. dynamic link
+                    // 7. illegal page fault
+
+                    let result = current_task_ref().with_mut_memory_space(|m| {
+                        m.handle_page_fault(VirtAddr::from(stval), access_type)
+                    });
+                    if let Err(_e) = result {
+                        // backtrace::backtrace();
+                        log::warn!("{:x?}", current_task_ref().trap_context_mut());
+                        // task.with_memory_space(|m| m.print_all());
+                        log::warn!("bad memory access, send SIGSEGV to task");
+                        current_task_ref().receive_siginfo(
+                            SigInfo {
+                                sig: Sig::SIGSEGV,
+                                code: SigInfo::KERNEL,
+                                details: SigDetails::None,
+                            },
+                            false,
+                        );
+                    }
+                }
+                _ => panic_on_unknown_trap(),
+            }
         }
     }
 }
