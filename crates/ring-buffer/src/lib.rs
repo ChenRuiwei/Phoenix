@@ -14,7 +14,7 @@ enum RingBufferState {
     Normal,
 }
 
-pub struct RingBuffer<const N: usize> {
+pub struct RingBuffer {
     arr: Vec<u8>,
     // NOTE: When and only when `head` equals `tail`, `state` can only be `Full` or `Empty`.
     head: usize,
@@ -22,10 +22,10 @@ pub struct RingBuffer<const N: usize> {
     state: RingBufferState,
 }
 
-impl<const N: usize> RingBuffer<N> {
-    pub fn new() -> Self {
+impl RingBuffer {
+    pub fn new(len: usize) -> Self {
         Self {
-            arr: vec![0; N],
+            arr: vec![0; len],
             head: 0,
             tail: 0,
             state: RingBufferState::Empty,

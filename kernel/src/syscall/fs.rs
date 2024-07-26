@@ -8,7 +8,7 @@ use core::{
 
 use arch::time::get_time_duration;
 use async_utils::{dyn_future, Async, Select2Futures, SelectOutput};
-use config::board::BLOCK_SIZE;
+use config::{board::BLOCK_SIZE, fs::PIPE_BUF_LEN};
 use driver::BLOCK_DEVICE;
 use memory::VirtAddr;
 use strum::FromRepr;
@@ -514,7 +514,7 @@ impl Syscall<'_> {
         let task = self.task;
         let flags = OpenFlags::from_bits(flags)
             .unwrap_or_else(|| unimplemented!("unknown flags, should add them"));
-        let (pipe_read, pipe_write) = new_pipe();
+        let (pipe_read, pipe_write) = new_pipe(PIPE_BUF_LEN);
         let pipe = task.with_mut_fd_table(|table| {
             let fd_read = table.alloc(pipe_read, flags)?;
             let fd_write = table.alloc(pipe_write, flags)?;
