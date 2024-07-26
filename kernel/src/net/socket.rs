@@ -133,7 +133,7 @@ impl Socket {
         let sk = match domain {
             SaFamily::AF_UNIX => Sock::Unix(UnixSocket {}),
             SaFamily::AF_INET | SaFamily::AF_INET6 => match types {
-                SocketType::STREAM => Sock::Tcp(TcpSocket::new()),
+                SocketType::STREAM => Sock::Tcp(TcpSocket::new_v4()),
                 SocketType::DGRAM => Sock::Udp(UdpSocket::new()),
                 _ => unimplemented!(),
             },
@@ -176,25 +176,39 @@ impl File for Socket {
         &self.meta
     }
 
-    async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SyscallResult {
+        unreachable!()
+    }
+
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
+        unreachable!()
+    }
+
+    async fn read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
         if buf.len() == 0 {
             return Ok(0);
         }
         // TODO: should add this?
         poll_interfaces();
         let bytes = self.sk.recvfrom(buf).await.map(|e| e.0)?;
-        warn!("[socket read] expect: {:?} exact: {bytes}", buf.len());
+        warn!(
+            "[Socket::File::read_at] expect to recv: {:?} exact: {bytes}",
+            buf.len()
+        );
         Ok(bytes)
     }
 
-    async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
         if buf.len() == 0 {
             return Ok(0);
         }
         // TODO: should add this?
         poll_interfaces();
         let bytes = self.sk.sendto(buf, None).await?;
-        warn!("[socket write] expect: {:?} exact: {bytes}", buf.len());
+        warn!(
+            "[Socket::File::write_at] expect to send: {:?} bytes exact: {bytes}",
+            buf.len()
+        );
         Ok(bytes)
     }
 
@@ -218,6 +232,11 @@ impl File for Socket {
         }
         log::info!("[Socket::base_poll] ret events:{res:?} {netstate:?}");
         res
+    }
+
+    fn ioctl(&self, _cmd: usize, _arg: usize) -> SyscallResult {
+        log::warn!("[Socket::File::ioctl] not supported now, return 0 instead");
+        Ok(0)
     }
 }
 

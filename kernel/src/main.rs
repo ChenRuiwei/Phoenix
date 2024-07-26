@@ -32,6 +32,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use arch::time::get_time_duration;
 use driver::BLOCK_DEVICE;
 use executor::task_len;
 use timer::timelimited_task::ksleep_s;
@@ -76,6 +77,13 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
         loader::init();
         task::spawn_kernel_task(async move {
             task::spawn_init_proc();
+        });
+
+        task::spawn_kernel_task(async move {
+            loop {
+                log::error!("current time {:?}", get_time_duration());
+                ksleep_s(5).await;
+            }
         });
 
         #[cfg(feature = "smp")]

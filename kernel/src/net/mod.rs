@@ -137,6 +137,8 @@ pub enum SocketOpt {
     /// Bind this socket to a particular device like “eth0”, as specified in the
     /// passed interface name
     BINDTODEVICE = 25,
+    ATTACH_FILTER = 26,
+    DETACH_FILTER = 27,
     SNDBUFFORCE = 32,
     RCVBUFFORCE = 33,
 }
@@ -171,11 +173,14 @@ impl TryFrom<usize> for SocketOpt {
             23 => Ok(Self::SECURITY_ENCRYPTION_TRANSPORT),
             24 => Ok(Self::SECURITY_ENCRYPTION_NETWORK),
             25 => Ok(Self::BINDTODEVICE),
+            26 => Ok(Self::ATTACH_FILTER),
+            27 => Ok(Self::DETACH_FILTER),
             32 => Ok(Self::SNDBUFFORCE),
             33 => Ok(Self::RCVBUFFORCE),
-            level => {
-                log::warn!("[SocketOpt] unsupported option: {level}");
-                Err(Self::Error::EINVAL)
+            opt => {
+                log::warn!("[SocketOpt] unsupported option: {opt}");
+                Ok(Self::DEBUG)
+                // Err(Self::Error::EINVAL)
             }
         }
     }

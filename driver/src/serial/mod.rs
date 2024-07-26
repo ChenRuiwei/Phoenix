@@ -38,7 +38,7 @@ pub struct Serial {
 }
 
 pub struct SerialInner {
-    read_buf: RingBuffer<UART_BUF_LEN>, // Hard-coded buffer size
+    read_buf: RingBuffer, // Hard-coded buffer size
     /// Hold waker of pollin tasks.
     pollin_queue: VecDeque<Waker>,
 }
@@ -64,7 +64,7 @@ impl Serial {
             meta,
             uart: UnsafeCell::new(driver),
             inner: SpinNoIrqLock::new(SerialInner {
-                read_buf: RingBuffer::new(),
+                read_buf: RingBuffer::new(UART_BUF_LEN),
                 pollin_queue: VecDeque::new(),
             }),
         }

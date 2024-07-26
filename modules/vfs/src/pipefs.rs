@@ -26,7 +26,7 @@ pub struct PipeInode {
 pub struct PipeInodeInner {
     is_write_closed: bool,
     is_read_closed: bool,
-    ring_buffer: RingBuffer<PIPE_BUF_LEN>,
+    ring_buffer: RingBuffer,
     // WARN: `Waker` may not wake the task exactly, it may be abandoned.
     // Rust only guarentees that waker will wake the task from the last poll where the waker is
     // passed in.
@@ -37,12 +37,12 @@ pub struct PipeInodeInner {
 }
 
 impl PipeInode {
-    pub fn new() -> Arc<Self> {
+    pub fn new(len: usize) -> Arc<Self> {
         let meta = InodeMeta::new(InodeMode::FIFO, Arc::<usize>::new_uninit(), PIPE_BUF_LEN);
         let inner = Mutex::new(PipeInodeInner {
             is_write_closed: false,
             is_read_closed: false,
-            ring_buffer: RingBuffer::new(),
+            ring_buffer: RingBuffer::new(len),
             read_waker: VecDeque::new(),
             write_waker: VecDeque::new(),
         });
@@ -293,8 +293,8 @@ impl File for PipeReadFile {
     }
 }
 
-pub fn new_pipe() -> (Arc<dyn File>, Arc<dyn File>) {
-    let pipe_inode = PipeInode::new();
+pub fn new_pipe(len: usize) -> (Arc<dyn File>, Arc<dyn File>) {
+    let pipe_inode = PipeInode::new(len);
     let read_end = PipeReadFile::new(pipe_inode.clone());
     let write_end = PipeWriteFile::new(pipe_inode);
     (read_end, write_end)
