@@ -242,6 +242,7 @@ impl Syscall<'_> {
         optval: usize,
         optlen: usize,
     ) -> SyscallResult {
+        use core::mem::size_of;
         let task = self.task;
         match SocketLevel::try_from(level)? {
             SocketLevel::SOL_SOCKET => {
@@ -249,12 +250,17 @@ impl Syscall<'_> {
                 const RECV_BUFFER_SIZE: usize = 64 * 1024;
                 match SocketOpt::try_from(optname)? {
                     SocketOpt::RCVBUF => {
-                        UserWritePtr::<usize>::from(optval).write(&task, RECV_BUFFER_SIZE)?
+                        UserWritePtr::<u32>::from(optval).write(&task, RECV_BUFFER_SIZE as u32)?;
+                        UserWritePtr::<u32>::from(optlen).write(&task, size_of::<u32>() as u32)?
                     }
                     SocketOpt::SNDBUF => {
-                        UserWritePtr::<usize>::from(optval).write(&task, SEND_BUFFER_SIZE)?
+                        UserWritePtr::<u32>::from(optval).write(&task, SEND_BUFFER_SIZE as u32)?;
+                        UserWritePtr::<u32>::from(optlen).write(&task, size_of::<u32>() as u32)?
                     }
-                    SocketOpt::ERROR => UserWritePtr::<usize>::from(optval).write(&task, 0)?,
+                    SocketOpt::ERROR => {
+                        UserWritePtr::<u32>::from(optval).write(&task, 0)?;
+                        UserWritePtr::<u32>::from(optlen).write(&task, size_of::<u32>() as u32)?
+                    }
                     opt => {
                         log::error!(
                             "[sys_getsockopt] unsupported SOL_SOCKET opt {opt:?} optlen:{optlen}"
@@ -266,12 +272,17 @@ impl Syscall<'_> {
                 const MAX_SEGMENT_SIZE: usize = 1460;
                 match TcpSocketOpt::try_from(optname)? {
                     TcpSocketOpt::MAXSEG => {
-                        UserWritePtr::<usize>::from(optval).write(&task, MAX_SEGMENT_SIZE)?
+                        UserWritePtr::<u32>::from(optval).write(&task, MAX_SEGMENT_SIZE as u32)?;
+                        UserWritePtr::<u32>::from(optlen).write(&task, size_of::<u32>() as u32)?
                     }
-                    TcpSocketOpt::NODELAY => UserWritePtr::<usize>::from(optval).write(&task, 0)?,
+                    TcpSocketOpt::NODELAY => {
+                        UserWritePtr::<u32>::from(optval).write(&task, 0)?;
+                        UserWritePtr::<u32>::from(optlen).write(&task, size_of::<u32>() as u32)?
+                    }
                     TcpSocketOpt::INFO => {}
                     TcpSocketOpt::CONGESTION => {
                         UserWritePtr::from(optval).write_cstr(&task, "reno");
+                        UserWritePtr::<u32>::from(optlen).write(&task, 4)?
                     }
                     opt => {
                         log::error!(
