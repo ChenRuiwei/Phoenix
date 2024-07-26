@@ -47,21 +47,22 @@ impl RingBuffer {
         }
 
         let ret_len;
+        let n = self.arr.len();
         if self.head < self.tail {
             ret_len = cmp::min(self.tail - self.head, buf.len());
             buf[..ret_len].copy_from_slice(&self.arr[self.head..self.head + ret_len]);
         } else {
             // also handles full
-            ret_len = cmp::min(N - self.head + self.tail, buf.len());
-            if ret_len <= (N - self.head) {
+            ret_len = cmp::min(n - self.head + self.tail, buf.len());
+            if ret_len <= (n - self.head) {
                 buf[..ret_len].copy_from_slice(&self.arr[self.head..self.head + ret_len]);
             } else {
-                let right_len = N - self.head;
+                let right_len = n - self.head;
                 buf[..right_len].copy_from_slice(&self.arr[self.head..]);
                 buf[right_len..ret_len].copy_from_slice(&self.arr[..(ret_len - right_len)]);
             }
         }
-        self.head = (self.head + ret_len) % N;
+        self.head = (self.head + ret_len) % n;
 
         if self.head == self.tail {
             self.state = RingBufferState::Empty;
@@ -79,21 +80,22 @@ impl RingBuffer {
         }
 
         let ret_len;
+        let n = self.arr.len();
         if self.head <= self.tail {
             // also handles empty
-            ret_len = cmp::min(N - (self.tail - self.head), buf.len());
-            if ret_len <= (N - self.tail) {
+            ret_len = cmp::min(n - (self.tail - self.head), buf.len());
+            if ret_len <= (n - self.tail) {
                 self.arr[self.tail..self.tail + ret_len].copy_from_slice(&buf[..ret_len]);
             } else {
-                self.arr[self.tail..].copy_from_slice(&buf[..N - self.tail]);
-                self.arr[..(ret_len - (N - self.tail))]
-                    .copy_from_slice(&buf[N - self.tail..ret_len]);
+                self.arr[self.tail..].copy_from_slice(&buf[..n - self.tail]);
+                self.arr[..(ret_len - (n - self.tail))]
+                    .copy_from_slice(&buf[n - self.tail..ret_len]);
             }
         } else {
             ret_len = cmp::min(self.head - self.tail, buf.len());
             self.arr[self.tail..self.tail + ret_len].copy_from_slice(&buf[..ret_len]);
         }
-        self.tail = (self.tail + ret_len) % N;
+        self.tail = (self.tail + ret_len) % n;
 
         if self.head == self.tail {
             self.state = RingBufferState::Full;
@@ -109,8 +111,9 @@ impl RingBuffer {
             return None;
         }
 
+        let n = self.arr.len();
         let c = self.arr[self.head];
-        self.head = (self.head + 1) % N;
+        self.head = (self.head + 1) % n;
         if self.head == self.tail {
             self.state = RingBufferState::Empty;
         } else {
@@ -124,8 +127,9 @@ impl RingBuffer {
             return None;
         }
 
+        let n = self.arr.len();
         self.arr[self.tail] = byte;
-        self.tail = (self.tail + 1) % N;
+        self.tail = (self.tail + 1) % n;
         if self.head == self.tail {
             self.state = RingBufferState::Full;
         } else {

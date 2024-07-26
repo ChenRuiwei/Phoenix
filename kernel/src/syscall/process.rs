@@ -424,4 +424,9 @@ impl Syscall<'_> {
     pub fn sys_geteuid(&self) -> SyscallResult {
         Ok(0)
     }
+
+    pub fn sys_setsid(&self) -> SyscallResult {
+        let task = self.task;
+        Ok(task.pid())
+    }
 }

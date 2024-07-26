@@ -8,16 +8,19 @@ use log::{debug, info, warn};
 use smoltcp::{
     iface::SocketHandle,
     socket::udp::{self, BindError, SendError},
-    wire::{IpEndpoint, IpListenEndpoint},
+    wire::{IpAddress, IpEndpoint, IpListenEndpoint},
 };
 use spin::RwLock;
 use systype::{SysError, SysResult};
 
 use super::{
-    addr::{is_unspecified, UNSPECIFIED_ENDPOINT},
+    addr::{is_unspecified, UNSPECIFIED_ENDPOINT_V4},
     SocketSetWrapper, SOCKET_SET,
 };
-use crate::{addr::LOCAL_ENDPOINT_V4, has_signal, Mutex, NetPollState};
+use crate::{
+    addr::{LOCAL_ENDPOINT_V4, UNSPECIFIED_IPV4},
+    has_signal, Mutex, NetPollState,
+};
 
 /// A UDP socket that provides POSIX-like APIs.
 pub struct UdpSocket {
@@ -94,6 +97,12 @@ impl UdpSocket {
             return Err(SysError::EINVAL);
         }
 
+        if let IpAddress::Ipv6(v6) = local_addr.addr {
+            if v6.is_unspecified() {
+                log::error!("[UdpSocket::bind] Unstable: just use ipv4 instead of ipv6 when ipv6 is unspecified");
+                local_addr.addr = UNSPECIFIED_IPV4;
+            }
+        }
         let endpoint = IpListenEndpoint {
             addr: (!is_unspecified(local_addr.addr)).then_some(local_addr.addr),
             port: local_addr.port,
@@ -132,7 +141,7 @@ impl UdpSocket {
         self.recv_impl(|socket| match socket.recv_slice(buf) {
             Ok((len, meta)) => Ok((len, meta.endpoint)),
             Err(e) => {
-                warn!("[udp::recv_from] socket {} failed {e:?}", self.handle);
+                warn!("[UdpSocket::recv_from] socket {} failed {e:?}", self.handle);
                 Err(SysError::EAGAIN)
             }
         })
@@ -163,8 +172,8 @@ impl UdpSocket {
     pub fn connect(&self, addr: IpEndpoint) -> SysResult<()> {
         let mut self_peer_addr = self.peer_addr.write();
         if self.local_addr.read().is_none() {
-            info!("[UdpSocket::connect] don't have local addr, bind to UNSPECIFIED_ENDPOINT");
-            self.bind(UNSPECIFIED_ENDPOINT)?;
+            info!("[UdpSocket::connect] don't have local addr, bind to UNSPECIFIED_ENDPOINT_V4");
+            self.bind(UNSPECIFIED_ENDPOINT_V4)?;
         }
         *self_peer_addr = Some(addr);
         info!(
@@ -259,8 +268,8 @@ impl UdpSocket {
                 "[send_impl] UDP socket {}: not bound. Use 0.0.0.0",
                 self.handle
             );
-            // TODO: UNSPECIFIED_ENDPOINT or LOCAL_ENDPOINT?
-            self.bind(UNSPECIFIED_ENDPOINT)?;
+            // TODO: UNSPECIFIED_ENDPOINT_V4 or LOCAL_ENDPOINT?
+            self.bind(UNSPECIFIED_ENDPOINT_V4)?;
         }
         let waker = get_waker().await;
         let bytes = self
@@ -287,13 +296,12 @@ impl UdpSocket {
                             self.handle
                         );
                         socket.register_send_waker(&waker);
-
                         Err(SysError::EAGAIN)
                     }
                 })
             })
             .await?;
-        log::info!("[udp::send_impl] send {bytes}bytes to {remote_endpoint:?}");
+        log::info!("[UdpSocket::send_impl] send {bytes}bytes to {remote_endpoint:?}");
         Ok(bytes)
     }
 

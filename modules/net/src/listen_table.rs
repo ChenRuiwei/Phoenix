@@ -13,7 +13,7 @@ use smoltcp::{
 use systype::{SysError, SysResult, SyscallResult};
 
 use super::{SocketSetWrapper, LISTEN_QUEUE_SIZE, SOCKET_SET};
-use crate::Mutex;
+use crate::{addr::UNSPECIFIED_IPV6, Mutex};
 
 const PORT_NUM: usize = 65536;
 
@@ -36,9 +36,30 @@ impl ListenTableEntry {
     }
 
     #[inline]
+    /// Linux内核有一个特殊的机制，叫做 IPv4-mapped IPv6
+    /// addresses，允许IPv6套接字接收IPv4连接
+    ///
+    /// 1. 当IPv6套接字绑定到::（全0地址）时，
+    ///    内核会允许该套接字接受任何传入的连接，无论其是IPv4还是IPv6地址。
+    /// 2. 对于从IPv4地址到来的连接，内核会将其转换为IPv4-mapped
+    ///    IPv6地址，即::ffff:a.b.c.d格式，其中a.b.c.d是IPv4地址。
     fn can_accept(&self, dst: IpAddress) -> bool {
         match self.listen_endpoint.addr {
-            Some(addr) => addr == dst,
+            Some(addr) => {
+                if addr == dst {
+                    return true;
+                }
+                if let IpAddress::Ipv6(v6) = addr {
+                    if v6.is_unspecified()
+                        || (dst.as_bytes().len() == 4
+                            && v6.is_ipv4_mapped()
+                            && v6.as_bytes()[12..] == dst.as_bytes()[..])
+                    {
+                        return true;
+                    }
+                }
+                false
+            }
             None => true,
         }
     }
@@ -157,6 +178,10 @@ impl ListenTable {
         if let Some(entry) = self.tcp[dst.port as usize].lock().deref_mut() {
             if !entry.can_accept(dst.addr) {
                 // not listening on this address
+                warn!(
+                    "[ListenTable::incoming_tcp_packet] not listening on address {}",
+                    dst.addr
+                );
                 return;
             }
             if entry.syn_queue.len() >= LISTEN_QUEUE_SIZE {

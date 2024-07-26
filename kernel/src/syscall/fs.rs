@@ -145,8 +145,18 @@ impl Syscall<'_> {
         log::info!("[sys_write] writing file {}", file.dentry().path());
         let buf = buf.into_slice(&task, count)?;
         // log::info!("[sys_write] buf {buf:?}");
-        let ret = file.write(&buf).await?;
-        Ok(ret)
+        task.set_interruptable();
+        task.set_wake_up_signal(!*task.sig_mask_ref());
+        let intr_future = IntrBySignalFuture {
+            task: task.clone(),
+            mask: *task.sig_mask_ref(),
+        };
+        let ret = match Select2Futures::new(file.write(&buf), intr_future).await {
+            SelectOutput::Output1(ret) => ret,
+            SelectOutput::Output2(_) => Err(SysError::EINTR),
+        };
+        task.set_running();
+        ret
     }
 
     pub async fn sys_pread64(
