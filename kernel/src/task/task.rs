@@ -550,7 +550,7 @@ impl Task {
         // exit the process, e.g. reparent all children, and send SIGCHLD to parent
         log::info!("[Task::do_exit] exit the whole process");
 
-        log::debug!("[Task::do_exit] set children to be zombie and reparent them to init");
+        log::debug!("[Task::do_exit] reparent children to init");
         debug_assert_ne!(self.tid(), INIT_PROC_PID);
         self.with_mut_children(|children| {
             if children.is_empty() {
@@ -558,11 +558,10 @@ impl Task {
             }
             let init_proc = TASK_MANAGER.init_proc();
             for c in children.values() {
-                log::info!(
-                    "[Task::do_eixt] set child process pid {} to zombie and reparent",
+                log::debug!(
+                    "[Task::do_eixt] reparent child process pid {} to init",
                     c.pid()
                 );
-                // c.set_zombie();
                 *c.parent.lock() = Some(Arc::downgrade(&init_proc));
             }
             init_proc.children.lock().extend(children.clone());

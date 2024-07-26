@@ -6,6 +6,7 @@ use core::{
     future::{Future, Pending},
     intrinsics::size_of,
     pin::Pin,
+    sync::atomic::{AtomicUsize, Ordering},
     task::{Context, Poll},
     time::Duration,
 };
@@ -289,18 +290,24 @@ fn cont(task: &Arc<Task>, sig: Sig) {
     task.notify_parent(SigInfo::CLD_CONTINUED, sig);
 }
 
+static TIMER_ID_ALLOCATOR: AtomicUsize = AtomicUsize::new(1);
+
+pub fn alloc_timer_id() -> usize {
+    TIMER_ID_ALLOCATOR.fetch_add(1, Ordering::Relaxed)
+}
+
 #[derive(Debug)]
 pub struct ITimer {
     pub interval: Duration,
     pub next_expire: Duration,
-    pub enabled: bool,
+    pub id: usize,
 }
 
 impl ITimer {
     pub const ZERO: Self = Self {
         interval: Duration::ZERO,
         next_expire: Duration::ZERO,
-        enabled: false,
+        id: 0,
     };
 }
 
@@ -308,35 +315,40 @@ impl ITimer {
 pub struct RealITimer {
     /// 设置Weak是因为可能task已经释放了但是RealITimer依然存在于TimerManager的情况
     pub task: Weak<Task>,
+    pub id: usize,
 }
 
 impl TimerEvent for RealITimer {
-    // TODO: not sure
     fn callback(self: Box<Self>) -> Option<Timer> {
-        if let Some(task) = self.task.upgrade() {
-            task.receive_siginfo(
-                SigInfo {
-                    sig: Sig::SIGALRM,
-                    code: SigInfo::KERNEL,
-                    details: SigDetails::None,
-                },
-                false,
-            );
-            return task.with_mut_itimers(|itimers| {
+        self.task.upgrade().map(|task| {
+            task.with_mut_itimers(|itimers| {
                 let mut real = &mut itimers[0];
-                if real.interval == Duration::ZERO {
-                    real.enabled = false;
+
+                if real.id != self.id {
+                    // incarnation check fails
                     return None;
                 }
+
+                task.receive_siginfo(
+                    SigInfo {
+                        sig: Sig::SIGALRM,
+                        code: SigInfo::KERNEL,
+                        details: SigDetails::None,
+                    },
+                    false,
+                );
+
+                if real.interval == Duration::ZERO {
+                    return None;
+                }
+
                 real.next_expire = get_time_duration() + real.interval;
                 Some(Timer {
                     expire: real.next_expire,
                     data: self,
                 })
-            });
-        }
-
-        None
+            })
+        })?
     }
 }
 

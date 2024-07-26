@@ -10,17 +10,19 @@ use user_lib::{execve, fork, wait, waitpid};
 #[macro_use]
 extern crate user_lib;
 
-const TESTCASES: [&str; 10] = [
+const TESTCASES: [&str; 12] = [
     "time-test",
     "busybox_testcode.sh",
     "lua_testcode.sh",
+    "netperf_testcode.sh",
+    "cyclictest_testcode.sh",
     "./test-ltp.sh ltp/testcases/bin/abs01",
     "./test-ltp.sh ltp/testcases/bin/read01",
     "libc-bench",
     "libctest_testcode.sh",
-    "lmbench_testcode.sh",
     "iozone_testcode.sh",
     "unixbench_testcode.sh",
+    "lmbench_testcode.sh",
 ];
 
 fn run_cmd(cmd: &str) {

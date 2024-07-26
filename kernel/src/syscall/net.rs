@@ -6,6 +6,7 @@ use async_utils::yield_now;
 use log::info;
 use socket::*;
 use systype::{SysError, SysResult, SyscallResult};
+use vfs::pipefs::new_pipe;
 use vfs_core::OpenFlags;
 
 use super::Syscall;
@@ -312,7 +313,14 @@ impl Syscall<'_> {
         protocol: usize,
         sv: UserWritePtr<[u32; 2]>,
     ) -> SyscallResult {
-        log::error!("[sys_socketpair] unsupport syscall now");
+        let task = self.task;
+        let (pipe_read, pipe_write) = new_pipe();
+        let pipe = task.with_mut_fd_table(|table| {
+            let fd_read = table.alloc(pipe_read, OpenFlags::empty())?;
+            let fd_write = table.alloc(pipe_write, OpenFlags::empty())?;
+            Ok([fd_read as u32, fd_write as u32])
+        })?;
+        sv.write(&task, pipe)?;
         Ok(0)
     }
 }
