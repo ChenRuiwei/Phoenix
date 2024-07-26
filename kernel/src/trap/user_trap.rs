@@ -115,9 +115,9 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
         Trap::Interrupt(i) => {
             match i {
                 Interrupt::SupervisorTimer => {
-                    // NOTE: user may trap into kernel frequently, as a consequence, this timer are
+                    // NOTE: User may trap into kernel frequently. As a consequence, this timer are
                     // likely not triggered in user mode but rather be triggered in supervisor mode,
-                    // which will cause user program running on the cpu for a long time.
+                    // which will cause user program running on the cpu for a quite long time.
                     log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");
                     TIMER_MANAGER.check(get_time_duration());
                     unsafe { set_next_timer_irq() };

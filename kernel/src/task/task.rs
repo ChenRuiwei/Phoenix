@@ -123,6 +123,10 @@ pub struct Task {
     tid_address: SyncUnsafeCell<TidAddress>,
     cpus_allowed: SyncUnsafeCell<CpuMask>,
     pgid: Shared<PGid>,
+    /// Elf file it executes on.
+    elf: SyncUnsafeCell<Arc<dyn File>>,
+    ///
+    args: SyncUnsafeCell<Vec<String>>,
 }
 
 impl core::fmt::Debug for Task {
@@ -166,7 +170,16 @@ pub enum TaskState {
 impl Task {
     // you can use is_running() / set_running()、 is_zombie() / set_zombie()
     generate_state_methods!(Running, Zombie, Stopped, Interruptable, UnInterruptable);
-    generate_accessors!(waker: Option<Waker>, tid_address: TidAddress, sig_mask: SigSet, sig_stack: Option<SignalStack>, time_stat: TaskTimeStat, cpus_allowed: CpuMask);
+    generate_accessors!(
+        waker: Option<Waker>,
+        tid_address: TidAddress,
+        sig_mask: SigSet,
+        sig_stack: Option<SignalStack>,
+        time_stat: TaskTimeStat,
+        cpus_allowed: CpuMask,
+        elf: Arc<dyn File>,
+        args: Vec<String>
+    );
     generate_atomic_accessors!(exit_code: i32, sig_ucontext_ptr: usize);
     generate_with_methods!(
         fd_table: FdTable,
@@ -181,7 +194,12 @@ impl Task {
         itimers: [ITimer;3]
     );
 
-    pub fn new_init(memory_space: MemorySpace, trap_context: TrapContext) -> Arc<Self> {
+    pub fn new_init(
+        memory_space: MemorySpace,
+        trap_context: TrapContext,
+        elf_file: Arc<dyn File>,
+        args: Vec<String>,
+    ) -> Arc<Self> {
         let tid = alloc_tid();
         let pgid = tid.0;
         let task = Arc::new(Self {
@@ -210,6 +228,8 @@ impl Task {
             cpus_allowed: SyncUnsafeCell::new(CpuMask::CPU_ALL),
             shm_ids: new_shared(BTreeMap::new()),
             pgid: new_shared(pgid),
+            elf: SyncUnsafeCell::new(elf_file),
+            args: SyncUnsafeCell::new(args),
         });
 
         task.thread_group.lock().push(task.clone());
@@ -404,6 +424,8 @@ impl Task {
             // After a fork(2), the child inherits the attached shared memory segments.
             shm_ids,
             pgid,
+            elf: SyncUnsafeCell::new(self.elf_ref().clone()),
+            args: SyncUnsafeCell::new(self.args_ref().clone()),
         });
 
         if !flags.contains(CloneFlags::THREAD) {
@@ -430,7 +452,7 @@ impl Task {
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();
         memory_space.set_task(&self.leader());
-        let (mut entry, mut auxv) = memory_space.parse_and_map_elf(elf_file, elf_data);
+        let (mut entry, mut auxv) = memory_space.parse_and_map_elf(elf_file.clone(), elf_data);
 
         let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         if let Some(interp_entry_point) = memory_space.load_dl_interp_if_needed(&elf) {
@@ -465,6 +487,9 @@ impl Task {
         // alloc stack, and push argv, envp and auxv
         log::debug!("[Task::do_execve] allocing stack");
         let sp_init = self.with_mut_memory_space(|m| m.alloc_stack_lazily(USER_STACK_SIZE));
+
+        *self.elf() = elf_file;
+        *self.args() = argv.clone();
 
         let (sp, argc, argv, envp) = within_sum(|| init_stack(sp_init, argv, envp, auxv));
 
