@@ -105,6 +105,7 @@ impl<'a> Syscall<'a> {
             SET_TID_ADDRESS => self.sys_set_tid_address(args[0]),
             GETUID => self.sys_getuid(),
             GETEUID => self.sys_geteuid(),
+            SETSID => self.sys_setsid(),
             GETEGID => self.sys_do_nothing("getegid"),
             SETPGID => self.sys_setpgid(args[0], args[1]),
             // Memory

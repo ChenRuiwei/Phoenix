@@ -562,7 +562,7 @@ impl Task {
                     "[Task::do_eixt] set child process pid {} to zombie and reparent",
                     c.pid()
                 );
-                c.set_zombie();
+                // c.set_zombie();
                 *c.parent.lock() = Some(Arc::downgrade(&init_proc));
             }
             init_proc.children.lock().extend(children.clone());

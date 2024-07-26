@@ -13,17 +13,17 @@ use log::*;
 use smoltcp::{
     iface::SocketHandle,
     socket::tcp::{self, ConnectError, State},
-    wire::{IpEndpoint, IpListenEndpoint},
+    wire::{IpAddress, IpEndpoint, IpListenEndpoint},
 };
 use systype::*;
 
 use super::{
-    addr::{is_unspecified, UNSPECIFIED_ENDPOINT},
+    addr::{is_unspecified, UNSPECIFIED_ENDPOINT_V4},
     SocketSetWrapper, ETH0, LISTEN_TABLE, SOCKET_SET,
 };
 use crate::{
-    has_signal, Mutex, NetPollState, RCV_SHUTDOWN, SEND_SHUTDOWN, SHUTDOWN_MASK, SHUT_RD,
-    SHUT_RDWR, SHUT_WR,
+    addr::UNSPECIFIED_IPV4, has_signal, Mutex, NetPollState, RCV_SHUTDOWN, SEND_SHUTDOWN,
+    SHUTDOWN_MASK, SHUT_RD, SHUT_RDWR, SHUT_WR,
 };
 
 // State transitions:
@@ -66,13 +66,13 @@ impl TcpSocket {
     /// Creates a new TCP socket.
     ///
     /// 此时并没有加到SocketSet中（还没有handle），在connect/listen中才会添加
-    pub const fn new() -> Self {
+    pub const fn new_v4() -> Self {
         Self {
             state: AtomicU8::new(STATE_CLOSED),
             shutdown: UnsafeCell::new(0),
             handle: UnsafeCell::new(None),
-            local_addr: UnsafeCell::new(UNSPECIFIED_ENDPOINT),
-            peer_addr: UnsafeCell::new(UNSPECIFIED_ENDPOINT),
+            local_addr: UnsafeCell::new(UNSPECIFIED_ENDPOINT_V4),
+            peer_addr: UnsafeCell::new(UNSPECIFIED_ENDPOINT_V4),
             nonblock: AtomicBool::new(false),
         }
     }
@@ -156,12 +156,12 @@ impl TcpSocket {
                             // again on an already connected socket, or performing
                             // the operation on a closed socket
                             ConnectError::InvalidState => {
-                                warn!("socket connect() failed, InvalidState");
+                                warn!("[TcpSocket::connect] failed: InvalidState");
                                 Err(SysError::EBADF)
                             }
                             // The target address or port attempting to connect is unreachable
                             ConnectError::Unaddressable => {
-                                warn!("socket connect() failed, Unaddressable");
+                                warn!("[TcpSocket::connect] failed: Unaddressable");
                                 Err(SysError::EADDRNOTAVAIL)
                             }
                         })?;
@@ -180,7 +180,7 @@ impl TcpSocket {
             Ok(())
         })
         .unwrap_or_else(|_| {
-            warn!("socket connect() failed: already connected");
+            warn!("[TcpSocket::connect] failed: already connected");
             Err(SysError::EEXIST)
         })?; // EISCONN
 
@@ -191,12 +191,12 @@ impl TcpSocket {
             self.block_on_async(|| async {
                 let NetPollState { writable, .. } = self.poll_connect().await;
                 if !writable {
-                    warn!("socket connect() failed: invalid state");
+                    warn!("[TcpSocket::connect] failed: try again");
                     Err(SysError::EAGAIN)
                 } else if self.get_state() == STATE_CONNECTED {
                     Ok(())
                 } else {
-                    warn!("socket connect() failed");
+                    warn!("[TcpSocket::connect] failed, connection refused");
                     Err(SysError::ECONNREFUSED)
                 }
             })
@@ -222,9 +222,16 @@ impl TcpSocket {
             // have changed the state to `BUSY`.
             unsafe {
                 let old = self.local_addr.get().read();
-                if old != UNSPECIFIED_ENDPOINT {
+                if old != UNSPECIFIED_ENDPOINT_V4 {
                     warn!("socket bind() failed: {:?} already bound", local_addr);
                     return Err(SysError::EINVAL);
+                }
+                // FIXME
+                if let IpAddress::Ipv6(v6) = local_addr.addr {
+                    if v6.is_unspecified() {
+                        log::error!("[TcpSocket::bind] Unstable: just use ipv4 instead of ipv6 when ipv6 is unspecified");
+                        local_addr.addr = UNSPECIFIED_IPV4;
+                    }
                 }
                 self.local_addr.get().write(local_addr);
             }
@@ -317,7 +324,7 @@ impl TcpSocket {
             // SAFETY: `self.local_addr` should be initialized in a listening socket,
             // and no other threads can read or write it.
             let local_port = unsafe { self.local_addr.get().read().port };
-            unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT) }; // clear bound address
+            unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT_V4) }; // clear bound address
             LISTEN_TABLE.unlisten(local_port);
             SOCKET_SET.poll_interfaces();
             Ok(())
@@ -559,8 +566,8 @@ impl TcpSocket {
                 }
                 _ => {
                     unsafe {
-                        self.local_addr.get().write(UNSPECIFIED_ENDPOINT);
-                        self.peer_addr.get().write(UNSPECIFIED_ENDPOINT);
+                        self.local_addr.get().write(UNSPECIFIED_ENDPOINT_V4);
+                        self.peer_addr.get().write(UNSPECIFIED_ENDPOINT_V4);
                     }
                     self.set_state(STATE_CLOSED); // connection failed
                     true
