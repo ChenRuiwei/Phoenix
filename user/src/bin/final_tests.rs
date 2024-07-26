@@ -41,7 +41,7 @@ fn run_cmd(cmd: &str) {
 
 #[no_mangle]
 fn main() -> i32 {
-    run_cmd("busybox touch sort.src");
+    // run_cmd("busybox touch sort.src");
     run_cmd("busybox cp /lib/dlopen_dso.so dlopen_dso.so");
     if fork() == 0 {
         for test in TESTCASES {
