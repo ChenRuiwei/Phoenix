@@ -19,6 +19,7 @@ use config::{
 use device_core::BlockDriverOps;
 use intrusive_collections::{intrusive_adapter, LinkedListAtomicLink};
 use lru::LruCache;
+use macro_utils::with_methods;
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 
@@ -173,18 +174,21 @@ impl BufferHead {
             );
         }
         debug_assert!(is_aligned_to_block(offset) && offset < PAGE_SIZE);
-        let mut inner = self.inner.lock();
-        inner.bstate = BufferState::Sync;
-        inner.page = Arc::downgrade(page);
-        inner.offset = offset;
+
+        self.with_mut_inner(|inner| {
+            inner.bstate = BufferState::Sync;
+            inner.page = Arc::downgrade(page);
+            inner.offset = offset;
+        });
     }
 
     pub fn reset(&self) {
-        let mut inner = self.inner.lock();
-        inner.acc_cnt = 0;
-        inner.bstate = BufferState::UnInit;
-        inner.page = Weak::new();
-        inner.offset = 0;
+        self.with_mut_inner(|inner| {
+            inner.acc_cnt = 0;
+            inner.bstate = BufferState::UnInit;
+            inner.page = Weak::new();
+            inner.offset = 0;
+        });
     }
 
     pub fn block_id(&self) -> usize {
@@ -237,4 +241,6 @@ impl BufferHead {
         self.bytes_array().copy_from_slice(buf);
         self.set_bstate(BufferState::Dirty)
     }
+
+    with_methods!(inner: BufferHeadInner);
 }

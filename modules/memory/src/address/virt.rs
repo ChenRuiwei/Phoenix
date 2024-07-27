@@ -163,7 +163,7 @@ impl VirtPageNum {
         let mut vpn = self.0;
         let mut indices = [0usize; PAGE_TABLE_LEVEL_NUM];
         for i in (0..PAGE_TABLE_LEVEL_NUM).rev() {
-            indices[i] = vpn & 511;
+            indices[i] = vpn & PAGE_MASK;
             vpn >>= 9;
         }
         indices

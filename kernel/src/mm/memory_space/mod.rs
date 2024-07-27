@@ -12,7 +12,6 @@ use core::{
     ops::{self, Range},
 };
 
-use ::range_map::RangeMap;
 use arch::memory::{sfence_vma_all, sfence_vma_vaddr};
 use async_utils::block_on;
 use config::{
@@ -25,10 +24,9 @@ use config::{
     },
     process::USER_STACK_PRE_ALLOC_SIZE,
 };
-use log::info;
 use memory::{page_table, pte::PTEFlags, PageTable, PhysAddr, VirtAddr, VirtPageNum};
 use page::Page;
-use riscv::register::mideleg;
+use range_map::RangeMap;
 use spin::Lazy;
 use systype::{SysError, SysResult};
 use vfs_core::{Dentry, File};
@@ -122,7 +120,7 @@ impl MemorySpace {
         let mut max_end_vpn = offset.floor();
         let mut header_va = 0;
         let mut has_found_header_va = false;
-        info!("[map_elf]: entry point {:#x}", elf.header.pt2.entry_point());
+        log::info!("[map_elf]: entry point {:#x}", elf.header.pt2.entry_point());
 
         for i in 0..ph_count {
             let ph = elf.program_header(i).unwrap();
@@ -472,9 +470,13 @@ impl MemorySpace {
             memory_space.push_vma(new_area);
             // copy data from another space
             for vpn in area.range_vpn() {
-                if let Some(pte) = user_space.page_table().find_pte(vpn) {
+                if let Some(pte) = user_space.page_table().find_leaf_pte(vpn) {
                     let src_ppn = pte.ppn();
-                    let dst_ppn = memory_space.page_table_mut().find_pte(vpn).unwrap().ppn();
+                    let dst_ppn = memory_space
+                        .page_table_mut()
+                        .find_leaf_pte(vpn)
+                        .unwrap()
+                        .ppn();
                     dst_ppn.bytes_array().copy_from_slice(src_ppn.bytes_array());
                 }
             }
@@ -491,13 +493,13 @@ impl MemorySpace {
             debug_assert_eq!(range, new_area.range_va());
             for vpn in area.range_vpn() {
                 if let Some(page) = area.pages.get(&vpn) {
-                    let pte = user_space.page_table_mut().find_pte(vpn).unwrap();
+                    let pte = user_space.page_table_mut().find_leaf_pte(vpn).unwrap();
                     let (pte_flags, ppn) = match area.vma_type {
                         VmAreaType::Shm => {
                             // If shared memory,
                             // then we don't need to modify the pte flags,
                             // i.e. no copy-on-write.
-                            info!("[from_user_lazily] clone Shared Memory");
+                            log::info!("[from_user_lazily] clone Shared Memory");
                             new_area.pages.insert(vpn, page.clone());
                             (pte.flags(), page.ppn())
                         }
@@ -787,7 +789,7 @@ impl MemorySpace {
     pub fn va2pa(&self, va: VirtAddr) -> PhysAddr {
         let pte = self
             .page_table()
-            .find_pte(va.floor())
+            .find_leaf_pte(va.floor())
             .expect("[va2pa] error");
         pte.ppn().to_pa() + va.page_offset()
     }

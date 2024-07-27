@@ -4,11 +4,7 @@ use alloc::{string::String, vec, vec::Vec};
 use core::{iter::zip, ops::Range};
 
 use arch::memory::switch_page_table;
-use config::{
-    board::MEMORY_END,
-    mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PTE_SIZE, VIRT_RAM_OFFSET},
-};
-use log::trace;
+use config::mm::{PAGE_SIZE, VIRT_RAM_OFFSET};
 use riscv::register::satp;
 
 use crate::{
@@ -72,7 +68,7 @@ impl PageTable {
             root_ppn: ppn,
             frames: Vec::new(),
         };
-        let leaf_pte = page_table.find_pte(vaddr.floor()).unwrap();
+        let leaf_pte = page_table.find_leaf_pte(vaddr.floor()).unwrap();
         let paddr = leaf_pte.ppn().to_pa() + vaddr.page_offset();
         paddr
     }
@@ -82,38 +78,12 @@ impl PageTable {
         switch_page_table(self.token());
     }
 
-    /// Dump page table
-    #[allow(unused)]
-    pub fn dump(&self) {
-        log::info!("----- Dump page table -----");
-        self._dump(self.root_ppn, 0);
-    }
-
-    fn _dump(&self, ppn: PhysPageNum, level: usize) {
-        if level >= 3 {
-            return;
-        }
-        let mut prefix = String::from("");
-        for _ in 0..level {
-            prefix += "-";
-        }
-        for pte in ppn.pte_array() {
-            if pte.is_valid() {
-                log::info!("{} ppn {:#x}, flags {:?}", prefix, pte.ppn().0, pte.flags());
-                self._dump(pte.ppn(), level + 1);
-            }
-        }
-    }
-
     /// Find the leaf pte and will create page table in need.
-    fn find_pte_create(&mut self, vpn: VirtPageNum) -> &mut PageTableEntry {
+    fn find_leaf_pte_create(&mut self, vpn: VirtPageNum) -> &mut PageTableEntry {
         let idxs = vpn.indices();
         let mut ppn = self.root_ppn;
-        for (i, idx) in idxs.into_iter().enumerate() {
+        for idx in idxs[..2] {
             let pte = ppn.pte(idx);
-            if i == 2 {
-                return pte;
-            }
             if !pte.is_valid() {
                 let frame = alloc_frame_tracker();
                 frame.fill_zero();
@@ -122,13 +92,13 @@ impl PageTable {
             }
             ppn = pte.ppn();
         }
-        unreachable!()
+        return ppn.pte(idxs[2]);
     }
 
     /// Find the leaf pte.
     ///
     /// Return `None` if the leaf pte is not valid.
-    pub fn find_pte(&self, vpn: VirtPageNum) -> Option<&mut PageTableEntry> {
+    pub fn find_leaf_pte(&self, vpn: VirtPageNum) -> Option<&mut PageTableEntry> {
         let idxs = vpn.indices();
         let mut ppn = self.root_ppn;
         for (i, idx) in idxs.into_iter().enumerate() {
@@ -146,14 +116,14 @@ impl PageTable {
 
     /// Map `VirtPageNum` to `PhysPageNum` with `PTEFlags`.
     pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
-        let pte = self.find_pte_create(vpn);
+        let pte = self.find_leaf_pte_create(vpn);
         debug_assert!(!pte.is_valid(), "vpn {vpn:?} is mapped before mapping");
         *pte = PageTableEntry::new(ppn, flags | PTEFlags::V | PTEFlags::D | PTEFlags::A);
     }
 
     /// Unmap a `VirtPageNum`.
     pub fn unmap(&mut self, vpn: VirtPageNum) {
-        let pte = self.find_pte(vpn).expect("leaf pte is not valid");
+        let pte = self.find_leaf_pte(vpn).expect("leaf pte is not valid");
         debug_assert!(pte.is_valid(), "vpn {vpn:?} is invalid before unmapping",);
         *pte = PageTableEntry::empty();
     }
@@ -211,47 +181,12 @@ impl PageTable {
     ///
     /// Could replace old mappings.
     pub fn map_force(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
-        let pte = self.find_pte_create(vpn);
+        let pte = self.find_leaf_pte_create(vpn);
         *pte = PageTableEntry::new(ppn, flags | PTEFlags::V | PTEFlags::D | PTEFlags::A);
     }
 
     /// Satp token with sv39 enabled
     pub fn token(&self) -> usize {
         8usize << 60 | self.root_ppn.0
-    }
-
-    /// Only for debug
-    #[allow(unused)]
-    pub fn print_page(&self, vpn: VirtPageNum) {
-        use alloc::format;
-
-        let ppn: PhysPageNum = self.find_pte(vpn).unwrap().ppn();
-        log::warn!(
-            "==== print page: {:x?} (in pgt {:x?}, phy: {:x?}) ====",
-            vpn,
-            self.root_ppn,
-            ppn,
-        );
-
-        // print it 16 byte pre line
-        //       0  1  2 ... f
-        // 00   AC EE 12 ... 34
-        // ...
-
-        let slice = ppn.bytes_array();
-
-        // we can only print a whole line using log::debug,
-        // so we manually write it for 16 times
-
-        log::info!("      0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f");
-        for i in 0..256 {
-            let mut line = format!("{:03x}   ", i * 16);
-            for j in 0..16 {
-                line.push_str(&format!("{:02x} ", slice[i * 16 + j]));
-            }
-            log::info!("{}", line);
-        }
-
-        log::warn!("==== print page done ====");
     }
 }

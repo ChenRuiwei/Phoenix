@@ -243,7 +243,7 @@ impl VmArea {
         // NOTE: should flush pages that already been allocated, page fault handler will
         // handle the permission of those unallocated pages
         for &vpn in self.pages.keys() {
-            let pte = page_table.find_pte(vpn).unwrap();
+            let pte = page_table.find_leaf_pte(vpn).unwrap();
             log::trace!(
                 "[origin pte:{:?}, new_flag:{:?}]",
                 pte.flags(),
@@ -319,7 +319,7 @@ impl VmArea {
         while start < len {
             let src = &data[start..len.min(start + PAGE_SIZE - offset)];
             let dst = page_table
-                .find_pte(current_vpn)
+                .find_leaf_pte(current_vpn)
                 .unwrap()
                 .ppn()
                 .bytes_array_range(offset..offset + src.len());
@@ -408,7 +408,7 @@ impl VmArea {
         }
 
         let page: Arc<Page>;
-        let pte = page_table.find_pte(vpn);
+        let pte = page_table.find_leaf_pte(vpn);
         if let Some(pte) = pte {
             // if PTE is valid, then it must be COW
             log::debug!("[VmArea::handle_page_fault] pte flags: {:?}", pte.flags());
