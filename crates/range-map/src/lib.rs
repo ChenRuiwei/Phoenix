@@ -1,5 +1,11 @@
+#![no_std]
+#![no_main]
+#![feature(map_try_insert)]
+
 use alloc::collections::BTreeMap;
 use core::ops::{Add, Range};
+
+extern crate alloc;
 
 #[derive(Clone, Debug)]
 struct Node<U, V> {

@@ -73,8 +73,8 @@ impl PageTable {
             frames: Vec::new(),
         };
         let leaf_pte = page_table.find_pte(vaddr.floor()).unwrap();
-        let paddr = (leaf_pte.ppn().bits() << PAGE_SIZE_BITS) + (vaddr.bits() & PAGE_MASK);
-        paddr.into()
+        let paddr = leaf_pte.ppn().to_pa() + vaddr.page_offset();
+        paddr
     }
 
     /// Switch to this pagetable

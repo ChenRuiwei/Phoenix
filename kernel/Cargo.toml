@@ -23,6 +23,7 @@ net = { path = "../modules/net/" }
 recycle-allocator = { path = "../crates/recycle-allocator/" }
 async-utils = { path = "../crates/async-utils/" }
 sbi-print = { path = "../crates/sbi-print/" }
+range-map = { path = "../crates/range-map/" }
 backtrace = { path = "../crates/backtrace/" }
 
 cfg-if = "1.0"

@@ -88,7 +88,7 @@ impl Syscall<'_> {
     /// group.
     pub fn sys_exit(&self, exit_code: i32) -> SyscallResult {
         let task = self.task;
-        task.set_zombie();
+        task.set_terminated();
         // non-leader thread are detached (see CLONE_THREAD flag in manual page clone.2)
         if task.is_leader() {
             task.set_exit_code((exit_code & 0xFF) << 8);
@@ -102,8 +102,8 @@ impl Syscall<'_> {
         let task = self.task;
         task.with_thread_group(|tg| {
             for t in tg.iter() {
-                t.set_zombie();
-                log::info!("tid {} set zombie", t.tid());
+                t.set_terminated();
+                log::info!("tid {} set terminated", t.tid());
             }
         });
         task.set_exit_code((exit_code & 0xFF) << 8);

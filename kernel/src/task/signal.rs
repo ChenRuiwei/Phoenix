@@ -256,12 +256,13 @@ fn terminate(task: &Arc<Task>, sig: Sig) {
     // exit all the memers of a thread group
     task.with_thread_group(|tg| {
         for t in tg.iter() {
-            t.set_zombie();
+            t.set_terminated();
         }
     });
     // 将信号放入低7位 (第8位是core dump标志,在gdb调试崩溃程序中用到)
     task.set_exit_code(sig.raw() as i32 & 0x7F);
 }
+
 fn stop(task: &Arc<Task>, sig: Sig) {
     log::warn!("[do_signal] task stopped!");
     task.with_mut_thread_group(|tg| {

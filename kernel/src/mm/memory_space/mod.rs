@@ -12,6 +12,7 @@ use core::{
     ops::{self, Range},
 };
 
+use ::range_map::RangeMap;
 use arch::memory::{sfence_vma_all, sfence_vma_vaddr};
 use async_utils::block_on;
 use config::{
@@ -33,7 +34,7 @@ use systype::{SysError, SysResult};
 use vfs_core::{Dentry, File};
 use xmas_elf::ElfFile;
 
-use self::{range_map::RangeMap, vm_area::VmArea};
+use self::vm_area::VmArea;
 use super::{kernel_page_table, PageFaultAccessType};
 use crate::{
     mm::{
@@ -48,7 +49,6 @@ use crate::{
     },
 };
 
-mod range_map;
 pub mod vm_area;
 
 /// Virtual memory space for kernel and user.

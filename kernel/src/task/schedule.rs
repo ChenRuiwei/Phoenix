@@ -80,17 +80,17 @@ pub async fn task_loop(task: Arc<Task>) {
     *task.waker() = Some(get_waker().await);
     loop {
         match task.state() {
-            Zombie => break,
+            Terminated => break,
             Stopped => suspend_now().await,
             _ => {}
         }
 
         trap::user_trap::trap_return(&task);
 
-        // task may be set to zombie by other task, e.g. execve will kill other tasks in
-        // the same thread group
+        // task may be set to terminated by other task, e.g. execve will kill other
+        // tasks in the same thread group
         match task.state() {
-            Zombie => break,
+            Terminated => break,
             Stopped => suspend_now().await,
             _ => {}
         }
@@ -98,7 +98,7 @@ pub async fn task_loop(task: Arc<Task>) {
         let intr = trap::user_trap::trap_handler(&task).await;
 
         match task.state() {
-            Zombie => break,
+            Terminated => break,
             Stopped => suspend_now().await,
             _ => {}
         }

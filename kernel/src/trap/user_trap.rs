@@ -98,14 +98,13 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                             },
                             false,
                         );
-                        // task.set_zombie();
                     }
                 }
                 Exception::IllegalInstruction => {
                     log::warn!(
                         "[trap_handler] detected illegal instruction, stval {stval:#x}, sepc {sepc:#x}",
                     );
-                    task.set_zombie();
+                    task.set_terminated();
                 }
                 e => {
                     log::warn!("Unknown user exception: {:?}", e);
@@ -163,7 +162,7 @@ pub fn trap_return(task: &Arc<Task>) {
     task.trap_context_mut().user_fx.restore();
     task.trap_context_mut().sstatus.set_fs(FS::Clean);
     assert!(!task.trap_context_mut().sstatus.sie());
-    assert!(!task.is_zombie());
+    assert!(!task.is_terminated() && !task.is_zombie());
     unsafe {
         __return_to_user(task.trap_context_mut());
         // NOTE: next time when user traps into kernel, it will come back here

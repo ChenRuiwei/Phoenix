@@ -146,8 +146,13 @@ pub enum TaskState {
     /// The task is currently running or ready to run, occupying the CPU and
     /// executing its code.
     Running,
-    /// The task has terminated, but its process control block (PCB) still
-    /// exists for the parent process to read its exit status.
+    /// The task has been terminated for user mode, which means it will
+    /// never return back to user anymore. All it left to do is to call
+    /// `do_exit` to end its life in kernel mode.
+    Terminated,
+    /// The task has has called `do_exit` function, but its process
+    /// control block (PCB) still exists for the parent process to read its
+    /// exit status.
     Zombie,
     /// The task has been stopped, usually due to receiving a stop signal (e.g.,
     /// SIGSTOP). It can be resumed with a continue signal (e.g., SIGCONT).
@@ -169,7 +174,14 @@ pub enum TaskState {
 
 impl Task {
     // you can use is_running() / set_running()、 is_zombie() / set_zombie()
-    generate_state_methods!(Running, Zombie, Stopped, Interruptable, UnInterruptable);
+    generate_state_methods!(
+        Running,
+        Zombie,
+        Stopped,
+        Terminated,
+        Interruptable,
+        UnInterruptable
+    );
     generate_accessors!(
         waker: Option<Waker>,
         tid_address: TidAddress,
@@ -469,7 +481,7 @@ impl Task {
             let mut pid = 0;
             for t in tg.iter() {
                 if !t.is_leader() {
-                    t.set_zombie();
+                    t.set_terminated();
                 } else {
                     pid = t.tid();
                 }
@@ -523,7 +535,7 @@ impl Task {
     // NOTE: After all of the threads in a thread group is terminated, the parent
     // process of the thread group is sent a SIGCHLD (or other termination) signal.
     // WARN: do not call this function directly if a task should be terminated,
-    // instead, call `set_zombie`
+    // instead, call `set_terminated`
     pub fn do_exit(self: &Arc<Self>) {
         log::info!("thread {} do exit", self.tid());
         assert_ne!(
@@ -551,11 +563,11 @@ impl Task {
 
         let mut tg = self.thread_group.lock();
 
-        if (!self.leader().is_zombie())
+        if (!self.leader().is_terminated())
             || (self.is_leader && tg.len() > 1)
             || (!self.is_leader && tg.len() > 2)
         {
-            if !self.is_leader {
+            if !self.is_leader() {
                 // NOTE: leader will be removed by parent calling `sys_wait4`
                 tg.remove(self);
                 TASK_MANAGER.remove(self.tid());
@@ -563,10 +575,10 @@ impl Task {
             return;
         }
 
-        if self.is_leader {
-            debug_assert!(tg.len() == 1);
+        if self.is_leader() {
+            assert!(tg.len() == 1);
         } else {
-            debug_assert!(tg.len() == 2);
+            assert!(tg.len() == 2);
             // NOTE: leader will be removed by parent calling `sys_wait4`
             tg.remove(self);
             TASK_MANAGER.remove(self.tid());
@@ -628,6 +640,14 @@ impl Task {
 
         // TODO: drop most resources here instead of wait4 function parent
         // called
+
+        if self.is_leader() {
+            self.set_zombie();
+        } else {
+            self.leader().set_zombie();
+        }
+        // When the task is not leader, which means its is not a process, it
+        // will get dropped when hart leaves this task.
     }
 
     /// The dirfd argument is used in conjunction with the pathname argument as
