@@ -3,10 +3,7 @@
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 use arch::interrupts::{disable_interrupt, enable_external_interrupt};
-use config::{
-    mm::{DTB_ADDR, K_SEG_DTB_BEG, VIRT_RAM_OFFSET},
-    processor::MAX_HARTS,
-};
+use config::{mm::K_SEG_DTB_BEG, processor::MAX_HARTS};
 use device_core::{BaseDriverOps, DevId};
 use log::{info, warn};
 

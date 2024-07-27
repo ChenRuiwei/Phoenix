@@ -20,7 +20,7 @@ log = "0.4"
 crate_interface = "0.1"
 
 [dependencies.smoltcp]
-path = "../smoltcp"
+git = "https://github.com/Stone749990226/smoltcp.git"
 default-features = false
 features = [
     "alloc",

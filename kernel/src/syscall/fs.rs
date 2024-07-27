@@ -500,7 +500,7 @@ impl Syscall<'_> {
     pub fn sys_getdents64(&self, fd: usize, buf: usize, len: usize) -> SyscallResult {
         let task = self.task;
         let file = task.with_fd_table(|table| table.get_file(fd))?;
-        let mut writen_len = 0;
+        // let mut writen_len = 0;
         let mut buf = UserWritePtr::<u8>::from(buf).into_mut_slice(&task, len)?;
         file.read_dir(&mut buf)
     }
