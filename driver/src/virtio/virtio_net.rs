@@ -3,7 +3,7 @@ use core::{any::Any, ptr::NonNull};
 
 use device_core::{
     error::{DevError, DevResult},
-    EthernetAddress, Medium, NetBufPtrOps, NetDriverOps,
+    DeviceCapabilities, EthernetAddress, Medium, NetBufPtrOps, NetDriverOps,
 };
 use virtio_drivers::{
     device::net::VirtIONetRaw,
@@ -81,9 +81,12 @@ impl<T: Transport, const QS: usize> VirtIoNetDev<T, QS> {
 
 impl<T: Transport + 'static, const QS: usize> NetDriverOps for VirtIoNetDev<T, QS> {
     #[inline]
-    fn medium(&self) -> Medium {
-        // Medium::Ethernet
-        Medium::Ip
+    fn capabilities(&self) -> DeviceCapabilities {
+        let mut cap = DeviceCapabilities::default();
+        cap.max_transmission_unit = 1514;
+        cap.max_burst_size = None;
+        cap.medium = Medium::Ethernet;
+        cap
     }
     #[inline]
     fn mac_address(&self) -> EthernetAddress {

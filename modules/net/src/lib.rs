@@ -180,7 +180,7 @@ impl InterfaceWrapper {
         // } else {
         //     Config::new(HardwareAddress::Ethernet(ether_addr))
         // };
-        let mut config = match dev.medium() {
+        let mut config = match dev.capabilities().medium {
             Medium::Ethernet => Config::new(HardwareAddress::Ethernet(ether_addr)),
             Medium::Ip => Config::new(HardwareAddress::Ip),
             _ => panic!(),
@@ -230,7 +230,7 @@ impl InterfaceWrapper {
         let mut sockets = sockets.lock();
         let timestamp = Self::current_time();
         let result = iface.poll(timestamp, dev.deref_mut(), &mut sockets);
-        log::warn!("[net::poll] does something have been changed? {result:?}")
+        log::warn!("[net::InterfaceWrapper::poll] does something have been changed? {result:?}")
     }
 }
 
@@ -282,11 +282,7 @@ impl Device for DeviceWrapper {
     }
 
     fn capabilities(&self) -> DeviceCapabilities {
-        let mut caps = DeviceCapabilities::default();
-        caps.max_transmission_unit = 1514;
-        caps.max_burst_size = None;
-        caps.medium = self.inner.borrow().medium();
-        caps
+        self.inner.borrow().capabilities()
     }
 }
 
@@ -295,7 +291,7 @@ struct NetTxToken<'a>(&'a RefCell<Box<dyn NetDriverOps>>);
 
 impl<'a> RxToken for NetRxToken<'a> {
     fn preprocess(&self, sockets: &mut SocketSet<'_>) {
-        let medium = self.0.borrow().medium();
+        let medium = self.0.borrow().capabilities().medium;
         let is_ethernet = medium == Medium::Ethernet;
         snoop_tcp_packet(self.1.packet(), sockets, is_ethernet).ok();
     }

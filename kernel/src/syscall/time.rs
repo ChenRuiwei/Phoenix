@@ -250,7 +250,7 @@ impl Syscall<'_> {
             TIMER_MANAGER.add_timer(timer);
         }
 
-        log::info!("[sys_setitimer] new: {new:?} old: {old:?}");
+        log::info!("[sys_setitimer] new ITimerVal {new} old ITimerVal {old}");
         if old_value.not_null() {
             old_value.write(&task, old)?;
         }

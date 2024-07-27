@@ -24,7 +24,7 @@ macro_rules! net_log {
 }
 
 macro_rules! net_trace {
-    ($($arg:expr),*) => (net_log!(trace, $($arg),*));
+    ($($arg:expr),*) => (net_log!(debug, $($arg),*));
 }
 
 macro_rules! net_debug {

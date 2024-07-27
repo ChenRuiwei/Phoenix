@@ -99,7 +99,7 @@ impl UdpSocket {
 
         if let IpAddress::Ipv6(v6) = local_addr.addr {
             if v6.is_unspecified() {
-                log::error!("[UdpSocket::bind] Unstable: just use ipv4 instead of ipv6 when ipv6 is unspecified");
+                log::warn!("[UdpSocket::bind] Unstable: just use ipv4 instead of ipv6 when ipv6 is unspecified");
                 local_addr.addr = UNSPECIFIED_IPV4;
             }
         }

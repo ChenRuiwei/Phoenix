@@ -19,7 +19,7 @@ use crate::{
 };
 
 macro_rules! tcp_trace {
-    ($($arg:expr),*) => (net_log!(trace, $($arg),*));
+    ($($arg:expr),*) => (net_log!(debug, $($arg),*));
 }
 
 /// Error returned by [`Socket::listen`]
@@ -1394,6 +1394,7 @@ impl<'a> Socket<'a> {
         return Some(self.ack_reply(ip_repr, repr));
     }
 
+    /// 用于检查一个传入的 TCP 包是否应该被当前的 TCP 套接字处理
     pub(crate) fn accepts(&self, _cx: &mut Context, ip_repr: &IpRepr, repr: &TcpRepr) -> bool {
         if self.state == State::Closed {
             return false;

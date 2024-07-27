@@ -1344,7 +1344,10 @@ impl InterfaceInner {
         ip_repr: IpRepr,
         ip_payload: &'frame [u8],
     ) -> Option<IpPacket<'frame>> {
+        // 从 IP 包头中提取源地址和目的地址
         let (src_addr, dst_addr) = (ip_repr.src_addr(), ip_repr.dst_addr());
+        // 创建一个 TcpPacket 结构并检查其有效性，然后解析出 TcpRepr 结构，包含了 TCP
+        // 包头和一些其他信息
         let tcp_packet = check!(TcpPacket::new_checked(ip_payload));
         let tcp_repr = check!(TcpRepr::parse(
             &tcp_packet,
@@ -1353,6 +1356,9 @@ impl InterfaceInner {
             &self.caps.checksum
         ));
 
+        // 遍历所有的 socket，调用 tcp_socket.accepts 检查哪个 socket 可以处理这个 TCP
+        // 包。如果找到了可以处理这个包的 socket，则调用 tcp_socket.process
+        // 处理这个包，并返回一个新的 IP 包。
         for tcp_socket in sockets
             .items_mut()
             .filter_map(|i| tcp::Socket::downcast_mut(&mut i.socket))

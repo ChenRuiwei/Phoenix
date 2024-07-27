@@ -10,7 +10,7 @@ use core::{any::Any, ptr::NonNull};
 use async_trait::async_trait;
 use downcast_rs::{impl_downcast, DowncastSync};
 use error::DevResult;
-pub use smoltcp::phy::{Loopback, Medium};
+pub use smoltcp::phy::{DeviceCapabilities, Loopback, Medium};
 
 /// General Device Operations
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -123,7 +123,7 @@ pub struct EthernetAddress(pub [u8; 6]);
 
 /// Every Net Device should implement this trait
 pub trait NetDriverOps: Sync + Send {
-    fn medium(&self) -> Medium;
+    fn capabilities(&self) -> DeviceCapabilities;
     /// The ethernet address of the NIC.
     fn mac_address(&self) -> EthernetAddress;
 

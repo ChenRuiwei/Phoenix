@@ -97,7 +97,12 @@ impl Syscall<'_> {
     pub async fn sys_accept(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
+
+        task.set_interruptable();
+        task.set_wake_up_signal(!*task.sig_mask_ref());
         let new_sk = socket.sk.accept().await?;
+        task.set_running();
+
         let peer_addr = new_sk.peer_addr()?;
         log::info!("[sys_accept] peer addr: {peer_addr}");
         task.write_sockaddr(addr, addrlen, peer_addr);
@@ -195,9 +200,9 @@ impl Syscall<'_> {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
         info!(
-            "recvfrom: {:?}, local_addr: {:?}",
+            "[sys_recvfrom]: local_addr: {:?} is trying to recvfrom remote{:?}, ",
+            socket.sk.local_addr(),
             socket.sk.peer_addr(),
-            socket.sk.local_addr()
         );
         let mut temp = Vec::with_capacity(len);
         unsafe { temp.set_len(len) };
@@ -236,7 +241,7 @@ impl Syscall<'_> {
 
     pub fn sys_getsockopt(
         &self,
-        _sockfd: usize,
+        sockfd: usize,
         level: usize,
         optname: usize,
         optval: usize,
@@ -244,6 +249,7 @@ impl Syscall<'_> {
     ) -> SyscallResult {
         use core::mem::size_of;
         let task = self.task;
+        task.sockfd_lookup(sockfd)?;
         match SocketLevel::try_from(level)? {
             SocketLevel::SOL_SOCKET => {
                 const SEND_BUFFER_SIZE: usize = 64 * 1024;

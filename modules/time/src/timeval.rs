@@ -1,4 +1,4 @@
-use core::time::Duration;
+use core::{fmt, time::Duration};
 
 #[derive(Debug, Clone, Copy, Default)]
 #[repr(C)]
@@ -71,5 +71,23 @@ impl ITimerVal {
 
     pub fn is_enabled(&self) -> bool {
         !(self.it_interval.is_zero() && self.it_value.is_zero())
+    }
+}
+
+impl fmt::Display for TimeVal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let seconds = self.tv_sec;
+        let microseconds = self.tv_usec as f64 / 1_000_000.0;
+        write!(f, "{:.6}s", seconds as f64 + microseconds)
+    }
+}
+
+impl fmt::Display for ITimerVal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "interval: {}, value: {}",
+            self.it_interval, self.it_value
+        )
     }
 }
