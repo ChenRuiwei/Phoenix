@@ -1,7 +1,5 @@
 use alloc::{sync::Arc, vec::Vec};
-use core::mem::{self};
 
-use addr::{SockAddrIn, SockAddrIn6};
 use async_utils::yield_now;
 use log::info;
 use socket::*;
@@ -11,7 +9,7 @@ use vfs_core::OpenFlags;
 
 use super::Syscall;
 use crate::{
-    mm::{UserRdWrPtr, UserReadPtr, UserWritePtr},
+    mm::{UserReadPtr, UserWritePtr},
     net::*,
     task::Task,
 };
@@ -80,7 +78,7 @@ impl Syscall<'_> {
         log::info!("[sys_connect] fd{sockfd} trys to connect {remote_addr}");
         socket.sk.connect(remote_addr).await?;
         // TODO:
-        yield_now().await;
+        // yield_now().await;
         Ok(0)
     }
 
@@ -105,7 +103,7 @@ impl Syscall<'_> {
 
         let peer_addr = new_sk.peer_addr()?;
         log::info!("[sys_accept] peer addr: {peer_addr}");
-        task.write_sockaddr(addr, addrlen, peer_addr);
+        task.write_sockaddr(addr, addrlen, peer_addr)?;
         let new_socket = Arc::new(Socket::from_another(&socket, Sock::Tcp(new_sk)));
         let fd = task.with_mut_fd_table(|table| table.alloc(new_socket, OpenFlags::empty()))?;
         Ok(fd)
@@ -120,7 +118,7 @@ impl Syscall<'_> {
         let socket = task.sockfd_lookup(sockfd)?;
         let local_addr = socket.sk.local_addr()?;
         log::info!("[sys_getsockname] local addr: {local_addr:?}");
-        task.write_sockaddr(addr, addrlen, local_addr);
+        task.write_sockaddr(addr, addrlen, local_addr)?;
         Ok(0)
     }
 
@@ -130,7 +128,7 @@ impl Syscall<'_> {
         let socket = task.sockfd_lookup(sockfd)?;
         let peer_addr = socket.sk.peer_addr()?;
         log::info!("[sys_getpeername] peer addr: {peer_addr:?}");
-        task.write_sockaddr(addr, addrlen, peer_addr);
+        task.write_sockaddr(addr, addrlen, peer_addr)?;
         Ok(0)
     }
 
@@ -287,7 +285,7 @@ impl Syscall<'_> {
                     }
                     TcpSocketOpt::INFO => {}
                     TcpSocketOpt::CONGESTION => {
-                        UserWritePtr::from(optval).write_cstr(&task, "reno");
+                        UserWritePtr::from(optval).write_cstr(&task, "reno")?;
                         UserWritePtr::<u32>::from(optlen).write(&task, 4)?
                     }
                     opt => {
@@ -325,9 +323,9 @@ impl Syscall<'_> {
 
     pub fn sys_socketpair(
         &self,
-        domain: usize,
-        types: usize,
-        protocol: usize,
+        _domain: usize,
+        _types: usize,
+        _protocol: usize,
         sv: UserWritePtr<[u32; 2]>,
     ) -> SyscallResult {
         let task = self.task;

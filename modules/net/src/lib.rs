@@ -102,6 +102,7 @@ impl<'a> SocketSetWrapper<'a> {
         socket::udp::Socket::new(udp_rx_buffer, udp_tx_buffer)
     }
 
+    #[allow(dead_code)]
     pub fn new_dns_socket() -> socket::dns::Socket<'a> {
         let server_addr = DNS_SEVER.parse().expect("invalid DNS server address");
         socket::dns::Socket::new(&[server_addr], vec![])
@@ -124,6 +125,7 @@ impl<'a> SocketSetWrapper<'a> {
         f(socket)
     }
 
+    #[allow(dead_code)]
     pub async fn with_socket_async<T: AnySocket<'a>, R, F, Fut>(
         &self,
         handle: SocketHandle,
@@ -138,6 +140,7 @@ impl<'a> SocketSetWrapper<'a> {
         f(socket).await
     }
 
+    #[allow(dead_code)]
     pub async fn with_socket_mut_async<T: AnySocket<'a>, R, F, Fut>(
         &self,
         handle: SocketHandle,
@@ -183,7 +186,6 @@ impl InterfaceWrapper {
         let mut config = match dev.capabilities().medium {
             Medium::Ethernet => Config::new(HardwareAddress::Ethernet(ether_addr)),
             Medium::Ip => Config::new(HardwareAddress::Ip),
-            _ => panic!(),
         };
         config.random_seed = RANDOM_SEED;
 

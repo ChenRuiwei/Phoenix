@@ -68,7 +68,7 @@ impl VirtIoBlkDev {
     pub fn try_new(
         mmio_base: usize,
         mmio_size: usize,
-        irq_no: usize,
+        _irq_no: usize,
         transport: MmioTransport,
     ) -> Option<Arc<Self>> {
         // const VIRTIO0: usize = 0x10001000 + VIRT_RAM_OFFSET;

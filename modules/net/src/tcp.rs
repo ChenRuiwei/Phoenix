@@ -1,14 +1,12 @@
-use alloc::boxed::Box;
 use core::{
     cell::UnsafeCell,
-    f32::consts::E,
     future::Future,
     pin::Pin,
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
     task::{Context, Poll, Waker},
 };
 
-use async_utils::{get_waker, suspend_now, yield_now};
+use async_utils::{get_waker, suspend_now};
 use log::*;
 use smoltcp::{
     iface::SocketHandle,
