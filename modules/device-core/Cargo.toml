@@ -9,7 +9,7 @@ edition = "2021"
 async-trait = "0.1"
 downcast-rs = { version = "1.2", default-features = false }
 [dependencies.smoltcp]
-path = "../smoltcp"
+git = "https://github.com/Stone749990226/smoltcp.git"
 default-features = false
 features = [
     "alloc",
