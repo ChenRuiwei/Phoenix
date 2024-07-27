@@ -188,6 +188,7 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
                 };
                 // extend the signal_stack
                 // 在栈上压入一个UContext，存储trap frame里的寄存器信息
+
                 let mut new_sp = sp - size_of::<UContext>();
                 let ucontext_ptr: UserWritePtr<UContext> = new_sp.into();
                 // TODO: should increase the size of the signal_stack? It seams umi doesn't do
@@ -195,8 +196,9 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
                 let mut ucontext = UContext {
                     uc_flags: 0,
                     uc_link: 0,
-                    uc_sigmask: old_mask,
                     uc_stack: signal_stack.unwrap_or_default(),
+                    uc_sigmask: old_mask,
+                    uc_sig: [0; 16],
                     uc_mcontext: MContext {
                         user_x: cx.user_x,
                         fpstate: [0; 66],

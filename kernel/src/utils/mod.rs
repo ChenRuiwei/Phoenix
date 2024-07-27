@@ -39,14 +39,14 @@ where
 }
 
 pub fn print_proc_tree() {
-    fn print_helper(proc: Arc<Task>, level: usize, prefix: &str) {
+    fn dfs_print(proc: Arc<Task>, level: usize, prefix: &str) {
         let indent = " ".repeat(level * 4);
         println!("{}{}{}", indent, prefix, proc.args_ref().join(" "));
         for (i, child) in proc.children().iter() {
-            print_helper(child.clone(), level + 1, &format!("P{i} -- "));
+            dfs_print(child.clone(), level + 1, &format!("P{i} -- "));
         }
     }
 
     let init = TASK_MANAGER.init_proc();
-    print_helper(init, 0, "P1 -- ");
+    dfs_print(init, 0, "P1 -- ");
 }

@@ -46,6 +46,8 @@ pub struct UContext {
     pub uc_stack: SignalStack,
     // 当前上下文活跃时被阻塞的信号集
     pub uc_sigmask: SigSet,
+    // don't know why, struct need to be exact the same with musl libc
+    pub uc_sig: [usize; 16],
     // 保存具体机器状态的上下文信息，这是一个机器相关的表示，包含了处理器的寄存器状态等信息
     pub uc_mcontext: MContext,
 }

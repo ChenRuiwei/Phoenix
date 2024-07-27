@@ -637,7 +637,7 @@ impl Syscall<'_> {
         let file = task.with_fd_table(|f| f.get_file(fd))?;
         let mut offset = file.pos();
         let mut total_len = 0;
-        let iovs = iov.read_array(&task, iovcnt)?;
+        let iovs = iov.into_slice(&task, iovcnt)?;
         for (i, iov) in iovs.iter().enumerate() {
             if iov.len == 0 {
                 continue;

@@ -137,7 +137,7 @@ impl core::fmt::Debug for Task {
 
 impl Drop for Task {
     fn drop(&mut self) {
-        log::info!("task {} died!", self.tid());
+        log::info!("task {} dropped!", self.tid());
     }
 }
 
