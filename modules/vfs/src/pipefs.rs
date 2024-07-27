@@ -26,7 +26,7 @@ pub struct PipeInode {
 pub struct PipeInodeInner {
     is_write_closed: bool,
     is_read_closed: bool,
-    ring_buffer: RingBuffer<PIPE_BUF_LEN>,
+    ring_buffer: RingBuffer,
     // WARN: `Waker` may not wake the task exactly, it may be abandoned.
     // Rust only guarentees that waker will wake the task from the last poll where the waker is
     // passed in.
@@ -37,12 +37,12 @@ pub struct PipeInodeInner {
 }
 
 impl PipeInode {
-    pub fn new() -> Arc<Self> {
+    pub fn new(len: usize) -> Arc<Self> {
         let meta = InodeMeta::new(InodeMode::FIFO, Arc::<usize>::new_uninit(), PIPE_BUF_LEN);
         let inner = Mutex::new(PipeInodeInner {
             is_write_closed: false,
             is_read_closed: false,
-            ring_buffer: RingBuffer::new(),
+            ring_buffer: RingBuffer::new(len),
             read_waker: VecDeque::new(),
             write_waker: VecDeque::new(),
         });
@@ -127,7 +127,10 @@ impl Drop for PipeWriteFile {
             .inode()
             .downcast_arc::<PipeInode>()
             .unwrap_or_else(|_| unreachable!());
-        log::info!("[PipeWriteFile::drop] pipe write end is closed");
+        log::info!(
+            "[PipeWriteFile::drop] pipe ino {} write end is closed",
+            pipe.meta().ino
+        );
         let mut inner = pipe.inner.lock();
         inner.is_write_closed = true;
         while let Some(waker) = inner.read_waker.pop_front() {
@@ -153,7 +156,10 @@ impl Drop for PipeReadFile {
             .inode()
             .downcast_arc::<PipeInode>()
             .unwrap_or_else(|_| unreachable!());
-        log::info!("[PipeReadFile::drop] pipe read end is closed");
+        log::info!(
+            "[PipeReadFile::drop] pipe ino {} read end is closed",
+            pipe.meta().ino
+        );
         let mut inner = pipe.inner.lock();
         inner.is_read_closed = true;
         while let Some(waker) = inner.write_waker.pop_front() {
@@ -177,7 +183,10 @@ impl File for PipeWriteFile {
             .inode()
             .downcast_arc::<PipeInode>()
             .unwrap_or_else(|_| unreachable!());
-
+        log::info!(
+            "[PipeWriteFile::base_write_at] read pipe ino {}",
+            pipe.meta().ino
+        );
         let revents = PipeWritePollFuture::new(pipe.clone(), PollEvents::OUT).await;
         if revents.contains(PollEvents::ERR) {
             return Err(SysError::EPIPE);
@@ -254,6 +263,10 @@ impl File for PipeReadFile {
             .inode()
             .downcast_arc::<PipeInode>()
             .unwrap_or_else(|_| unreachable!());
+        log::info!(
+            "[PipeReadFile::base_read_at] read pipe ino {}",
+            pipe.meta().ino
+        );
         let events = PollEvents::IN;
         let revents = PipeReadPollFuture::new(pipe.clone(), events).await;
         if revents.contains(PollEvents::HUP) {
@@ -293,8 +306,8 @@ impl File for PipeReadFile {
     }
 }
 
-pub fn new_pipe() -> (Arc<dyn File>, Arc<dyn File>) {
-    let pipe_inode = PipeInode::new();
+pub fn new_pipe(len: usize) -> (Arc<dyn File>, Arc<dyn File>) {
+    let pipe_inode = PipeInode::new(len);
     let read_end = PipeReadFile::new(pipe_inode.clone());
     let write_end = PipeWriteFile::new(pipe_inode);
     (read_end, write_end)

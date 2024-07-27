@@ -51,3 +51,4 @@ config = { path = "../config" }
 strace = []
 smp = []
 preempt = []
+debug = []

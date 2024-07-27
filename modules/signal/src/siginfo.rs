@@ -18,14 +18,6 @@ pub enum SigDetails {
         /// sender's pid
         pid: usize,
     },
-    CHLD {
-        /// which child
-        pid: usize,
-        /// exit code
-        status: i32,
-        utime: Duration,
-        stime: Duration,
-    },
 }
 
 #[allow(unused)]

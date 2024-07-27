@@ -24,6 +24,10 @@ impl Sstatus {
         }
     }
 
+    pub fn sie(&mut self) -> bool {
+        self.bits.get_bit(1)
+    }
+
     pub fn set_spie(&mut self, val: bool) {
         self.bits.set_bit(5, val);
     }

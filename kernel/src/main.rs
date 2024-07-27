@@ -31,11 +31,16 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use arch::time::get_time_duration;
 use driver::BLOCK_DEVICE;
 use executor::task_len;
 use timer::timelimited_task::ksleep_s;
 
-use crate::{processor::hart, task::TASK_MANAGER};
+use crate::{
+    processor::hart,
+    task::{TASK_MANAGER, TID_ALLOCATOR},
+    utils::{print_proc_tree, spawn_debug_tasks},
+};
 
 extern crate alloc;
 
@@ -71,25 +76,13 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
         trap::init();
         driver::init();
         vfs::init();
+
+        #[cfg(feature = "debug")]
+        utils::spawn_debug_tasks(print_proc_tree, 5);
+
         task::spawn_kernel_task(async move {
             task::spawn_init_proc();
         });
-
-        // task::spawn_kernel_task(async move {
-        //     loop {
-        //         log::error!(
-        //             "buffer head cnts {}",
-        //             BLOCK_DEVICE.get().unwrap().buffer_head_cnts()
-        //         );
-        //         ksleep_s(3).await;
-        //     }
-        // });
-        // task::spawn_kernel_task(async move {
-        //     loop {
-        //         log::error!("task counts {}", task_len());
-        //         ksleep_s(3).await;
-        //     }
-        // });
 
         #[cfg(feature = "smp")]
         boot::start_harts(hart_id);

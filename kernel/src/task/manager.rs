@@ -44,6 +44,10 @@ impl TaskManager {
         }
     }
 
+    pub fn tasks(&self) -> Vec<Arc<Task>> {
+        self.0.lock().values().map(|t| t.upgrade().unwrap()).collect()
+    }
+
     pub fn for_each(&self, f: impl Fn(&Arc<Task>) -> SysResult<()>) -> SysResult<()> {
         for task in self.0.lock().values() {
             f(&task.upgrade().unwrap())?

@@ -9,6 +9,9 @@ endif
 ifneq ($(PREEMPT), )
 	FEATURES += preempt
 endif
+ifneq ($(DEBUG), )
+	FEATURES += debug
+endif
 
 CARGO_BUILD_ARGS :=
 ifeq ($(MODE), release)

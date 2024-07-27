@@ -8,15 +8,15 @@ use riscv::register::sstatus::{FS, SPP};
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct TrapContext {
-    // User to kernel should save:
-    /// general regs[0..31]
+    // NOTE:  User to kernel should save these:
+    /// General regs from x0 to x31.
     pub user_x: [usize; 32],
     /// CSR sstatus
     pub sstatus: Sstatus, // 32
     /// CSR sepc
     pub sepc: usize, // 33
 
-    // Kernel to user should save:
+    // NOTE: Kernel to user should save these:
     pub kernel_sp: usize, // 34
     ///
     pub kernel_ra: usize, // 35
@@ -27,7 +27,6 @@ pub struct TrapContext {
     /// kernel hart address
     pub kernel_tp: usize, // 49
     /// Float regs
-    /// TODO: add dirty flag to know whether we should save
     pub user_fx: UserFloatContext,
 
     pub last_a0: usize,

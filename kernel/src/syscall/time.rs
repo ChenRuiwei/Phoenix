@@ -173,7 +173,7 @@ impl Syscall<'_> {
                         return Ok(0);
                     }
                     let sleep = req - current;
-                    task.suspend_timeout(req).await
+                    task.suspend_timeout(sleep).await
                 } else {
                     task.suspend_timeout(req).await
                 };

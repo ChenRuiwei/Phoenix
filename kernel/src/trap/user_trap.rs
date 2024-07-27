@@ -112,25 +112,29 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                 }
             }
         }
-        Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            // NOTE: user may trap into kernel frequently, as a consequence, this timer are
-            // likely not triggered in user mode but rather be triggered in supervisor mode,
-            // which will cause user program running on the cpu for a long time.
-            log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");
-            TIMER_MANAGER.check(get_time_duration());
-            unsafe { set_next_timer_irq() };
-            if executor::has_task() {
-                yield_now().await;
+        Trap::Interrupt(i) => {
+            match i {
+                Interrupt::SupervisorTimer => {
+                    // NOTE: User may trap into kernel frequently. As a consequence, this timer are
+                    // likely not triggered in user mode but rather be triggered in supervisor mode,
+                    // which will cause user program running on the cpu for a quite long time.
+                    log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");
+                    TIMER_MANAGER.check(get_time_duration());
+                    unsafe { set_next_timer_irq() };
+                    if executor::has_task() {
+                        yield_now().await;
+                    }
+                }
+                Interrupt::SupervisorExternal => {
+                    log::info!("[kernel] receive externel interrupt");
+                    driver::get_device_manager_mut().handle_irq();
+                }
+                _ => {
+                    panic!(
+                    "[trap_handler] Unsupported trap {cause:?}, stval = {stval:#x}!, sepc = {sepc:#x}"
+                    );
+                }
             }
-        }
-        Trap::Interrupt(Interrupt::SupervisorExternal) => {
-            log::info!("[kernel] receive externel interrupt");
-            driver::get_device_manager_mut().handle_irq();
-        }
-        _ => {
-            panic!(
-                "[trap_handler] Unsupported trap {cause:?}, stval = {stval:#x}!, sepc = {sepc:#x}"
-            );
         }
     }
     false
@@ -158,6 +162,8 @@ pub fn trap_return(task: &Arc<Task>) {
     // 2. This task encounter a signal handler
     task.trap_context_mut().user_fx.restore();
     task.trap_context_mut().sstatus.set_fs(FS::Clean);
+    assert!(!task.trap_context_mut().sstatus.sie());
+    assert!(!task.is_zombie());
     unsafe {
         __return_to_user(task.trap_context_mut());
         // NOTE: next time when user traps into kernel, it will come back here

@@ -6,6 +6,7 @@ use socket::*;
 use systype::{SysError, SysResult, SyscallResult};
 use vfs::pipefs::new_pipe;
 use vfs_core::OpenFlags;
+use virtio_drivers::PAGE_SIZE;
 
 use super::Syscall;
 use crate::{
@@ -329,7 +330,7 @@ impl Syscall<'_> {
         sv: UserWritePtr<[u32; 2]>,
     ) -> SyscallResult {
         let task = self.task;
-        let (pipe_read, pipe_write) = new_pipe();
+        let (pipe_read, pipe_write) = new_pipe(PAGE_SIZE);
         let pipe = task.with_mut_fd_table(|table| {
             let fd_read = table.alloc(pipe_read, OpenFlags::empty())?;
             let fd_write = table.alloc(pipe_write, OpenFlags::empty())?;

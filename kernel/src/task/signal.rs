@@ -129,12 +129,7 @@ impl Task {
                 SigInfo {
                     sig: Sig::SIGCHLD,
                     code,
-                    details: SigDetails::CHLD {
-                        pid: self.pid(),
-                        status: signum.raw() as i32 & 0x7F,
-                        utime: self.time_stat().user_time(),
-                        stime: self.time_stat().sys_time(),
-                    },
+                    details: SigDetails::None,
                 },
                 false,
             );

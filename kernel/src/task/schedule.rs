@@ -79,6 +79,12 @@ impl<F: Future<Output = ()> + Send + 'static> Future for KernelTaskFuture<F> {
 pub async fn task_loop(task: Arc<Task>) {
     *task.waker() = Some(get_waker().await);
     loop {
+        match task.state() {
+            Zombie => break,
+            Stopped => suspend_now().await,
+            _ => {}
+        }
+
         trap::user_trap::trap_return(&task);
 
         // task may be set to zombie by other task, e.g. execve will kill other tasks in

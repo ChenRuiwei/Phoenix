@@ -242,8 +242,9 @@ impl MemorySpace {
         (entry, auxv)
     }
 
-    /// Check whether the elf file is dynamic linked and
-    /// if so, load the dl interpreter.
+    /// Check whether the elf file is dynamic linked and if so, load the dl
+    /// interpreter.
+    ///
     /// Return the interpreter's entry point(at the base of DL_INTERP_OFFSET) if
     /// so.
     pub fn load_dl_interp_if_needed(&mut self, elf: &ElfFile) -> Option<usize> {

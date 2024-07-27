@@ -217,23 +217,29 @@ impl Syscall<'_> {
                 task.set_running();
                 let si = task.with_mut_sig_pending(|pending| pending.get_expect(SigSet::SIGCHLD));
                 if let Some(info) = si {
-                    if let SigDetails::CHLD {
-                        pid,
-                        status,
-                        utime,
-                        stime,
-                    } = info.details
-                    {
-                        match target {
-                            WaitFor::AnyChild => break (pid, status, utime, stime),
-                            WaitFor::Pid(target_pid) => {
-                                if target_pid == pid {
-                                    break (pid, status, utime, stime);
-                                }
+                    let children = task.children();
+                    let child = match target {
+                        WaitFor::AnyChild => children
+                            .values()
+                            .find(|c| c.is_zombie() && c.with_thread_group(|tg| tg.len() == 1)),
+                        WaitFor::Pid(pid) => {
+                            let child = children.get(&pid).unwrap();
+                            if child.is_zombie() && child.with_thread_group(|tg| tg.len() == 1) {
+                                Some(child)
+                            } else {
+                                None
                             }
-                            WaitFor::PGid(_) => unimplemented!(),
-                            WaitFor::AnyChildInGroup => unimplemented!(),
                         }
+                        WaitFor::PGid(_) => unimplemented!(),
+                        WaitFor::AnyChildInGroup => unimplemented!(),
+                    };
+                    if let Some(child) = child {
+                        break (
+                            child.pid(),
+                            child.exit_code(),
+                            child.time_stat_ref().user_time(),
+                            child.time_stat_ref().sys_time(),
+                        );
                     }
                 } else {
                     return Err(SysError::EINTR);
