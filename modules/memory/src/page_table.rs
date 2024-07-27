@@ -82,7 +82,7 @@ impl PageTable {
     fn find_leaf_pte_create(&mut self, vpn: VirtPageNum) -> &mut PageTableEntry {
         let idxs = vpn.indices();
         let mut ppn = self.root_ppn;
-        for idx in idxs[..2] {
+        for &idx in &idxs[..2] {
             let pte = ppn.pte(idx);
             if !pte.is_valid() {
                 let frame = alloc_frame_tracker();
