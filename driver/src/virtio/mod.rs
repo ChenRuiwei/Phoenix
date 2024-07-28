@@ -5,7 +5,7 @@ pub mod virtio_net;
 use core::ptr::NonNull;
 
 use config::mm::VIRT_RAM_OFFSET;
-use device_core::{error::DevError, BaseDriverOps};
+use device_core::{error::DevError, Device};
 use fdt::Fdt;
 use log::{error, warn};
 use loopback::LoopbackDev;
@@ -19,7 +19,7 @@ use virtio_drivers::{
     },
     BufferDirection,
 };
-use virtio_net::NetDevice;
+use virtio_net::NetDeviceImpl;
 
 use crate::{kernel_page_table_mut, manager::DeviceManager, BLOCK_DEVICE};
 

@@ -1,6 +1,6 @@
 use alloc::sync::Arc;
 
-use device_core::BlockDriverOps;
+use device_core::BlockDevice;
 use systype::SysResult;
 use vfs_core::*;
 
@@ -29,7 +29,7 @@ impl FileSystemType for SockFsType {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         _flags: MountFlags,
-        dev: Option<Arc<dyn BlockDriverOps>>,
+        dev: Option<Arc<dyn BlockDevice>>,
     ) -> SysResult<Arc<dyn Dentry>> {
         let sb = SockSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
@@ -54,7 +54,7 @@ pub struct SockSuperBlock {
 
 impl SockSuperBlock {
     pub fn new(
-        device: Option<Arc<dyn BlockDriverOps>>,
+        device: Option<Arc<dyn BlockDevice>>,
         fs_type: Arc<dyn FileSystemType>,
     ) -> Arc<Self> {
         Arc::new(Self {

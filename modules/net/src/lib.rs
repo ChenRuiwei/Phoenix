@@ -7,7 +7,7 @@ use core::{cell::RefCell, future::Future, ops::DerefMut, panic};
 
 use arch::time::get_time_us;
 use crate_interface::call_interface;
-use device_core::{error::DevError, NetBufPtrOps, NetDriverOps};
+use device_core::{error::DevError, NetBufPtrOps, NetDevice};
 use listen_table::*;
 use log::*;
 pub use smoltcp::wire::{IpAddress, IpEndpoint, IpListenEndpoint, Ipv4Address, Ipv6Address};
@@ -65,7 +65,7 @@ static ETH0: Once<InterfaceWrapper> = Once::new();
 struct SocketSetWrapper<'a>(Mutex<SocketSet<'a>>);
 
 struct DeviceWrapper {
-    inner: RefCell<Box<dyn NetDriverOps>>, /* use `RefCell` is enough since it's wrapped in
+    inner: RefCell<Box<dyn NetDevice>>, /* use `RefCell` is enough since it's wrapped in
                                             * `Mutex` in
                                             * `InterfaceWrapper`. */
 }
@@ -175,7 +175,7 @@ impl<'a> SocketSetWrapper<'a> {
 }
 
 impl InterfaceWrapper {
-    fn new(name: &'static str, dev: Box<dyn NetDriverOps>, ether_addr: EthernetAddress) -> Self {
+    fn new(name: &'static str, dev: Box<dyn NetDevice>, ether_addr: EthernetAddress) -> Self {
         // let mut config = Config::new(HardwareAddress::Ethernet(ether_addr));
         // let mut config = if ether_addr == EthernetAddress([0, 0, 0, 0, 0, 0]) {
         //     log::error!("[InterfaceWrapper] use HardwareAddress::Ip");
@@ -237,7 +237,7 @@ impl InterfaceWrapper {
 }
 
 impl DeviceWrapper {
-    fn new(inner: Box<dyn NetDriverOps>) -> Self {
+    fn new(inner: Box<dyn NetDevice>) -> Self {
         Self {
             inner: RefCell::new(inner),
         }
@@ -288,8 +288,8 @@ impl Device for DeviceWrapper {
     }
 }
 
-struct NetRxToken<'a>(&'a RefCell<Box<dyn NetDriverOps>>, Box<dyn NetBufPtrOps>);
-struct NetTxToken<'a>(&'a RefCell<Box<dyn NetDriverOps>>);
+struct NetRxToken<'a>(&'a RefCell<Box<dyn NetDevice>>, Box<dyn NetBufPtrOps>);
+struct NetTxToken<'a>(&'a RefCell<Box<dyn NetDevice>>);
 
 impl<'a> RxToken for NetRxToken<'a> {
     fn preprocess(&self, sockets: &mut SocketSet<'_>) {
@@ -416,7 +416,7 @@ pub const SEND_SHUTDOWN: u8 = 2;
 /// 表示读和写方向都已关闭（相当于SHUT_RDWR）
 pub const SHUTDOWN_MASK: u8 = 3;
 
-pub fn init_network(net_dev: Box<dyn NetDriverOps>, is_loopback: bool) {
+pub fn init_network(net_dev: Box<dyn NetDevice>, is_loopback: bool) {
     info!("Initialize network subsystem...");
     let ether_addr = EthernetAddress(net_dev.mac_address().0);
     let eth0 = InterfaceWrapper::new("eth0", net_dev, ether_addr);

@@ -5,7 +5,7 @@ use config::{
     board::BLOCK_SIZE,
     mm::{block_page_offset, PAGE_SIZE},
 };
-use device_core::BlockDriverOps;
+use device_core::BlockDevice;
 use enum_as_inner::EnumAsInner;
 use intrusive_collections::LinkedList;
 use memory::{alloc_frame_tracker, FrameTracker, PhysPageNum};
@@ -44,7 +44,7 @@ pub struct Page {
 }
 
 pub struct BufferInfo {
-    pub device: Weak<dyn BlockDriverOps>,
+    pub device: Weak<dyn BlockDevice>,
     buffer_heads: LinkedList<BufferHeadAdapter>,
     buffer_head_cnts: usize,
 }
@@ -96,7 +96,7 @@ impl Page {
         })
     }
 
-    pub fn new_file(block_device: &Arc<dyn BlockDriverOps>) -> Arc<Self> {
+    pub fn new_file(block_device: &Arc<dyn BlockDevice>) -> Arc<Self> {
         let frame = alloc_frame_tracker();
         Arc::new(Self {
             frame,
@@ -108,7 +108,7 @@ impl Page {
         })
     }
 
-    pub fn new_block(block_device: &Arc<dyn BlockDriverOps>) -> Arc<Self> {
+    pub fn new_block(block_device: &Arc<dyn BlockDevice>) -> Arc<Self> {
         let frame = alloc_frame_tracker();
         Arc::new(Self {
             frame,

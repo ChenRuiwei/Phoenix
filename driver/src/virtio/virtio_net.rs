@@ -3,7 +3,7 @@ use core::{any::Any, ptr::NonNull};
 
 use device_core::{
     error::{DevError, DevResult},
-    DeviceCapabilities, EthernetAddress, Medium, NetBufPtrOps, NetDriverOps,
+    DeviceCapabilities, EthernetAddress, Medium, NetBufPtrOps, NetDevice,
 };
 use virtio_drivers::{
     device::net::VirtIONetRaw,
@@ -13,7 +13,7 @@ use virtio_drivers::{
 use super::{as_dev_err, VirtioHalImpl};
 use crate::net::{NetBuf, NetBufBox, NetBufPool, NET_BUF_LEN};
 
-pub type NetDevice = VirtIoNetDev<MmioTransport, 32>;
+pub type NetDeviceImpl = VirtIoNetDev<MmioTransport, 32>;
 
 /// The VirtIO network device driver.
 ///
@@ -79,7 +79,7 @@ impl<T: Transport, const QS: usize> VirtIoNetDev<T, QS> {
     }
 }
 
-impl<T: Transport + 'static, const QS: usize> NetDriverOps for VirtIoNetDev<T, QS> {
+impl<T: Transport + 'static, const QS: usize> NetDevice for VirtIoNetDev<T, QS> {
     #[inline]
     fn capabilities(&self) -> DeviceCapabilities {
         let mut cap = DeviceCapabilities::default();

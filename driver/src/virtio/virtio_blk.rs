@@ -1,7 +1,7 @@
 use alloc::{string::ToString, sync::Arc};
 
 use config::board::BLOCK_SIZE;
-use device_core::{BaseDriverOps, BlockDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
+use device_core::{BlockDevice, DevId, Device, DeviceMajor, DeviceMeta, DeviceType};
 use log::error;
 use page::BufferCache;
 use sync::mutex::SpinNoIrqLock;
@@ -9,7 +9,7 @@ use virtio_drivers::{device::blk::VirtIOBlk, transport::mmio::MmioTransport};
 
 use super::VirtioHalImpl;
 
-pub type BlockDevice = VirtIoBlkDev;
+pub type BlockDeviceImpl = VirtIoBlkDev;
 
 pub struct VirtIoBlkDev {
     meta: DeviceMeta,
@@ -20,7 +20,7 @@ pub struct VirtIoBlkDev {
 unsafe impl Send for VirtIoBlkDev {}
 unsafe impl Sync for VirtIoBlkDev {}
 
-impl BlockDriverOps for VirtIoBlkDev {
+impl BlockDevice for VirtIoBlkDev {
     // TODO: cached size value
     fn size(&self) -> u64 {
         self.device.lock().capacity() * (BLOCK_SIZE as u64)
@@ -106,7 +106,7 @@ impl VirtIoBlkDev {
     }
 }
 
-impl BaseDriverOps for VirtIoBlkDev {
+impl Device for VirtIoBlkDev {
     fn meta(&self) -> &device_core::DeviceMeta {
         &self.meta
     }

@@ -4,7 +4,7 @@ use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 use arch::interrupts::{disable_interrupt, enable_external_interrupt};
 use config::{board, mm::K_SEG_DTB_BEG};
-use device_core::{BaseDriverOps, DevId};
+use device_core::{Device, DevId};
 use log::{info, warn};
 
 use crate::{cpu::CPU, plic::PLIC, println};
@@ -14,9 +14,9 @@ pub struct DeviceManager {
     pub cpus: Vec<CPU>,
     /// net device is excluded from `device`. It is owned by `InterfaceWrapper`
     /// in `net` module
-    pub devices: BTreeMap<DevId, Arc<dyn BaseDriverOps>>,
+    pub devices: BTreeMap<DevId, Arc<dyn Device>>,
     /// irq_no -> device.
-    pub irq_map: BTreeMap<usize, Arc<dyn BaseDriverOps>>,
+    pub irq_map: BTreeMap<usize, Arc<dyn Device>>,
 }
 
 impl DeviceManager {
@@ -66,11 +66,11 @@ impl DeviceManager {
         self.plic.as_ref().unwrap()
     }
 
-    pub fn get(&self, dev_id: &DevId) -> Option<&Arc<dyn BaseDriverOps>> {
+    pub fn get(&self, dev_id: &DevId) -> Option<&Arc<dyn Device>> {
         self.devices.get(dev_id)
     }
 
-    pub fn devices(&self) -> &BTreeMap<DevId, Arc<dyn BaseDriverOps>> {
+    pub fn devices(&self) -> &BTreeMap<DevId, Arc<dyn Device>> {
         &self.devices
     }
 

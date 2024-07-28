@@ -16,7 +16,7 @@ use core::fmt::{self, Write};
 
 use async_utils::block_on;
 use crate_interface::call_interface;
-use device_core::{BlockDriverOps, CharDevice, DeviceMajor};
+use device_core::{BlockDevice, CharDevice, DeviceMajor};
 use manager::DeviceManager;
 use memory::PageTable;
 use sbi_print::SbiStdout;
@@ -59,7 +59,7 @@ pub fn init() {
     // CHAR_DEVICE.call_once(|| manager.char_device[0].clone());
 }
 
-pub static BLOCK_DEVICE: Once<Arc<dyn BlockDriverOps>> = Once::new();
+pub static BLOCK_DEVICE: Once<Arc<dyn BlockDevice>> = Once::new();
 
 // fn init_block_device() {
 //     BLOCK_DEVICE.call_once(|| VirtIOBlkDev::new());
