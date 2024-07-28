@@ -1,9 +1,8 @@
 //! Implementation of [`PageTable`].
 
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
 use core::{iter::zip, ops::Range};
 
-use arch::memory::switch_page_table;
 use config::mm::{PAGE_SIZE, VIRT_RAM_OFFSET};
 use riscv::register::satp;
 
@@ -14,13 +13,19 @@ use crate::{
     PageTableEntry, PhysAddr,
 };
 
+/// Write `page_table_token` into satp and sfence.vma
+pub unsafe fn switch_page_table(page_table_token: usize) {
+    satp::write(page_table_token);
+    core::arch::riscv64::sfence_vma_all();
+}
+
 /// # Safety
 ///
 /// Must be dropped after switching to new page table, otherwise, there will be
 /// a vacuum period where satp points a waste page table since `frames` have
 /// been deallocated.
 pub struct PageTable {
-    pub root_ppn: PhysPageNum,
+    root_ppn: PhysPageNum,
     /// Frames hold all internal pages
     frames: Vec<FrameTracker>,
 }
@@ -34,6 +39,10 @@ impl PageTable {
             root_ppn: root_frame.ppn,
             frames: vec![root_frame],
         }
+    }
+
+    pub fn root_ppn(&self) -> PhysPageNum {
+        self.root_ppn
     }
 
     /// Create a page table that inherits kernel page table by shallow copying
@@ -61,14 +70,8 @@ impl PageTable {
         }
     }
 
-    pub fn vaddr_to_paddr(vaddr: VirtAddr) -> PhysAddr {
-        let satp = satp::read();
-        let ppn = satp.ppn().into();
-        let page_table = Self {
-            root_ppn: ppn,
-            frames: Vec::new(),
-        };
-        let leaf_pte = page_table.find_leaf_pte(vaddr.floor()).unwrap();
+    pub fn vaddr_to_paddr(&self, vaddr: VirtAddr) -> PhysAddr {
+        let leaf_pte = self.find_leaf_pte(vaddr.floor()).unwrap();
         let paddr = leaf_pte.ppn().to_paddr() + vaddr.page_offset();
         paddr
     }
@@ -123,6 +126,16 @@ impl PageTable {
         *pte = PageTableEntry::new(ppn, flags | PTEFlags::V | PTEFlags::D | PTEFlags::A);
     }
 
+    /// Force mapping `VirtPageNum` to `PhysPageNum` with `PTEFlags`.
+    ///
+    /// # Safety
+    ///
+    /// Could replace old mappings.
+    pub fn map_force(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
+        let pte = self.find_leaf_pte_create(vpn);
+        *pte = PageTableEntry::new(ppn, flags | PTEFlags::V | PTEFlags::D | PTEFlags::A);
+    }
+
     /// Unmap a `VirtPageNum`.
     pub fn unmap(&mut self, vpn: VirtPageNum) {
         let pte = self.find_leaf_pte(vpn).expect("leaf pte is not valid");
@@ -154,8 +167,8 @@ impl PageTable {
     /// addresses
     ///
     /// Linux also has this function
-    pub fn ioremap(&mut self, phys_addr: usize, size: usize, flags: PTEFlags) {
-        let mut vpn = VirtAddr::from(phys_addr + VIRT_RAM_OFFSET).floor();
+    pub fn ioremap(&mut self, paddr: usize, size: usize, flags: PTEFlags) {
+        let mut vpn = VirtAddr::from(paddr + VIRT_RAM_OFFSET).floor();
         let mut ppn = vpn.to_ppn();
         let mut size = size as isize;
         while size > 0 {
@@ -167,24 +180,14 @@ impl PageTable {
     }
 
     /// Cancel the mapping made by ioremap()
-    pub fn iounmap(&mut self, virt_addr: usize, size: usize) {
-        let mut vpn = VirtAddr::from(virt_addr).floor();
+    pub fn iounmap(&mut self, vaddr: usize, size: usize) {
+        let mut vpn = VirtAddr::from(vaddr).floor();
         let mut size = size as isize;
         while size > 0 {
             self.unmap(vpn);
             vpn += 1;
             size -= PAGE_SIZE as isize;
         }
-    }
-
-    /// Force mapping `VirtPageNum` to `PhysPageNum` with `PTEFlags`.
-    ///
-    /// # Safety
-    ///
-    /// Could replace old mappings.
-    pub fn map_force(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
-        let pte = self.find_leaf_pte_create(vpn);
-        *pte = PageTableEntry::new(ppn, flags | PTEFlags::V | PTEFlags::D | PTEFlags::A);
     }
 
     /// Satp token with sv39 enabled

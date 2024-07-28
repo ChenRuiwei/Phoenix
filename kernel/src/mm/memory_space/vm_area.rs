@@ -396,7 +396,7 @@ impl VmArea {
     ) -> SysResult<()> {
         log::debug!(
             "[VmArea::handle_page_fault] {self:?}, {vpn:?} at page table {:?}",
-            page_table.root_ppn
+            page_table.root_ppn()
         );
 
         if !access_type.can_access(self.perm()) {

@@ -11,7 +11,7 @@ use net::HasSignalIf;
 
 use crate::{
     mm::{kernel_page_table, kernel_page_table_mut},
-    processor::hart::{current_task_ref, local_hart},
+    processor::hart::{current_task, current_task_ref, local_hart},
 };
 
 /// Print msg with color
@@ -95,7 +95,7 @@ impl KernelMappingIf for KernelMappingIfImpl {
         if vaddr.bits() >= VIRT_RAM_OFFSET {
             (vaddr.bits() - VIRT_RAM_OFFSET).into()
         } else {
-            PageTable::vaddr_to_paddr(vaddr)
+            current_task_ref().with_mut_memory_space(|m| m.page_table().vaddr_to_paddr(vaddr))
         }
     }
 }

@@ -26,13 +26,13 @@ pub const PAGE_SIZE: usize = 1 << PAGE_SIZE_BITS;
 pub const PAGE_MASK: usize = PAGE_SIZE - 1;
 pub const PAGE_SIZE_BITS: usize = 12;
 
-pub const MMAP_PRE_ALLOC_PAGES: usize = 8;
-
 pub const PTE_SIZE: usize = 8;
 pub const PTES_PER_PAGE: usize = PAGE_SIZE / PTE_SIZE;
 
 /// 3 level for sv39 page table
 pub const PAGE_TABLE_LEVEL_NUM: usize = 3;
+
+pub const MMAP_PRE_ALLOC_PAGES: usize = 8;
 
 /// Dynamic linked interpreter address range in user space
 pub const DL_INTERP_OFFSET: usize = 0x20_0000_0000;

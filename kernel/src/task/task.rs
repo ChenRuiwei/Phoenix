@@ -16,7 +16,7 @@ use config::{
     mm::DL_INTERP_OFFSET,
     process::{INIT_PROC_PID, USER_STACK_SIZE},
 };
-use memory::{vaddr_to_paddr, VirtAddr};
+use memory::{PhysAddr, VirtAddr};
 use signal::{
     action::{SigHandlers, SigPending},
     siginfo::{SigDetails, SigInfo},
@@ -551,7 +551,7 @@ impl Task {
                 .write(self, 0)
                 .expect("tid address write error");
             let key = FutexHashKey::Shared {
-                paddr: vaddr_to_paddr(address.into()),
+                paddr: VirtAddr::from(address).to_paddr(),
             };
             let _ = futex_manager().wake(&key, 1);
             let key = FutexHashKey::Private {

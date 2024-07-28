@@ -508,7 +508,6 @@ dependencies = [
 name = "memory"
 version = "0.1.0"
 dependencies = [
- "arch",
  "bitflags 2.6.0",
  "bitmap-allocator",
  "buddy_system_allocator",

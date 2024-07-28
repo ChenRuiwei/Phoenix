@@ -16,7 +16,7 @@ use config::{
     mm::{K_SEG_DTB_BEG, K_SEG_DTB_END, MAX_DTB_SIZE, PAGE_SIZE, VIRT_RAM_OFFSET},
 };
 pub use memory::page_table::PageTable;
-use memory::{frame, heap, pte::PTEFlags, vaddr_to_paddr, PhysAddr, VirtAddr};
+use memory::{frame, heap, pte::PTEFlags, PhysAddr, VirtAddr};
 pub use memory_space::MemorySpace;
 pub use user_ptr::{
     FutexAddr, PageFaultAccessType, UserMut, UserRdWrPtr, UserReadPtr, UserRef, UserSlice,
@@ -33,7 +33,7 @@ pub fn init() {
     }
     heap::init_heap_allocator();
     frame::init_frame_allocator(
-        VirtAddr::from(_ekernel as usize).to_paddr().floor(),
+        VirtAddr::from(_ekernel as usize).to_paddr().ceil(),
         VirtAddr::from(MEMORY_END).to_paddr().floor(),
     );
     unsafe {

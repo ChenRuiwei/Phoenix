@@ -9,7 +9,7 @@ use device_core::{error::DevError, BaseDriverOps};
 use fdt::Fdt;
 use log::{error, warn};
 use loopback::LoopbackDev;
-use memory::{alloc_frames, dealloc_frame, pte::PTEFlags, PhysAddr, PhysPageNum};
+use memory::{alloc_frames, dealloc_frame, pte::PTEFlags, PhysAddr, PhysPageNum, VirtAddr};
 use net::init_network;
 use virtio_blk::VirtIoBlkDev;
 use virtio_drivers::{
@@ -60,7 +60,10 @@ unsafe impl virtio_drivers::Hal for VirtioHalImpl {
         buffer: NonNull<[u8]>,
         _direction: BufferDirection,
     ) -> virtio_drivers::PhysAddr {
-        memory::vaddr_to_paddr((buffer.as_ptr() as *const u8 as usize).into()).into()
+        VirtAddr::from(buffer.as_ptr() as *const u8 as usize)
+            .to_paddr()
+            .bits()
+            .into()
     }
 
     unsafe fn unshare(

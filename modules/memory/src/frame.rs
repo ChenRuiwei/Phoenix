@@ -91,8 +91,6 @@ pub fn alloc_frame_tracker() -> FrameTracker {
 }
 
 /// Allocate contiguous frames
-/// TODO: if this function is hot used, we should change the return type. Return
-/// a vector is not efficient
 pub fn alloc_frame_trackers(size: usize) -> Vec<FrameTracker> {
     let first_frame = FRAME_ALLOCATOR
         .allocator
