@@ -4,30 +4,21 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::{
-    arch::riscv64::{self},
-    borrow::Borrow,
-    cell::{RefCell, SyncUnsafeCell, UnsafeCell},
-    cmp,
-    ops::{self, Range},
-};
+use core::{cell::SyncUnsafeCell, cmp, ops::Range};
 
-use arch::memory::{sfence_vma_all, sfence_vma_vaddr};
+use arch::memory::sfence_vma_vaddr;
 use async_utils::block_on;
 use config::{
-    board::MEMORY_END,
     mm::{
-        align_offset_to_page, is_aligned_to_page, round_down_to_page, DL_INTERP_OFFSET,
-        MMAP_PRE_ALLOC_PAGES, PAGE_SIZE, USER_ELF_PRE_ALLOC_PAGE_CNT, U_SEG_FILE_BEG,
-        U_SEG_FILE_END, U_SEG_HEAP_BEG, U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END,
-        U_SEG_STACK_BEG, U_SEG_STACK_END, VIRT_RAM_OFFSET,
+        is_aligned_to_page, round_down_to_page, DL_INTERP_OFFSET, MMAP_PRE_ALLOC_PAGES, PAGE_SIZE,
+        USER_ELF_PRE_ALLOC_PAGE_CNT, U_SEG_FILE_BEG, U_SEG_FILE_END, U_SEG_HEAP_BEG,
+        U_SEG_HEAP_END, U_SEG_SHARE_BEG, U_SEG_SHARE_END, U_SEG_STACK_BEG, U_SEG_STACK_END,
     },
     process::USER_STACK_PRE_ALLOC_SIZE,
 };
-use memory::{page_table, pte::PTEFlags, PageTable, PhysAddr, VirtAddr, VirtPageNum};
+use memory::{pte::PTEFlags, PageTable, PhysAddr, VirtAddr, VirtPageNum};
 use page::Page;
 use range_map::RangeMap;
-use spin::Lazy;
 use systype::{SysError, SysResult};
 use vfs_core::{Dentry, File};
 use xmas_elf::ElfFile;
@@ -35,11 +26,8 @@ use xmas_elf::ElfFile;
 use self::vm_area::VmArea;
 use super::{kernel_page_table, PageFaultAccessType};
 use crate::{
-    mm::{
-        memory_space::vm_area::{MapPerm, VmAreaType},
-        user_ptr::UserSlice,
-    },
-    processor::env::{within_sum, SumGuard},
+    mm::memory_space::vm_area::{MapPerm, VmAreaType},
+    processor::env::SumGuard,
     syscall::MmapFlags,
     task::{
         aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR, AT_RANDOM},
@@ -549,7 +537,7 @@ impl MemorySpace {
                 .expect("mmap range is full")
         };
         let start = range.start;
-        let mut vma = VmArea::new_mmap(range, perm, flags, None, 0);
+        let vma = VmArea::new_mmap(range, perm, flags, None, 0);
         self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
         Ok(start)
     }
@@ -581,9 +569,6 @@ impl MemorySpace {
 
         let page_table = self.page_table_mut();
         let inode = file.inode();
-        let page_cache = inode
-            .page_cache()
-            .expect("should have address space, and may be no");
         let mut vma = VmArea::new_mmap(range, perm, flags, Some(file.clone()), offset);
         let mut range_vpn = vma.range_vpn();
         let length = cmp::min(length, MMAP_PRE_ALLOC_PAGES * PAGE_SIZE);
@@ -624,7 +609,7 @@ impl MemorySpace {
         Option<&mut VmArea>,
     ) {
         let area = self.areas_mut().force_remove_one(old_range);
-        let (mut left, mut middle, mut right) = area.split(split_range);
+        let (left, middle, right) = area.split(split_range);
         let left_ret = left.map(|left| self.areas_mut().try_insert(left.range_va(), left).unwrap());
         let right_ret = right.map(|right| {
             self.areas_mut()

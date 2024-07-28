@@ -1,16 +1,16 @@
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use core::ops::{Range, RangeBounds};
 
-use arch::{memory::sfence_vma_vaddr, sstatus};
+use arch::memory::sfence_vma_vaddr;
 use async_utils::block_on;
-use config::mm::{align_offset_to_page, round_down_to_page, PAGE_SIZE};
+use config::mm::{round_down_to_page, PAGE_SIZE};
 use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
 use page::Page;
 use systype::{SysError, SysResult};
 use vfs_core::File;
 
 use crate::{
-    mm::{PageFaultAccessType, PageTable, UserSlice},
+    mm::{PageFaultAccessType, PageTable},
     processor::env::SumGuard,
     syscall::MmapFlags,
 };
@@ -239,7 +239,6 @@ impl VmArea {
     pub fn set_perm_and_flush(&mut self, page_table: &mut PageTable, perm: MapPerm) {
         self.set_perm(perm);
         let pte_flags = perm.into();
-        let range_vpn = self.range_vpn();
         // NOTE: should flush pages that already been allocated, page fault handler will
         // handle the permission of those unallocated pages
         for &vpn in self.pages.keys() {
@@ -254,7 +253,7 @@ impl VmArea {
         }
     }
 
-    pub fn flush(&mut self, page_table: &mut PageTable) {
+    pub fn flush(&mut self) {
         let range_vpn = self.range_vpn();
         for vpn in range_vpn {
             unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
@@ -330,14 +329,9 @@ impl VmArea {
         }
     }
 
-    pub fn split(
-        mut self,
-        split_range: Range<VirtAddr>,
-    ) -> (Option<Self>, Option<Self>, Option<Self>) {
+    pub fn split(self, split_range: Range<VirtAddr>) -> (Option<Self>, Option<Self>, Option<Self>) {
         debug_assert!(split_range.start.is_aligned() && split_range.end.is_aligned());
         debug_assert!(split_range.start >= self.start_va() && split_range.end <= self.end_va());
-        let start_vpn: VirtPageNum = split_range.start.into();
-        let end_vpn: VirtPageNum = split_range.end.into();
         let (mut left, mut middle, mut right) = (None, None, None);
         let (left_range, middle_range, right_range) = (
             self.start_va()..split_range.start,

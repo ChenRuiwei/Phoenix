@@ -8,7 +8,7 @@ use riscv::register::sstatus::{self, FS};
 use super::env::EnvContext;
 use crate::{
     mm,
-    task::{Pid, Task},
+    task::{Task},
 };
 
 const HART_EACH: Hart = Hart::new();

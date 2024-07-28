@@ -1,9 +1,9 @@
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
 use config::mm::{align_offset_to_page, PAGE_SIZE};
 use page::Page;
-use sync::mutex::SpinNoIrqLock;
+
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{Dentry, DirEntry, File, FileMeta, Inode};
 
@@ -64,11 +64,11 @@ impl File for SimpleFileFile {
         &self.meta
     }
 
-    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SyscallResult {
         unreachable!()
     }
 
-    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
         unreachable!()
     }
 

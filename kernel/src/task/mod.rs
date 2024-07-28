@@ -6,7 +6,7 @@ pub mod signal;
 pub mod task;
 mod tid;
 
-use alloc::{string::ToString, sync::Arc, vec, vec::Vec};
+use alloc::{string::ToString, vec, vec::Vec};
 
 use async_utils::block_on;
 use config::process::USER_STACK_SIZE;
@@ -18,7 +18,7 @@ use vfs::sys_root_dentry;
 use vfs_core::Path;
 
 use crate::{
-    mm::memory_space::{self, init_stack, MemorySpace},
+    mm::memory_space::{init_stack, MemorySpace},
     processor::env::within_sum,
     trap::TrapContext,
 };
@@ -39,7 +39,7 @@ pub fn spawn_init_proc() {
     unsafe { memory_space.switch_page_table() };
     let (entry, auxv) = memory_space.parse_and_map_elf(file.clone(), &elf_data);
     let sp_init = memory_space.alloc_stack_lazily(USER_STACK_SIZE);
-    let (sp, argc, argv, envp) = within_sum(|| init_stack(sp_init, args.clone(), envp, auxv));
+    let (sp, _argc, _argv, _envp) = within_sum(|| init_stack(sp_init, args.clone(), envp, auxv));
     memory_space.alloc_heap_lazily();
 
     let trap_context = TrapContext::new(entry, sp);

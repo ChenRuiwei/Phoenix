@@ -15,7 +15,6 @@ extern crate alloc;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc};
 
-use devfs::tty;
 use driver::BLOCK_DEVICE;
 use procfs::init_procfs;
 use sockfs::SockFsType;
@@ -103,18 +102,18 @@ pub fn init() {
     init_procfs(procfs_dentry).unwrap();
 
     let tmpfs = FS_MANAGER.lock().get("tmpfs").unwrap().clone();
-    let tmpfs_dentry = tmpfs
+    let _tmpfs_dentry = tmpfs
         .mount("tmp", Some(diskfs_root.clone()), MountFlags::empty(), None)
         .unwrap();
 
     let sockfs = FS_MANAGER.lock().get("sockfs").unwrap().clone();
-    let sockfs_dentry = sockfs
+    let _sockfs_dentry = sockfs
         .mount("sock", Some(diskfs_root.clone()), MountFlags::empty(), None)
         .unwrap();
 
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);
 
-    sys_root_dentry().open().unwrap().load_dir();
+    sys_root_dentry().open().unwrap().load_dir().unwrap();
 }
 
 pub fn sys_root_dentry() -> Arc<dyn Dentry> {

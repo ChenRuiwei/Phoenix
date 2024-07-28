@@ -4,8 +4,8 @@
 extern crate alloc;
 pub mod error;
 
-use alloc::{boxed::Box, string::String, sync::Arc};
-use core::{any::Any, ptr::NonNull};
+use alloc::{boxed::Box, string::String};
+use core::{any::Any};
 
 use async_trait::async_trait;
 use downcast_rs::{impl_downcast, DowncastSync};

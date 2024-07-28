@@ -1,6 +1,6 @@
 use alloc::{sync::Arc, vec::Vec};
 
-use async_utils::yield_now;
+
 use log::info;
 use socket::*;
 use systype::{SysError, SysResult, SyscallResult};

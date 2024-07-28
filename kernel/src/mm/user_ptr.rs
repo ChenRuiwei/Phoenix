@@ -8,7 +8,6 @@ use core::{
     intrinsics::{atomic_load_acquire, size_of},
     marker::PhantomData,
     mem,
-    net::Ipv4Addr,
     ops::{self, ControlFlow},
 };
 

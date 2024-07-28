@@ -6,7 +6,7 @@ use vfs_core::*;
 
 use crate::simplefs::{
     dentry::SimpleDentry,
-    inode::{SimpleDirInode, SimpleFileInode},
+    inode::{SimpleDirInode},
 };
 
 /// 参考https://zhuanlan.zhihu.com/p/497849394 【Linux内核 | socket底层的来龙去脉】
@@ -31,7 +31,7 @@ impl FileSystemType for SockFsType {
         self: Arc<Self>,
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
-        flags: MountFlags,
+        _flags: MountFlags,
         dev: Option<Arc<dyn BlockDriverOps>>,
     ) -> SysResult<Arc<dyn Dentry>> {
         let sb = SockSuperBlock::new(dev, self.clone());
@@ -46,7 +46,7 @@ impl FileSystemType for SockFsType {
         Ok(mount_dentry)
     }
 
-    fn kill_sb(&self, sb: Arc<dyn SuperBlock>) -> SysResult<()> {
+    fn kill_sb(&self, _sb: Arc<dyn SuperBlock>) -> SysResult<()> {
         todo!()
     }
 }
@@ -76,7 +76,7 @@ impl SuperBlock for SockSuperBlock {
         todo!()
     }
 
-    fn sync_fs(&self, wait: isize) -> SysResult<()> {
+    fn sync_fs(&self, _wait: isize) -> SysResult<()> {
         todo!()
     }
 }

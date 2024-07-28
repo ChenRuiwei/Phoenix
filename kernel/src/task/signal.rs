@@ -3,7 +3,7 @@ use alloc::{
     sync::{Arc, Weak},
 };
 use core::{
-    future::{Future, Pending},
+    future::{Future},
     intrinsics::size_of,
     pin::Pin,
     sync::atomic::{AtomicUsize, Ordering},
@@ -14,11 +14,11 @@ use core::{
 use arch::time::get_time_duration;
 use signal::*;
 use systype::SysResult;
-use time::timeval::{ITimerVal, TimeVal};
+
 use timer::{Timer, TimerEvent};
 
 use super::Task;
-use crate::{mm::UserWritePtr, processor::hart::current_task_ref, task::task::TaskState};
+use crate::{mm::UserWritePtr};
 
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
@@ -117,7 +117,7 @@ impl Task {
         })
     }
 
-    fn notify_parent(self: &Arc<Self>, code: i32, signum: Sig) {
+    fn notify_parent(self: &Arc<Self>, code: i32, _signum: Sig) {
         let parent = self.parent().unwrap().upgrade().unwrap();
         if !parent
             .with_sig_handlers(|handlers| handlers.get(Sig::SIGCHLD))
@@ -320,7 +320,7 @@ impl TimerEvent for RealITimer {
     fn callback(self: Box<Self>) -> Option<Timer> {
         self.task.upgrade().map(|task| {
             task.with_mut_itimers(|itimers| {
-                let mut real = &mut itimers[0];
+                let real = &mut itimers[0];
 
                 if real.id != self.id {
                     // incarnation check fails
@@ -358,7 +358,7 @@ pub struct IntrBySignalFuture {
 impl Future for IntrBySignalFuture {
     type Output = ();
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         let has_signal = self
             .task
             .with_sig_pending(|pending| pending.has_expect_signals(!self.mask));

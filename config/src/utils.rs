@@ -1,11 +1,3 @@
-macro_rules! register_const {
-    ($(#[$meta:meta])*$name:ident, $type:ty, $value:expr) => {
-        $(#[$meta])*
-        pub const $name: $type = $value;
-    };
-    () => {};
-}
-
 macro_rules! register_mut_const {
     ($(#[$meta:meta])*$name:ident, $type:ty, $value:expr) => {
         $(#[$meta])*
@@ -44,5 +36,4 @@ macro_rules! register_mut_const {
     () => {};
 }
 
-pub(super) use register_const;
 pub(super) use register_mut_const;

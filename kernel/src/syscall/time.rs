@@ -216,7 +216,7 @@ impl Syscall<'_> {
         let timer_id = alloc_timer_id();
         let (old, next_expire) = task.with_mut_itimers(|itimers| {
             // only supports real itimer now
-            let mut itimer = &mut itimers[which];
+            let itimer = &mut itimers[which];
             let old = ITimerVal {
                 it_interval: itimer.interval.into(),
                 it_value: itimer

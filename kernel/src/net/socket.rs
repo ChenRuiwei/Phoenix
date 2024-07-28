@@ -1,8 +1,8 @@
 use alloc::{boxed::Box, sync::Arc};
-use core::any::Any;
+
 
 use async_trait::async_trait;
-use downcast_rs::{impl_downcast, DowncastSync};
+
 use log::warn;
 use net::{poll_interfaces, tcp::TcpSocket, udp::UdpSocket, IpEndpoint, NetPollState};
 use spin::Mutex;
@@ -39,7 +39,7 @@ impl Sock {
     pub fn listen(&self) -> SysResult<()> {
         match self {
             Sock::Tcp(tcp) => tcp.listen(current_task().waker_ref().as_ref().unwrap()),
-            Sock::Udp(udp) => Err(SysError::EOPNOTSUPP),
+            Sock::Udp(_udp) => Err(SysError::EOPNOTSUPP),
             Sock::Unix(_) => unimplemented!(),
         }
     }
@@ -50,7 +50,7 @@ impl Sock {
                 let new_tcp = tcp.accept().await?;
                 Ok(new_tcp)
             }
-            Sock::Udp(udp) => Err(SysError::EOPNOTSUPP),
+            Sock::Udp(_udp) => Err(SysError::EOPNOTSUPP),
             Sock::Unix(_) => unimplemented!(),
         }
     }
@@ -184,7 +184,7 @@ impl File for Socket {
         unreachable!()
     }
 
-    async fn read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
         if buf.len() == 0 {
             return Ok(0);
         }

@@ -1,19 +1,18 @@
 use alloc::{
     boxed::Box,
-    string::{String, ToString},
     sync::Arc,
 };
-use core::cmp;
+
 
 use async_trait::async_trait;
 use config::board::BLOCK_SIZE;
-use log::debug;
+
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
     Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Stat, SuperBlock,
 };
 
-use crate::{Mutex, FS_MANAGER};
+
 
 pub struct RtcDentry {
     meta: DentryMeta,
@@ -42,15 +41,15 @@ impl Dentry for RtcDentry {
         }))
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SysResult<()> {
         Err(SysError::ENOTDIR)
     }
 }
@@ -108,13 +107,13 @@ impl File for RtcFile {
         &self.meta
     }
 
-    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
         log::warn!("[RtcFile::base_read_at] fill buf with zero");
         buf.fill(0);
         Ok(buf.len())
     }
 
-    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
         log::warn!("[RtcFile::base_write_at] does nothing");
         Ok(buf.len())
     }

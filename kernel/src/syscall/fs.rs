@@ -1,29 +1,26 @@
-use alloc::{ffi::CString, string::ToString, sync::Arc, vec, vec::Vec};
+use alloc::{ffi::CString, vec, vec::Vec};
 use core::{
     cmp,
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll},
 };
 
 use arch::time::get_time_duration;
-use async_utils::{dyn_future, Async, Select2Futures, SelectOutput};
+use async_utils::{Select2Futures, SelectOutput};
 use config::{board::BLOCK_SIZE, fs::PIPE_BUF_LEN};
 use driver::BLOCK_DEVICE;
-use memory::VirtAddr;
+
 use strum::FromRepr;
-use systype::{SysError, SysResult, SyscallResult};
-use time::{timespec::TimeSpec, timeval::TimeVal};
-use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
-use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
+use systype::{SysError, SyscallResult};
+use time::{timespec::TimeSpec};
+
+use vfs::{fd_table::FdFlags, pipefs::new_pipe, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, InodeType, MountFlags,
-    OpenFlags, Path, PollEvents, RenameFlags, SeekFrom, Stat, StatFs, AT_FDCWD, AT_REMOVEDIR,
+    OpenFlags, Path, RenameFlags, SeekFrom, Stat, StatFs, AT_REMOVEDIR,
 };
 
 use super::Syscall;
 use crate::{
-    mm::{UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr},
+    mm::{UserRdWrPtr, UserReadPtr, UserWritePtr},
     processor::env::within_sum,
     task::signal::IntrBySignalFuture,
 };
@@ -893,7 +890,7 @@ impl Syscall<'_> {
 
     pub fn sys_statfs(&self, path: UserReadPtr<u8>, buf: UserWritePtr<StatFs>) -> SyscallResult {
         let task = self.task;
-        let path = path.read_cstr(task)?;
+        let _path = path.read_cstr(task)?;
         let stfs = StatFs {
             f_type: 0x2011BAB0 as i64,
             f_bsize: BLOCK_SIZE as i64,

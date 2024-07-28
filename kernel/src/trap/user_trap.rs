@@ -7,7 +7,7 @@ use arch::{
     time::{get_time_duration, set_next_timer_irq},
 };
 use async_utils::yield_now;
-use executor::has_task;
+
 use memory::VirtAddr;
 use riscv::register::{
     scause::{self, Exception, Interrupt, Trap},
@@ -28,7 +28,7 @@ use crate::{mm::PageFaultAccessType, syscall::Syscall, task::Task, trap::set_use
 pub async fn trap_handler(task: &Arc<Task>) -> bool {
     unsafe { set_kernel_trap() };
 
-    let mut cx = task.trap_context_mut();
+    let cx = task.trap_context_mut();
     let stval = stval::read();
     let scause = scause::read();
     let sepc = sepc::read();

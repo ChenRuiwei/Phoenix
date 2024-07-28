@@ -1,20 +1,17 @@
 use alloc::{boxed::Box, collections::VecDeque, sync::Arc};
 use core::{
-    cmp,
     future::Future,
     pin::Pin,
     task::{Context, Poll, Waker},
 };
 
 use async_trait::async_trait;
-use async_utils::{get_waker, suspend_now, yield_now};
+use async_utils::get_waker;
 use config::fs::PIPE_BUF_LEN;
 use ring_buffer::RingBuffer;
 use sync::mutex::SpinNoIrqLock;
 use systype::{SysError, SysResult};
-use vfs_core::{
-    arc_zero, File, FileMeta, FileSystemType, Inode, InodeMeta, InodeMode, PollEvents, Stat,
-};
+use vfs_core::{arc_zero, File, FileMeta, Inode, InodeMeta, InodeMode, PollEvents, Stat};
 
 type Mutex<T> = SpinNoIrqLock<T>;
 

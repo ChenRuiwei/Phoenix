@@ -11,12 +11,12 @@ use core::{
     task::Waker,
 };
 
-use arch::{memory::sfence_vma_all, time::get_time_us};
+use arch::{memory::sfence_vma_all};
 use config::{
     mm::DL_INTERP_OFFSET,
     process::{INIT_PROC_PID, USER_STACK_SIZE},
 };
-use memory::{PhysAddr, VirtAddr};
+use memory::{VirtAddr};
 use signal::{
     action::{SigHandlers, SigPending},
     siginfo::{SigDetails, SigInfo},
@@ -31,26 +31,25 @@ use vfs_core::{is_absolute_path, AtFd, Dentry, File, InodeMode, Path};
 
 use super::{
     resource::CpuMask,
-    signal::{ITimer, RealITimer},
+    signal::{ITimer},
     tid::{Pid, Tid, TidHandle},
     PGid, PROCESS_GROUP_MANAGER,
 };
 use crate::{
     generate_accessors, generate_atomic_accessors, generate_state_methods, generate_with_methods,
     ipc::{
-        futex::{futex_manager, FutexHashKey, RobustListHead, FUTEX_MANAGER},
+        futex::{futex_manager, FutexHashKey, RobustListHead},
         shm::SHARED_MEMORY_MANAGER,
     },
     mm::{
-        memory_space::{self, init_stack},
-        MemorySpace, UserReadPtr, UserWritePtr,
+        memory_space::{init_stack},
+        MemorySpace, UserWritePtr,
     },
     processor::env::within_sum,
-    syscall::{self, CloneFlags},
+    syscall::{CloneFlags},
     task::{
         aux::{AuxHeader, AT_BASE},
         manager::TASK_MANAGER,
-        schedule,
         tid::{alloc_tid, TidAddress},
     },
     trap::TrapContext,
@@ -347,7 +346,7 @@ impl Task {
 
     pub fn do_clone(self: &Arc<Self>, flags: CloneFlags) -> Arc<Self> {
         let tid = alloc_tid();
-        let mut trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
+        let trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
 
         let leader;
@@ -662,7 +661,7 @@ impl Task {
     ///   process, as is done by open() for a relative pathname).  In this case,
     ///   dirfd must be a directory that was opened for reading (O_RDONLY) or
     ///   using the O_PATH flag.
-    pub fn at_helper(&self, fd: AtFd, path: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    pub fn at_helper(&self, fd: AtFd, path: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         log::info!("[at_helper] fd: {fd}, path: {path}");
         let path = if is_absolute_path(path) {
             Path::new(sys_root_dentry(), sys_root_dentry(), path)

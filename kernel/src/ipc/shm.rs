@@ -1,5 +1,5 @@
 use alloc::{
-    sync::{Arc, Weak},
+    sync::{Weak},
     vec::Vec,
 };
 

@@ -1,5 +1,3 @@
-use core::time::Duration;
-
 use crate::sigset::Sig;
 
 #[derive(Clone, Copy, Debug)]

@@ -3,17 +3,17 @@ use alloc::{
     string::{String, ToString},
     sync::Arc,
 };
-use core::cmp;
+
 
 use async_trait::async_trait;
 use config::board::BLOCK_SIZE;
-use log::debug;
+
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
     Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Stat, SuperBlock,
 };
 
-use crate::{Mutex, FS_MANAGER};
+use crate::{FS_MANAGER};
 
 pub struct MountsDentry {
     meta: DentryMeta,
@@ -42,15 +42,15 @@ impl Dentry for MountsDentry {
         }))
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SysResult<()> {
         Err(SysError::ENOTDIR)
     }
 }
@@ -60,7 +60,7 @@ pub struct MountsInode {
 }
 
 impl MountsInode {
-    pub fn new(super_block: Arc<dyn SuperBlock>, size: usize) -> Arc<Self> {
+    pub fn new(super_block: Arc<dyn SuperBlock>, _size: usize) -> Arc<Self> {
         let size = BLOCK_SIZE;
         Arc::new(Self {
             meta: InodeMeta::new(InodeMode::FILE, super_block, size),
@@ -102,9 +102,9 @@ impl Inode for MountsInode {
 pub fn list_mounts() -> String {
     let mut res = "".to_string();
     let fs_mgr = FS_MANAGER.lock();
-    for (fstype, fs) in fs_mgr.iter() {
+    for (_fstype, fs) in fs_mgr.iter() {
         let supers = fs.meta().supers.lock();
-        for (mount_path, sb) in supers.iter() {
+        for (_mount_path, _sb) in supers.iter() {
             res += "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"
         }
     }
@@ -121,7 +121,7 @@ impl File for MountsFile {
         &self.meta
     }
 
-    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
         let info = list_mounts();
         let len = info.len();
         if self.pos() >= len {
@@ -131,7 +131,7 @@ impl File for MountsFile {
         Ok(len)
     }
 
-    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
         Err(SysError::EACCES)
     }
 

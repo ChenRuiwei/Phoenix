@@ -5,13 +5,13 @@ use alloc::{fmt, string::ToString};
 use config::mm::VIRT_RAM_OFFSET;
 use driver::KernelPageTableIf;
 use log::Level;
-use logging::{level_to_color_code, ColorCode, LogIf};
+use logging::{ColorCode, LogIf};
 use memory::{KernelMappingIf, PageTable, PhysAddr, VirtAddr};
 use net::HasSignalIf;
 
 use crate::{
-    mm::{kernel_page_table, kernel_page_table_mut},
-    processor::hart::{current_task, current_task_ref, local_hart},
+    mm::{kernel_page_table_mut},
+    processor::hart::{current_task_ref, local_hart},
 };
 
 /// Print msg with color

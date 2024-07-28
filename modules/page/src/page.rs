@@ -3,7 +3,7 @@ use core::{cmp, fmt, ops::Range};
 
 use config::{
     board::BLOCK_SIZE,
-    mm::{block_page_offset, MAX_BUFFERS_PER_PAGE, PAGE_SIZE},
+    mm::{block_page_offset, PAGE_SIZE},
 };
 use device_core::BlockDriverOps;
 use enum_as_inner::EnumAsInner;
@@ -170,7 +170,7 @@ impl Page {
     }
 
     pub fn buffer_head_cnts(&self) -> usize {
-        let mut inner = match &self.kind {
+        let inner = match &self.kind {
             PageKind::Normal => unreachable!(),
             PageKind::FileCache(inner) => inner.lock(),
             PageKind::BlockCache(inner) => inner.lock(),
@@ -179,7 +179,7 @@ impl Page {
     }
 
     pub fn flush(&self) {
-        let mut inner = match &self.kind {
+        let inner = match &self.kind {
             PageKind::Normal => unreachable!(),
             PageKind::FileCache(inner) => inner.lock(),
             PageKind::BlockCache(inner) => inner.lock(),

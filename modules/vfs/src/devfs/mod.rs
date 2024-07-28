@@ -3,7 +3,7 @@ use alloc::sync::Arc;
 use device_core::BlockDriverOps;
 use systype::SysResult;
 use vfs_core::{
-    Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, Path, SuperBlock, SuperBlockMeta,
+    Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, SuperBlock, SuperBlockMeta,
 };
 
 use self::{
@@ -12,14 +12,13 @@ use self::{
     rtc::{RtcDentry, RtcInode},
     tty::{TtyDentry, TtyFile, TtyInode, TTY},
     urandom::{UrandomDentry, UrandomInode},
-    zero::{ZeroDentry, ZeroFile, ZeroInode},
+    zero::{ZeroDentry, ZeroInode},
 };
 use crate::{
     simplefs::{
         dentry::SimpleDentry,
-        inode::{SimpleDirInode, SimpleFileInode},
+        inode::{SimpleDirInode},
     },
-    sys_root_dentry,
 };
 
 mod cpu_dma_latency;

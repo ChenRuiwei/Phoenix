@@ -1,18 +1,14 @@
 use alloc::{
-    collections::BTreeMap,
     sync::{Arc, Weak},
-    vec::Vec,
 };
 use core::{
-    default,
     num::NonZeroUsize,
-    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use config::{
     board::BLOCK_SIZE,
     mm::{
-        block_page_id, is_aligned_to_block, BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE,
+        block_page_id, is_aligned_to_block, BUFFER_NEED_CACHE_CNT,
         MAX_BUFFER_HEADS, MAX_BUFFER_PAGES, PAGE_SIZE,
     },
 };
@@ -20,10 +16,10 @@ use device_core::BlockDriverOps;
 use intrusive_collections::{intrusive_adapter, LinkedListAtomicLink};
 use lru::LruCache;
 use macro_utils::with_methods;
-use spin::Once;
+
 use sync::mutex::SpinNoIrqLock;
 
-use crate::{Page, PageKind};
+use crate::{Page};
 
 pub struct BufferCache {
     device: Option<Weak<dyn BlockDriverOps>>,

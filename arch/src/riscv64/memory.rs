@@ -1,5 +1,3 @@
-use riscv::register::satp;
-
 pub unsafe fn sfence_vma_vaddr(vaddr: usize) {
     core::arch::riscv64::sfence_vma_vaddr(vaddr);
 }

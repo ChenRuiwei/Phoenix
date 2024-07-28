@@ -1,6 +1,5 @@
 //! The panic handler
 use core::{
-    mem::size_of,
     panic::PanicInfo,
     sync::atomic::{AtomicUsize, Ordering},
 };

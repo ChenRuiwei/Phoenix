@@ -1,6 +1,6 @@
 use alloc::{
     sync::Arc,
-    vec::{self, Vec},
+    vec::{Vec},
 };
 use core::fmt;
 
@@ -105,7 +105,7 @@ impl FdTable {
             .table
             .iter()
             .enumerate()
-            .find(|(i, e)| e.is_none())
+            .find(|(_i, e)| e.is_none())
             .map(|(i, _)| i);
         if inner_slot.is_some() {
             return inner_slot;
@@ -123,7 +123,7 @@ impl FdTable {
             .iter()
             .enumerate()
             .skip(start)
-            .find(|(i, e)| e.is_none())
+            .find(|(_i, e)| e.is_none())
             .map(|(i, _)| i);
         if inner_slot.is_some() {
             return inner_slot;
@@ -197,7 +197,7 @@ impl FdTable {
     }
 
     pub fn put(&mut self, fd: Fd, fd_info: FdInfo) -> SysResult<()> {
-        self.extend_to((fd.checked_add(1).ok_or(SysError::EBADF)?))?;
+        self.extend_to(fd.checked_add(1).ok_or(SysError::EBADF)?)?;
         self.table[fd] = Some(fd_info);
         Ok(())
     }

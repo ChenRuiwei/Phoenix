@@ -2,7 +2,7 @@
 
 use arch::{
     interrupts::set_trap_handler_vector,
-    time::{get_time_duration, set_next_timer_irq, set_timer_irq},
+    time::{get_time_duration, set_next_timer_irq},
 };
 use memory::VirtAddr;
 use riscv::register::{
@@ -14,7 +14,7 @@ use timer::TIMER_MANAGER;
 
 use crate::{
     mm::PageFaultAccessType,
-    processor::hart::{current_task, current_task_ref, local_hart},
+    processor::hart::{current_task_ref},
     when_debug,
 };
 
@@ -34,8 +34,8 @@ fn panic_on_unknown_trap() {
 pub fn kernel_trap_handler() {
     let stval = stval::read();
     let scause = scause::read();
-    let sepc = sepc::read();
-    let cause = scause.cause();
+    let _sepc = sepc::read();
+    let _cause = scause.cause();
     match scause.cause() {
         Trap::Interrupt(i) => {
             match i {

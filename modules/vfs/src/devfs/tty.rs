@@ -1,20 +1,16 @@
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use core::{cmp, ptr::drop_in_place};
+use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
-use async_utils::{block_on, get_waker, yield_now};
 use device_core::{CharDevice, DeviceMajor};
-use driver::{_print, get_device_manager, get_device_manager_mut, serial::Serial};
+use driver::{get_device_manager, serial::Serial};
 use spin::Once;
 use strum::FromRepr;
 use sync::mutex::{SleepLock, SpinNoIrqLock};
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
-    Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Path, PollEvents,
-    SeekFrom, Stat, SuperBlock,
+    Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, PollEvents, Stat,
+    SuperBlock,
 };
-
-use crate::sys_root_dentry;
 
 pub struct TtyDentry {
     meta: DentryMeta,
@@ -65,7 +61,7 @@ impl TtyInode {
         let (&dev_id, char_dev) = get_device_manager()
             .devices()
             .iter()
-            .filter(|(dev_id, device)| dev_id.major == DeviceMajor::Serial)
+            .filter(|(dev_id, _device)| dev_id.major == DeviceMajor::Serial)
             .next()
             .unwrap();
         meta.dev_id = Some(dev_id);
@@ -104,10 +100,6 @@ impl Inode for TtyInode {
         })
     }
 }
-
-const PRINT_LOCKED: bool = false;
-
-static PRINT_MUTEX: SleepLock<bool> = SleepLock::new(false);
 
 type Pid = u32;
 
@@ -174,8 +166,6 @@ impl WinSize {
         }
     }
 }
-
-const CTRL_C: u8 = 3;
 
 pub static TTY: Once<Arc<TtyFile>> = Once::new();
 

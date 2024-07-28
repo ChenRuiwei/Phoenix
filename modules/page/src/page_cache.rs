@@ -1,4 +1,4 @@
-use alloc::sync::{Arc, Weak};
+use alloc::sync::{Arc};
 
 use config::mm::is_aligned_to_page;
 use hashbrown::HashMap;

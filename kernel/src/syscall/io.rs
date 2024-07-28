@@ -1,17 +1,15 @@
-use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
+use alloc::{sync::Arc, vec::Vec};
 use core::{
-    fmt::Error,
-    future::{self, Future},
+    future::{Future},
     mem::{self, size_of},
-    ops::Deref,
     pin::Pin,
     task::{Context, Poll},
 };
 
-use async_utils::{dyn_future, yield_now, Async, Select2Futures, SelectOutput};
+use async_utils::{Select2Futures, SelectOutput};
 use memory::VirtAddr;
 use signal::SigSet;
-use systype::{SysError, SysResult, SyscallResult};
+use systype::{SysError, SyscallResult};
 use time::timespec::TimeSpec;
 use timer::timelimited_task::{TimeLimitedTaskFuture, TimeLimitedTaskOutput};
 use vfs::fd_table::Fd;
@@ -19,9 +17,8 @@ use vfs_core::{File, PollEvents};
 
 use super::Syscall;
 use crate::{
-    mm::{UserMut, UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr},
+    mm::{UserRdWrPtr, UserReadPtr, UserSlice},
     task::signal::IntrBySignalFuture,
-    trap::context,
 };
 
 #[derive(Debug, Copy, Clone)]

@@ -8,8 +8,7 @@ use alloc::{
 use async_utils::{suspend_now, yield_now};
 use memory::VirtAddr;
 use signal::{
-    siginfo::*,
-    sigset::{Sig, SigSet},
+    sigset::{SigSet},
 };
 use systype::{SysError, SysResult, SyscallResult};
 
@@ -216,7 +215,7 @@ impl Syscall<'_> {
                 suspend_now().await;
                 task.set_running();
                 let si = task.with_mut_sig_pending(|pending| pending.get_expect(SigSet::SIGCHLD));
-                if let Some(info) = si {
+                if let Some(_info) = si {
                     let children = task.children();
                     let child = match target {
                         WaitFor::AnyChild => children

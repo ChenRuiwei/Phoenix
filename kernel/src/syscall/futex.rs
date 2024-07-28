@@ -139,9 +139,9 @@ impl Syscall<'_> {
     /// actually this syscall has no actual effect
     pub fn sys_get_robust_list(
         &self,
-        pid: i32,
-        robust_list_head: UserWritePtr<RobustListHead>,
-        len_ptr: UserWritePtr<usize>,
+        _pid: i32,
+        _robust_list_head: UserWritePtr<RobustListHead>,
+        _len_ptr: UserWritePtr<usize>,
     ) -> SyscallResult {
         // let Some(task) = TASK_MANAGER.get(pid as usize) else {
         //     return Err(SysError::ESRCH);
@@ -160,8 +160,8 @@ impl Syscall<'_> {
     /// actually this syscall has no actual effect
     pub fn sys_set_robust_list(
         &self,
-        robust_list_head: UserReadPtr<RobustListHead>,
-        len: usize,
+        _robust_list_head: UserReadPtr<RobustListHead>,
+        _len: usize,
     ) -> SyscallResult {
         // let task = self.task;
         // if len != mem::size_of::<RobustListHead>() {
