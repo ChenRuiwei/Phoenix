@@ -1,5 +1,7 @@
 //! RISC-V Platform Level Interrupt Controller
 //!
+//! Adapted from MankorOS
+//!
 //! Controller setup helper
 
 use config::mm::VIRT_RAM_OFFSET;

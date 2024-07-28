@@ -1,3 +1,5 @@
+//! Adapted from MankorOS
+
 #![no_std]
 #![no_main]
 #![feature(map_try_insert)]

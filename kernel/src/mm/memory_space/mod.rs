@@ -46,7 +46,7 @@ pub struct MemorySpace {
     /// Map of `VmArea`s in this memory space.
     /// NOTE: stores range that is lazy allocated
     areas: SyncUnsafeCell<RangeMap<VirtAddr, VmArea>>,
-    /// Pointes to leader task.
+    /// Points to leader task.
     task: Option<Weak<Task>>,
 }
 

@@ -1,4 +1,6 @@
 //! CPU is also a device
+//!
+//! Adapted from MankorOS
 
 use alloc::vec::Vec;
 

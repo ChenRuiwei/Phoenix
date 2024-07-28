@@ -1,3 +1,5 @@
+//! Adapted from MankorOS
+
 pub mod uart8250;
 
 use alloc::{boxed::Box, collections::VecDeque, string::ToString, sync::Arc};

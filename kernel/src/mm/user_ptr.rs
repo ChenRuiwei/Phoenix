@@ -1,5 +1,7 @@
 //! # UserPtr
 //!
+//! Adapted from MankorOS
+//!
 //! Used for automatically check user ptr when reading or writing.
 
 use alloc::{string::String, sync::Arc, vec::Vec};
