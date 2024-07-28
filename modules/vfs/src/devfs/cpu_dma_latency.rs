@@ -1,18 +1,11 @@
-use alloc::{
-    boxed::Box,
-    sync::Arc,
-};
-
+use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
 use config::board::BLOCK_SIZE;
-
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
     Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Stat, SuperBlock,
 };
-
-
 
 pub struct CpuDmaLatencyDentry {
     meta: DentryMeta,

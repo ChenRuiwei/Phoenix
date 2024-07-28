@@ -4,16 +4,14 @@ use alloc::{
     sync::Arc,
 };
 
-
 use async_trait::async_trait;
 use config::board::BLOCK_SIZE;
-
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
     Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Stat, SuperBlock,
 };
 
-use crate::{FS_MANAGER};
+use crate::FS_MANAGER;
 
 pub struct MountsDentry {
     meta: DentryMeta,

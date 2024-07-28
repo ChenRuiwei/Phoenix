@@ -5,7 +5,7 @@ use alloc::sync::Arc;
 
 use async_utils::block_on;
 use device_core::BlockDriverOps;
-use systype::{SysResult};
+use systype::SysResult;
 use vfs_core::{
     Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, MountFlags, SuperBlock, SuperBlockMeta,
 };
@@ -14,10 +14,7 @@ use self::{
     meminfo::{MemInfoDentry, MemInfoInode},
     mounts::{MountsDentry, MountsInode},
 };
-use crate::simplefs::{
-    dentry::{SimpleDentry},
-    inode::{SimpleDirInode},
-};
+use crate::simplefs::{dentry::SimpleDentry, inode::SimpleDirInode};
 
 pub fn init_procfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
     let mem_info_dentry = MemInfoDentry::new(

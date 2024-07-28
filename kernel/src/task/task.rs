@@ -11,12 +11,12 @@ use core::{
     task::Waker,
 };
 
-use arch::{memory::sfence_vma_all};
+use arch::memory::sfence_vma_all;
 use config::{
     mm::DL_INTERP_OFFSET,
     process::{INIT_PROC_PID, USER_STACK_SIZE},
 };
-use memory::{VirtAddr};
+use memory::VirtAddr;
 use signal::{
     action::{SigHandlers, SigPending},
     siginfo::{SigDetails, SigInfo},
@@ -31,7 +31,7 @@ use vfs_core::{is_absolute_path, AtFd, Dentry, File, InodeMode, Path};
 
 use super::{
     resource::CpuMask,
-    signal::{ITimer},
+    signal::ITimer,
     tid::{Pid, Tid, TidHandle},
     PGid, PROCESS_GROUP_MANAGER,
 };
@@ -41,12 +41,9 @@ use crate::{
         futex::{futex_manager, FutexHashKey, RobustListHead},
         shm::SHARED_MEMORY_MANAGER,
     },
-    mm::{
-        memory_space::{init_stack},
-        MemorySpace, UserWritePtr,
-    },
+    mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
     processor::env::within_sum,
-    syscall::{CloneFlags},
+    syscall::CloneFlags,
     task::{
         aux::{AuxHeader, AT_BASE},
         manager::TASK_MANAGER,

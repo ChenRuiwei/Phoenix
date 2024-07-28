@@ -1,6 +1,6 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::{
-    future::{Future},
+    future::Future,
     mem::{self, size_of},
     pin::Pin,
     task::{Context, Poll},

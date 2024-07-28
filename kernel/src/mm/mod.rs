@@ -19,12 +19,8 @@ pub use memory::page_table::PageTable;
 use memory::{frame, heap, pte::PTEFlags, VirtAddr};
 pub use memory_space::MemorySpace;
 pub use user_ptr::{
-    FutexAddr, PageFaultAccessType, UserMut, UserRdWrPtr, UserReadPtr, UserSlice,
-    UserWritePtr,
+    FutexAddr, PageFaultAccessType, UserMut, UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr,
 };
-
-
-
 
 /// Initialize heap allocator, frame allocator and kernel page table.
 pub fn init() {

@@ -1,8 +1,6 @@
 use alloc::{boxed::Box, sync::Arc};
 
-
 use async_trait::async_trait;
-
 use log::warn;
 use net::{poll_interfaces, tcp::TcpSocket, udp::UdpSocket, IpEndpoint, NetPollState};
 use spin::Mutex;

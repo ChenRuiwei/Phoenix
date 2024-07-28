@@ -1,7 +1,4 @@
-use alloc::{
-    sync::Arc,
-    vec::{Vec},
-};
+use alloc::{sync::Arc, vec::Vec};
 use core::fmt;
 
 use config::fs::MAX_FDS;

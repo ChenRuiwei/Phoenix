@@ -31,14 +31,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-
-
-
-
-
-use crate::{
-    processor::hart,
-};
+use crate::processor::hart;
 
 extern crate alloc;
 

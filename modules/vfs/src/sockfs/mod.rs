@@ -4,10 +4,7 @@ use device_core::BlockDriverOps;
 use systype::SysResult;
 use vfs_core::*;
 
-use crate::simplefs::{
-    dentry::SimpleDentry,
-    inode::{SimpleDirInode},
-};
+use crate::simplefs::{dentry::SimpleDentry, inode::SimpleDirInode};
 
 /// 参考https://zhuanlan.zhihu.com/p/497849394 【Linux内核 | socket底层的来龙去脉】
 pub struct SockFsType {

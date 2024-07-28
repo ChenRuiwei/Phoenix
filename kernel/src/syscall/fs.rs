@@ -1,17 +1,13 @@
 use alloc::{ffi::CString, vec, vec::Vec};
-use core::{
-    cmp,
-};
+use core::cmp;
 
 use arch::time::get_time_duration;
 use async_utils::{Select2Futures, SelectOutput};
 use config::{board::BLOCK_SIZE, fs::PIPE_BUF_LEN};
 use driver::BLOCK_DEVICE;
-
 use strum::FromRepr;
 use systype::{SysError, SyscallResult};
-use time::{timespec::TimeSpec};
-
+use time::timespec::TimeSpec;
 use vfs::{fd_table::FdFlags, pipefs::new_pipe, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, InodeType, MountFlags,

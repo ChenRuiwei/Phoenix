@@ -4,7 +4,6 @@ use core::{cmp::Reverse, task::Waker, time::Duration};
 extern crate alloc;
 use alloc::{boxed::Box, collections::BinaryHeap};
 
-
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 

@@ -3,7 +3,7 @@
 //!
 //! `IpEndpoint` is host byte order
 
-use core::{panic};
+use core::panic;
 
 use net::{IpAddress, IpEndpoint, Ipv4Address, Ipv6Address};
 

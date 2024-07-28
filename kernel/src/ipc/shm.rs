@@ -1,7 +1,4 @@
-use alloc::{
-    sync::{Weak},
-    vec::Vec,
-};
+use alloc::{sync::Weak, vec::Vec};
 
 use arch::time::get_time_sec;
 use config::mm::PAGE_SIZE;

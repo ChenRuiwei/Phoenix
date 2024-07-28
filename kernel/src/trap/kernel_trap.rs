@@ -12,11 +12,7 @@ use riscv::register::{
 use signal::{Sig, SigDetails, SigInfo};
 use timer::TIMER_MANAGER;
 
-use crate::{
-    mm::PageFaultAccessType,
-    processor::hart::{current_task_ref},
-    when_debug,
-};
+use crate::{mm::PageFaultAccessType, processor::hart::current_task_ref, when_debug};
 
 fn panic_on_unknown_trap() {
     panic!(

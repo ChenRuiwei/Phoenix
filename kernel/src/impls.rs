@@ -10,7 +10,7 @@ use memory::{KernelMappingIf, PageTable, PhysAddr, VirtAddr};
 use net::HasSignalIf;
 
 use crate::{
-    mm::{kernel_page_table_mut},
+    mm::kernel_page_table_mut,
     processor::hart::{current_task_ref, local_hart},
 };
 

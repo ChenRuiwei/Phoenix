@@ -7,9 +7,7 @@ use alloc::{
 
 use async_utils::{suspend_now, yield_now};
 use memory::VirtAddr;
-use signal::{
-    sigset::{SigSet},
-};
+use signal::sigset::SigSet;
 use systype::{SysError, SysResult, SyscallResult};
 
 use super::Syscall;

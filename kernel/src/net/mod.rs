@@ -1,5 +1,3 @@
-
-
 use systype::SysError;
 pub mod addr;
 pub mod socket;

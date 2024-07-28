@@ -3,7 +3,7 @@ use alloc::{
     sync::{Arc, Weak},
 };
 use core::{
-    future::{Future},
+    future::Future,
     intrinsics::size_of,
     pin::Pin,
     sync::atomic::{AtomicUsize, Ordering},
@@ -14,11 +14,10 @@ use core::{
 use arch::time::get_time_duration;
 use signal::*;
 use systype::SysResult;
-
 use timer::{Timer, TimerEvent};
 
 use super::Task;
-use crate::{mm::UserWritePtr};
+use crate::mm::UserWritePtr;
 
 #[derive(Clone, Copy, Default)]
 #[repr(C)]

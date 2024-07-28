@@ -6,10 +6,7 @@ use config::board::MAX_HARTS;
 use riscv::register::sstatus::{self, FS};
 
 use super::env::EnvContext;
-use crate::{
-    mm,
-    task::{Task},
-};
+use crate::{mm, task::Task};
 
 const HART_EACH: Hart = Hart::new();
 pub static mut HARTS: [Hart; MAX_HARTS] = [HART_EACH; MAX_HARTS];

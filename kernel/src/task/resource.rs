@@ -1,7 +1,5 @@
 use core::time::Duration;
 
-
-
 use super::Task;
 
 impl Task {
