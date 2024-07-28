@@ -2,14 +2,11 @@ use alloc::sync::Arc;
 use core::arch::asm;
 
 use arch::interrupts::{disable_interrupt, enable_interrupt};
-use config::processor::MAX_HARTS;
+use config::board::MAX_HARTS;
 use riscv::register::sstatus::{self, FS};
 
 use super::env::EnvContext;
-use crate::{
-    mm,
-    task::{Pid, Task},
-};
+use crate::{mm, task::Task};
 
 const HART_EACH: Hart = Hart::new();
 pub static mut HARTS: [Hart; MAX_HARTS] = [HART_EACH; MAX_HARTS];

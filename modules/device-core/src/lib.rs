@@ -4,13 +4,13 @@
 extern crate alloc;
 pub mod error;
 
-use alloc::{boxed::Box, string::String, sync::Arc};
-use core::{any::Any, ptr::NonNull};
+use alloc::{boxed::Box, string::String};
+use core::any::Any;
 
 use async_trait::async_trait;
 use downcast_rs::{impl_downcast, DowncastSync};
 use error::DevResult;
-pub use smoltcp::phy::{Loopback, Medium};
+pub use smoltcp::phy::{DeviceCapabilities, Loopback, Medium};
 
 /// General Device Operations
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -52,7 +52,7 @@ pub struct DeviceMeta {
     pub dtype: DeviceType,
 }
 
-pub trait BaseDriverOps: Sync + Send + DowncastSync {
+pub trait Device: Sync + Send + DowncastSync {
     fn meta(&self) -> &DeviceMeta;
 
     fn init(&self);
@@ -84,17 +84,17 @@ pub trait BaseDriverOps: Sync + Send + DowncastSync {
     }
 }
 
-impl_downcast!(sync BaseDriverOps);
+impl_downcast!(sync Device);
 
 #[async_trait]
-pub trait CharDevice: BaseDriverOps {
+pub trait CharDevice: Device {
     async fn read(&self, buf: &mut [u8]) -> usize;
     async fn write(&self, buf: &[u8]) -> usize;
     async fn poll_in(&self) -> bool;
     async fn poll_out(&self) -> bool;
 }
 
-pub trait BlockDriverOps: BaseDriverOps {
+pub trait BlockDevice: Device {
     fn size(&self) -> u64;
 
     fn block_size(&self) -> usize;
@@ -116,14 +116,14 @@ pub trait BlockDriverOps: BaseDriverOps {
     fn write_block(&self, block_id: usize, buf: &[u8]);
 }
 
-impl_downcast!(sync BlockDriverOps);
+impl_downcast!(sync BlockDevice);
 
 /// The ethernet address of the NIC (MAC address).
 pub struct EthernetAddress(pub [u8; 6]);
 
 /// Every Net Device should implement this trait
-pub trait NetDriverOps: Sync + Send {
-    fn medium(&self) -> Medium;
+pub trait NetDevice: Sync + Send {
+    fn capabilities(&self) -> DeviceCapabilities;
     /// The ethernet address of the NIC.
     fn mac_address(&self) -> EthernetAddress;
 

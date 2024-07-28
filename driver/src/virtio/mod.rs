@@ -5,11 +5,11 @@ pub mod virtio_net;
 use core::ptr::NonNull;
 
 use config::mm::VIRT_RAM_OFFSET;
-use device_core::{error::DevError, BaseDriverOps};
+use device_core::{error::DevError, Device};
 use fdt::Fdt;
 use log::{error, warn};
 use loopback::LoopbackDev;
-use memory::{alloc_frames, dealloc_frame, pte::PTEFlags, PhysAddr, PhysPageNum};
+use memory::{alloc_frames, dealloc_frame, pte::PTEFlags, PhysAddr, PhysPageNum, VirtAddr};
 use net::init_network;
 use virtio_blk::VirtIoBlkDev;
 use virtio_drivers::{
@@ -19,7 +19,7 @@ use virtio_drivers::{
     },
     BufferDirection,
 };
-use virtio_net::NetDevice;
+use virtio_net::NetDeviceImpl;
 
 use crate::{kernel_page_table_mut, manager::DeviceManager, BLOCK_DEVICE};
 
@@ -35,10 +35,7 @@ unsafe impl virtio_drivers::Hal for VirtioHalImpl {
         for ppn in ppn..ppn + pages {
             ppn.clear_page();
         }
-        (
-            pa.0,
-            NonNull::new(pa.to_offset().to_va().as_mut_ptr()).unwrap(),
-        )
+        (pa.0, NonNull::new(pa.to_vaddr().as_mut_ptr()).unwrap())
     }
 
     unsafe fn dma_dealloc(
@@ -56,14 +53,17 @@ unsafe impl virtio_drivers::Hal for VirtioHalImpl {
     }
 
     unsafe fn mmio_phys_to_virt(paddr: virtio_drivers::PhysAddr, _size: usize) -> NonNull<u8> {
-        NonNull::new(PhysAddr::from(paddr).to_offset().to_va().as_mut_ptr()).unwrap()
+        NonNull::new(PhysAddr::from(paddr).to_vaddr().as_mut_ptr()).unwrap()
     }
 
     unsafe fn share(
         buffer: NonNull<[u8]>,
         _direction: BufferDirection,
     ) -> virtio_drivers::PhysAddr {
-        memory::vaddr_to_paddr((buffer.as_ptr() as *const u8 as usize).into()).into()
+        VirtAddr::from(buffer.as_ptr() as *const u8 as usize)
+            .to_paddr()
+            .bits()
+            .into()
     }
 
     unsafe fn unshare(

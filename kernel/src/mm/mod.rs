@@ -13,18 +13,14 @@ use core::cmp;
 
 use config::{
     board::MEMORY_END,
-    mm::{K_SEG_DTB_BEG, K_SEG_DTB_END, MAX_DTB_SIZE, PAGE_SIZE, VIRT_RAM_OFFSET},
+    mm::{K_SEG_DTB_BEG, MAX_DTB_SIZE, VIRT_RAM_OFFSET},
 };
 pub use memory::page_table::PageTable;
 use memory::{frame, heap, pte::PTEFlags, VirtAddr};
 pub use memory_space::MemorySpace;
 pub use user_ptr::{
-    FutexAddr, PageFaultAccessType, UserMut, UserRdWrPtr, UserReadPtr, UserRef, UserSlice,
-    UserWritePtr,
+    FutexAddr, PageFaultAccessType, UserMut, UserRdWrPtr, UserReadPtr, UserSlice, UserWritePtr,
 };
-
-use self::memory_space::vm_area::MapPerm;
-use crate::mm;
 
 /// Initialize heap allocator, frame allocator and kernel page table.
 pub fn init() {
@@ -33,8 +29,8 @@ pub fn init() {
     }
     heap::init_heap_allocator();
     frame::init_frame_allocator(
-        VirtAddr::from(_ekernel as usize).to_offset().to_pa().into(),
-        VirtAddr::from(MEMORY_END).to_offset().to_pa().into(),
+        VirtAddr::from(_ekernel as usize).to_paddr().ceil(),
+        VirtAddr::from(MEMORY_END).to_paddr().floor(),
     );
     unsafe {
         init_kernel_page_table();

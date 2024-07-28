@@ -1,13 +1,10 @@
 use alloc::sync::Arc;
 
-use device_core::BlockDriverOps;
+use device_core::BlockDevice;
 use systype::SysResult;
 use vfs_core::*;
 
-use crate::simplefs::{
-    dentry::SimpleDentry,
-    inode::{SimpleDirInode, SimpleFileInode},
-};
+use crate::simplefs::{dentry::SimpleDentry, inode::SimpleDirInode};
 
 /// 参考https://zhuanlan.zhihu.com/p/497849394 【Linux内核 | socket底层的来龙去脉】
 pub struct SockFsType {
@@ -31,8 +28,8 @@ impl FileSystemType for SockFsType {
         self: Arc<Self>,
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
-        flags: MountFlags,
-        dev: Option<Arc<dyn BlockDriverOps>>,
+        _flags: MountFlags,
+        dev: Option<Arc<dyn BlockDevice>>,
     ) -> SysResult<Arc<dyn Dentry>> {
         let sb = SockSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
@@ -46,7 +43,7 @@ impl FileSystemType for SockFsType {
         Ok(mount_dentry)
     }
 
-    fn kill_sb(&self, sb: Arc<dyn SuperBlock>) -> SysResult<()> {
+    fn kill_sb(&self, _sb: Arc<dyn SuperBlock>) -> SysResult<()> {
         todo!()
     }
 }
@@ -57,7 +54,7 @@ pub struct SockSuperBlock {
 
 impl SockSuperBlock {
     pub fn new(
-        device: Option<Arc<dyn BlockDriverOps>>,
+        device: Option<Arc<dyn BlockDevice>>,
         fs_type: Arc<dyn FileSystemType>,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -76,7 +73,7 @@ impl SuperBlock for SockSuperBlock {
         todo!()
     }
 
-    fn sync_fs(&self, wait: isize) -> SysResult<()> {
+    fn sync_fs(&self, _wait: isize) -> SysResult<()> {
         todo!()
     }
 }

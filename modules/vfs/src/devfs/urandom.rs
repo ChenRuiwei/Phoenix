@@ -47,24 +47,22 @@ impl SimpleRng {
     /// into bytes to fill in the buf
     pub fn fill_buf(&mut self, buf: &mut [u8]) {
         let mut remaining = buf.len();
-        let mut chunk_size = 4;
-        let mut buf_ptr = buf.as_mut_ptr();
+        let mut offset = 0;
 
         while remaining > 0 {
-            if remaining < chunk_size {
-                chunk_size = remaining;
-            }
+            // 生成一个随机的 u32 值
             let rand = self.next_u32();
             let rand_bytes = rand.to_le_bytes();
 
-            for i in 0..chunk_size {
-                unsafe {
-                    *buf_ptr.add(i) = rand_bytes[i];
-                }
-            }
+            // 计算要复制的字节数
+            let chunk_size = remaining.min(4);
 
+            // 将 rand_bytes 中的字节填充到 buf 中
+            buf[offset..offset + chunk_size].copy_from_slice(&rand_bytes[..chunk_size]);
+
+            // 更新剩余字节数和偏移量
             remaining -= chunk_size;
-            buf_ptr = unsafe { buf_ptr.add(chunk_size) };
+            offset += chunk_size;
         }
     }
 }
@@ -98,15 +96,15 @@ impl Dentry for UrandomDentry {
         }))
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SysResult<()> {
         Err(SysError::ENOTDIR)
     }
 }
@@ -165,12 +163,20 @@ impl File for UrandomFile {
         &self.meta
     }
 
-    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SyscallResult {
+        unreachable!()
+    }
+
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
+        unreachable!()
+    }
+
+    async fn read_at(&self, _offset: usize, buf: &mut [u8]) -> SyscallResult {
         unsafe { RNG.fill_buf(buf) };
         Ok(buf.len())
     }
 
-    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
         log::error!("[UrandomFile::base_write_at] does nothing");
         Ok(buf.len())
     }

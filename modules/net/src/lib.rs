@@ -7,7 +7,7 @@ use core::{cell::RefCell, future::Future, ops::DerefMut, panic};
 
 use arch::time::get_time_us;
 use crate_interface::call_interface;
-use device_core::{error::DevError, NetBufPtrOps, NetDriverOps};
+use device_core::{error::DevError, NetBufPtrOps, NetDevice};
 use listen_table::*;
 use log::*;
 pub use smoltcp::wire::{IpAddress, IpEndpoint, IpListenEndpoint, Ipv4Address, Ipv6Address};
@@ -65,7 +65,7 @@ static ETH0: Once<InterfaceWrapper> = Once::new();
 struct SocketSetWrapper<'a>(Mutex<SocketSet<'a>>);
 
 struct DeviceWrapper {
-    inner: RefCell<Box<dyn NetDriverOps>>, /* use `RefCell` is enough since it's wrapped in
+    inner: RefCell<Box<dyn NetDevice>>, /* use `RefCell` is enough since it's wrapped in
                                             * `Mutex` in
                                             * `InterfaceWrapper`. */
 }
@@ -102,6 +102,7 @@ impl<'a> SocketSetWrapper<'a> {
         socket::udp::Socket::new(udp_rx_buffer, udp_tx_buffer)
     }
 
+    #[allow(dead_code)]
     pub fn new_dns_socket() -> socket::dns::Socket<'a> {
         let server_addr = DNS_SEVER.parse().expect("invalid DNS server address");
         socket::dns::Socket::new(&[server_addr], vec![])
@@ -124,6 +125,7 @@ impl<'a> SocketSetWrapper<'a> {
         f(socket)
     }
 
+    #[allow(dead_code)]
     pub async fn with_socket_async<T: AnySocket<'a>, R, F, Fut>(
         &self,
         handle: SocketHandle,
@@ -138,6 +140,7 @@ impl<'a> SocketSetWrapper<'a> {
         f(socket).await
     }
 
+    #[allow(dead_code)]
     pub async fn with_socket_mut_async<T: AnySocket<'a>, R, F, Fut>(
         &self,
         handle: SocketHandle,
@@ -172,7 +175,7 @@ impl<'a> SocketSetWrapper<'a> {
 }
 
 impl InterfaceWrapper {
-    fn new(name: &'static str, dev: Box<dyn NetDriverOps>, ether_addr: EthernetAddress) -> Self {
+    fn new(name: &'static str, dev: Box<dyn NetDevice>, ether_addr: EthernetAddress) -> Self {
         // let mut config = Config::new(HardwareAddress::Ethernet(ether_addr));
         // let mut config = if ether_addr == EthernetAddress([0, 0, 0, 0, 0, 0]) {
         //     log::error!("[InterfaceWrapper] use HardwareAddress::Ip");
@@ -180,10 +183,9 @@ impl InterfaceWrapper {
         // } else {
         //     Config::new(HardwareAddress::Ethernet(ether_addr))
         // };
-        let mut config = match dev.medium() {
+        let mut config = match dev.capabilities().medium {
             Medium::Ethernet => Config::new(HardwareAddress::Ethernet(ether_addr)),
             Medium::Ip => Config::new(HardwareAddress::Ip),
-            _ => panic!(),
         };
         config.random_seed = RANDOM_SEED;
 
@@ -230,12 +232,12 @@ impl InterfaceWrapper {
         let mut sockets = sockets.lock();
         let timestamp = Self::current_time();
         let result = iface.poll(timestamp, dev.deref_mut(), &mut sockets);
-        log::warn!("[net::poll] does something have been changed? {result:?}")
+        log::warn!("[net::InterfaceWrapper::poll] does something have been changed? {result:?}")
     }
 }
 
 impl DeviceWrapper {
-    fn new(inner: Box<dyn NetDriverOps>) -> Self {
+    fn new(inner: Box<dyn NetDevice>) -> Self {
         Self {
             inner: RefCell::new(inner),
         }
@@ -282,20 +284,16 @@ impl Device for DeviceWrapper {
     }
 
     fn capabilities(&self) -> DeviceCapabilities {
-        let mut caps = DeviceCapabilities::default();
-        caps.max_transmission_unit = 1514;
-        caps.max_burst_size = None;
-        caps.medium = self.inner.borrow().medium();
-        caps
+        self.inner.borrow().capabilities()
     }
 }
 
-struct NetRxToken<'a>(&'a RefCell<Box<dyn NetDriverOps>>, Box<dyn NetBufPtrOps>);
-struct NetTxToken<'a>(&'a RefCell<Box<dyn NetDriverOps>>);
+struct NetRxToken<'a>(&'a RefCell<Box<dyn NetDevice>>, Box<dyn NetBufPtrOps>);
+struct NetTxToken<'a>(&'a RefCell<Box<dyn NetDevice>>);
 
 impl<'a> RxToken for NetRxToken<'a> {
     fn preprocess(&self, sockets: &mut SocketSet<'_>) {
-        let medium = self.0.borrow().medium();
+        let medium = self.0.borrow().capabilities().medium;
         let is_ethernet = medium == Medium::Ethernet;
         snoop_tcp_packet(self.1.packet(), sockets, is_ethernet).ok();
     }
@@ -418,7 +416,7 @@ pub const SEND_SHUTDOWN: u8 = 2;
 /// 表示读和写方向都已关闭（相当于SHUT_RDWR）
 pub const SHUTDOWN_MASK: u8 = 3;
 
-pub fn init_network(net_dev: Box<dyn NetDriverOps>, is_loopback: bool) {
+pub fn init_network(net_dev: Box<dyn NetDevice>, is_loopback: bool) {
     info!("Initialize network subsystem...");
     let ether_addr = EthernetAddress(net_dev.mac_address().0);
     let eth0 = InterfaceWrapper::new("eth0", net_dev, ether_addr);

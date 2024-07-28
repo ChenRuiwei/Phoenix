@@ -1,4 +1,3 @@
-mod offset;
 mod phys;
 mod virt;
 
@@ -7,12 +6,8 @@ const VA_WIDTH_SV39: usize = 39;
 const PPN_WIDTH_SV39: usize = PA_WIDTH_SV39 - PAGE_SIZE_BITS;
 const VPN_WIDTH_SV39: usize = VA_WIDTH_SV39 - PAGE_SIZE_BITS;
 
-use config::{
-    board::MEMORY_END,
-    mm::{PAGE_SIZE_BITS, VIRT_RAM_OFFSET, VIRT_START},
-};
+use config::mm::PAGE_SIZE_BITS;
 pub use phys::{PhysAddr, PhysPageNum};
-use riscv::register::satp;
 pub use virt::{VirtAddr, VirtPageNum};
 
 macro_rules! impl_arithmetic_with_usize {
@@ -95,12 +90,8 @@ pub(self) use impl_arithmetic_with_usize;
 pub(self) use impl_fmt;
 pub(self) use impl_step;
 
-use crate::{page_table, PageTable};
-
-pub fn vaddr_to_paddr(vaddr: VirtAddr) -> PhysAddr {
-    if vaddr.bits() >= VIRT_RAM_OFFSET {
-        (vaddr.bits() - VIRT_RAM_OFFSET).into()
-    } else {
-        PageTable::vaddr_to_paddr(vaddr)
-    }
+#[crate_interface::def_interface]
+pub trait KernelMappingIf {
+    fn paddr_to_vaddr(paddr: PhysAddr) -> VirtAddr;
+    fn vaddr_to_paddr(vaddr: VirtAddr) -> PhysAddr;
 }

@@ -4,7 +4,6 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
-use driver::sbi::shutdown;
 use core::{
     cell::SyncUnsafeCell,
     ops::DerefMut,
@@ -12,12 +11,12 @@ use core::{
     task::Waker,
 };
 
-use arch::{memory::sfence_vma_all, time::get_time_us};
+use arch::memory::sfence_vma_all;
 use config::{
     mm::DL_INTERP_OFFSET,
     process::{INIT_PROC_PID, USER_STACK_SIZE},
 };
-use memory::{vaddr_to_paddr, VirtAddr};
+use memory::VirtAddr;
 use signal::{
     action::{SigHandlers, SigPending},
     siginfo::{SigDetails, SigInfo},
@@ -32,26 +31,22 @@ use vfs_core::{is_absolute_path, AtFd, Dentry, File, InodeMode, Path};
 
 use super::{
     resource::CpuMask,
-    signal::{ITimer, RealITimer},
+    signal::ITimer,
     tid::{Pid, Tid, TidHandle},
     PGid, PROCESS_GROUP_MANAGER,
 };
 use crate::{
     generate_accessors, generate_atomic_accessors, generate_state_methods, generate_with_methods,
     ipc::{
-        futex::{futex_manager, FutexHashKey, RobustListHead, FUTEX_MANAGER},
+        futex::{futex_manager, FutexHashKey, RobustListHead},
         shm::SHARED_MEMORY_MANAGER,
     },
-    mm::{
-        memory_space::{self, init_stack},
-        MemorySpace, UserReadPtr, UserWritePtr,
-    },
+    mm::{memory_space::init_stack, MemorySpace, UserWritePtr},
     processor::env::within_sum,
-    syscall::{self, CloneFlags},
+    syscall::CloneFlags,
     task::{
         aux::{AuxHeader, AT_BASE},
         manager::TASK_MANAGER,
-        schedule,
         tid::{alloc_tid, TidAddress},
     },
     trap::TrapContext,
@@ -134,7 +129,7 @@ impl core::fmt::Debug for Task {
 
 impl Drop for Task {
     fn drop(&mut self) {
-        log::info!("task {} died!", self.tid());
+        log::info!("task {} dropped!", self.tid());
     }
 }
 
@@ -143,8 +138,13 @@ pub enum TaskState {
     /// The task is currently running or ready to run, occupying the CPU and
     /// executing its code.
     Running,
-    /// The task has terminated, but its process control block (PCB) still
-    /// exists for the parent process to read its exit status.
+    /// The task has been terminated for user mode, which means it will
+    /// never return back to user anymore. All it left to do is to call
+    /// `do_exit` to end its life in kernel mode.
+    Terminated,
+    /// The task has has called `do_exit` function, but its process
+    /// control block (PCB) still exists for the parent process to read its
+    /// exit status.
     Zombie,
     /// The task has been stopped, usually due to receiving a stop signal (e.g.,
     /// SIGSTOP). It can be resumed with a continue signal (e.g., SIGCONT).
@@ -166,8 +166,22 @@ pub enum TaskState {
 
 impl Task {
     // you can use is_running() / set_running()、 is_zombie() / set_zombie()
-    generate_state_methods!(Running, Zombie, Stopped, Interruptable, UnInterruptable);
-    generate_accessors!(waker: Option<Waker>, tid_address: TidAddress, sig_mask: SigSet, sig_stack: Option<SignalStack>, time_stat: TaskTimeStat, cpus_allowed: CpuMask);
+    generate_state_methods!(
+        Running,
+        Zombie,
+        Stopped,
+        Terminated,
+        Interruptable,
+        UnInterruptable
+    );
+    generate_accessors!(
+        waker: Option<Waker>,
+        tid_address: TidAddress,
+        sig_mask: SigSet,
+        sig_stack: Option<SignalStack>,
+        time_stat: TaskTimeStat,
+        cpus_allowed: CpuMask
+    );
     generate_atomic_accessors!(exit_code: i32, sig_ucontext_ptr: usize);
     generate_with_methods!(
         fd_table: FdTable,
@@ -316,7 +330,7 @@ impl Task {
 
     pub fn do_clone(self: &Arc<Self>, flags: CloneFlags) -> Arc<Self> {
         let tid = alloc_tid();
-        let mut trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
+        let trap_context = SyncUnsafeCell::new(*self.trap_context_mut());
         let state = SpinNoIrqLock::new(self.state());
 
         let leader;
@@ -431,7 +445,7 @@ impl Task {
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();
         memory_space.set_task(&self.leader());
-        let (mut entry, mut auxv) = memory_space.parse_and_map_elf(elf_file, elf_data);
+        let (mut entry, mut auxv) = memory_space.parse_and_map_elf(elf_file.clone(), elf_data);
 
         let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         if let Some(interp_entry_point) = memory_space.load_dl_interp_if_needed(&elf) {
@@ -448,7 +462,7 @@ impl Task {
             let mut pid = 0;
             for t in tg.iter() {
                 if !t.is_leader() {
-                    t.set_zombie();
+                    t.set_terminated();
                 } else {
                     pid = t.tid();
                 }
@@ -499,11 +513,11 @@ impl Task {
     // NOTE: After all of the threads in a thread group is terminated, the parent
     // process of the thread group is sent a SIGCHLD (or other termination) signal.
     // WARN: do not call this function directly if a task should be terminated,
-    // instead, call `set_zombie`
+    // instead, call `set_terminated`
     pub fn do_exit(self: &Arc<Self>) {
         log::info!("thread {} do exit", self.tid());
         if self.tid() == INIT_PROC_PID {
-            shutdown();
+            sbi_rt::legacy::shutdown();
         }
 
         if let Some(address) = self.tid_address_ref().clear_child_tid {
@@ -512,7 +526,7 @@ impl Task {
                 .write(self, 0)
                 .expect("tid address write error");
             let key = FutexHashKey::Shared {
-                paddr: vaddr_to_paddr(address.into()),
+                paddr: VirtAddr::from(address).to_paddr(),
             };
             let _ = futex_manager().wake(&key, 1);
             let key = FutexHashKey::Private {
@@ -524,11 +538,11 @@ impl Task {
 
         let mut tg = self.thread_group.lock();
 
-        if (!self.leader().is_zombie())
+        if (!self.leader().is_terminated())
             || (self.is_leader && tg.len() > 1)
             || (!self.is_leader && tg.len() > 2)
         {
-            if !self.is_leader {
+            if !self.is_leader() {
                 // NOTE: leader will be removed by parent calling `sys_wait4`
                 tg.remove(self);
                 TASK_MANAGER.remove(self.tid());
@@ -536,10 +550,10 @@ impl Task {
             return;
         }
 
-        if self.is_leader {
-            debug_assert!(tg.len() == 1);
+        if self.is_leader() {
+            assert!(tg.len() == 1);
         } else {
-            debug_assert!(tg.len() == 2);
+            assert!(tg.len() == 2);
             // NOTE: leader will be removed by parent calling `sys_wait4`
             tg.remove(self);
             TASK_MANAGER.remove(self.tid());
@@ -560,6 +574,18 @@ impl Task {
                     "[Task::do_eixt] reparent child process pid {} to init",
                     c.pid()
                 );
+                if c.is_zombie() {
+                    // NOTE: self has not called wait to clear zombie children, we need to notify
+                    // init to clear these zombie children.
+                    init_proc.receive_siginfo(
+                        SigInfo {
+                            sig: Sig::SIGCHLD,
+                            code: SigInfo::CLD_EXITED,
+                            details: SigDetails::None,
+                        },
+                        false,
+                    )
+                }
                 *c.parent.lock() = Some(Arc::downgrade(&init_proc));
             }
             init_proc.children.lock().extend(children.clone());
@@ -573,12 +599,7 @@ impl Task {
                 SigInfo {
                     sig: Sig::SIGCHLD,
                     code: SigInfo::CLD_EXITED,
-                    details: SigDetails::CHLD {
-                        pid: self.pid(),
-                        status: self.exit_code(),
-                        utime: self.time_stat().user_time(),
-                        stime: self.time_stat().sys_time(),
-                    },
+                    details: SigDetails::None,
                 },
                 false,
             );
@@ -594,6 +615,14 @@ impl Task {
 
         // TODO: drop most resources here instead of wait4 function parent
         // called
+
+        if self.is_leader() {
+            self.set_zombie();
+        } else {
+            self.leader().set_zombie();
+        }
+        // When the task is not leader, which means its is not a process, it
+        // will get dropped when hart leaves this task.
     }
 
     /// The dirfd argument is used in conjunction with the pathname argument as
@@ -608,7 +637,7 @@ impl Task {
     ///   process, as is done by open() for a relative pathname).  In this case,
     ///   dirfd must be a directory that was opened for reading (O_RDONLY) or
     ///   using the O_PATH flag.
-    pub fn at_helper(&self, fd: AtFd, path: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    pub fn at_helper(&self, fd: AtFd, path: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         log::info!("[at_helper] fd: {fd}, path: {path}");
         let path = if is_absolute_path(path) {
             Path::new(sys_root_dentry(), sys_root_dentry(), path)

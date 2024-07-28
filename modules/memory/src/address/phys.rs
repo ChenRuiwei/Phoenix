@@ -5,14 +5,12 @@ use core::{
     ops::Range,
 };
 
-use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PTE_NUM_IN_ONE_PAGE, PTE_SIZE};
+use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PTES_PER_PAGE, PTE_SIZE};
+use crate_interface::call_interface;
 
-use super::{
-    impl_arithmetic_with_usize, impl_fmt, impl_step,
-    offset::{OffsetAddr, OffsetPageNum},
-};
+use super::{impl_arithmetic_with_usize, impl_fmt, impl_step};
 use crate::{
-    address::{PA_WIDTH_SV39, PPN_WIDTH_SV39},
+    address::{__KernelMappingIf_paddr_to_vaddr, PA_WIDTH_SV39, PPN_WIDTH_SV39},
     PageTableEntry, VirtAddr,
 };
 
@@ -25,10 +23,11 @@ pub struct PhysAddr(pub usize);
 pub struct PhysPageNum(pub usize);
 
 impl_fmt!(PhysAddr, "PA");
-impl_arithmetic_with_usize!(PhysPageNum);
 impl_arithmetic_with_usize!(PhysAddr);
-impl_step!(PhysPageNum);
+
 impl_fmt!(PhysPageNum, "PPN");
+impl_step!(PhysPageNum);
+impl_arithmetic_with_usize!(PhysPageNum);
 
 impl From<usize> for PhysAddr {
     fn from(u: usize) -> Self {
@@ -70,7 +69,7 @@ impl PhysAddr {
 
     /// `PhysAddr`->`PhysPageNum`
     pub fn ceil(&self) -> PhysPageNum {
-        PhysPageNum((self.0 + PAGE_SIZE - 1) / PAGE_SIZE)
+        PhysPageNum((self.0 + PAGE_MASK) / PAGE_SIZE)
     }
 
     /// Get page offset
@@ -83,8 +82,8 @@ impl PhysAddr {
         self.page_offset() == 0
     }
 
-    pub fn to_offset(&self) -> OffsetAddr {
-        (*self).into()
+    pub fn to_vaddr(&self) -> VirtAddr {
+        call_interface!(KernelMappingIf::paddr_to_vaddr(*self))
     }
 }
 
@@ -102,6 +101,8 @@ impl From<PhysPageNum> for PhysAddr {
 }
 
 impl PhysPageNum {
+    pub(crate) const ZERO: Self = PhysPageNum(0);
+
     pub fn bits(&self) -> usize {
         self.0
     }
@@ -116,58 +117,52 @@ impl PhysPageNum {
         unsafe { (self.0 as *mut T).as_mut().unwrap() }
     }
 
-    pub fn to_pa(&self) -> PhysAddr {
-        (*self).into()
-    }
-
-    pub fn to_offset(&self) -> OffsetPageNum {
+    pub fn to_paddr(&self) -> PhysAddr {
         (*self).into()
     }
 
     pub fn pte(&self, idx: usize) -> &'static mut PageTableEntry {
-        let mut va: VirtAddr = self.to_offset().to_vpn().into();
-        va += idx * PTE_SIZE;
-        unsafe { va.get_mut() }
+        let mut vaddr: VirtAddr = self.to_paddr().to_vaddr();
+        vaddr += idx * PTE_SIZE;
+        unsafe { vaddr.get_mut() }
     }
 
     /// Get `PageTableEntry` array.
     pub fn pte_array(&self) -> &'static mut [PageTableEntry] {
-        let va: VirtAddr = self.to_offset().to_vpn().into();
-        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut PageTableEntry, PTE_NUM_IN_ONE_PAGE) }
+        let vaddr: VirtAddr = self.to_paddr().to_vaddr();
+        unsafe {
+            core::slice::from_raw_parts_mut(vaddr.bits() as *mut PageTableEntry, PTES_PER_PAGE)
+        }
     }
 
     /// Get bytes array of a physical page
     pub fn bytes_array(&self) -> &'static mut [u8] {
-        let va: VirtAddr = self.to_offset().to_vpn().into();
-        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, PAGE_SIZE) }
+        let vaddr: VirtAddr = self.to_paddr().to_vaddr();
+        unsafe { core::slice::from_raw_parts_mut(vaddr.bits() as *mut u8, PAGE_SIZE) }
     }
 
     /// Get bytes array of a physical page with a range.
     pub fn bytes_array_range(&self, range: Range<usize>) -> &'static mut [u8] {
         debug_assert!(range.end <= PAGE_SIZE, "range: {range:?}");
-        let mut va: VirtAddr = self.to_offset().to_vpn().into();
-        va += range.start;
-        unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, range.len()) }
+        let mut vaddr: VirtAddr = self.to_paddr().to_vaddr();
+        vaddr += range.start;
+        unsafe { core::slice::from_raw_parts_mut(vaddr.bits() as *mut u8, range.len()) }
     }
 
     /// Empty the whole page.
     pub fn clear_page(&self) {
-        let va: VirtAddr = self.to_offset().to_vpn().into();
-        unsafe {
-            core::slice::from_raw_parts_mut(va.0 as *mut usize, PAGE_SIZE / size_of::<usize>())
-                .fill(0)
-        };
+        self.usize_array().fill(0)
     }
 
     pub fn copy_page_from_another(&self, another_ppn: PhysPageNum) {
-        fn usize_array(ppn: &PhysPageNum) -> &'static mut [usize] {
-            let va: VirtAddr = ppn.to_offset().to_vpn().into();
-            unsafe {
-                core::slice::from_raw_parts_mut(va.0 as *mut usize, PAGE_SIZE / size_of::<usize>())
-            }
-        }
-        let dst = usize_array(self);
-        let src = usize_array(&another_ppn);
+        let dst = self.usize_array();
+        let src = another_ppn.usize_array();
         dst.copy_from_slice(src);
+    }
+
+    fn usize_array(&self) -> &'static mut [usize] {
+        const USIZES_PER_PAGE: usize = PAGE_SIZE / size_of::<usize>();
+        let vaddr: VirtAddr = self.to_paddr().to_vaddr();
+        unsafe { core::slice::from_raw_parts_mut(vaddr.bits() as *mut usize, USIZES_PER_PAGE) }
     }
 }

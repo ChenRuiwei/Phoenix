@@ -1,15 +1,14 @@
 //! The panic handler
 use core::{
-    mem::size_of,
     panic::PanicInfo,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
 use arch::interrupts::disable_interrupt;
 use backtrace::backtrace;
-use driver::sbi::shutdown;
 use logging::LOG_INITIALIZED;
 use sbi_print::sbi_println;
+use sbi_rt::legacy::shutdown;
 
 use crate::processor::hart::local_hart;
 

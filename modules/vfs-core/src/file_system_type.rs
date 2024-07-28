@@ -4,7 +4,7 @@ use alloc::{
     sync::Arc,
 };
 
-use device_core::BlockDriverOps;
+use device_core::BlockDevice;
 use systype::{SysError, SysResult};
 
 use crate::{Dentry, MountFlags, Mutex, SuperBlock};
@@ -36,7 +36,7 @@ pub trait FileSystemType: Send + Sync {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         flags: MountFlags,
-        dev: Option<Arc<dyn BlockDriverOps>>,
+        dev: Option<Arc<dyn BlockDevice>>,
     ) -> SysResult<Arc<dyn Dentry>>;
 
     /// Call when an instance of this filesystem should be shut down.
@@ -64,7 +64,7 @@ impl dyn FileSystemType {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         flags: MountFlags,
-        dev: Option<Arc<dyn BlockDriverOps>>,
+        dev: Option<Arc<dyn BlockDevice>>,
     ) -> SysResult<Arc<dyn Dentry>> {
         self.clone().base_mount(name, parent, flags, dev)
     }

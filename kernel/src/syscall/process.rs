@@ -7,10 +7,7 @@ use alloc::{
 
 use async_utils::{suspend_now, yield_now};
 use memory::VirtAddr;
-use signal::{
-    siginfo::*,
-    sigset::{Sig, SigSet},
-};
+use signal::sigset::SigSet;
 use systype::{SysError, SysResult, SyscallResult};
 
 use super::Syscall;
@@ -88,7 +85,7 @@ impl Syscall<'_> {
     /// group.
     pub fn sys_exit(&self, exit_code: i32) -> SyscallResult {
         let task = self.task;
-        task.set_zombie();
+        task.set_terminated();
         // non-leader thread are detached (see CLONE_THREAD flag in manual page clone.2)
         if task.is_leader() {
             task.set_exit_code((exit_code & 0xFF) << 8);
@@ -102,8 +99,8 @@ impl Syscall<'_> {
         let task = self.task;
         task.with_thread_group(|tg| {
             for t in tg.iter() {
-                t.set_zombie();
-                log::info!("tid {} set zombie", t.tid());
+                t.set_terminated();
+                log::info!("tid {} set terminated", t.tid());
             }
         });
         task.set_exit_code((exit_code & 0xFF) << 8);
@@ -216,24 +213,30 @@ impl Syscall<'_> {
                 suspend_now().await;
                 task.set_running();
                 let si = task.with_mut_sig_pending(|pending| pending.get_expect(SigSet::SIGCHLD));
-                if let Some(info) = si {
-                    if let SigDetails::CHLD {
-                        pid,
-                        status,
-                        utime,
-                        stime,
-                    } = info.details
-                    {
-                        match target {
-                            WaitFor::AnyChild => break (pid, status, utime, stime),
-                            WaitFor::Pid(target_pid) => {
-                                if target_pid == pid {
-                                    break (pid, status, utime, stime);
-                                }
+                if let Some(_info) = si {
+                    let children = task.children();
+                    let child = match target {
+                        WaitFor::AnyChild => children
+                            .values()
+                            .find(|c| c.is_zombie() && c.with_thread_group(|tg| tg.len() == 1)),
+                        WaitFor::Pid(pid) => {
+                            let child = children.get(&pid).unwrap();
+                            if child.is_zombie() && child.with_thread_group(|tg| tg.len() == 1) {
+                                Some(child)
+                            } else {
+                                None
                             }
-                            WaitFor::PGid(_) => unimplemented!(),
-                            WaitFor::AnyChildInGroup => unimplemented!(),
                         }
+                        WaitFor::PGid(_) => unimplemented!(),
+                        WaitFor::AnyChildInGroup => unimplemented!(),
+                    };
+                    if let Some(child) = child {
+                        break (
+                            child.pid(),
+                            child.exit_code(),
+                            child.time_stat_ref().user_time(),
+                            child.time_stat_ref().sys_time(),
+                        );
                     }
                 } else {
                     return Err(SysError::EINTR);

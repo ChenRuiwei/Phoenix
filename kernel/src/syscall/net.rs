@@ -1,8 +1,5 @@
 use alloc::{sync::Arc, vec::Vec};
-use core::mem::{self};
 
-use addr::{SockAddrIn, SockAddrIn6};
-use async_utils::yield_now;
 use log::info;
 use socket::*;
 use systype::{SysError, SysResult, SyscallResult};
@@ -12,7 +9,7 @@ use virtio_drivers::PAGE_SIZE;
 
 use super::Syscall;
 use crate::{
-    mm::{UserRdWrPtr, UserReadPtr, UserWritePtr},
+    mm::{UserReadPtr, UserWritePtr},
     net::*,
     task::Task,
 };
@@ -81,7 +78,7 @@ impl Syscall<'_> {
         log::info!("[sys_connect] fd{sockfd} trys to connect {remote_addr}");
         socket.sk.connect(remote_addr).await?;
         // TODO:
-        yield_now().await;
+        // yield_now().await;
         Ok(0)
     }
 
@@ -98,10 +95,15 @@ impl Syscall<'_> {
     pub async fn sys_accept(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
+
+        task.set_interruptable();
+        task.set_wake_up_signal(!*task.sig_mask_ref());
         let new_sk = socket.sk.accept().await?;
+        task.set_running();
+
         let peer_addr = new_sk.peer_addr()?;
         log::info!("[sys_accept] peer addr: {peer_addr}");
-        task.write_sockaddr(addr, addrlen, peer_addr);
+        task.write_sockaddr(addr, addrlen, peer_addr)?;
         let new_socket = Arc::new(Socket::from_another(&socket, Sock::Tcp(new_sk)));
         let fd = task.with_mut_fd_table(|table| table.alloc(new_socket, OpenFlags::empty()))?;
         Ok(fd)
@@ -116,7 +118,7 @@ impl Syscall<'_> {
         let socket = task.sockfd_lookup(sockfd)?;
         let local_addr = socket.sk.local_addr()?;
         log::info!("[sys_getsockname] local addr: {local_addr:?}");
-        task.write_sockaddr(addr, addrlen, local_addr);
+        task.write_sockaddr(addr, addrlen, local_addr)?;
         Ok(0)
     }
 
@@ -126,7 +128,7 @@ impl Syscall<'_> {
         let socket = task.sockfd_lookup(sockfd)?;
         let peer_addr = socket.sk.peer_addr()?;
         log::info!("[sys_getpeername] peer addr: {peer_addr:?}");
-        task.write_sockaddr(addr, addrlen, peer_addr);
+        task.write_sockaddr(addr, addrlen, peer_addr)?;
         Ok(0)
     }
 
@@ -196,9 +198,9 @@ impl Syscall<'_> {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
         info!(
-            "recvfrom: {:?}, local_addr: {:?}",
+            "[sys_recvfrom]: local_addr: {:?} is trying to recvfrom remote{:?}, ",
+            socket.sk.local_addr(),
             socket.sk.peer_addr(),
-            socket.sk.local_addr()
         );
         let mut temp = Vec::with_capacity(len);
         unsafe { temp.set_len(len) };
@@ -237,25 +239,32 @@ impl Syscall<'_> {
 
     pub fn sys_getsockopt(
         &self,
-        _sockfd: usize,
+        sockfd: usize,
         level: usize,
         optname: usize,
         optval: usize,
         optlen: usize,
     ) -> SyscallResult {
+        use core::mem::size_of;
         let task = self.task;
+        task.sockfd_lookup(sockfd)?;
         match SocketLevel::try_from(level)? {
             SocketLevel::SOL_SOCKET => {
                 const SEND_BUFFER_SIZE: usize = 64 * 1024;
                 const RECV_BUFFER_SIZE: usize = 64 * 1024;
                 match SocketOpt::try_from(optname)? {
                     SocketOpt::RCVBUF => {
-                        UserWritePtr::<usize>::from(optval).write(&task, RECV_BUFFER_SIZE)?
+                        UserWritePtr::<u32>::from(optval).write(&task, RECV_BUFFER_SIZE as u32)?;
+                        UserWritePtr::<u32>::from(optlen).write(&task, size_of::<u32>() as u32)?
                     }
                     SocketOpt::SNDBUF => {
-                        UserWritePtr::<usize>::from(optval).write(&task, SEND_BUFFER_SIZE)?
+                        UserWritePtr::<u32>::from(optval).write(&task, SEND_BUFFER_SIZE as u32)?;
+                        UserWritePtr::<u32>::from(optlen).write(&task, size_of::<u32>() as u32)?
                     }
-                    SocketOpt::ERROR => UserWritePtr::<usize>::from(optval).write(&task, 0)?,
+                    SocketOpt::ERROR => {
+                        UserWritePtr::<u32>::from(optval).write(&task, 0)?;
+                        UserWritePtr::<u32>::from(optlen).write(&task, size_of::<u32>() as u32)?
+                    }
                     opt => {
                         log::error!(
                             "[sys_getsockopt] unsupported SOL_SOCKET opt {opt:?} optlen:{optlen}"
@@ -267,12 +276,17 @@ impl Syscall<'_> {
                 const MAX_SEGMENT_SIZE: usize = 1460;
                 match TcpSocketOpt::try_from(optname)? {
                     TcpSocketOpt::MAXSEG => {
-                        UserWritePtr::<usize>::from(optval).write(&task, MAX_SEGMENT_SIZE)?
+                        UserWritePtr::<u32>::from(optval).write(&task, MAX_SEGMENT_SIZE as u32)?;
+                        UserWritePtr::<u32>::from(optlen).write(&task, size_of::<u32>() as u32)?
                     }
-                    TcpSocketOpt::NODELAY => UserWritePtr::<usize>::from(optval).write(&task, 0)?,
+                    TcpSocketOpt::NODELAY => {
+                        UserWritePtr::<u32>::from(optval).write(&task, 0)?;
+                        UserWritePtr::<u32>::from(optlen).write(&task, size_of::<u32>() as u32)?
+                    }
                     TcpSocketOpt::INFO => {}
                     TcpSocketOpt::CONGESTION => {
-                        UserWritePtr::from(optval).write_cstr(&task, "reno");
+                        UserWritePtr::from(optval).write_cstr(&task, "reno")?;
+                        UserWritePtr::<u32>::from(optlen).write(&task, 4)?
                     }
                     opt => {
                         log::error!(
@@ -309,9 +323,9 @@ impl Syscall<'_> {
 
     pub fn sys_socketpair(
         &self,
-        domain: usize,
-        types: usize,
-        protocol: usize,
+        _domain: usize,
+        _types: usize,
+        _protocol: usize,
         sv: UserWritePtr<[u32; 2]>,
     ) -> SyscallResult {
         let task = self.task;

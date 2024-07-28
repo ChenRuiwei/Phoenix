@@ -1,31 +1,23 @@
-use alloc::{
-    collections::BTreeMap,
-    sync::{Arc, Weak},
-    vec::Vec,
-};
-use core::{
-    default,
-    num::NonZeroUsize,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use alloc::sync::{Arc, Weak};
+use core::num::NonZeroUsize;
 
 use config::{
     board::BLOCK_SIZE,
     mm::{
-        block_page_id, is_aligned_to_block, BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE,
-        MAX_BUFFER_HEADS, MAX_BUFFER_PAGES, PAGE_SIZE,
+        block_page_id, is_aligned_to_block, BUFFER_NEED_CACHE_CNT, MAX_BUFFER_HEADS,
+        MAX_BUFFER_PAGES, PAGE_SIZE,
     },
 };
-use device_core::BlockDriverOps;
+use device_core::BlockDevice;
 use intrusive_collections::{intrusive_adapter, LinkedListAtomicLink};
 use lru::LruCache;
-use spin::Once;
+use macro_utils::with_methods;
 use sync::mutex::SpinNoIrqLock;
 
-use crate::{Page, PageKind};
+use crate::Page;
 
 pub struct BufferCache {
-    device: Option<Weak<dyn BlockDriverOps>>,
+    device: Option<Weak<dyn BlockDevice>>,
     /// Block page id to `Page`.
     // NOTE: These `Page`s are pages without file, only exist for caching pure
     // block data.
@@ -47,11 +39,11 @@ impl BufferCache {
         }
     }
 
-    pub fn init_device(&mut self, device: Arc<dyn BlockDriverOps>) {
+    pub fn init_device(&mut self, device: Arc<dyn BlockDevice>) {
         self.device = Some(Arc::downgrade(&device))
     }
 
-    pub fn device(&self) -> Arc<dyn BlockDriverOps> {
+    pub fn device(&self) -> Arc<dyn BlockDevice> {
         self.device.as_ref().unwrap().upgrade().unwrap()
     }
 
@@ -173,18 +165,21 @@ impl BufferHead {
             );
         }
         debug_assert!(is_aligned_to_block(offset) && offset < PAGE_SIZE);
-        let mut inner = self.inner.lock();
-        inner.bstate = BufferState::Sync;
-        inner.page = Arc::downgrade(page);
-        inner.offset = offset;
+
+        self.with_mut_inner(|inner| {
+            inner.bstate = BufferState::Sync;
+            inner.page = Arc::downgrade(page);
+            inner.offset = offset;
+        });
     }
 
     pub fn reset(&self) {
-        let mut inner = self.inner.lock();
-        inner.acc_cnt = 0;
-        inner.bstate = BufferState::UnInit;
-        inner.page = Weak::new();
-        inner.offset = 0;
+        self.with_mut_inner(|inner| {
+            inner.acc_cnt = 0;
+            inner.bstate = BufferState::UnInit;
+            inner.page = Weak::new();
+            inner.offset = 0;
+        });
     }
 
     pub fn block_id(&self) -> usize {
@@ -237,4 +232,6 @@ impl BufferHead {
         self.bytes_array().copy_from_slice(buf);
         self.set_bstate(BufferState::Dirty)
     }
+
+    with_methods!(inner: BufferHeadInner);
 }

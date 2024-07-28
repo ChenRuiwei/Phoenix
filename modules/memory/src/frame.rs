@@ -2,7 +2,11 @@
 //! controls all the frames in the operating system.
 
 use alloc::vec::Vec;
-use core::fmt::{self, Debug, Formatter};
+use core::{
+    cell::SyncUnsafeCell,
+    fmt::{self, Debug, Formatter},
+    ops::Range,
+};
 
 use bitmap_allocator::BitAlloc;
 use sync::mutex::SpinNoIrqLock;
@@ -16,11 +20,10 @@ pub struct FrameTracker {
 }
 
 impl FrameTracker {
-    /// Create an empty `FrameTracker`
+    /// Create an `FrameTracker`.
+    ///
+    /// It is the caller's duty to clean the frame.
     pub fn new(ppn: PhysPageNum) -> Self {
-        // page cleaning
-        // TODO: may be no need to always clean the page at first
-        // ppn.empty_the_page();
         Self { ppn }
     }
 
@@ -42,19 +45,34 @@ impl Drop for FrameTracker {
     }
 }
 
-pub type FrameAllocator = bitmap_allocator::BitAlloc16M;
+struct FrameAllocator {
+    range_ppn: SyncUnsafeCell<Range<PhysPageNum>>,
+    allocator: SpinNoIrqLock<bitmap_allocator::BitAlloc16M>,
+}
 
-pub static FRAME_ALLOCATOR: SpinNoIrqLock<FrameAllocator> =
-    SpinNoIrqLock::new(FrameAllocator::DEFAULT);
+impl FrameAllocator {
+    fn init(&self, range_ppn: Range<PhysPageNum>) {
+        unsafe { *self.range_ppn.get() = range_ppn };
+    }
 
-static mut START_PPN: Option<PhysPageNum> = None;
-static mut END_PPN: Option<PhysPageNum> = None;
+    fn range_ppn(&self) -> Range<PhysPageNum> {
+        unsafe { &*self.range_ppn.get() }.clone()
+    }
+}
+
+static FRAME_ALLOCATOR: FrameAllocator = FrameAllocator {
+    range_ppn: SyncUnsafeCell::new(PhysPageNum::ZERO..PhysPageNum::ZERO),
+    allocator: SpinNoIrqLock::new(bitmap_allocator::BitAlloc16M::DEFAULT),
+};
 
 /// Initiate the frame allocator, using `VPNRange`
 pub fn init_frame_allocator(start: PhysPageNum, end: PhysPageNum) {
-    unsafe { START_PPN = Some(start) };
-    unsafe { END_PPN = Some(end) };
-    FRAME_ALLOCATOR.lock().insert(0..(end.0 - start.0));
+    FRAME_ALLOCATOR
+        .allocator
+        .lock()
+        .insert(0..(end.0 - start.0));
+    FRAME_ALLOCATOR.init(start..end);
+
     log::info!(
         "frame allocator init finshed, start {:#x}, end {:#x}",
         PhysAddr::from(start),
@@ -65,33 +83,41 @@ pub fn init_frame_allocator(start: PhysPageNum, end: PhysPageNum) {
 /// Allocate a frame
 pub fn alloc_frame_tracker() -> FrameTracker {
     FRAME_ALLOCATOR
+        .allocator
         .lock()
         .alloc()
-        .map(|u| FrameTracker::new((u + unsafe { START_PPN.unwrap().0 }).into()))
+        .map(|u| FrameTracker::new(FRAME_ALLOCATOR.range_ppn().start + u))
         .expect("frame space not enough")
 }
 
 /// Allocate contiguous frames
-/// TODO: if this function is hot used, we should change the return type. Return
-/// a vector is not efficient
 pub fn alloc_frame_trackers(size: usize) -> Vec<FrameTracker> {
-    let first_frame = FRAME_ALLOCATOR.lock().alloc_contiguous(size, 0).unwrap();
+    let first_frame = FRAME_ALLOCATOR
+        .allocator
+        .lock()
+        .alloc_contiguous(size, 0)
+        .unwrap();
 
     (first_frame..first_frame + size)
-        .map(|u| FrameTracker::new((u + unsafe { START_PPN.unwrap().0 }).into()))
+        .map(|u| FrameTracker::new(FRAME_ALLOCATOR.range_ppn().start + u))
         .collect()
 }
 
 /// Allocate contiguous frames
 pub fn alloc_frames(size: usize) -> PhysAddr {
-    let ppn =
-        (unsafe { START_PPN.unwrap() }) + FRAME_ALLOCATOR.lock().alloc_contiguous(size, 0).unwrap();
-    ppn.to_pa()
+    let ppn = FRAME_ALLOCATOR.range_ppn().start
+        + FRAME_ALLOCATOR
+            .allocator
+            .lock()
+            .alloc_contiguous(size, 0)
+            .unwrap();
+    ppn.to_paddr()
 }
 
 /// Deallocate a frame
 pub fn dealloc_frame(ppn: PhysPageNum) {
     FRAME_ALLOCATOR
+        .allocator
         .lock()
-        .dealloc(ppn.0 - unsafe { START_PPN.unwrap().0 });
+        .dealloc(ppn - FRAME_ALLOCATOR.range_ppn().start);
 }

@@ -1,19 +1,11 @@
-use alloc::{
-    boxed::Box,
-    string::{String, ToString},
-    sync::Arc,
-};
-use core::cmp;
+use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
 use config::board::BLOCK_SIZE;
-use log::debug;
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
     Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Stat, SuperBlock,
 };
-
-use crate::{Mutex, FS_MANAGER};
 
 pub struct NullDentry {
     meta: DentryMeta,
@@ -42,15 +34,15 @@ impl Dentry for NullDentry {
         }))
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SysResult<()> {
         Err(SysError::ENOTDIR)
     }
 }
@@ -108,11 +100,11 @@ impl File for NullFile {
         &self.meta
     }
 
-    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SyscallResult {
         Ok(0)
     }
 
-    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write_at(&self, _offset: usize, buf: &[u8]) -> SyscallResult {
         Ok(buf.len())
     }
 

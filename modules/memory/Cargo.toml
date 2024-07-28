@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 config = { path = "../../config/" }
 sync = { path = "../sync/" }
-arch = { path = "../../arch" }
 sbi-print = { path = "../../crates/sbi-print/" }
 
 buddy_system_allocator = "0.9"
@@ -17,6 +16,7 @@ bitflags = "2.5"
 log = "0.4"
 bitmap-allocator = { git = "https://github.com/rcore-os/bitmap-allocator", version = "0.1.0" }
 riscv = "0.11"
+crate_interface = "0.1"
 
 [features]
 default = ["buddy"]

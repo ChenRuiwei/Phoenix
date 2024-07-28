@@ -1,9 +1,8 @@
 use alloc::vec::Vec;
-use core::{cell::SyncUnsafeCell, cmp::min, hash::Hash, ops::DerefMut, task::Waker};
+use core::{cmp::min, hash::Hash, ops::DerefMut, task::Waker};
 
 use hashbrown::HashMap;
 use memory::{PhysAddr, VirtAddr};
-use numeric_enum_macro::numeric_enum;
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 use systype::{SysError, SyscallResult};

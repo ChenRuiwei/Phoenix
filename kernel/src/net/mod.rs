@@ -1,5 +1,3 @@
-use core::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-
 use systype::SysError;
 pub mod addr;
 pub mod socket;

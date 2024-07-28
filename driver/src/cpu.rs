@@ -65,6 +65,8 @@ impl DeviceManager {
             cpus.push(cpu);
         }
         log::info!("cpus: {cpus:?}");
+
         self.cpus = cpus;
+        config::board::set_harts(self.cpus.len());
     }
 }

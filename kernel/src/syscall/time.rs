@@ -173,7 +173,7 @@ impl Syscall<'_> {
                         return Ok(0);
                     }
                     let sleep = req - current;
-                    task.suspend_timeout(req).await
+                    task.suspend_timeout(sleep).await
                 } else {
                     task.suspend_timeout(req).await
                 };
@@ -216,7 +216,7 @@ impl Syscall<'_> {
         let timer_id = alloc_timer_id();
         let (old, next_expire) = task.with_mut_itimers(|itimers| {
             // only supports real itimer now
-            let mut itimer = &mut itimers[which];
+            let itimer = &mut itimers[which];
             let old = ITimerVal {
                 it_interval: itimer.interval.into(),
                 it_value: itimer
@@ -250,7 +250,7 @@ impl Syscall<'_> {
             TIMER_MANAGER.add_timer(timer);
         }
 
-        log::info!("[sys_setitimer] new: {new:?} old: {old:?}");
+        log::info!("[sys_setitimer] new ITimerVal {new} old ITimerVal {old}");
         if old_value.not_null() {
             old_value.write(&task, old)?;
         }

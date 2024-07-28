@@ -3,7 +3,7 @@ use alloc::{
     sync::{Arc, Weak},
 };
 use core::{
-    future::{Future, Pending},
+    future::Future,
     intrinsics::size_of,
     pin::Pin,
     sync::atomic::{AtomicUsize, Ordering},
@@ -14,11 +14,10 @@ use core::{
 use arch::time::get_time_duration;
 use signal::*;
 use systype::SysResult;
-use time::timeval::{ITimerVal, TimeVal};
 use timer::{Timer, TimerEvent};
 
 use super::Task;
-use crate::{mm::UserWritePtr, processor::hart::current_task_ref, task::task::TaskState};
+use crate::mm::UserWritePtr;
 
 #[derive(Clone, Copy, Default)]
 #[repr(C)]
@@ -117,7 +116,7 @@ impl Task {
         })
     }
 
-    fn notify_parent(self: &Arc<Self>, code: i32, signum: Sig) {
+    fn notify_parent(self: &Arc<Self>, code: i32, _signum: Sig) {
         let parent = self.parent().unwrap().upgrade().unwrap();
         if !parent
             .with_sig_handlers(|handlers| handlers.get(Sig::SIGCHLD))
@@ -129,12 +128,7 @@ impl Task {
                 SigInfo {
                     sig: Sig::SIGCHLD,
                     code,
-                    details: SigDetails::CHLD {
-                        pid: self.pid(),
-                        status: signum.raw() as i32 & 0x7F,
-                        utime: self.time_stat().user_time(),
-                        stime: self.time_stat().sys_time(),
-                    },
+                    details: SigDetails::None,
                 },
                 false,
             );
@@ -193,6 +187,7 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
                 };
                 // extend the signal_stack
                 // 在栈上压入一个UContext，存储trap frame里的寄存器信息
+
                 let mut new_sp = sp - size_of::<UContext>();
                 let ucontext_ptr: UserWritePtr<UContext> = new_sp.into();
                 // TODO: should increase the size of the signal_stack? It seams umi doesn't do
@@ -200,8 +195,9 @@ pub fn do_signal(task: &Arc<Task>, mut intr: bool) -> SysResult<()> {
                 let mut ucontext = UContext {
                     uc_flags: 0,
                     uc_link: 0,
-                    uc_sigmask: old_mask,
                     uc_stack: signal_stack.unwrap_or_default(),
+                    uc_sigmask: old_mask,
+                    uc_sig: [0; 16],
                     uc_mcontext: MContext {
                         user_x: cx.user_x,
                         fpstate: [0; 66],
@@ -261,12 +257,13 @@ fn terminate(task: &Arc<Task>, sig: Sig) {
     // exit all the memers of a thread group
     task.with_thread_group(|tg| {
         for t in tg.iter() {
-            t.set_zombie();
+            t.set_terminated();
         }
     });
     // 将信号放入低7位 (第8位是core dump标志,在gdb调试崩溃程序中用到)
     task.set_exit_code(sig.raw() as i32 & 0x7F);
 }
+
 fn stop(task: &Arc<Task>, sig: Sig) {
     log::warn!("[do_signal] task stopped!");
     task.with_mut_thread_group(|tg| {
@@ -322,7 +319,7 @@ impl TimerEvent for RealITimer {
     fn callback(self: Box<Self>) -> Option<Timer> {
         self.task.upgrade().map(|task| {
             task.with_mut_itimers(|itimers| {
-                let mut real = &mut itimers[0];
+                let real = &mut itimers[0];
 
                 if real.id != self.id {
                     // incarnation check fails
@@ -360,7 +357,7 @@ pub struct IntrBySignalFuture {
 impl Future for IntrBySignalFuture {
     type Output = ();
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         let has_signal = self
             .task
             .with_sig_pending(|pending| pending.has_expect_signals(!self.mask));

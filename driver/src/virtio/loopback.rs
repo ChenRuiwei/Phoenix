@@ -2,7 +2,7 @@ use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 
 use device_core::{
     error::{DevError, DevResult},
-    EthernetAddress, Medium, NetBufPtrOps, NetDriverOps,
+    DeviceCapabilities, EthernetAddress, Medium, NetBufPtrOps, NetDevice,
 };
 
 /// The loopback interface operates at the network layer and handles the packets
@@ -21,10 +21,14 @@ impl LoopbackDev {
     }
 }
 
-impl NetDriverOps for LoopbackDev {
+impl NetDevice for LoopbackDev {
     #[inline]
-    fn medium(&self) -> Medium {
-        Medium::Ip
+    fn capabilities(&self) -> DeviceCapabilities {
+        let mut cap = DeviceCapabilities::default();
+        cap.max_transmission_unit = 65535;
+        cap.max_burst_size = None;
+        cap.medium = Medium::Ip;
+        cap
     }
 
     fn mac_address(&self) -> EthernetAddress {

@@ -10,10 +10,10 @@ use smoltcp::{
     socket::tcp::{self, State},
     wire::{IpAddress, IpEndpoint, IpListenEndpoint},
 };
-use systype::{SysError, SysResult, SyscallResult};
+use systype::{SysError, SysResult};
 
 use super::{SocketSetWrapper, LISTEN_QUEUE_SIZE, SOCKET_SET};
-use crate::{addr::UNSPECIFIED_IPV6, Mutex};
+use crate::Mutex;
 
 const PORT_NUM: usize = 65536;
 

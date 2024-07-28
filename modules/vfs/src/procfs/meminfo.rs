@@ -6,7 +6,6 @@ use alloc::{
 use core::cmp;
 
 use async_trait::async_trait;
-use log::debug;
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
     Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Stat, SuperBlock,
@@ -107,15 +106,15 @@ impl Dentry for MemInfoDentry {
         }))
     }
 
-    fn base_lookup(self: Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
+    fn base_lookup(self: Arc<Self>, _name: &str) -> SysResult<Arc<dyn Dentry>> {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    fn base_create(self: Arc<Self>, _name: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
         Err(SysError::ENOTDIR)
     }
 
-    fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
+    fn base_unlink(self: Arc<Self>, _name: &str) -> SysResult<()> {
         Err(SysError::ENOTDIR)
     }
 }
@@ -125,7 +124,7 @@ pub struct MemInfoInode {
 }
 
 impl MemInfoInode {
-    pub fn new(super_block: Arc<dyn SuperBlock>, size: usize) -> Arc<Self> {
+    pub fn new(super_block: Arc<dyn SuperBlock>, _size: usize) -> Arc<Self> {
         let size = MEM_INFO.lock().serialize().len();
         Arc::new(Self {
             meta: InodeMeta::new(InodeMode::FILE, super_block, size),
@@ -181,7 +180,7 @@ impl File for MemInfoFile {
         Ok(len)
     }
 
-    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
         Err(SysError::EACCES)
     }
 

@@ -4,13 +4,14 @@ use core::{
     hash::Hash,
 };
 
-use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM};
+use config::mm::{PAGE_MASK, PAGE_SIZE, PAGE_SIZE_BITS, PAGE_TABLE_LEVEL_NUM, PTES_PER_PAGE};
+use crate_interface::call_interface;
 
-use super::{
-    impl_arithmetic_with_usize, impl_fmt, impl_step,
-    offset::{OffsetAddr, OffsetPageNum},
+use super::{impl_arithmetic_with_usize, impl_fmt, impl_step};
+use crate::{
+    address::{__KernelMappingIf_vaddr_to_paddr, VA_WIDTH_SV39, VPN_WIDTH_SV39},
+    PhysAddr, PhysPageNum,
 };
-use crate::address::{VA_WIDTH_SV39, VPN_WIDTH_SV39};
 
 /// Virtual address
 #[derive(Hash, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
@@ -73,8 +74,8 @@ impl VirtAddr {
         self.0
     }
 
-    pub fn to_offset(&self) -> OffsetAddr {
-        (*self).into()
+    pub fn to_paddr(&self) -> PhysAddr {
+        call_interface!(KernelMappingIf::vaddr_to_paddr(*self))
     }
 
     pub const fn from_usize_range(range: core::ops::Range<usize>) -> core::ops::Range<Self> {
@@ -146,12 +147,12 @@ impl From<VirtPageNum> for VirtAddr {
 }
 
 impl VirtPageNum {
-    pub fn to_va(&self) -> VirtAddr {
+    pub fn to_vaddr(&self) -> VirtAddr {
         (*self).into()
     }
 
-    pub fn to_offset(&self) -> OffsetPageNum {
-        (*self).into()
+    pub fn to_ppn(&self) -> PhysPageNum {
+        self.to_vaddr().to_paddr().floor()
     }
 
     pub fn next(&self) -> Self {
@@ -163,7 +164,7 @@ impl VirtPageNum {
         let mut vpn = self.0;
         let mut indices = [0usize; PAGE_TABLE_LEVEL_NUM];
         for i in (0..PAGE_TABLE_LEVEL_NUM).rev() {
-            indices[i] = vpn & 511;
+            indices[i] = vpn & (PTES_PER_PAGE - 1);
             vpn >>= 9;
         }
         indices
@@ -171,7 +172,7 @@ impl VirtPageNum {
 
     /// Get bytes array of a page
     pub fn bytes_array(&self) -> &'static mut [u8] {
-        let va: VirtAddr = self.to_va();
+        let va: VirtAddr = self.to_vaddr();
         unsafe { core::slice::from_raw_parts_mut(va.0 as *mut u8, PAGE_SIZE) }
     }
 }

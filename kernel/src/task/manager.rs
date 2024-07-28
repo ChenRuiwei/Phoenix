@@ -1,5 +1,5 @@
 use alloc::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     sync::{Arc, Weak},
     vec::Vec,
 };
@@ -42,6 +42,14 @@ impl TaskManager {
             Some(task) => task.upgrade(),
             None => None,
         }
+    }
+
+    pub fn tasks(&self) -> Vec<Arc<Task>> {
+        self.0
+            .lock()
+            .values()
+            .map(|t| t.upgrade().unwrap())
+            .collect()
     }
 
     pub fn for_each(&self, f: impl Fn(&Arc<Task>) -> SysResult<()>) -> SysResult<()> {

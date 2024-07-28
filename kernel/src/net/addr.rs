@@ -3,7 +3,7 @@
 //!
 //! `IpEndpoint` is host byte order
 
-use core::{net::Ipv4Addr, panic};
+use core::panic;
 
 use net::{IpAddress, IpEndpoint, Ipv4Address, Ipv6Address};
 
@@ -125,8 +125,8 @@ impl From<IpEndpoint> for SockAddrIn6 {
 impl From<IpEndpoint> for SockAddr {
     fn from(value: IpEndpoint) -> Self {
         match value.addr {
-            IpAddress::Ipv4(v4) => Self::SockAddrIn(value.into()),
-            IpAddress::Ipv6(v6) => Self::SockAddrIn6(value.into()),
+            IpAddress::Ipv4(_v4) => Self::SockAddrIn(value.into()),
+            IpAddress::Ipv6(_v6) => Self::SockAddrIn6(value.into()),
         }
     }
 }

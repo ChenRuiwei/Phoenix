@@ -47,6 +47,7 @@ TEST_DIR := ./testcase/$(TEST)
 export STRACE := 
 export SMP :=
 export PREEMPT :=
+export DEBUG :=
 
 # Args
 DISASM_ARGS = -d

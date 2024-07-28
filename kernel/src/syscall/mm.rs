@@ -1,11 +1,10 @@
-use arch::memory::sfence_vma_vaddr;
 use config::mm::{is_aligned_to_page, PAGE_MASK};
-use memory::{page_table, VirtAddr};
+use memory::VirtAddr;
 use systype::{SysError, SyscallResult};
 
 use super::Syscall;
 use crate::{
-    ipc::shm::{SharedMemory, ShmIdDs, SHARED_MEMORY_KEY_ALLOCATOR, SHARED_MEMORY_MANAGER},
+    ipc::shm::{SharedMemory, SHARED_MEMORY_KEY_ALLOCATOR, SHARED_MEMORY_MANAGER},
     mm::{memory_space::vm_area::MapPerm, UserWritePtr},
 };
 
@@ -364,7 +363,7 @@ impl Syscall<'_> {
         const IPC_STAT: i32 = 2;
         match cmd {
             IPC_STAT => {
-                let mut shm_manager = SHARED_MEMORY_MANAGER.0.lock();
+                let shm_manager = SHARED_MEMORY_MANAGER.0.lock();
                 if let Some(shm) = shm_manager.get(&shmid) {
                     let buf = UserWritePtr::from(buf);
                     buf.write(&self.task, shm.shmid_ds)?;

@@ -1,5 +1,4 @@
 use alloc::sync::Arc;
-use core::fmt::Error;
 
 use systype::{SysError, SysResult};
 use vfs_core::{Dentry, DentryMeta, File, Inode, InodeMode, InodeType, SuperBlock};

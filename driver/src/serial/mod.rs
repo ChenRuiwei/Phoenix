@@ -11,7 +11,7 @@ use core::{
 use async_trait::async_trait;
 use async_utils::{block_on, get_waker};
 use config::{board::UART_BUF_LEN, mm::VIRT_RAM_OFFSET};
-use device_core::{BaseDriverOps, DevId, DeviceMajor, DeviceMeta, DeviceType};
+use device_core::{Device, DevId, DeviceMajor, DeviceMeta, DeviceType};
 use fdt::Fdt;
 use macro_utils::with_methods;
 use memory::pte::PTEFlags;
@@ -38,8 +38,8 @@ pub struct Serial {
 }
 
 pub struct SerialInner {
-    read_buf: RingBuffer, // Hard-coded buffer size
-    /// Hold waker of pollin tasks.
+    read_buf: RingBuffer,
+    /// Hold wakers of pollin tasks.
     pollin_queue: VecDeque<Waker>,
 }
 
@@ -83,7 +83,7 @@ impl fmt::Debug for Serial {
     }
 }
 
-impl BaseDriverOps for Serial {
+impl Device for Serial {
     fn meta(&self) -> &DeviceMeta {
         &self.meta
     }
@@ -95,20 +95,18 @@ impl BaseDriverOps for Serial {
     fn handle_irq(&self) {
         let uart = self.uart();
         self.with_mut_inner(|inner| {
-            let read_buf = &mut inner.read_buf;
-            let pollin_queue = &mut inner.pollin_queue;
             while uart.poll_in() {
                 let byte = uart.getc();
                 log::info!(
                     "Serial interrupt handler got byte: {}",
                     core::str::from_utf8(&[byte]).unwrap()
                 );
-                if read_buf.enqueue(byte).is_none() {
+                if inner.read_buf.enqueue(byte).is_none() {
                     break;
                 }
             }
             // Round Robin
-            if let Some(waiting) = pollin_queue.pop_front() {
+            if let Some(waiting) = inner.pollin_queue.pop_front() {
                 waiting.wake();
             }
         });
@@ -120,8 +118,7 @@ impl CharDevice for Serial {
     async fn read(&self, buf: &mut [u8]) -> usize {
         let mut len = 0;
         self.with_mut_inner(|inner| {
-            let read_buf = &mut inner.read_buf;
-            len = read_buf.read(buf);
+            len = inner.read_buf.read(buf);
         });
         let uart = self.uart();
         while uart.poll_in() && len < buf.len() {

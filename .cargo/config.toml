@@ -10,6 +10,10 @@ git = "https://github.com/ChenRuiwei/rust-fatfs"
 branch = "smp"
 replace-with = "vendored-sources"
 
+[source."git+https://github.com/Stone749990226/smoltcp.git"]
+git = "https://github.com/Stone749990226/smoltcp.git"
+replace-with = "vendored-sources"
+
 [source."git+https://github.com/rcore-os/bitmap-allocator"]
 git = "https://github.com/rcore-os/bitmap-allocator"
 replace-with = "vendored-sources"

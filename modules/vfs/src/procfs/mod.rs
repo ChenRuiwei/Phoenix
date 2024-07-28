@@ -4,8 +4,8 @@ mod mounts;
 use alloc::sync::Arc;
 
 use async_utils::block_on;
-use device_core::BlockDriverOps;
-use systype::{SysResult, SyscallResult};
+use device_core::BlockDevice;
+use systype::SysResult;
 use vfs_core::{
     Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, MountFlags, SuperBlock, SuperBlockMeta,
 };
@@ -14,10 +14,7 @@ use self::{
     meminfo::{MemInfoDentry, MemInfoInode},
     mounts::{MountsDentry, MountsInode},
 };
-use crate::simplefs::{
-    dentry::{self, SimpleDentry},
-    inode::{SimpleDirInode, SimpleFileInode},
-};
+use crate::simplefs::{dentry::SimpleDentry, inode::SimpleDirInode};
 
 pub fn init_procfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
     let mem_info_dentry = MemInfoDentry::new(
@@ -73,8 +70,8 @@ impl FileSystemType for ProcFsType {
         self: Arc<Self>,
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
-        flags: MountFlags,
-        dev: Option<Arc<dyn BlockDriverOps>>,
+        _flags: MountFlags,
+        dev: Option<Arc<dyn BlockDevice>>,
     ) -> SysResult<Arc<dyn Dentry>> {
         let sb = ProcSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
@@ -87,7 +84,7 @@ impl FileSystemType for ProcFsType {
         Ok(mount_dentry)
     }
 
-    fn kill_sb(&self, sb: Arc<dyn SuperBlock>) -> SysResult<()> {
+    fn kill_sb(&self, _sb: Arc<dyn SuperBlock>) -> SysResult<()> {
         todo!()
     }
 }
@@ -98,7 +95,7 @@ pub struct ProcSuperBlock {
 
 impl ProcSuperBlock {
     pub fn new(
-        device: Option<Arc<dyn BlockDriverOps>>,
+        device: Option<Arc<dyn BlockDevice>>,
         fs_type: Arc<dyn FileSystemType>,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -116,7 +113,7 @@ impl SuperBlock for ProcSuperBlock {
         todo!()
     }
 
-    fn sync_fs(&self, wait: isize) -> SysResult<()> {
+    fn sync_fs(&self, _wait: isize) -> SysResult<()> {
         todo!()
     }
 }

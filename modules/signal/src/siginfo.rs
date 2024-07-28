@@ -1,5 +1,3 @@
-use core::time::Duration;
-
 use crate::sigset::Sig;
 
 #[derive(Clone, Copy, Debug)]
@@ -17,14 +15,6 @@ pub enum SigDetails {
     Kill {
         /// sender's pid
         pid: usize,
-    },
-    CHLD {
-        /// which child
-        pid: usize,
-        /// exit code
-        status: i32,
-        utime: Duration,
-        stime: Duration,
     },
 }
 

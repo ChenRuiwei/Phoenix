@@ -1,16 +1,16 @@
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use core::ops::{Range, RangeBounds};
 
-use arch::{memory::sfence_vma_vaddr, sstatus};
+use arch::memory::sfence_vma_vaddr;
 use async_utils::block_on;
-use config::mm::{align_offset_to_page, round_down_to_page, PAGE_SIZE};
+use config::mm::{round_down_to_page, PAGE_SIZE};
 use memory::{pte::PTEFlags, VirtAddr, VirtPageNum};
 use page::Page;
 use systype::{SysError, SysResult};
 use vfs_core::File;
 
 use crate::{
-    mm::{PageFaultAccessType, PageTable, UserSlice},
+    mm::{PageFaultAccessType, PageTable},
     processor::env::SumGuard,
     syscall::MmapFlags,
 };
@@ -239,25 +239,24 @@ impl VmArea {
     pub fn set_perm_and_flush(&mut self, page_table: &mut PageTable, perm: MapPerm) {
         self.set_perm(perm);
         let pte_flags = perm.into();
-        let range_vpn = self.range_vpn();
         // NOTE: should flush pages that already been allocated, page fault handler will
         // handle the permission of those unallocated pages
         for &vpn in self.pages.keys() {
-            let pte = page_table.find_pte(vpn).unwrap();
+            let pte = page_table.find_leaf_pte(vpn).unwrap();
             log::trace!(
                 "[origin pte:{:?}, new_flag:{:?}]",
                 pte.flags(),
                 pte.flags().union(pte_flags)
             );
             pte.set_flags(pte.flags().union(pte_flags));
-            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
         }
     }
 
-    pub fn flush(&mut self, page_table: &mut PageTable) {
+    pub fn flush(&mut self) {
         let range_vpn = self.range_vpn();
         for vpn in range_vpn {
-            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
         }
     }
 
@@ -283,7 +282,7 @@ impl VmArea {
         for vpn in range_vpn {
             let page = Page::new();
             page_table.map(vpn, page.ppn(), pte_flags);
-            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
             self.pages.insert(vpn, page);
         }
     }
@@ -292,7 +291,7 @@ impl VmArea {
         let vpns: Vec<_> = self.pages.keys().cloned().collect();
         for vpn in vpns {
             page_table.unmap(vpn);
-            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
             self.pages.remove(&vpn);
         }
     }
@@ -319,7 +318,7 @@ impl VmArea {
         while start < len {
             let src = &data[start..len.min(start + PAGE_SIZE - offset)];
             let dst = page_table
-                .find_pte(current_vpn)
+                .find_leaf_pte(current_vpn)
                 .unwrap()
                 .ppn()
                 .bytes_array_range(offset..offset + src.len());
@@ -330,14 +329,9 @@ impl VmArea {
         }
     }
 
-    pub fn split(
-        mut self,
-        split_range: Range<VirtAddr>,
-    ) -> (Option<Self>, Option<Self>, Option<Self>) {
+    pub fn split(self, split_range: Range<VirtAddr>) -> (Option<Self>, Option<Self>, Option<Self>) {
         debug_assert!(split_range.start.is_aligned() && split_range.end.is_aligned());
         debug_assert!(split_range.start >= self.start_va() && split_range.end <= self.end_va());
-        let start_vpn: VirtPageNum = split_range.start.into();
-        let end_vpn: VirtPageNum = split_range.end.into();
         let (mut left, mut middle, mut right) = (None, None, None);
         let (left_range, middle_range, right_range) = (
             self.start_va()..split_range.start,
@@ -396,7 +390,7 @@ impl VmArea {
     ) -> SysResult<()> {
         log::debug!(
             "[VmArea::handle_page_fault] {self:?}, {vpn:?} at page table {:?}",
-            page_table.root_ppn
+            page_table.root_ppn()
         );
 
         if !access_type.can_access(self.perm()) {
@@ -408,7 +402,7 @@ impl VmArea {
         }
 
         let page: Arc<Page>;
-        let pte = page_table.find_pte(vpn);
+        let pte = page_table.find_leaf_pte(vpn);
         if let Some(pte) = pte {
             // if PTE is valid, then it must be COW
             log::debug!("[VmArea::handle_page_fault] pte flags: {:?}", pte.flags());
@@ -437,7 +431,7 @@ impl VmArea {
                 page_table.map_force(vpn, page.ppn(), pte_flags);
                 // NOTE: track `Page` with great care
                 self.pages.insert(vpn, page);
-                unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
             } else {
                 // not shared
                 log::debug!("[VmArea::handle_page_fault] removing cow flag for page {old_page:?}",);
@@ -446,7 +440,7 @@ impl VmArea {
                 pte_flags.remove(PTEFlags::COW);
                 pte_flags.insert(PTEFlags::W);
                 pte.set_flags(pte_flags);
-                unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
             }
         } else {
             log::debug!(
@@ -460,7 +454,7 @@ impl VmArea {
                     page.fill_zero();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, page);
-                    unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                    unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                 }
                 VmAreaType::Mmap => {
                     if !self.mmap_flags.contains(MmapFlags::MAP_ANONYMOUS) {
@@ -473,7 +467,7 @@ impl VmArea {
                                 .unwrap();
                             page_table.map(vpn, page.ppn(), self.map_perm.into());
                             self.pages.insert(vpn, page);
-                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                         } else {
                             let page = block_on(async { file.get_page_at(offset_aligned).await })?
                                 .unwrap();
@@ -485,7 +479,7 @@ impl VmArea {
                             };
                             page_table.map(vpn, ppn, pte_flags);
                             self.pages.insert(vpn, page);
-                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                         }
                     } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
                         if self.mmap_flags.contains(MmapFlags::MAP_SHARED) {
@@ -496,7 +490,7 @@ impl VmArea {
                             page.fill_zero();
                             page_table.map(vpn, page.ppn(), self.map_perm.into());
                             self.pages.insert(vpn, page);
-                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                         }
                     }
                 }

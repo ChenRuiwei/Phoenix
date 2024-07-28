@@ -3,11 +3,8 @@
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 use arch::interrupts::{disable_interrupt, enable_external_interrupt};
-use config::{
-    mm::{DTB_ADDR, K_SEG_DTB_BEG, VIRT_RAM_OFFSET},
-    processor::MAX_HARTS,
-};
-use device_core::{BaseDriverOps, DevId};
+use config::{board, mm::K_SEG_DTB_BEG};
+use device_core::{Device, DevId};
 use log::{info, warn};
 
 use crate::{cpu::CPU, plic::PLIC, println};
@@ -17,9 +14,9 @@ pub struct DeviceManager {
     pub cpus: Vec<CPU>,
     /// net device is excluded from `device`. It is owned by `InterfaceWrapper`
     /// in `net` module
-    pub devices: BTreeMap<DevId, Arc<dyn BaseDriverOps>>,
+    pub devices: BTreeMap<DevId, Arc<dyn Device>>,
     /// irq_no -> device.
-    pub irq_map: BTreeMap<usize, Arc<dyn BaseDriverOps>>,
+    pub irq_map: BTreeMap<usize, Arc<dyn Device>>,
 }
 
 impl DeviceManager {
@@ -69,16 +66,16 @@ impl DeviceManager {
         self.plic.as_ref().unwrap()
     }
 
-    pub fn get(&self, dev_id: &DevId) -> Option<&Arc<dyn BaseDriverOps>> {
+    pub fn get(&self, dev_id: &DevId) -> Option<&Arc<dyn Device>> {
         self.devices.get(dev_id)
     }
 
-    pub fn devices(&self) -> &BTreeMap<DevId, Arc<dyn BaseDriverOps>> {
+    pub fn devices(&self) -> &BTreeMap<DevId, Arc<dyn Device>> {
         &self.devices
     }
 
     pub fn enable_device_interrupts(&mut self) {
-        for i in 0..MAX_HARTS * 2 {
+        for i in 0..board::harts() * 2 {
             for dev in self.devices.values() {
                 if let Some(irq) = dev.irq_no() {
                     self.plic().enable_irq(irq, i);

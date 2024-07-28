@@ -6,8 +6,8 @@ use core::{
     time::Duration,
 };
 
-use arch::time::{get_time_duration, get_time_us};
-use async_utils::{get_waker, suspend_now, yield_now};
+use arch::time::get_time_duration;
+use async_utils::{get_waker, suspend_now};
 use timer::{Timer, TIMER_MANAGER};
 
 use super::Task;
@@ -79,12 +79,18 @@ impl<F: Future<Output = ()> + Send + 'static> Future for KernelTaskFuture<F> {
 pub async fn task_loop(task: Arc<Task>) {
     *task.waker() = Some(get_waker().await);
     loop {
+        match task.state() {
+            Terminated => break,
+            Stopped => suspend_now().await,
+            _ => {}
+        }
+
         trap::user_trap::trap_return(&task);
 
-        // task may be set to zombie by other task, e.g. execve will kill other tasks in
-        // the same thread group
+        // task may be set to terminated by other task, e.g. execve will kill other
+        // tasks in the same thread group
         match task.state() {
-            Zombie => break,
+            Terminated => break,
             Stopped => suspend_now().await,
             _ => {}
         }
@@ -92,7 +98,7 @@ pub async fn task_loop(task: Arc<Task>) {
         let intr = trap::user_trap::trap_handler(&task).await;
 
         match task.state() {
-            Zombie => break,
+            Terminated => break,
             Stopped => suspend_now().await,
             _ => {}
         }

@@ -1,9 +1,4 @@
-use core::{
-    fmt,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-};
-
-use smoltcp::wire::{IpAddress, IpEndpoint, Ipv4Address, Ipv6Address};
+use smoltcp::wire::{IpAddress, IpEndpoint, Ipv6Address};
 
 pub fn is_unspecified(ip: IpAddress) -> bool {
     ip.as_bytes() == [0, 0, 0, 0] || ip.as_bytes() == [0, 0, 0, 0, 0, 0]

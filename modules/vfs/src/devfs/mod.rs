@@ -1,10 +1,8 @@
 use alloc::sync::Arc;
 
-use device_core::BlockDriverOps;
+use device_core::BlockDevice;
 use systype::SysResult;
-use vfs_core::{
-    Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, Path, SuperBlock, SuperBlockMeta,
-};
+use vfs_core::{Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, SuperBlock, SuperBlockMeta};
 
 use self::{
     cpu_dma_latency::{CpuDmaLatencyDentry, CpuDmaLatencyInode},
@@ -12,15 +10,9 @@ use self::{
     rtc::{RtcDentry, RtcInode},
     tty::{TtyDentry, TtyFile, TtyInode, TTY},
     urandom::{UrandomDentry, UrandomInode},
-    zero::{ZeroDentry, ZeroFile, ZeroInode},
+    zero::{ZeroDentry, ZeroInode},
 };
-use crate::{
-    simplefs::{
-        dentry::SimpleDentry,
-        inode::{SimpleDirInode, SimpleFileInode},
-    },
-    sys_root_dentry,
-};
+use crate::simplefs::{dentry::SimpleDentry, inode::SimpleDirInode};
 
 mod cpu_dma_latency;
 mod null;
@@ -97,7 +89,7 @@ impl FileSystemType for DevFsType {
         name: &str,
         parent: Option<Arc<dyn Dentry>>,
         _flags: vfs_core::MountFlags,
-        dev: Option<alloc::sync::Arc<dyn BlockDriverOps>>,
+        dev: Option<alloc::sync::Arc<dyn BlockDevice>>,
     ) -> systype::SysResult<alloc::sync::Arc<dyn vfs_core::Dentry>> {
         let sb = DevSuperBlock::new(dev, self.clone());
         let mount_dentry = SimpleDentry::new(name, sb.clone(), parent.clone());
@@ -121,7 +113,7 @@ struct DevSuperBlock {
 
 impl DevSuperBlock {
     pub fn new(
-        device: Option<Arc<dyn BlockDriverOps>>,
+        device: Option<Arc<dyn BlockDevice>>,
         fs_type: Arc<dyn FileSystemType>,
     ) -> Arc<Self> {
         Arc::new(Self {
