@@ -27,7 +27,7 @@ fn main() {
 
 fn insert_app_data() -> Result<()> {
     let mut target_path: String = String::from("./target/riscv64gc-unknown-none-elf/");
-    let mode = option_env!("MODE").unwrap_or("debug");
+    let mode = option_env!("MODE").unwrap_or("release");
     target_path.push_str(mode);
     target_path.push('/');
     let mut f = File::create("src/link_app.asm").unwrap();

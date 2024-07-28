@@ -11,7 +11,7 @@ use user_lib::{execve, fork, wait, waitpid};
 #[macro_use]
 extern crate user_lib;
 
-const TESTCASES: [&str; 10] = [
+const TESTCASES: [&str; 52] = [
     "time-test",
     "busybox_testcode.sh",
     "lua_testcode.sh",
@@ -22,6 +22,48 @@ const TESTCASES: [&str; 10] = [
     "unixbench_testcode.sh",
     "lmbench_testcode.sh",
     "cyclictest_testcode.sh",
+    "./test-ltp.sh ltp/testcases/bin/abs01",
+    "./test-ltp.sh ltp/testcases/bin/read01",
+    "./test-ltp.sh ltp/testcases/bin/write01",
+    "./test-ltp.sh ltp/testcases/bin/chdir04",
+    "./test-ltp.sh ltp/testcases/bin/chmod01",
+    "./test-ltp.sh ltp/testcases/bin/chown01",
+    "./test-ltp.sh ltp/testcases/bin/chown02",
+    "./test-ltp.sh ltp/testcases/bin/clock_gettime02",
+    "./test-ltp.sh ltp/testcases/bin/close01",
+    "./test-ltp.sh ltp/testcases/bin/close02",
+    "./test-ltp.sh ltp/testcases/bin/creat01",
+    "./test-ltp.sh ltp/testcases/bin/creat03",
+    "./test-ltp.sh ltp/testcases/bin/creat05",
+    "./test-ltp.sh ltp/testcases/bin/dup01",
+    "./test-ltp.sh ltp/testcases/bin/dup02",
+    "./test-ltp.sh ltp/testcases/bin/dup03",
+    "./test-ltp.sh ltp/testcases/bin/dup3_01",
+    "./test-ltp.sh ltp/testcases/bin/dup3_02",
+    "./test-ltp.sh ltp/testcases/bin/dup04",
+    "./test-ltp.sh ltp/testcases/bin/dup06",
+    "./test-ltp.sh ltp/testcases/bin/dup07",
+    "./test-ltp.sh ltp/testcases/bin/dup201",
+    "./test-ltp.sh ltp/testcases/bin/dup202",
+    "./test-ltp.sh ltp/testcases/bin/dup203",
+    "./test-ltp.sh ltp/testcases/bin/dup204",
+    "./test-ltp.sh ltp/testcases/bin/dup205",
+    "./test-ltp.sh ltp/testcases/bin/dup206",
+    "./test-ltp.sh ltp/testcases/bin/dup207",
+    "./test-ltp.sh ltp/testcases/bin/gettid02",
+    "./test-ltp.sh ltp/testcases/bin/getuid01",
+    "./test-ltp.sh ltp/testcases/bin/kill03",
+    "./test-ltp.sh ltp/testcases/bin/kill06",
+    "./test-ltp.sh ltp/testcases/bin/kill08",
+    "./test-ltp.sh ltp/testcases/bin/open01",
+    "./test-ltp.sh ltp/testcases/bin/open03",
+    "./test-ltp.sh ltp/testcases/bin/open04",
+    "./test-ltp.sh ltp/testcases/bin/open06",
+    "./test-ltp.sh ltp/testcases/bin/page01",
+    "./test-ltp.sh ltp/testcases/bin/page02",
+    "./test-ltp.sh ltp/testcases/bin/pipe01",
+    "./test-ltp.sh ltp/testcases/bin/pipe02",
+    "./test-ltp.sh ltp/testcases/bin/pipe03",
 ];
 
 fn run_cmd(cmd: &str) {
@@ -42,7 +84,7 @@ fn run_cmd(cmd: &str) {
 
 #[no_mangle]
 fn main() -> i32 {
-    // run_cmd("busybox touch sort.src");
+    run_cmd("busybox touch sort.src");
     run_cmd("busybox cp /lib/dlopen_dso.so dlopen_dso.so");
     if fork() == 0 {
         for test in TESTCASES {
