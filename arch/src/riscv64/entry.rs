@@ -1,5 +1,5 @@
 use config::{
-    mm::{KERNEL_STACK_SIZE, PAGE_SIZE, PTE_NUM_IN_ONE_PAGE, PTE_SIZE, VIRT_RAM_OFFSET},
+    mm::{KERNEL_STACK_SIZE, PAGE_SIZE, PTES_PER_PAGE, PTE_SIZE, VIRT_RAM_OFFSET},
     processor::MAX_HARTS,
 };
 
@@ -7,7 +7,7 @@ use config::{
 static mut BOOT_STACK: [u8; KERNEL_STACK_SIZE * MAX_HARTS] = [0u8; KERNEL_STACK_SIZE * MAX_HARTS];
 
 #[repr(C, align(4096))]
-struct BootPageTable([u64; PTE_NUM_IN_ONE_PAGE]);
+struct BootPageTable([u64; PTES_PER_PAGE]);
 
 static mut BOOT_PAGE_TABLE: BootPageTable = {
     let mut arr: [u64; 512] = [0; 512];

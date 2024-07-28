@@ -69,7 +69,7 @@ impl PageTable {
             frames: Vec::new(),
         };
         let leaf_pte = page_table.find_leaf_pte(vaddr.floor()).unwrap();
-        let paddr = leaf_pte.ppn().to_pa() + vaddr.page_offset();
+        let paddr = leaf_pte.ppn().to_paddr() + vaddr.page_offset();
         paddr
     }
 
@@ -92,6 +92,8 @@ impl PageTable {
             }
             ppn = pte.ppn();
         }
+        // log::error!("{idxs:?}");
+        // log::error!("{:?}", ppn.pte_array());
         return ppn.pte(idxs[2]);
     }
 
@@ -129,9 +131,9 @@ impl PageTable {
     }
 
     pub fn map_kernel_region(&mut self, range_va: Range<VirtAddr>, flags: PTEFlags) {
-        let range_vpn = range_va.start.floor()..range_va.end.ceil();
+        let range_vpn = range_va.start.floor()..range_va.end.floor();
         for vpn in range_vpn {
-            self.map(vpn, vpn.to_offset().to_ppn(), flags);
+            self.map(vpn, vpn.to_ppn(), flags);
         }
     }
 
@@ -154,7 +156,7 @@ impl PageTable {
     /// Linux also has this function
     pub fn ioremap(&mut self, phys_addr: usize, size: usize, flags: PTEFlags) {
         let mut vpn = VirtAddr::from(phys_addr + VIRT_RAM_OFFSET).floor();
-        let mut ppn = vpn.to_offset().to_ppn();
+        let mut ppn = vpn.to_ppn();
         let mut size = size as isize;
         while size > 0 {
             self.map(vpn, ppn, flags);

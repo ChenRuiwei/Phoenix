@@ -250,14 +250,14 @@ impl VmArea {
                 pte.flags().union(pte_flags)
             );
             pte.set_flags(pte.flags().union(pte_flags));
-            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
         }
     }
 
     pub fn flush(&mut self, page_table: &mut PageTable) {
         let range_vpn = self.range_vpn();
         for vpn in range_vpn {
-            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
         }
     }
 
@@ -283,7 +283,7 @@ impl VmArea {
         for vpn in range_vpn {
             let page = Page::new();
             page_table.map(vpn, page.ppn(), pte_flags);
-            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
             self.pages.insert(vpn, page);
         }
     }
@@ -292,7 +292,7 @@ impl VmArea {
         let vpns: Vec<_> = self.pages.keys().cloned().collect();
         for vpn in vpns {
             page_table.unmap(vpn);
-            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
             self.pages.remove(&vpn);
         }
     }
@@ -437,7 +437,7 @@ impl VmArea {
                 page_table.map_force(vpn, page.ppn(), pte_flags);
                 // NOTE: track `Page` with great care
                 self.pages.insert(vpn, page);
-                unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
             } else {
                 // not shared
                 log::debug!("[VmArea::handle_page_fault] removing cow flag for page {old_page:?}",);
@@ -446,7 +446,7 @@ impl VmArea {
                 pte_flags.remove(PTEFlags::COW);
                 pte_flags.insert(PTEFlags::W);
                 pte.set_flags(pte_flags);
-                unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
             }
         } else {
             log::debug!(
@@ -460,7 +460,7 @@ impl VmArea {
                     page.fill_zero();
                     page_table.map(vpn, page.ppn(), self.map_perm.into());
                     self.pages.insert(vpn, page);
-                    unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                    unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                 }
                 VmAreaType::Mmap => {
                     if !self.mmap_flags.contains(MmapFlags::MAP_ANONYMOUS) {
@@ -473,7 +473,7 @@ impl VmArea {
                                 .unwrap();
                             page_table.map(vpn, page.ppn(), self.map_perm.into());
                             self.pages.insert(vpn, page);
-                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                         } else {
                             let page = block_on(async { file.get_page_at(offset_aligned).await })?
                                 .unwrap();
@@ -485,7 +485,7 @@ impl VmArea {
                             };
                             page_table.map(vpn, ppn, pte_flags);
                             self.pages.insert(vpn, page);
-                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                         }
                     } else if self.mmap_flags.contains(MmapFlags::MAP_PRIVATE) {
                         if self.mmap_flags.contains(MmapFlags::MAP_SHARED) {
@@ -496,7 +496,7 @@ impl VmArea {
                             page.fill_zero();
                             page_table.map(vpn, page.ppn(), self.map_perm.into());
                             self.pages.insert(vpn, page);
-                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                         }
                     }
                 }

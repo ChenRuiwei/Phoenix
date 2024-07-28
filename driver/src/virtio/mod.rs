@@ -35,10 +35,7 @@ unsafe impl virtio_drivers::Hal for VirtioHalImpl {
         for ppn in ppn..ppn + pages {
             ppn.clear_page();
         }
-        (
-            pa.0,
-            NonNull::new(pa.to_offset().to_va().as_mut_ptr()).unwrap(),
-        )
+        (pa.0, NonNull::new(pa.to_vaddr().as_mut_ptr()).unwrap())
     }
 
     unsafe fn dma_dealloc(
@@ -56,7 +53,7 @@ unsafe impl virtio_drivers::Hal for VirtioHalImpl {
     }
 
     unsafe fn mmio_phys_to_virt(paddr: virtio_drivers::PhysAddr, _size: usize) -> NonNull<u8> {
-        NonNull::new(PhysAddr::from(paddr).to_offset().to_va().as_mut_ptr()).unwrap()
+        NonNull::new(PhysAddr::from(paddr).to_vaddr().as_mut_ptr()).unwrap()
     }
 
     unsafe fn share(

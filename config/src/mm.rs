@@ -29,7 +29,7 @@ pub const PAGE_SIZE_BITS: usize = 12;
 pub const MMAP_PRE_ALLOC_PAGES: usize = 8;
 
 pub const PTE_SIZE: usize = 8;
-pub const PTE_NUM_IN_ONE_PAGE: usize = PAGE_SIZE / PTE_SIZE;
+pub const PTES_PER_PAGE: usize = PAGE_SIZE / PTE_SIZE;
 
 /// 3 level for sv39 page table
 pub const PAGE_TABLE_LEVEL_NUM: usize = 3;

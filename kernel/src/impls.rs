@@ -2,10 +2,11 @@
 
 use alloc::{fmt, string::ToString};
 
+use config::mm::VIRT_RAM_OFFSET;
 use driver::KernelPageTableIf;
 use log::Level;
 use logging::{level_to_color_code, ColorCode, LogIf};
-use memory::PageTable;
+use memory::{KernelMappingIf, PageTable, PhysAddr, VirtAddr};
 use net::HasSignalIf;
 
 use crate::{
@@ -79,5 +80,22 @@ impl HasSignalIf for HasSignalIfImpl {
         let task = current_task_ref();
         let mask = *task.sig_mask_ref();
         task.with_sig_pending(|pending| pending.has_expect_signals(!mask))
+    }
+}
+
+struct KernelMappingIfImpl;
+
+#[crate_interface::impl_interface]
+impl KernelMappingIf for KernelMappingIfImpl {
+    fn paddr_to_vaddr(paddr: PhysAddr) -> VirtAddr {
+        (paddr.bits() + VIRT_RAM_OFFSET).into()
+    }
+
+    fn vaddr_to_paddr(vaddr: VirtAddr) -> PhysAddr {
+        if vaddr.bits() >= VIRT_RAM_OFFSET {
+            (vaddr.bits() - VIRT_RAM_OFFSET).into()
+        } else {
+            PageTable::vaddr_to_paddr(vaddr)
+        }
     }
 }

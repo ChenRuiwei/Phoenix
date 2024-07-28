@@ -180,7 +180,7 @@ impl MemorySpace {
                             self.page_table_mut()
                                 .map(vpn, new_page.ppn(), map_perm.into());
                             vm_area.pages.insert(vpn, new_page);
-                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                         } else {
                             let (pte_flags, ppn) = {
                                 let mut new_flags: PTEFlags = map_perm.into();
@@ -190,7 +190,7 @@ impl MemorySpace {
                             };
                             self.page_table_mut().map(vpn, ppn, pte_flags);
                             vm_area.pages.insert(vpn, page);
-                            unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                            unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                         }
                         pre_alloc_page_cnt += 1;
                     } else {
@@ -460,30 +460,6 @@ impl MemorySpace {
         }
     }
 
-    /// Clone a same `MemorySpace` from another user space, including datas in
-    /// memory.
-    pub fn from_user(user_space: &Self) -> Self {
-        let mut memory_space = Self::new_user();
-        for (range, area) in user_space.areas().iter() {
-            let new_area = VmArea::from_another(area);
-            debug_assert_eq!(range, new_area.range_va());
-            memory_space.push_vma(new_area);
-            // copy data from another space
-            for vpn in area.range_vpn() {
-                if let Some(pte) = user_space.page_table().find_leaf_pte(vpn) {
-                    let src_ppn = pte.ppn();
-                    let dst_ppn = memory_space
-                        .page_table_mut()
-                        .find_leaf_pte(vpn)
-                        .unwrap()
-                        .ppn();
-                    dst_ppn.bytes_array().copy_from_slice(src_ppn.bytes_array());
-                }
-            }
-        }
-        memory_space
-    }
-
     /// Clone a same `MemorySpace` lazily.
     pub fn from_user_lazily(user_space: &mut Self) -> Self {
         let mut memory_space = Self::new_user();
@@ -624,11 +600,11 @@ impl MemorySpace {
                     };
                     page_table.map(vpn, ppn, pte_flags);
                     vma.pages.insert(vpn, page);
-                    unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                    unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                 } else {
                     page_table.map(vpn, page.ppn(), perm.into());
                     vma.pages.insert(vpn, page);
-                    unsafe { sfence_vma_vaddr(vpn.to_va().into()) };
+                    unsafe { sfence_vma_vaddr(vpn.to_vaddr().into()) };
                 }
             } else {
                 break;
@@ -766,7 +742,7 @@ impl MemorySpace {
             );
 
             for vpn in area.range_vpn() {
-                let vaddr = vpn.to_va();
+                let vaddr = vpn.to_vaddr();
                 if will_read_fail(vaddr.bits()) {
                     // log::debug!("{:<8x}: unmapped", vpn);
                 } else {
@@ -791,7 +767,7 @@ impl MemorySpace {
             .page_table()
             .find_leaf_pte(va.floor())
             .expect("[va2pa] error");
-        pte.ppn().to_pa() + va.page_offset()
+        pte.ppn().to_paddr() + va.page_offset()
     }
 }
 

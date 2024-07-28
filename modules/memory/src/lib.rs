@@ -5,6 +5,7 @@
 #![feature(stdsimd)]
 #![feature(riscv_ext_intrinsics)]
 #![feature(step_trait)]
+#![feature(sync_unsafe_cell)]
 
 extern crate alloc;
 
