@@ -412,6 +412,7 @@ dependencies = [
  "recycle-allocator",
  "riscv",
  "sbi-print",
+ "sbi-rt",
  "signal",
  "spin",
  "strum",

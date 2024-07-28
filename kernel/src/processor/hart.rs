@@ -2,7 +2,7 @@ use alloc::sync::Arc;
 use core::arch::asm;
 
 use arch::interrupts::{disable_interrupt, enable_interrupt};
-use config::processor::MAX_HARTS;
+use config::board::MAX_HARTS;
 use riscv::register::sstatus::{self, FS};
 
 use super::env::EnvContext;

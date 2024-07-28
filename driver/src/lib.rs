@@ -23,14 +23,12 @@ use sbi_print::SbiStdout;
 use spin::Once;
 use sync::mutex::{SpinLock, SpinNoIrqLock};
 
-use self::sbi::console_putchar;
 use crate::serial::{Serial, UART0};
 
 mod cpu;
 mod manager;
 pub mod net;
 mod plic;
-pub mod sbi;
 pub mod serial;
 pub mod virtio;
 

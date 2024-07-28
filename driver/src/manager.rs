@@ -3,7 +3,7 @@
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 use arch::interrupts::{disable_interrupt, enable_external_interrupt};
-use config::{mm::K_SEG_DTB_BEG, processor::MAX_HARTS};
+use config::{board, mm::K_SEG_DTB_BEG};
 use device_core::{BaseDriverOps, DevId};
 use log::{info, warn};
 
@@ -75,7 +75,7 @@ impl DeviceManager {
     }
 
     pub fn enable_device_interrupts(&mut self) {
-        for i in 0..MAX_HARTS * 2 {
+        for i in 0..board::harts() * 2 {
             for dev in self.devices.values() {
                 if let Some(irq) = dev.irq_no() {
                     self.plic().enable_irq(irq, i);

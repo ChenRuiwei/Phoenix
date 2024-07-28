@@ -85,7 +85,7 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
         });
 
         #[cfg(feature = "smp")]
-        boot::start_harts(hart_id);
+        boot::start_other_harts(hart_id);
     } else {
         hart::init(hart_id);
         trap::init();

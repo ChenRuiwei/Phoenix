@@ -1,4 +1,4 @@
-use config::{process::USER_STACK_SIZE, processor::MAX_HARTS};
+use config::{board::MAX_HARTS, process::USER_STACK_SIZE};
 use systype::{RLimit, Rusage, SysError, SyscallResult};
 
 use super::Syscall;
@@ -62,15 +62,12 @@ impl Syscall<'_> {
         // etc.) to exceed this limit yield the error EMFILE.
         const RLIMIT_NOFILE: i32 = 7;
 
-        let mut task;
-        if pid == 0 {
-            task = self.task.clone();
+        let task = if pid == 0 {
+            self.task.clone()
+        } else if let Some(t) = TASK_MANAGER.get(pid) {
+            t
         } else {
-            if let Some(t) = TASK_MANAGER.get(pid) {
-                task = t;
-            } else {
-                return Err(SysError::ESRCH);
-            }
+            return Err(SysError::ESRCH);
         };
         if old_limit.not_null() {
             let limit = match resource {

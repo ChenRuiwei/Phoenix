@@ -7,9 +7,9 @@ use core::{
 
 use arch::interrupts::disable_interrupt;
 use backtrace::backtrace;
-use driver::sbi::shutdown;
 use logging::LOG_INITIALIZED;
 use sbi_print::sbi_println;
+use sbi_rt::legacy::shutdown;
 
 use crate::processor::hart::local_hart;
 
