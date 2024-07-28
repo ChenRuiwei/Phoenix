@@ -215,6 +215,12 @@ impl FdTable {
         Ok(new_fd)
     }
 
+    pub fn dup3_with_flags(&mut self, old_fd: Fd, new_fd: Fd) -> SysResult<Fd> {
+        let old_fd_info = self.get(old_fd)?;
+        self.put(new_fd, old_fd_info.clone())?;
+        Ok(new_fd)
+    }
+
     pub fn dup_with_bound(
         &mut self,
         old_fd: Fd,

@@ -23,6 +23,7 @@ use sync::mutex::SpinNoIrqLock;
 pub mod addr;
 pub mod bench;
 pub mod listen_table;
+pub mod portmap;
 pub mod tcp;
 pub mod udp;
 

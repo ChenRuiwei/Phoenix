@@ -5,7 +5,7 @@
 
 use core::{net::Ipv4Addr, panic};
 
-use net::{IpAddress, IpEndpoint, Ipv4Address, Ipv6Address};
+use net::{IpAddress, IpEndpoint, IpListenEndpoint, Ipv4Address, Ipv6Address};
 
 use super::SaFamily;
 
@@ -127,6 +127,36 @@ impl From<IpEndpoint> for SockAddr {
         match value.addr {
             IpAddress::Ipv4(v4) => Self::SockAddrIn(value.into()),
             IpAddress::Ipv6(v6) => Self::SockAddrIn6(value.into()),
+        }
+    }
+}
+
+impl From<SockAddrIn> for IpListenEndpoint {
+    fn from(v4: SockAddrIn) -> Self {
+        let addr = Ipv4Address(v4.addr);
+        let addr = if addr.is_unspecified() {
+            None
+        } else {
+            Some(IpAddress::Ipv4(addr))
+        };
+        Self {
+            addr,
+            port: u16::from_be_bytes(v4.port),
+        }
+    }
+}
+
+impl From<SockAddrIn6> for IpListenEndpoint {
+    fn from(v6: SockAddrIn6) -> Self {
+        let addr = Ipv6Address(v6.addr);
+        let addr = if addr.is_unspecified() {
+            None
+        } else {
+            Some(IpAddress::Ipv6(addr))
+        };
+        Self {
+            addr,
+            port: u16::from_be_bytes(v6.port),
         }
     }
 }
