@@ -25,7 +25,7 @@ pub fn exam_hash(buf: &[u8]) -> usize {
     h
 }
 
-pub fn spawn_debug_tasks<F>(f: F, interval_secs: usize)
+pub fn spawn_timer_tasks<F>(f: F, interval_secs: usize)
 where
     F: FnOnce() + Send + Copy + 'static,
 {
