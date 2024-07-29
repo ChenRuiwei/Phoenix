@@ -78,7 +78,7 @@ impl Syscall<'_> {
         log::info!("[sys_connect] fd{sockfd} trys to connect {remote_addr}");
         socket.sk.connect(remote_addr).await?;
         // TODO:
-        yield_now().await;
+        // yield_now().await;
         Ok(0)
     }
 

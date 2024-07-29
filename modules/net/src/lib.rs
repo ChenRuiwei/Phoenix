@@ -67,8 +67,8 @@ struct SocketSetWrapper<'a>(Mutex<SocketSet<'a>>);
 
 struct DeviceWrapper {
     inner: RefCell<Box<dyn NetDevice>>, /* use `RefCell` is enough since it's wrapped in
-                                            * `Mutex` in
-                                            * `InterfaceWrapper`. */
+                                         * `Mutex` in
+                                         * `InterfaceWrapper`. */
 }
 
 struct InterfaceWrapper {
