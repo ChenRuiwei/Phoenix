@@ -1,10 +1,11 @@
 use core::{
+    cell::UnsafeCell,
     ops::Deref,
     sync::atomic::{AtomicBool, Ordering},
 };
 
 use async_utils::{get_waker, suspend_now, yield_now};
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use smoltcp::{
     iface::SocketHandle,
     socket::udp::{self, BindError, SendError},
@@ -18,16 +19,22 @@ use super::{
     SocketSetWrapper, SOCKET_SET,
 };
 use crate::{
-    addr::{LOCAL_ENDPOINT_V4, UNSPECIFIED_IPV4},
-    has_signal, Mutex, NetPollState,
+    addr::{
+        to_endpoint, LOCAL_ENDPOINT_V4, LOCAL_IPV4, UNSPECIFIED_IPV4, UNSPECIFIED_LISTEN_ENDPOINT,
+    },
+    has_signal,
+    portmap::PORT_MAP,
+    Mutex, NetPollState,
 };
 
 /// A UDP socket that provides POSIX-like APIs.
 pub struct UdpSocket {
+    /// 一旦创建新的 socket 就会添加到SOCKET_SET中获得 handle
     handle: SocketHandle,
-    local_addr: RwLock<Option<IpEndpoint>>,
+    local_addr: RwLock<Option<IpListenEndpoint>>,
     peer_addr: RwLock<Option<IpEndpoint>>,
     nonblock: AtomicBool,
+    // overridden: AtomicBool,
 }
 
 impl UdpSocket {
@@ -41,6 +48,7 @@ impl UdpSocket {
             local_addr: RwLock::new(None),
             peer_addr: RwLock::new(None),
             nonblock: AtomicBool::new(false),
+            // overridden: AtomicBool::new(false),
         }
     }
 
@@ -48,7 +56,7 @@ impl UdpSocket {
     /// [`Err(NotConnected)`](AxError::NotConnected) if not connected.
     pub fn local_addr(&self) -> SysResult<IpEndpoint> {
         match self.local_addr.try_read() {
-            Some(addr) => addr.ok_or(SysError::ENOTCONN),
+            Some(addr) => addr.ok_or(SysError::ENOTCONN).map(to_endpoint),
             None => Err(SysError::ENOTCONN),
         }
     }
@@ -78,37 +86,61 @@ impl UdpSocket {
         self.nonblock.store(nonblocking, Ordering::Release);
     }
 
+    pub fn check_bind(&self, fd: usize, mut bound_addr: IpListenEndpoint) -> Option<usize> {
+        // 查看是否已经用过该端口和地址。可以将两个UDP套接字绑定到同一个端口，
+        // 但它们需要绑定到不同的地址
+        if let Some((fd, prev_bound_addr)) = PORT_MAP.get(bound_addr.port) {
+            if bound_addr == prev_bound_addr {
+                warn!("[UdpSocket::bind] The port is already used by another socket. Reuse the Arc of {fd}");
+                // SOCKET_SET.remove(self.handle);
+                // self.overridden.store(true, Ordering::SeqCst);
+                // 这个check_bind函数到这里执行之后，该Udp复用原来的Socket
+                // File，所以该UdpSocket待会儿会立即drop掉
+                return Some(fd);
+            }
+        }
+        if bound_addr.port == 0 {
+            bound_addr.port = get_ephemeral_port().unwrap();
+            info!(
+                "[UdpSocket::bind] No specified port, use port {}",
+                bound_addr.port
+            );
+        }
+        PORT_MAP.insert(bound_addr.port, fd, bound_addr);
+        None
+    }
+
     /// Binds an unbound socket to the given address and port.
     ///
     /// It's must be called before [`send_to`](Self::send_to) and
     /// [`recv_from`](Self::recv_from).
-    pub fn bind(&self, mut local_addr: IpEndpoint) -> SysResult<()> {
+    pub fn bind(&self, mut bound_addr: IpListenEndpoint) -> SysResult<()> {
         let mut self_local_addr = self.local_addr.write();
 
-        if local_addr.port == 0 {
-            local_addr.port = get_ephemeral_port()?;
+        if bound_addr.port == 0 {
+            bound_addr.port = get_ephemeral_port()?;
             info!(
-                "[UdpSocket::bind] No specified port, use port {}]",
-                local_addr.port
+                "[UdpSocket::bind] No specified port, use port {}",
+                bound_addr.port
             );
         }
         if self_local_addr.is_some() {
-            warn!("socket bind() failed: already bound");
+            warn!("socket bind() failed: The socket is already bound to an address.");
             return Err(SysError::EINVAL);
         }
 
-        if let IpAddress::Ipv6(v6) = local_addr.addr {
-            if v6.is_unspecified() {
-                log::warn!("[UdpSocket::bind] Unstable: just use ipv4 instead of ipv6 when ipv6 is unspecified");
-                local_addr.addr = UNSPECIFIED_IPV4;
-            }
-        }
-        let endpoint = IpListenEndpoint {
-            addr: (!is_unspecified(local_addr.addr)).then_some(local_addr.addr),
-            port: local_addr.port,
-        };
+        // if let IpAddress::Ipv6(v6) = bound_addr.addr {
+        //     if v6.is_unspecified() {
+        //         log::warn!("[UdpSocket::bind] Unstable: just use 127.0.0.1 instead of
+        // ipv6 when ipv6 is unspecified");         bound_addr.addr =
+        // LOCAL_IPV4;     }
+        // }
+        // let endpoint = IpListenEndpoint {
+        //     addr: (!is_unspecified(bound_addr.addr)).then_some(bound_addr.addr),
+        //     port: bound_addr.port,
+        // };
         SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
-            socket.bind(endpoint).map_err(|e| {
+            socket.bind(bound_addr).map_err(|e| {
                 warn!("socket bind() failed");
                 match e {
                     BindError::InvalidState => SysError::EEXIST,
@@ -117,9 +149,9 @@ impl UdpSocket {
             })
         })?;
 
-        *self_local_addr = Some(local_addr);
+        *self_local_addr = Some(bound_addr);
         info!(
-            "[Udpsocket::bind] handle {} bound on {endpoint}",
+            "[Udpsocket::bind] handle {} bound on {bound_addr}",
             self.handle
         );
         Ok(())
@@ -170,11 +202,13 @@ impl UdpSocket {
     /// bound. It's must be called before [`send`](Self::send) and
     /// [`recv`](Self::recv).
     pub fn connect(&self, addr: IpEndpoint) -> SysResult<()> {
-        let mut self_peer_addr = self.peer_addr.write();
         if self.local_addr.read().is_none() {
-            info!("[UdpSocket::connect] don't have local addr, bind to UNSPECIFIED_ENDPOINT_V4");
-            self.bind(UNSPECIFIED_ENDPOINT_V4)?;
+            info!(
+                "[UdpSocket::connect] don't have local addr, bind to UNSPECIFIED_LISTEN_ENDPOINT"
+            );
+            self.bind(UNSPECIFIED_LISTEN_ENDPOINT)?;
         }
+        let mut self_peer_addr = self.peer_addr.write();
         *self_peer_addr = Some(addr);
         info!(
             "[UdpSocket::connect] handle {} local {} connected to remote {}",
@@ -239,9 +273,11 @@ impl UdpSocket {
             let readable = socket.can_recv();
             let writable = socket.can_send();
             if !readable {
+                log::info!("[UdpSocket::poll] not readable, register recv waker");
                 socket.register_recv_waker(&waker);
             }
             if !writable {
+                log::info!("[UdpSocket::poll] not writable, register send waker");
                 socket.register_send_waker(&waker);
             }
             NetPollState {
@@ -265,11 +301,10 @@ impl UdpSocket {
     async fn send_impl(&self, buf: &[u8], remote_endpoint: IpEndpoint) -> SysResult<usize> {
         if self.local_addr.read().is_none() {
             warn!(
-                "[send_impl] UDP socket {}: not bound. Use 0.0.0.0",
+                "[send_impl] UDP socket {}: not bound. Use 127.0.0.1",
                 self.handle
             );
-            // TODO: UNSPECIFIED_ENDPOINT_V4 or LOCAL_ENDPOINT?
-            self.bind(UNSPECIFIED_ENDPOINT_V4)?;
+            self.bind(UNSPECIFIED_LISTEN_ENDPOINT)?;
         }
         let waker = get_waker().await;
         let bytes = self
@@ -281,6 +316,7 @@ impl UdpSocket {
                             .map_err(|e| match e {
                                 SendError::BufferFull => {
                                     warn!("socket send() failed, {e:?}");
+                                    socket.register_send_waker(&waker);
                                     SysError::EAGAIN
                                 }
                                 SendError::Unaddressable => {
@@ -302,6 +338,7 @@ impl UdpSocket {
             })
             .await?;
         log::info!("[UdpSocket::send_impl] send {bytes}bytes to {remote_endpoint:?}");
+        SOCKET_SET.poll_interfaces();
         Ok(bytes)
     }
 
@@ -361,8 +398,14 @@ impl UdpSocket {
 
 impl Drop for UdpSocket {
     fn drop(&mut self) {
+        // if self.overridden.load(Ordering::Relaxed) {
+        //     return;
+        // }
         self.shutdown().ok();
         SOCKET_SET.remove(self.handle);
+        if let Ok(addr) = self.local_addr() {
+            PORT_MAP.remove(addr.port);
+        }
     }
 }
 

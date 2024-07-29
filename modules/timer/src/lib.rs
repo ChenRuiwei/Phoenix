@@ -99,6 +99,7 @@ impl TimerManager {
         let mut timers = self.timers.lock();
         while let Some(timer) = timers.peek() {
             if current >= timer.0.expire {
+                log::trace!("timers len {}", timers.len());
                 log::info!(
                     "[Timer Manager] there is a timer expired, current:{:?}, expire:{:?}",
                     current,

@@ -471,7 +471,7 @@ dependencies = [
 [[package]]
 name = "lwext4_rust"
 version = "0.2.0"
-source = "git+https://github.com/ChenRuiwei/lwext4_rust.git?rev=d829824#d8298248a04e4a742ef2174a1f66c161e9664f44"
+source = "git+https://github.com/ChenRuiwei/lwext4_rust.git#d8298248a04e4a742ef2174a1f66c161e9664f44"
 dependencies = [
  "log",
  "printf-compat",
@@ -534,6 +534,7 @@ dependencies = [
  "spin",
  "sync",
  "systype",
+ "timer",
 ]
 
 [[package]]

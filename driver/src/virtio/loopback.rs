@@ -68,7 +68,10 @@ impl NetDevice for LoopbackDev {
 
     fn receive(&mut self) -> DevResult<Box<dyn NetBufPtrOps>> {
         if let Some(buf) = self.queue.pop_front() {
-            log::warn!("[NetDriverOps::receive] now receive {} bytes", buf.len());
+            log::warn!(
+                "[NetDriverOps::receive] now receive {} bytes from LoopbackDev.queue",
+                buf.len()
+            );
             Ok(Box::new(SimpleNetBuf(buf)))
         } else {
             Err(DevError::Again)
