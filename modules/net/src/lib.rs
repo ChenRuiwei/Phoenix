@@ -65,16 +65,24 @@ static ETH0: Once<InterfaceWrapper> = Once::new();
 /// `SocketHandle` is similar to `fd`
 struct SocketSetWrapper<'a>(Mutex<SocketSet<'a>>);
 
+/// A wrapper for network devices, providing interior mutability for
+/// `NetDevice`.
 struct DeviceWrapper {
-    inner: RefCell<Box<dyn NetDevice>>, /* use `RefCell` is enough since it's wrapped in
-                                         * `Mutex` in
-                                         * `InterfaceWrapper`. */
+    /// The inner network device wrapped in a `RefCell` for interior mutability.
+    inner: RefCell<Box<dyn NetDevice>>,
 }
 
+/// A wrapper for network interfaces, containing device and interface details
+/// and providing thread-safe access via `Mutex`.
 struct InterfaceWrapper {
+    /// The name of the network interface.
     name: &'static str,
+    /// The Ethernet address of the network interface.
     ether_addr: EthernetAddress,
+    /// The device wrapper protected by a `Mutex` to ensure thread-safe access.
     dev: Mutex<DeviceWrapper>,
+    /// The network interface protected by a `Mutex` to ensure thread-safe
+    /// access.
     iface: Mutex<Interface>,
 }
 

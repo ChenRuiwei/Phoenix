@@ -102,6 +102,10 @@ impl Syscall<'_> {
             CLOCK_THREAD_CPUTIME_ID => {
                 tp.write(&task, task.time_stat().cpu_time().into())?;
             }
+            5 => {
+                log::warn!("[sys_clock_gettime] unsupported clockid{}", clockid);
+                return Err(SysError::EINTR);
+            }
             _ => {
                 log::error!("[sys_clock_gettime] unsupported clockid{}", clockid);
                 return Err(SysError::EINTR);
