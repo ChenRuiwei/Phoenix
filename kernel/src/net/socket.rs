@@ -208,7 +208,7 @@ impl File for Socket {
             return Ok(0);
         }
         // TODO: should add this?
-        auto_poll_interfaces();
+        // poll_interfaces();
         let bytes = self.sk.recvfrom(buf).await.map(|e| e.0)?;
         warn!(
             "[Socket::File::read_at] expect to recv: {:?} exact: {bytes}",

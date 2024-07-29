@@ -262,7 +262,7 @@ impl InterfaceWrapper {
 
     pub fn auto_poll(&self, sockets: &Mutex<SocketSet>) {
         if let Some(next_poll) = self.poll_at(sockets) {
-            log::error!(
+            log::debug!(
                 "current time is {:?}, we should poll next time is {}",
                 get_time_duration().as_micros(),
                 next_poll.as_micros()
@@ -286,13 +286,13 @@ struct PollTimer;
 impl TimerEvent for PollTimer {
     fn callback(self: Box<Self>) -> Option<Timer> {
         if let Some(next_poll) = poll_at_interfaces() {
-            log::error!("[PollTimer] callback add new timer");
+            log::debug!("[PollTimer] callback add new timer");
             return Some(Timer {
                 expire: next_poll,
                 data: Box::new(PollTimer),
             });
         }
-        log::error!("[PollTimer] don't need poll any more ");
+        log::debug!("[PollTimer] don't need poll any more ");
         None
     }
 }
