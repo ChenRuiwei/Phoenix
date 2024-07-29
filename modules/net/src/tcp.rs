@@ -428,6 +428,7 @@ impl TcpSocket {
             })
         })
         .await;
+        SOCKET_SET.auto_poll_interfaces();
         if let Ok(bytes) = ret {
             if bytes > TCP_TX_BUF_LEN / 2 {
                 ksleep_ms(3).await;
