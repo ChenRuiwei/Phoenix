@@ -14,10 +14,13 @@ pub struct InodeMeta {
     pub ino: usize,
     /// Mode of inode.
     pub mode: InodeMode,
+    /// Device id for device inodes, e.g. tty device inode.
     pub dev_id: Option<DevId>,
+    /// Super block this inode belongs to.
     pub super_block: Weak<dyn SuperBlock>,
-
+    /// File page cache.
     pub page_cache: Option<PageCache>,
+    /// Mutable date with mutex protection.
     pub inner: Mutex<InodeMetaInner>,
 }
 
@@ -30,7 +33,7 @@ pub struct InodeMetaInner {
     pub mtime: TimeSpec,
     /// Last status change time.
     pub ctime: TimeSpec,
-    ///
+    /// State of the underlying file.
     pub state: InodeState,
 }
 

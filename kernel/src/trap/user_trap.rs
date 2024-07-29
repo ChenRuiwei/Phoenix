@@ -36,10 +36,10 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
     log::trace!("[trap_handler] sepc:{sepc:#x}, stval:{stval:#x}");
     unsafe { enable_interrupt() };
 
-    // if task.time_stat_ref().need_schedule() && executor::has_task() {
-    //     log::info!("time slice used up, yield now");
-    //     yield_now().await;
-    // }
+    if task.time_stat_ref().need_schedule() && executor::has_task() {
+        log::info!("time slice used up, yield now");
+        yield_now().await;
+    }
 
     match cause {
         Trap::Exception(e) => {

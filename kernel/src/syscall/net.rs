@@ -1,5 +1,6 @@
 use alloc::{sync::Arc, vec::Vec};
 
+use async_utils::yield_now;
 use log::info;
 use socket::*;
 use systype::{SysError, SysResult, SyscallResult};
@@ -168,6 +169,7 @@ impl Syscall<'_> {
             _ => unimplemented!(),
         };
         task.set_running();
+        yield_now().await;
         Ok(bytes)
     }
 
@@ -212,6 +214,7 @@ impl Syscall<'_> {
         buf[..bytes].copy_from_slice(&temp[..bytes]);
         task.write_sockaddr(src_addr, addrlen, remote_addr)?;
 
+        yield_now().await;
         Ok(bytes)
     }
 

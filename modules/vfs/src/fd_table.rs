@@ -35,10 +35,11 @@ impl From<OpenFlags> for FdFlags {
 
 #[derive(Clone)]
 pub struct FdInfo {
+    /// File.
+    file: Arc<dyn File>,
     /// File descriptor flags, currently, only one such flag is defined:
     /// FD_CLOEXEC.
     flags: FdFlags,
-    file: Arc<dyn File>,
 }
 
 impl fmt::Debug for FdInfo {
