@@ -3,14 +3,12 @@
 
 extern crate alloc;
 
-use alloc::string::ToString;
-
 use user_lib::{execve, fork, wait, waitpid};
 
 #[macro_use]
 extern crate user_lib;
 
-const TESTCASES: [&str; 10] = [
+const TESTCASES: [&str; 11] = [
     "time-test",
     "busybox_testcode.sh",
     "lua_testcode.sh",
@@ -21,6 +19,7 @@ const TESTCASES: [&str; 10] = [
     "unixbench_testcode.sh",
     "lmbench_testcode.sh",
     "cyclictest_testcode.sh",
+    "iperf_testcode.sh",
 ];
 
 fn run_cmd(cmd: &str) {
