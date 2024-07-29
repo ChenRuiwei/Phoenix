@@ -3,9 +3,9 @@
 #![feature(new_uninit)]
 extern crate alloc;
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{cell::RefCell, future::Future, ops::DerefMut, panic};
+use core::{cell::RefCell, future::Future, ops::DerefMut, panic, time::Duration};
 
-use arch::time::get_time_us;
+use arch::time::{get_time_duration, get_time_us};
 use crate_interface::call_interface;
 use device_core::{error::DevError, NetBufPtrOps, NetDevice};
 use listen_table::*;
@@ -15,14 +15,15 @@ use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
     phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken},
     socket::{self, AnySocket},
-    time::Instant,
     wire::{EthernetAddress, HardwareAddress, IpCidr},
 };
 use spin::{Lazy, Once};
 use sync::mutex::SpinNoIrqLock;
+use timer::{Timer, TimerEvent, TIMER_MANAGER};
 pub mod addr;
 pub mod bench;
 pub mod listen_table;
+pub mod portmap;
 pub mod tcp;
 pub mod udp;
 
@@ -47,8 +48,8 @@ const STANDARD_MTU: usize = 1500;
 
 const RANDOM_SEED: u64 = 0xA2CE_05A2_CE05_A2CE;
 
-const TCP_RX_BUF_LEN: usize = 64 * 1024;
-const TCP_TX_BUF_LEN: usize = 64 * 1024;
+pub const TCP_RX_BUF_LEN: usize = 64 * 1024;
+pub const TCP_TX_BUF_LEN: usize = 64 * 1024;
 const UDP_RX_BUF_LEN: usize = 64 * 1024;
 const UDP_TX_BUF_LEN: usize = 64 * 1024;
 const LISTEN_QUEUE_SIZE: usize = 512;
@@ -165,7 +166,15 @@ impl<'a> SocketSetWrapper<'a> {
     }
 
     pub fn poll_interfaces(&self) {
-        ETH0.get().unwrap().poll(&self.0);
+        ETH0.get().unwrap().poll(&self.0)
+    }
+
+    pub fn poll_at_interfaces(&self) -> Option<Duration> {
+        ETH0.get().unwrap().poll_at(&self.0)
+    }
+
+    pub fn auto_poll_interfaces(&self) {
+        ETH0.get().unwrap().auto_poll(&self.0)
     }
 
     pub fn remove(&self, handle: SocketHandle) {
@@ -199,8 +208,12 @@ impl InterfaceWrapper {
         }
     }
 
-    fn current_time() -> Instant {
-        Instant::from_micros_const(get_time_us() as i64)
+    fn current_time() -> smoltcp::time::Instant {
+        smoltcp::time::Instant::from_micros_const(get_time_us() as i64)
+    }
+
+    fn to_duration(instant: smoltcp::time::Instant) -> Duration {
+        Duration::from_micros(instant.total_micros() as u64)
     }
 
     pub fn name(&self) -> &str {
@@ -226,13 +239,61 @@ impl InterfaceWrapper {
 
     /// handling the sending and receiving of network packets and updating the
     /// protocol stack status.
+    ///
+    /// return what time it should poll next
     pub fn poll(&self, sockets: &Mutex<SocketSet>) {
         let mut dev = self.dev.lock();
         let mut iface = self.iface.lock();
         let mut sockets = sockets.lock();
+        let result = iface.poll(Self::current_time(), dev.deref_mut(), &mut sockets);
+        log::warn!("[net::InterfaceWrapper::poll] does something have been changed? {result:?}");
+    }
+
+    pub fn poll_at(&self, sockets: &Mutex<SocketSet>) -> Option<Duration> {
+        let mut dev = self.dev.lock();
+        let mut iface = self.iface.lock();
+        let mut sockets = sockets.lock();
         let timestamp = Self::current_time();
-        let result = iface.poll(timestamp, dev.deref_mut(), &mut sockets);
-        log::warn!("[net::InterfaceWrapper::poll] does something have been changed? {result:?}")
+        iface.poll(timestamp, dev.deref_mut(), &mut sockets);
+        iface
+            .poll_at(timestamp, &mut sockets)
+            .map(Self::to_duration)
+    }
+
+    pub fn auto_poll(&self, sockets: &Mutex<SocketSet>) {
+        if let Some(next_poll) = self.poll_at(sockets) {
+            log::error!(
+                "current time is {:?}, we should poll next time is {}",
+                get_time_duration().as_micros(),
+                next_poll.as_micros()
+            );
+            let timer = Timer::new(next_poll, Box::new(PollTimer {}));
+            TIMER_MANAGER.add_timer(timer);
+        }
+    }
+}
+
+pub fn poll_at_interfaces() -> Option<Duration> {
+    SOCKET_SET.poll_at_interfaces()
+}
+
+pub fn auto_poll_interfaces() {
+    SOCKET_SET.auto_poll_interfaces()
+}
+
+struct PollTimer;
+
+impl TimerEvent for PollTimer {
+    fn callback(self: Box<Self>) -> Option<Timer> {
+        if let Some(next_poll) = poll_at_interfaces() {
+            log::error!("[PollTimer] callback add new timer");
+            return Some(Timer {
+                expire: next_poll,
+                data: Box::new(PollTimer),
+            });
+        }
+        log::error!("[PollTimer] don't need poll any more ");
+        None
     }
 }
 
@@ -248,7 +309,10 @@ impl Device for DeviceWrapper {
     type RxToken<'a> = NetRxToken<'a> where Self: 'a;
     type TxToken<'a> = NetTxToken<'a> where Self: 'a;
 
-    fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
+    fn receive(
+        &mut self,
+        _timestamp: smoltcp::time::Instant,
+    ) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         let mut dev = self.inner.borrow_mut();
         if let Err(e) = dev.recycle_tx_buffers() {
             warn!("recycle_tx_buffers failed: {:?}", e);
@@ -270,7 +334,7 @@ impl Device for DeviceWrapper {
         Some((NetRxToken(&self.inner, rx_buf), NetTxToken(&self.inner)))
     }
 
-    fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
+    fn transmit(&mut self, _timestamp: smoltcp::time::Instant) -> Option<Self::TxToken<'_>> {
         let mut dev = self.inner.borrow_mut();
         if let Err(e) = dev.recycle_tx_buffers() {
             warn!("recycle_tx_buffers failed: {:?}", e);
@@ -382,7 +446,7 @@ pub struct NetPollState {
 /// It may receive packets from the NIC and process them, and transmit queued
 /// packets to the NIC.
 pub fn poll_interfaces() {
-    SOCKET_SET.poll_interfaces();
+    SOCKET_SET.poll_interfaces()
 }
 
 /// Benchmark raw socket transmit bandwidth.

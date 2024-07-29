@@ -14,7 +14,7 @@ use core::{
 };
 
 use memory::VirtAddr;
-use net::{IpAddress, IpEndpoint};
+use net::{IpAddress, IpEndpoint, IpListenEndpoint};
 use riscv::register::scause;
 use systype::{SysError, SysResult};
 
@@ -621,7 +621,7 @@ impl Task {
     /// has read permissions. Then, based on the `sa_family` member of
     /// theSockAddr structure, it determines which variant of the `SockAddr`
     /// enum the user-provided parameter corresponds to.
-    pub fn audit_sockaddr(&self, addr: usize, addrlen: usize) -> SysResult<IpEndpoint> {
+    pub fn read_sockaddr(&self, addr: usize, addrlen: usize) -> SysResult<IpEndpoint> {
         let _guard = SumGuard::new();
         self.just_ensure_user_area(addr.into(), addrlen, PageFaultAccessType::RO)?;
         let family = SaFamily::try_from(unsafe { *(addr as *const u16) })?;
@@ -643,6 +643,37 @@ impl Task {
                 let sock_addr_in6: SockAddrIn6 = unsafe { *(addr as *const _) };
                 // this will convert network byte order to host byte order
                 Ok(IpEndpoint::from(sock_addr_in6))
+            }
+            SaFamily::AF_UNIX => unimplemented!(),
+        }
+    }
+
+    pub fn read_sockaddr_to_listen_endpoint(
+        &self,
+        addr: usize,
+        addrlen: usize,
+    ) -> SysResult<IpListenEndpoint> {
+        let _guard = SumGuard::new();
+        self.just_ensure_user_area(addr.into(), addrlen, PageFaultAccessType::RO)?;
+        let family = SaFamily::try_from(unsafe { *(addr as *const u16) })?;
+        match family {
+            SaFamily::AF_INET => {
+                if addrlen < mem::size_of::<SockAddrIn>() {
+                    log::error!("[read_sockaddr_to_listen_endpoint] AF_INET addrlen error");
+                    return Err(SysError::EINVAL);
+                }
+                let sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
+                // this will convert network byte order to host byte order
+                Ok(IpListenEndpoint::from(sock_addr_in))
+            }
+            SaFamily::AF_INET6 => {
+                if addrlen < mem::size_of::<SockAddrIn6>() {
+                    log::error!("[read_sockaddr_to_listen_endpoint] AF_INET6 addrlen error");
+                    return Err(SysError::EINVAL);
+                }
+                let sock_addr_in6: SockAddrIn6 = unsafe { *(addr as *const _) };
+                // this will convert network byte order to host byte order
+                Ok(IpListenEndpoint::from(sock_addr_in6))
             }
             SaFamily::AF_UNIX => unimplemented!(),
         }

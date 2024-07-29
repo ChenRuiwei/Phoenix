@@ -49,14 +49,14 @@ impl Syscall<'_> {
     /// called “assigning a name to a socket”.
     pub fn sys_bind(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
         let task = self.task;
-        let local_addr = task.audit_sockaddr(addr, addrlen)?;
+        let local_addr = task.read_sockaddr_to_listen_endpoint(addr, addrlen)?;
         let socket = task.sockfd_lookup(sockfd)?;
         info!("[sys_bind] try to bind fd{sockfd} to {local_addr}");
-        socket.sk.bind(local_addr)?;
-        info!(
-            "[sys_bind] already bind fd{sockfd} to {}",
-            socket.sk.local_addr().unwrap()
-        );
+        socket.sk.bind(sockfd, local_addr)?;
+        // info!(
+        //     "[sys_bind] already bind fd{sockfd} to {}",
+        //     socket.sk.local_addr().unwrap()
+        // );
         Ok(0)
     }
 
@@ -73,12 +73,12 @@ impl Syscall<'_> {
     /// the listening socket specified by `addr` and `addrlen` at the address
     pub async fn sys_connect(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
         let task = self.task;
-        let remote_addr = task.audit_sockaddr(addr, addrlen)?;
+        let remote_addr = task.read_sockaddr(addr, addrlen)?;
         let socket = task.sockfd_lookup(sockfd)?;
         log::info!("[sys_connect] fd{sockfd} trys to connect {remote_addr}");
         socket.sk.connect(remote_addr).await?;
         // TODO:
-        // yield_now().await;
+        yield_now().await;
         Ok(0)
     }
 
@@ -159,7 +159,7 @@ impl Syscall<'_> {
             }
             SocketType::DGRAM => {
                 let sockaddr = if dest_addr != 0 {
-                    Some(task.audit_sockaddr(dest_addr, addrlen)?)
+                    Some(task.read_sockaddr(dest_addr, addrlen)?)
                 } else {
                     None
                 };
@@ -247,7 +247,7 @@ impl Syscall<'_> {
     ) -> SyscallResult {
         use core::mem::size_of;
         let task = self.task;
-        task.sockfd_lookup(sockfd)?;
+        // task.sockfd_lookup(sockfd)?;
         match SocketLevel::try_from(level)? {
             SocketLevel::SOL_SOCKET => {
                 const SEND_BUFFER_SIZE: usize = 64 * 1024;

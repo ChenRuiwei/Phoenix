@@ -6,7 +6,7 @@ use core::{
     task::{Context, Poll, Waker},
 };
 
-use async_utils::{get_waker, suspend_now};
+use async_utils::{get_waker, suspend_now, yield_now};
 use log::*;
 use smoltcp::{
     iface::SocketHandle,
@@ -14,6 +14,7 @@ use smoltcp::{
     wire::{IpAddress, IpEndpoint, IpListenEndpoint},
 };
 use systype::*;
+use timer::timelimited_task::ksleep_ms;
 
 use super::{
     addr::{is_unspecified, UNSPECIFIED_ENDPOINT_V4},
@@ -21,7 +22,7 @@ use super::{
 };
 use crate::{
     addr::UNSPECIFIED_IPV4, has_signal, Mutex, NetPollState, RCV_SHUTDOWN, SEND_SHUTDOWN,
-    SHUTDOWN_MASK, SHUT_RD, SHUT_RDWR, SHUT_WR,
+    SHUTDOWN_MASK, SHUT_RD, SHUT_RDWR, SHUT_WR, TCP_RX_BUF_LEN, TCP_TX_BUF_LEN,
 };
 
 // State transitions:
@@ -185,7 +186,7 @@ impl TcpSocket {
         })?; // EISCONN
 
         // Here our state must be `CONNECTING`, and only one thread can run here.
-        if self.is_nonblocking() {
+        let ret = if self.is_nonblocking() {
             Err(SysError::EINPROGRESS)
         } else {
             self.block_on_async(|| async {
@@ -201,7 +202,9 @@ impl TcpSocket {
                 }
             })
             .await
-        }
+        };
+        yield_now().await;
+        ret
     }
 
     /// Binds an unbound socket to the given address and port.
@@ -275,12 +278,15 @@ impl TcpSocket {
 
         // SAFETY: `self.local_addr` should be initialized after `bind()`.
         let local_port = unsafe { self.local_addr.get().read().port };
-        self.block_on(|| {
-            let (handle, (local_addr, peer_addr)) = LISTEN_TABLE.accept(local_port)?;
-            info!("TCP socket accepted a new connection {}", peer_addr);
-            Ok(TcpSocket::new_connected(handle, local_addr, peer_addr))
-        })
-        .await
+        let ret = self
+            .block_on(|| {
+                let (handle, (local_addr, peer_addr)) = LISTEN_TABLE.accept(local_port)?;
+                info!("TCP socket accepted a new connection {}", peer_addr);
+                Ok(TcpSocket::new_connected(handle, local_addr, peer_addr))
+            })
+            .await;
+        yield_now().await;
+        ret
     }
 
     /// Close the connection.
@@ -336,8 +342,6 @@ impl TcpSocket {
 
     /// Receives data from the socket, stores it in the given buffer.
     pub async fn recv(&self, buf: &mut [u8]) -> SysResult<usize> {
-        use tcp::State::*;
-
         let shutdown = unsafe { *self.shutdown.get() };
         if shutdown & RCV_SHUTDOWN != 0 {
             log::warn!("[TcpSocket::recv] shutdown closed read, recv return 0");
@@ -425,7 +429,13 @@ impl TcpSocket {
         })
         .await;
         SOCKET_SET.poll_interfaces();
-        // yield_now().await;
+        if let Ok(bytes) = ret {
+            if bytes > TCP_TX_BUF_LEN / 2 {
+                ksleep_ms(3).await;
+            } else {
+                yield_now().await;
+            }
+        }
         ret
     }
 

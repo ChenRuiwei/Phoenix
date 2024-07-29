@@ -534,6 +534,7 @@ dependencies = [
  "spin",
  "sync",
  "systype",
+ "timer",
 ]
 
 [[package]]
