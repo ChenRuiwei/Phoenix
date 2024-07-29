@@ -1,3 +1,5 @@
+//! Adapted from MankorOS
+
 pub mod uart8250;
 
 use alloc::{boxed::Box, collections::VecDeque, string::ToString, sync::Arc};
@@ -11,7 +13,7 @@ use core::{
 use async_trait::async_trait;
 use async_utils::{block_on, get_waker};
 use config::{board::UART_BUF_LEN, mm::VIRT_RAM_OFFSET};
-use device_core::{Device, DevId, DeviceMajor, DeviceMeta, DeviceType};
+use device_core::{DevId, Device, DeviceMajor, DeviceMeta, DeviceType};
 use fdt::Fdt;
 use macro_utils::with_methods;
 use memory::pte::PTEFlags;

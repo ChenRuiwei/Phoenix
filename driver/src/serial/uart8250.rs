@@ -1,4 +1,7 @@
 //! Copyright (c) 2023 Easton Man
+//!
+//! Adapted from MankorOS
+//!
 //! Adapted from https://docs.rs/uart_16550/latest/src/uart_16550/mmio.rs.html
 
 use core::fmt::Write;

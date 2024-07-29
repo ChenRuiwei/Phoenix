@@ -1,5 +1,6 @@
 use async_utils::suspend_now;
 use bitflags::Flags;
+use memory::VirtAddr;
 use systype::{SysError, SyscallResult};
 use time::timespec::TimeSpec;
 
@@ -44,8 +45,8 @@ impl Syscall<'_> {
                 vaddr: uaddr.addr,
             }
         } else {
-            let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr.addr));
-            FutexHashKey::Shared { paddr: phyaddr }
+            let paddr = VirtAddr::from(uaddr.raw()).to_paddr();
+            FutexHashKey::Shared { paddr }
         };
         log::info!(
             "[sys_futex] {:?} uaddr:{:#x} key:{:?}",
@@ -108,8 +109,8 @@ impl Syscall<'_> {
                         vaddr: uaddr2.into(),
                     }
                 } else {
-                    let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr2.into()));
-                    FutexHashKey::Shared { paddr: phyaddr }
+                    let paddr = VirtAddr::from(uaddr2).to_paddr();
+                    FutexHashKey::Shared { paddr }
                 };
                 futex_manager().requeue_waiters(key, new_key, timeout)?;
                 Ok(n_wake)
@@ -125,8 +126,8 @@ impl Syscall<'_> {
                         vaddr: uaddr2.into(),
                     }
                 } else {
-                    let phyaddr = task.with_memory_space(|mm| mm.va2pa(uaddr2.into()));
-                    FutexHashKey::Shared { paddr: phyaddr }
+                    let paddr = VirtAddr::from(uaddr2).to_paddr();
+                    FutexHashKey::Shared { paddr }
                 };
                 futex_manager().requeue_waiters(key, new_key, timeout)?;
                 Ok(n_wake)

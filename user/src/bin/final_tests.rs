@@ -4,8 +4,6 @@
 
 extern crate alloc;
 
-use alloc::string::ToString;
-
 use user_lib::{execve, fork, wait, waitpid};
 
 #[macro_use]

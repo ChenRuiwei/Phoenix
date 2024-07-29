@@ -1,3 +1,5 @@
+//! Boot process is adapted from Titanix
+
 #![no_std]
 #![no_main]
 #![feature(alloc_error_handler)]

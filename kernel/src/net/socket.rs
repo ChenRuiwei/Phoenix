@@ -2,7 +2,13 @@ use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
 use log::warn;
-use net::{poll_interfaces, tcp::TcpSocket, udp::UdpSocket, IpEndpoint, NetPollState};
+use net::{
+    addr::{UNSPECIFIED_ENDPOINT_V4, UNSPECIFIED_IPV4},
+    auto_poll_interfaces,
+    tcp::TcpSocket,
+    udp::UdpSocket,
+    IpEndpoint, IpListenEndpoint, NetPollState,
+};
 use spin::Mutex;
 use systype::{SysError, SysResult, SyscallResult};
 use unix::UnixSocket;
@@ -26,10 +32,25 @@ impl Sock {
         }
     }
 
-    pub fn bind(&self, local_addr: IpEndpoint) -> SysResult<()> {
+    pub fn bind(&self, sockfd: usize, local_addr: IpListenEndpoint) -> SysResult<()> {
         match self {
-            Sock::Tcp(tcp) => tcp.bind(local_addr),
-            Sock::Udp(udp) => udp.bind(local_addr),
+            Sock::Tcp(tcp) => {
+                // HACK
+                let addr = if local_addr.addr.is_none() {
+                    UNSPECIFIED_IPV4
+                } else {
+                    local_addr.addr.unwrap()
+                };
+                tcp.bind(IpEndpoint::new(addr, local_addr.port))
+            }
+            Sock::Udp(udp) => {
+                if let Some(prev_fd) = udp.check_bind(sockfd, local_addr) {
+                    current_task()
+                        .with_mut_fd_table(|table| table.dup3_with_flags(prev_fd, sockfd))?;
+                    return Ok(());
+                }
+                udp.bind(local_addr)
+            }
             Sock::Unix(_) => unimplemented!(),
         }
     }
@@ -187,7 +208,7 @@ impl File for Socket {
             return Ok(0);
         }
         // TODO: should add this?
-        poll_interfaces();
+        // poll_interfaces();
         let bytes = self.sk.recvfrom(buf).await.map(|e| e.0)?;
         warn!(
             "[Socket::File::read_at] expect to recv: {:?} exact: {bytes}",
@@ -201,7 +222,7 @@ impl File for Socket {
             return Ok(0);
         }
         // TODO: should add this?
-        poll_interfaces();
+        auto_poll_interfaces();
         let bytes = self.sk.sendto(buf, None).await?;
         warn!(
             "[Socket::File::write_at] expect to send: {:?} bytes exact: {bytes}",
@@ -212,7 +233,7 @@ impl File for Socket {
 
     async fn base_poll(&self, events: PollEvents) -> PollEvents {
         let mut res = PollEvents::empty();
-        poll_interfaces();
+        auto_poll_interfaces();
         let netstate = self.sk.poll().await;
         if events.contains(PollEvents::IN) {
             if netstate.readable {

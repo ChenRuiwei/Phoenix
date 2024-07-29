@@ -1,10 +1,12 @@
 //! Device manager
+//!
+//! Adapted from MankorOS
 
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 
 use arch::interrupts::{disable_interrupt, enable_external_interrupt};
 use config::{board, mm::K_SEG_DTB_BEG};
-use device_core::{Device, DevId};
+use device_core::{DevId, Device};
 use log::{info, warn};
 
 use crate::{cpu::CPU, plic::PLIC, println};

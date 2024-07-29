@@ -27,7 +27,7 @@ use self::vm_area::VmArea;
 use super::{kernel_page_table, PageFaultAccessType};
 use crate::{
     mm::memory_space::vm_area::{MapPerm, VmAreaType},
-    processor::env::SumGuard,
+    processor::{env::SumGuard, hart::current_task_ref},
     syscall::MmapFlags,
     task::{
         aux::{generate_early_auxv, AuxHeader, AT_BASE, AT_NULL, AT_PHDR, AT_RANDOM},
@@ -37,7 +37,7 @@ use crate::{
 
 pub mod vm_area;
 
-/// Virtual memory space for kernel and user.
+/// Virtual memory space for user.
 pub struct MemorySpace {
     // NOTE: The reason why `page_table` and `areas` are `SyncUnsafeCell` is because they both
     // represent memory region, it is likely to modify the two both.
@@ -46,8 +46,6 @@ pub struct MemorySpace {
     /// Map of `VmArea`s in this memory space.
     /// NOTE: stores range that is lazy allocated
     areas: SyncUnsafeCell<RangeMap<VirtAddr, VmArea>>,
-    /// Pointes to leader task.
-    task: Option<Weak<Task>>,
 }
 
 impl MemorySpace {
@@ -56,7 +54,6 @@ impl MemorySpace {
         Self {
             page_table: SyncUnsafeCell::new(PageTable::new()),
             areas: SyncUnsafeCell::new(RangeMap::new()),
-            task: None,
         }
     }
 
@@ -65,16 +62,7 @@ impl MemorySpace {
         Self {
             page_table: SyncUnsafeCell::new(PageTable::from_kernel(kernel_page_table())),
             areas: SyncUnsafeCell::new(RangeMap::new()),
-            task: None,
         }
-    }
-
-    pub fn set_task(&mut self, task: &Arc<Task>) {
-        self.task = Some(Arc::downgrade(task))
-    }
-
-    pub fn task(&self) -> Arc<Task> {
-        self.task.as_ref().unwrap().upgrade().unwrap()
     }
 
     pub fn areas(&self) -> &RangeMap<VirtAddr, VmArea> {
@@ -350,7 +338,7 @@ impl MemorySpace {
             }
             let mut interp_dentry: SysResult<Arc<dyn Dentry>> = Err(SysError::ENOENT);
             for interp in interps.into_iter() {
-                if let Ok(dentry) = self.task().resolve_path(&interp) {
+                if let Ok(dentry) = current_task_ref().resolve_path(&interp) {
                     interp_dentry = Ok(dentry);
                     break;
                 }
@@ -590,20 +578,6 @@ impl MemorySpace {
         self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
     }
 
-    pub fn alloc_mmap_private_anon(&mut self, perm: MapPerm, length: usize) -> SysResult<VirtAddr> {
-        const MMAP_RANGE: Range<VirtAddr> =
-            VirtAddr::from_usize_range(U_SEG_FILE_BEG..U_SEG_FILE_END);
-        let range = self
-            .areas()
-            .find_free_range(MMAP_RANGE, length)
-            .expect("mmap range is full");
-        let start = range.start;
-        let mut vma = VmArea::new(range, perm, VmAreaType::Mmap);
-        vma.map(self.page_table_mut());
-        self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
-        Ok(start)
-    }
-
     pub fn alloc_mmap_anonymous(
         &mut self,
         addr: VirtAddr,
@@ -659,7 +633,6 @@ impl MemorySpace {
         for offset_aligned in (offset..offset + length).step_by(PAGE_SIZE) {
             if let Some(page) = block_on(async { file.get_page_at(offset_aligned).await })? {
                 let vpn = range_vpn.next().unwrap();
-                // TODO: support copy on write for private mapping
                 if flags.contains(MmapFlags::MAP_PRIVATE) {
                     let (pte_flags, ppn) = {
                         let mut new_flags: PTEFlags = perm.into();
@@ -788,55 +761,6 @@ impl MemorySpace {
 
     pub unsafe fn switch_page_table(&self) {
         self.page_table().switch();
-    }
-
-    /// only for debug
-    #[allow(unused)]
-    pub fn print_all(&self) {
-        use crate::{
-            trap::{
-                kernel_trap::{set_kernel_user_rw_trap, will_read_fail},
-                set_kernel_trap,
-            },
-            utils::exam_hash,
-        };
-        let _sum_guard = SumGuard::new();
-        unsafe { set_kernel_user_rw_trap() };
-        for (range, area) in self.areas().iter() {
-            log::warn!(
-                "==== {:?}, {:?}, {:?}, ====",
-                area.vma_type,
-                area.perm(),
-                range,
-            );
-
-            for vpn in area.range_vpn() {
-                let vaddr = vpn.to_vaddr();
-                if will_read_fail(vaddr.bits()) {
-                    // log::debug!("{:<8x}: unmapped", vpn);
-                } else {
-                    let hash = exam_hash(vpn.bytes_array());
-                    log::info!(
-                        "0x{: >8x}: {:0>4x} {:0>4x} {:0>4x} {:0>4x}",
-                        vpn.0,
-                        (hash & 0xffff_0000_0000_0000) >> 48,
-                        (hash & 0x0000_ffff_0000_0000) >> 32,
-                        (hash & 0x0000_0000_ffff_0000) >> 16,
-                        (hash & 0x0000_0000_0000_ffff),
-                    );
-                }
-            }
-        }
-        log::warn!("==== print all done ====");
-        unsafe { set_kernel_trap() };
-    }
-
-    pub fn va2pa(&self, va: VirtAddr) -> PhysAddr {
-        let pte = self
-            .page_table()
-            .find_leaf_pte(va.floor())
-            .expect("[va2pa] error");
-        pte.ppn().to_paddr() + va.page_offset()
     }
 }
 

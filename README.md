@@ -121,6 +121,6 @@ make all
 
 ## 参考
 
-- [Titanix](https://gitlab.eduxiji.net/202318123101314/oskernel2023-Titanix)
-- [MankorOS](https://gitlab.eduxiji.net/MankorOS/OSKernel2023-MankorOS)
+- [Titanix](https://gitlab.eduxiji.net/202318123101314/oskernel2023-Titanix) 启动流程、内存模块设计
+- [MankorOS](https://gitlab.eduxiji.net/MankorOS/OSKernel2023-MankorOS) RangeMap、UserPtr、设备驱动模块
 - [FTL OS](https://gitlab.eduxiji.net/DarkAngelEX/oskernel2022-ftlos)
