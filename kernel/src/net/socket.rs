@@ -136,11 +136,11 @@ impl Sock {
 
 /// linux中，socket面向用户空间，sock面向内核空间
 pub struct Socket {
-    /// socket类型
+    /// The type of socket (such as DataM, DGRAM)
     pub types: SocketType,
-    /// 套接字的核心，面向底层网络具体协议
+    /// The core of a socket, which includes TCP, UDP, or Unix domain sockets
     pub sk: Sock,
-    /// TODO:
+    /// File metadata, including metadata information related to sockets
     pub meta: FileMeta,
 }
 

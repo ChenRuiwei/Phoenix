@@ -29,12 +29,15 @@ use crate::{
 
 /// A UDP socket that provides POSIX-like APIs.
 pub struct UdpSocket {
-    /// 一旦创建新的 socket 就会添加到SOCKET_SET中获得 handle
+    /// Handle obtained after adding the newly created socket to SOCKET_SET.
     handle: SocketHandle,
+    /// Local address and port. Uses RwLock for thread-safe read/write access.
     local_addr: RwLock<Option<IpListenEndpoint>>,
+    /// Remote address and port. Uses RwLock for thread-safe read/write access.
     peer_addr: RwLock<Option<IpEndpoint>>,
+    /// Indicates if the socket is in nonblocking mode. Uses AtomicBool for
+    /// thread-safe access.
     nonblock: AtomicBool,
-    // overridden: AtomicBool,
 }
 
 impl UdpSocket {
