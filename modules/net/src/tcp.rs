@@ -186,7 +186,7 @@ impl TcpSocket {
         })?; // EISCONN
 
         // Here our state must be `CONNECTING`, and only one thread can run here.
-        let ret = if self.is_nonblocking() {
+        if self.is_nonblocking() {
             Err(SysError::EINPROGRESS)
         } else {
             self.block_on_async(|| async {
@@ -202,9 +202,7 @@ impl TcpSocket {
                 }
             })
             .await
-        };
-        yield_now().await;
-        ret
+        }
     }
 
     /// Binds an unbound socket to the given address and port.
@@ -278,15 +276,12 @@ impl TcpSocket {
 
         // SAFETY: `self.local_addr` should be initialized after `bind()`.
         let local_port = unsafe { self.local_addr.get().read().port };
-        let ret = self
-            .block_on(|| {
-                let (handle, (local_addr, peer_addr)) = LISTEN_TABLE.accept(local_port)?;
-                info!("TCP socket accepted a new connection {}", peer_addr);
-                Ok(TcpSocket::new_connected(handle, local_addr, peer_addr))
-            })
-            .await;
-        yield_now().await;
-        ret
+        self.block_on(|| {
+            let (handle, (local_addr, peer_addr)) = LISTEN_TABLE.accept(local_port)?;
+            info!("TCP socket accepted a new connection {}", peer_addr);
+            Ok(TcpSocket::new_connected(handle, local_addr, peer_addr))
+        })
+        .await
     }
 
     /// Close the connection.
