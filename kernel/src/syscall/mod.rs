@@ -109,6 +109,7 @@ impl<'a> Syscall<'a> {
             SETSID => self.sys_setsid(),
             GETEGID => self.sys_do_nothing("getegid"),
             SETPGID => self.sys_setpgid(args[0], args[1]),
+            GETGID => self.sys_do_nothing("getgid"),
             // Memory
             BRK => self.sys_brk(args[0].into()),
             MMAP => self.sys_mmap(
@@ -198,6 +199,7 @@ impl<'a> Syscall<'a> {
             FSYNC => self.sys_do_nothing("fsync"),
             FTRUNCATE => self.sys_ftruncate(args[0], args[1] as _).await,
             FCHMODAT => self.sys_fchmodat(),
+            FCHOWNAT => self.sys_do_nothing("fchownat"),
             // IO
             PPOLL => {
                 self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3].into())
