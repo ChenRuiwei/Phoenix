@@ -8,9 +8,7 @@
 *.dts
 traces.*
 
-!third-party/vendor/
-!third-party/vendor/**
-
+third-party/vendor/
 
 
 lmbench_all_debug

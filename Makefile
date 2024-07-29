@@ -100,6 +100,9 @@ $(KERNEL_ASM): $(KERNEL_ELF)
 # Phony targets
 PHONY := all
 all:
+	@rm -rf third-party/vendor/
+	@mkdir third-party/vendor
+	@tar xvf third-party/vendor.tar.gz --directory third-party/vendor
 	@rm -rf .cargo
 	@cp -r cargo-submit .cargo
 	@rm -rf kernel/.cargo
