@@ -91,7 +91,7 @@ impl UdpSocket {
         // 但它们需要绑定到不同的地址
         if let Some((fd, prev_bound_addr)) = PORT_MAP.get(bound_addr.port) {
             if bound_addr == prev_bound_addr {
-                error!("[UdpSocket::bind] The port is already used by another socket. Reuse the Arc of {fd}");
+                warn!("[UdpSocket::bind] The port is already used by another socket. Reuse the Arc of {fd}");
                 // SOCKET_SET.remove(self.handle);
                 // self.overridden.store(true, Ordering::SeqCst);
                 // 这个check_bind函数到这里执行之后，该Udp复用原来的Socket

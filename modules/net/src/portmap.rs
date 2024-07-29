@@ -1,6 +1,6 @@
 use alloc::collections::btree_map::BTreeMap;
 
-use smoltcp::{iface::SocketHandle, wire::IpListenEndpoint};
+use smoltcp::wire::IpListenEndpoint;
 use spin::Lazy;
 
 use crate::Mutex;
@@ -11,7 +11,7 @@ type Pid = usize;
 /// 目前仅支持一个Port只能有一个Socket，如有冲突都是该Socket的Arc clone
 /// 例如，iperf测试创建的两个Socket，AF_INET 0.0.0.0::5001 和 AF_INET6
 /// ::5001 都绑定到了5001端口，本应该有两个Socket，
-/// 但是这里采用了复用Sockethandle的方法
+/// 但是这里采用了复用 FdTable 中的 fdinfo 的方法
 pub struct PortMap(Mutex<BTreeMap<Port, (Fd, IpListenEndpoint)>>);
 
 pub(crate) static PORT_MAP: Lazy<PortMap> = Lazy::new(PortMap::new);

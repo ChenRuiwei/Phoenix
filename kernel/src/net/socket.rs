@@ -6,7 +6,7 @@ use downcast_rs::{impl_downcast, DowncastSync};
 use log::warn;
 use net::{
     addr::{UNSPECIFIED_ENDPOINT_V4, UNSPECIFIED_IPV4},
-    poll_interfaces,
+    auto_poll_interfaces,
     tcp::TcpSocket,
     udp::UdpSocket,
     IpEndpoint, IpListenEndpoint, NetPollState,
@@ -210,7 +210,7 @@ impl File for Socket {
             return Ok(0);
         }
         // TODO: should add this?
-        poll_interfaces();
+        auto_poll_interfaces();
         let bytes = self.sk.recvfrom(buf).await.map(|e| e.0)?;
         warn!(
             "[Socket::File::read_at] expect to recv: {:?} exact: {bytes}",
@@ -224,7 +224,7 @@ impl File for Socket {
             return Ok(0);
         }
         // TODO: should add this?
-        poll_interfaces();
+        auto_poll_interfaces();
         let bytes = self.sk.sendto(buf, None).await?;
         warn!(
             "[Socket::File::write_at] expect to send: {:?} bytes exact: {bytes}",
@@ -235,7 +235,7 @@ impl File for Socket {
 
     async fn base_poll(&self, events: PollEvents) -> PollEvents {
         let mut res = PollEvents::empty();
-        poll_interfaces();
+        auto_poll_interfaces();
         let netstate = self.sk.poll().await;
         if events.contains(PollEvents::IN) {
             if netstate.readable {
