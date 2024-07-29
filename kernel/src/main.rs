@@ -71,7 +71,7 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
         vfs::init();
 
         #[cfg(feature = "debug")]
-        utils::spawn_debug_tasks(print_proc_tree, 10);
+        utils::spawn_timer_tasks(print_proc_tree, 10);
 
         task::spawn_kernel_task(async move {
             task::spawn_init_proc();

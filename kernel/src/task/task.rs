@@ -241,7 +241,6 @@ impl Task {
         });
 
         task.thread_group.lock().push(task.clone());
-        task.memory_space.lock().set_task(&task);
         TASK_MANAGER.add(&task);
         PROCESS_GROUP_MANAGER.add_group(&task);
 
@@ -442,7 +441,6 @@ impl Task {
         new.with_mut_thread_group(|tg| tg.push(new.clone()));
 
         if new.is_leader() {
-            new.memory_space.lock().set_task(&new);
             PROCESS_GROUP_MANAGER.add_process(new.pgid(), &new);
         }
 
@@ -459,7 +457,6 @@ impl Task {
     ) {
         log::debug!("[Task::do_execve] parsing elf");
         let mut memory_space = MemorySpace::new_user();
-        memory_space.set_task(&self.leader());
         let (mut entry, mut auxv) = memory_space.parse_and_map_elf(elf_file.clone(), elf_data);
 
         let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
