@@ -33,32 +33,30 @@ pub fn kernel_trap_handler() {
     let _sepc = sepc::read();
     let _cause = scause.cause();
     match scause.cause() {
-        Trap::Interrupt(i) => {
-            match i {
-                Interrupt::SupervisorExternal => {
-                    log::info!("[kernel] receive externel interrupt");
-                    driver::get_device_manager_mut().handle_irq();
-                }
-                Interrupt::SupervisorTimer => {
-                    // log::warn!("[kernel_trap] receive timer interrupt");
-                    TIMER_MANAGER.check(get_time_duration());
-                    unsafe { set_next_timer_irq() };
-                    #[cfg(feature = "preempt")]
-                    {
-                        if !executor::has_task() {
-                            return;
-                        }
-                        unsafe { set_timer_irq(5) };
-                        let mut old_hart = local_hart().enter_preempt_switch();
-                        log::warn!("kernel preempt");
-                        executor::run_one();
-                        log::warn!("kernel preempt fininshed");
-                        local_hart().leave_preempt_switch(&mut old_hart);
-                    }
-                }
-                _ => panic_on_unknown_trap(),
+        Trap::Interrupt(i) => match i {
+            Interrupt::SupervisorExternal => {
+                log::info!("[kernel] receive externel interrupt");
+                driver::get_device_manager_mut().handle_irq();
             }
-        }
+            Interrupt::SupervisorTimer => {
+                // log::error!("[kernel_trap] receive timer interrupt");
+                TIMER_MANAGER.check();
+                unsafe { set_next_timer_irq() };
+                #[cfg(feature = "preempt")]
+                {
+                    if !executor::has_task() {
+                        return;
+                    }
+                    unsafe { set_timer_irq(5) };
+                    let mut old_hart = local_hart().enter_preempt_switch();
+                    log::warn!("kernel preempt");
+                    executor::run_one();
+                    log::warn!("kernel preempt fininshed");
+                    local_hart().leave_preempt_switch(&mut old_hart);
+                }
+            }
+            _ => panic_on_unknown_trap(),
+        },
         Trap::Exception(e) => match e {
             _ => panic_on_unknown_trap(),
         },

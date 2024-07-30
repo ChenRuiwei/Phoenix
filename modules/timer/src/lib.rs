@@ -4,6 +4,7 @@ use core::{cmp::Reverse, task::Waker, time::Duration};
 extern crate alloc;
 use alloc::{boxed::Box, collections::BinaryHeap};
 
+use arch::time::get_time_duration;
 use spin::Lazy;
 use sync::mutex::SpinNoIrqLock;
 
@@ -95,14 +96,16 @@ impl TimerManager {
         self.timers.lock().push(Reverse(timer));
     }
 
-    pub fn check(&self, current: Duration) {
+    pub fn check(&self) {
         let mut timers = self.timers.lock();
+
         while let Some(timer) = timers.peek() {
-            if current >= timer.0.expire {
+            let current_time = get_time_duration();
+            if current_time >= timer.0.expire {
                 log::trace!("timers len {}", timers.len());
                 log::info!(
                     "[Timer Manager] there is a timer expired, current:{:?}, expire:{:?}",
-                    current,
+                    current_time,
                     timer.0.expire
                 );
                 let timer = timers.pop().unwrap().0;
