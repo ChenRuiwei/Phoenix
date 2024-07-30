@@ -342,6 +342,7 @@ impl UdpSocket {
             })
             .await?;
         log::info!("[UdpSocket::send_impl] send {bytes}bytes to {remote_endpoint:?}");
+        yield_now().await;
         Ok(bytes)
     }
 
@@ -354,24 +355,27 @@ impl UdpSocket {
             return Err(SysError::ENOTCONN);
         }
         let waker = get_waker().await;
-        self.block_on(|| {
-            SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
-                if socket.can_recv() {
-                    // data available
-                    op(socket)
-                } else if !socket.is_open() {
-                    // TODO: I suppose that this would't happen
-                    warn!("UDP socket {}: recv() failed: not connected", self.handle);
-                    Err(SysError::ENOTCONN)
-                } else {
-                    // no more data
-                    log::info!("[recv_impl] no more data, register waker and suspend now");
-                    socket.register_recv_waker(&waker);
-                    Err(SysError::EAGAIN)
-                }
+        let ret = self
+            .block_on(|| {
+                SOCKET_SET.with_socket_mut::<udp::Socket, _, _>(self.handle, |socket| {
+                    if socket.can_recv() {
+                        // data available
+                        op(socket)
+                    } else if !socket.is_open() {
+                        // TODO: I suppose that this would't happen
+                        warn!("UDP socket {}: recv() failed: not connected", self.handle);
+                        Err(SysError::ENOTCONN)
+                    } else {
+                        // no more data
+                        log::info!("[recv_impl] no more data, register waker and suspend now");
+                        socket.register_recv_waker(&waker);
+                        Err(SysError::EAGAIN)
+                    }
+                })
             })
-        })
-        .await
+            .await;
+        yield_now().await;
+        ret
     }
 
     async fn block_on<F, T>(&self, mut f: F) -> SysResult<T>
