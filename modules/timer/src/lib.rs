@@ -103,7 +103,7 @@ impl TimerManager {
             let current_time = get_time_duration();
             if current_time >= timer.0.expire {
                 log::trace!("timers len {}", timers.len());
-                log::error!(
+                log::info!(
                     "[Timer Manager] there is a timer expired, current:{:?}, expire:{:?}",
                     current_time,
                     timer.0.expire
