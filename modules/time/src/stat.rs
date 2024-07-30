@@ -94,6 +94,6 @@ impl TaskTimeStat {
     }
 
     pub fn need_schedule(&self) -> bool {
-        get_time_duration() - self.schedule_time_start >= TIME_SLICE_DUATION
+        get_time_duration() - self.schedule_time_start >= TIME_SLICE_DUATION * 5
     }
 }
