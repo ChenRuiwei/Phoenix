@@ -147,6 +147,7 @@ impl TcpSocket {
     ///
     /// The local port is generated automatically.
     pub async fn connect(&self, remote_addr: IpEndpoint) -> SysResult<()> {
+        yield_now().await;
         // 将STATE_CLOSED改为STATE_CONNECTING，在poll_connect的时候，
         // 会再变为STATE_CONNECTED
         self.update_state(STATE_CLOSED, STATE_CONNECTING, || {
