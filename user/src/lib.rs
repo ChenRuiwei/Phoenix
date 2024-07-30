@@ -2,6 +2,7 @@
 #![feature(linkage)]
 #![feature(panic_info_message)]
 #![feature(alloc_error_handler)]
+#![feature(generic_arg_infer)]
 
 #[macro_use]
 pub mod console;

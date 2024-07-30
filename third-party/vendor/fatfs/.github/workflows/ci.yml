@@ -1,0 +1,49 @@
+on: [push, pull_request]
+
+name: CI
+
+jobs:
+  check:
+    name: Build
+    strategy:
+      matrix:
+        include:
+          - rust_version: stable
+            run_tests: true
+          - rust_version: beta
+            run_tests: true
+          - rust_version: nightly
+            run_tests: true
+          # Minimal supported rustc version
+          - rust_version: 1.65.0
+            run_tests: false
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.rust_version == 'nightly' }}
+    env:
+      RUST_LOG: warn
+      RUST_BACKTRACE: 1
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          rustup install ${{ matrix.rust_version }}
+          rustup default ${{ matrix.rust_version }}
+          rustc --version
+
+      - name: Build
+        run: cargo build
+
+      - name: Run tests
+        run: cargo test --verbose
+        if: ${{ matrix.run_tests }}
+
+      - name: Build - no_std
+        run: cargo build --no-default-features
+
+      - name: Build - no_std, lfn
+        run: cargo build --no-default-features --features lfn
+
+      - name: Build - no_std, alloc, lfn, unicode
+        run: cargo build --no-default-features --features alloc,lfn,unicode

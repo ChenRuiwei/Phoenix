@@ -4,6 +4,7 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
+use driver::sbi::shutdown;
 use core::{
     cell::SyncUnsafeCell,
     ops::DerefMut,
@@ -531,12 +532,9 @@ impl Task {
     // instead, call `set_terminated`
     pub fn do_exit(self: &Arc<Self>) {
         log::info!("thread {} do exit", self.tid());
-        assert_ne!(
-            self.tid(),
-            INIT_PROC_PID,
-            "initproc die!!!, sepc {:#x}",
-            self.trap_context_mut().sepc
-        );
+        if self.tid() == INIT_PROC_PID {
+            shutdown();
+        }
 
         if let Some(address) = self.tid_address_ref().clear_child_tid {
             log::info!("[do_exit] clear_child_tid: {:x}", address);

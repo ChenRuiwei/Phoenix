@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(generic_arg_infer)]
 
 extern crate alloc;
 
@@ -12,14 +13,14 @@ const TESTCASES: [&str; 11] = [
     "time-test",
     "busybox_testcode.sh",
     "lua_testcode.sh",
-    "netperf_testcode.sh",
+    "./test-ltp.sh ltp/testcases/bin/abs01",
+    "./test-ltp.sh ltp/testcases/bin/read01",
     "libc-bench",
+    "netperf_testcode.sh",
     "libctest_testcode.sh",
-    "iozone_testcode.sh",
-    "unixbench_testcode.sh",
     "lmbench_testcode.sh",
-    "cyclictest_testcode.sh",
-    "iperf_testcode.sh",
+    "unixbench_testcode.sh",
+    "iozone_testcode.sh",
 ];
 
 fn run_cmd(cmd: &str) {

@@ -4,6 +4,9 @@ BOARD := qemu
 
 NET ?=n # 是否启用VirtioNet设备，如果不开启则使用本地Loopback设备
 
+# For submit
+export PATH := /opt/riscv64-linux-musl-cross/bin:$(PATH)
+
 export TARGET = riscv64gc-unknown-none-elf
 export MODE = release
 export LOG = error
@@ -96,7 +99,16 @@ $(KERNEL_ASM): $(KERNEL_ELF)
 
 # Phony targets
 PHONY := all
-all: build run MODE=release
+all:
+	@rm -rf .cargo
+	@cp -r cargo-submit .cargo
+	@rm -rf kernel/.cargo
+	@cp -r kernel/cargo-submit kernel/.cargo
+	@rm -rf user/.cargo
+	@cp -r user/cargo-submit user/.cargo
+	@make user kernel MODE=release
+	@cp ./target/riscv64gc-unknown-none-elf/release/kernel.bin kernel-qemu
+
 
 PHONY += build_docker
 build_docker:
@@ -131,7 +143,6 @@ user:
 	@echo "building user..."
 	@cd user && make build
 	@$(foreach elf, $(USER_ELFS), $(OBJCOPY) $(elf) --strip-all -O binary $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.bin, $(elf));)
-	@cp ./testcase/22/busybox $(TARGET_DIR)/busybox
 	@echo "building user finished"
 
 PHONY += fs-img

@@ -8,13 +8,17 @@
 *.dts
 traces.*
 
+!third-party/vendor/
+!third-party/vendor/**
+
+
+
 lmbench_all_debug
 kernel-qemu
 sdcard.img
-kernel/src/link_app.asm
 
 ltp/
 target/
-third-party/vendor/
 crates/virtio-drivers/
 crates/lwext4_rust/
+kernel/src/link_app.asm
