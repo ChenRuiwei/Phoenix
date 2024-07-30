@@ -258,7 +258,8 @@ impl UdpSocket {
             );
             socket.close();
         });
-        SOCKET_SET.poll_interfaces();
+        let timestamp = SOCKET_SET.poll_interfaces();
+        SOCKET_SET.check_poll(timestamp);
         Ok(())
     }
 
@@ -341,7 +342,6 @@ impl UdpSocket {
             })
             .await?;
         log::info!("[UdpSocket::send_impl] send {bytes}bytes to {remote_endpoint:?}");
-        SOCKET_SET.poll_interfaces();
         Ok(bytes)
     }
 
@@ -382,8 +382,10 @@ impl UdpSocket {
             f()
         } else {
             loop {
-                SOCKET_SET.poll_interfaces();
-                match f() {
+                let timestamp = SOCKET_SET.poll_interfaces();
+                let ret = f();
+                SOCKET_SET.check_poll(timestamp);
+                match ret {
                     Ok(t) => return Ok(t),
                     Err(SysError::EAGAIN) => {
                         suspend_now().await;

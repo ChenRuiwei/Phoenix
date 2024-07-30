@@ -17,12 +17,18 @@ use crate::Mutex;
 
 const PORT_NUM: usize = 65536;
 
+/// An entry in the listen table, representing a specific listening endpoint.
+///
+/// This struct holds the information related to a specific listening IP address
+/// and port. It also manages the SYN queue and the waker for handling incoming
+/// TCP connections.
 struct ListenTableEntry {
-    /// 所监听的 IP 地址和端口号
+    /// The IP address and port being listened on.
     listen_endpoint: IpListenEndpoint,
-    /// 在TCP连接建立过程中，服务器会收到客户端发送的SYN包，
-    /// 并将其放入SYN队列中等待处理
+    /// The SYN queue holding incoming TCP connection handles.
     syn_queue: VecDeque<SocketHandle>,
+    /// The waker used to wake up the listening socket when a new connection
+    /// arrives.
     waker: Waker,
 }
 
@@ -77,12 +83,16 @@ impl Drop for ListenTableEntry {
     }
 }
 
-/// 用于管理TCP监听端口的表，每个索引对应一个特定的端口号
+/// A table for managing TCP listen ports.
+/// Each index corresponds to a specific port number.
 ///
-/// 使用数组的方式，可以通过端口号直接访问对应的监听条目，提高查找效率。
-/// Mutex 用于确保线程安全，因为在多线程环境下，
-/// 多个线程可能会同时访问和修改监听端口的状态。
+/// Using an array allows direct access to the corresponding listen entry
+/// through the port number, improving lookup efficiency.
+/// A Mutex ensures thread safety, as multiple threads may access and modify
+/// the state of the listening ports in a multithreaded environment.
 pub struct ListenTable {
+    /// An array of Mutexes, each protecting an optional ListenTableEntry for a
+    /// specific port.
     tcp: Box<[Mutex<Option<Box<ListenTableEntry>>>]>,
 }
 
