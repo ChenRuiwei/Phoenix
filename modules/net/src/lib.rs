@@ -15,6 +15,7 @@ use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
     phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken},
     socket::{self, AnySocket},
+    time::{Duration as SmolDuration, Instant as SmolInstant},
     wire::{EthernetAddress, HardwareAddress, IpCidr},
 };
 use spin::{Lazy, Once};
@@ -173,16 +174,12 @@ impl<'a> SocketSetWrapper<'a> {
         f(socket)
     }
 
-    pub fn poll_interfaces(&self) {
+    pub fn poll_interfaces(&self) -> smoltcp::time::Instant {
         ETH0.get().unwrap().poll(&self.0)
     }
 
-    pub fn poll_at_interfaces(&self) -> Option<Duration> {
-        ETH0.get().unwrap().poll_at(&self.0)
-    }
-
-    pub fn auto_poll_interfaces(&self) {
-        ETH0.get().unwrap().auto_poll(&self.0)
+    pub fn check_poll(&self, timestamp: SmolInstant) {
+        ETH0.get().unwrap().check_poll(timestamp, &self.0)
     }
 
     pub fn remove(&self, handle: SocketHandle) {
@@ -216,12 +213,16 @@ impl InterfaceWrapper {
         }
     }
 
-    fn current_time() -> smoltcp::time::Instant {
-        smoltcp::time::Instant::from_micros_const(get_time_us() as i64)
+    fn current_time() -> SmolInstant {
+        SmolInstant::from_micros_const(get_time_us() as i64)
     }
 
-    fn to_duration(instant: smoltcp::time::Instant) -> Duration {
+    fn ins_to_duration(instant: SmolInstant) -> Duration {
         Duration::from_micros(instant.total_micros() as u64)
+    }
+
+    fn dur_to_duration(duration: SmolDuration) -> Duration {
+        Duration::from_micros(duration.total_micros() as u64)
     }
 
     pub fn name(&self) -> &str {
@@ -249,58 +250,116 @@ impl InterfaceWrapper {
     /// protocol stack status.
     ///
     /// return what time it should poll next
-    pub fn poll(&self, sockets: &Mutex<SocketSet>) {
-        let mut dev = self.dev.lock();
-        let mut iface = self.iface.lock();
-        let mut sockets = sockets.lock();
-        let result = iface.poll(Self::current_time(), dev.deref_mut(), &mut sockets);
-        log::warn!("[net::InterfaceWrapper::poll] does something have been changed? {result:?}");
-    }
-
-    pub fn poll_at(&self, sockets: &Mutex<SocketSet>) -> Option<Duration> {
+    pub fn poll(&self, sockets: &Mutex<SocketSet>) -> SmolInstant {
         let mut dev = self.dev.lock();
         let mut iface = self.iface.lock();
         let mut sockets = sockets.lock();
         let timestamp = Self::current_time();
-        iface.poll(timestamp, dev.deref_mut(), &mut sockets);
-        iface
-            .poll_at(timestamp, &mut sockets)
-            .map(Self::to_duration)
+        let result = iface.poll(timestamp, dev.deref_mut(), &mut sockets);
+        log::warn!("[net::InterfaceWrapper::poll] does something have been changed? {result:?}");
+        timestamp
     }
 
-    pub fn auto_poll(&self, sockets: &Mutex<SocketSet>) {
-        if let Some(next_poll) = self.poll_at(sockets) {
-            log::debug!(
-                "current time is {:?}, we should poll next time is {}",
-                get_time_duration().as_micros(),
-                next_poll.as_micros()
-            );
-            let timer = Timer::new(next_poll, Box::new(PollTimer {}));
-            TIMER_MANAGER.add_timer(timer);
+    // pub fn poll_at(&self, sockets: &Mutex<SocketSet>) {
+    //     let mut iface = self.iface.lock();
+    //     let mut sockets = sockets.lock();
+    //     let timestamp = Self::current_time();
+    //     if let Some(next_poll_time) = iface
+    //         .poll_at(timestamp, &mut sockets)
+    //         .map(Self::to_duration)
+    //     {
+    //         if next_poll_time.is_zero() || next_poll_time <= get_time_duration()
+    // {             iface.poll(
+    //                 Self::current_time(),
+    //                 self.dev.lock().deref_mut(),
+    //                 &mut sockets,
+    //             );
+    //             error!("poll");
+    //         } else {
+    //             error!(
+    //                 "add timer expired {}, now {}",
+    //                 next_poll_time.as_micros(),
+    //                 get_time_duration().as_micros(),
+    //             );
+    //             let timer = Timer::new(next_poll_time, Box::new(PollTimer {}));
+    //             TIMER_MANAGER.add_timer(timer);
+    //         }
+    //     } else {
+    //         error!("don't need to poll");
+    //     }
+    // }
+
+    pub fn check_poll(&self, timestamp: SmolInstant, sockets: &Mutex<SocketSet>) {
+        let mut iface = self.iface.lock();
+        let mut sockets = sockets.lock();
+        match iface
+            .poll_delay(timestamp, &mut sockets)
+            .map(Self::dur_to_duration)
+        {
+            Some(Duration::ZERO) => {
+                iface.poll(
+                    Self::current_time(),
+                    self.dev.lock().deref_mut(),
+                    &mut sockets,
+                );
+            }
+            Some(delay) => {
+                let next_poll = delay + Self::ins_to_duration(timestamp);
+                let current = get_time_duration();
+                if next_poll < current {
+                    iface.poll(
+                        Self::current_time(),
+                        self.dev.lock().deref_mut(),
+                        &mut sockets,
+                    );
+                } else {
+                    let timer = Timer::new(next_poll, Box::new(PollTimer {}));
+                    TIMER_MANAGER.add_timer(timer);
+                }
+            }
+            None => {
+                let timer = Timer::new(
+                    get_time_duration() + Duration::from_millis(2),
+                    Box::new(PollTimer {}),
+                );
+                TIMER_MANAGER.add_timer(timer);
+            }
         }
     }
+
+    // pub fn auto_poll(&self, sockets: &Mutex<SocketSet>) {
+    //     if let Some(next_poll) = self.poll_at(sockets) {
+    //         log::debug!(
+    //             "current time is {:?}, we should poll next time is {}",
+    //             get_time_duration().as_micros(),
+    //             next_poll.as_micros()
+    //         );
+
+    //     }
+    // }
 }
 
-pub fn poll_at_interfaces() -> Option<Duration> {
-    SOCKET_SET.poll_at_interfaces()
+pub fn check_poll(timestamp: SmolInstant) {
+    SOCKET_SET.check_poll(timestamp)
 }
 
-pub fn auto_poll_interfaces() {
-    SOCKET_SET.auto_poll_interfaces()
+/// Poll the network stack.
+///
+/// It may receive packets from the NIC and process them, and transmit queued
+/// packets to the NIC.
+pub fn poll_interfaces() -> smoltcp::time::Instant {
+    SOCKET_SET.poll_interfaces()
 }
+
+// pub fn auto_poll_interfaces() {
+//     SOCKET_SET.auto_poll_interfaces()
+// }
 
 struct PollTimer;
 
 impl TimerEvent for PollTimer {
     fn callback(self: Box<Self>) -> Option<Timer> {
-        if let Some(next_poll) = poll_at_interfaces() {
-            log::debug!("[PollTimer] callback add new timer");
-            return Some(Timer {
-                expire: next_poll,
-                data: Box::new(PollTimer),
-            });
-        }
-        log::debug!("[PollTimer] don't need poll any more ");
+        poll_interfaces();
         None
     }
 }
@@ -447,14 +506,6 @@ pub struct NetPollState {
     /// Object can be writen now.
     pub writable: bool,
     pub hangup: bool,
-}
-
-/// Poll the network stack.
-///
-/// It may receive packets from the NIC and process them, and transmit queued
-/// packets to the NIC.
-pub fn poll_interfaces() {
-    SOCKET_SET.poll_interfaces()
 }
 
 /// Benchmark raw socket transmit bandwidth.

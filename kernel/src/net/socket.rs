@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use log::warn;
 use net::{
     addr::{UNSPECIFIED_ENDPOINT_V4, UNSPECIFIED_IPV4},
-    auto_poll_interfaces,
+    poll_interfaces,
     tcp::TcpSocket,
     udp::UdpSocket,
     IpEndpoint, IpListenEndpoint, NetPollState,
@@ -136,7 +136,7 @@ impl Sock {
 
 /// linux中，socket面向用户空间，sock面向内核空间
 pub struct Socket {
-    /// The type of socket (such as DataM, DGRAM)
+    /// The type of socket (such as STREAM, DGRAM)
     pub types: SocketType,
     /// The core of a socket, which includes TCP, UDP, or Unix domain sockets
     pub sk: Sock,
@@ -222,7 +222,7 @@ impl File for Socket {
             return Ok(0);
         }
         // TODO: should add this?
-        auto_poll_interfaces();
+        // poll_interfaces();
         let bytes = self.sk.sendto(buf, None).await?;
         warn!(
             "[Socket::File::write_at] expect to send: {:?} bytes exact: {bytes}",
@@ -233,17 +233,13 @@ impl File for Socket {
 
     async fn base_poll(&self, events: PollEvents) -> PollEvents {
         let mut res = PollEvents::empty();
-        auto_poll_interfaces();
+        poll_interfaces();
         let netstate = self.sk.poll().await;
-        if events.contains(PollEvents::IN) {
-            if netstate.readable {
-                res |= PollEvents::IN;
-            }
+        if events.contains(PollEvents::IN) && netstate.readable {
+            res |= PollEvents::IN;
         }
-        if events.contains(PollEvents::OUT) {
-            if netstate.writable {
-                res |= PollEvents::OUT;
-            }
+        if events.contains(PollEvents::OUT) && netstate.writable {
+            res |= PollEvents::OUT;
         }
         if netstate.hangup {
             log::warn!("[Socket::bask_poll] PollEvents is hangup");

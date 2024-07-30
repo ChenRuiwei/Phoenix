@@ -48,14 +48,24 @@ const STATE_LISTENING: u8 = 4;
 /// [`listen`]: TcpSocket::listen
 /// [`accept`]: TcpSocket::accept
 pub struct TcpSocket {
-    /// 使用 AtomicU8 实现无锁管理
+    /// Manages the state of the socket using an atomic u8 for lock-free
+    /// management.
     state: AtomicU8,
-    /// 用于表示socket的读写方向是否被显式关闭，而不是表示连接状态，
-    /// shutdown关闭读写之后，不能再重新通过connect的方式建立连接
+    /// Indicates whether the read or write directions of the socket have been
+    /// explicitly shut down. This does not represent the connection state.
+    /// Once shut down, the socket cannot be reconnected via `connect`.
     shutdown: UnsafeCell<u8>,
+    /// An optional handle to the socket, managed within an UnsafeCell for
+    /// interior mutability.
     handle: UnsafeCell<Option<SocketHandle>>,
+    /// Stores the local IP endpoint of the socket, using UnsafeCell for
+    /// interior mutability.
     local_addr: UnsafeCell<IpEndpoint>,
+    /// Stores the peer IP endpoint of the socket, using UnsafeCell for interior
+    /// mutability.
     peer_addr: UnsafeCell<IpEndpoint>,
+    /// Indicates whether the socket is in non-blocking mode, using an atomic
+    /// boolean for thread-safe access.
     nonblock: AtomicBool,
 }
 
@@ -315,7 +325,8 @@ impl TcpSocket {
             });
             // unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT) }; // clear bound
             // address
-            SOCKET_SET.poll_interfaces();
+            let timestamp = SOCKET_SET.poll_interfaces();
+            SOCKET_SET.check_poll(timestamp);
             Ok(())
         })
         .unwrap_or(Ok(()))?;
@@ -327,7 +338,8 @@ impl TcpSocket {
             let local_port = unsafe { self.local_addr.get().read().port };
             unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT_V4) }; // clear bound address
             LISTEN_TABLE.unlisten(local_port);
-            SOCKET_SET.poll_interfaces();
+            let timestamp = SOCKET_SET.poll_interfaces();
+            SOCKET_SET.check_poll(timestamp);
             Ok(())
         })
         .unwrap_or(Ok(()))?;
@@ -423,7 +435,6 @@ impl TcpSocket {
             })
         })
         .await;
-        SOCKET_SET.auto_poll_interfaces();
         if let Ok(bytes) = ret {
             if bytes > TCP_TX_BUF_LEN / 2 {
                 ksleep_ms(3).await;
@@ -712,8 +723,10 @@ impl TcpSocket {
             f()
         } else {
             loop {
-                SOCKET_SET.poll_interfaces();
-                match f() {
+                let timestamp = SOCKET_SET.poll_interfaces();
+                let ret = f();
+                SOCKET_SET.check_poll(timestamp);
+                match ret {
                     Ok(t) => return Ok(t),
                     Err(SysError::EAGAIN) => {
                         suspend_now().await;
@@ -737,8 +750,10 @@ impl TcpSocket {
             f().await
         } else {
             loop {
-                SOCKET_SET.poll_interfaces();
-                match f().await {
+                let timestamp = SOCKET_SET.poll_interfaces();
+                let ret = f().await;
+                SOCKET_SET.check_poll(timestamp);
+                match ret {
                     Ok(t) => return Ok(t),
                     Err(SysError::EAGAIN) => {
                         suspend_now().await;

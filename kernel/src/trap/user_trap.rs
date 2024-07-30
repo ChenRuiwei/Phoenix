@@ -117,7 +117,7 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                     // likely not triggered in user mode but rather be triggered in supervisor mode,
                     // which will cause user program running on the cpu for a quite long time.
                     log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");
-                    TIMER_MANAGER.check(get_time_duration());
+                    TIMER_MANAGER.check();
                     unsafe { set_next_timer_irq() };
                     if executor::has_task() {
                         yield_now().await;
