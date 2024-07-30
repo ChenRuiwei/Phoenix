@@ -119,7 +119,8 @@ pub async fn trap_handler(task: &Arc<Task>) -> bool {
                     log::trace!("[trap_handler] timer interrupt, sepc {sepc:#x}");
                     TIMER_MANAGER.check(get_time_duration());
                     unsafe { set_next_timer_irq() };
-                    if executor::has_task() {
+                    if task.time_stat_ref().need_schedule() && executor::has_task() {
+                        log::info!("time slice used up, yield now");
                         yield_now().await;
                     }
                 }
