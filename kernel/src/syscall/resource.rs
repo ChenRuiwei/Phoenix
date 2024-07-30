@@ -61,6 +61,7 @@ impl Syscall<'_> {
         // that can be opened by this process.Attempts (open(2), pipe(2), dup(2),
         // etc.) to exceed this limit yield the error EMFILE.
         const RLIMIT_NOFILE: i32 = 7;
+        const RLIMIT_CORE: i32 = 4;
 
         let task = if pid == 0 {
             self.task.clone()
@@ -80,6 +81,10 @@ impl Syscall<'_> {
                     rlim_max: USER_STACK_SIZE,
                 },
                 RLIMIT_NOFILE => task.with_fd_table(|table| table.rlimit()),
+                RLIMIT_CORE => RLimit {
+                    rlim_cur: 0,
+                    rlim_max: 0,
+                },
                 r => panic!("[sys_prlimit64] get old_limit : unimplemented {r}"),
             };
             old_limit.write(&task, limit)?;
