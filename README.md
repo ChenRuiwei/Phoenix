@@ -10,7 +10,7 @@ Phoenix 是使用 Rust 编写、基于 RISCV-64 硬件平台、支持多核、�
 
 ### 决赛第一阶段
 
-VisionFive 2 赛道，通过了除部分 ltp 测试外的所有测试点，排名第一：
+于 2024-07-31 结束决赛第一阶段时，截止到 23 点半，通过了除 ltp 部分测试外的所有测试点，所属 VisionFive 2 赛道排名为第 2，排行榜如下图所示：
 
 ![决赛第一阶段排行榜](./docs/assets/leaderboard-final.png)
 
