@@ -28,6 +28,10 @@ impl PageCache {
         self.pages.lock().insert(offset_aligned, page);
     }
 
+    pub fn clear(&self) {
+        self.pages.lock().clear()
+    }
+
     pub fn flush(&self) {
         for page in self.pages.lock().values() {
             page.flush()

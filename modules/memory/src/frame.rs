@@ -9,6 +9,7 @@ use core::{
 };
 
 use bitmap_allocator::BitAlloc;
+use crate_interface::call_interface;
 use sync::mutex::SpinNoIrqLock;
 
 use crate::{PhysAddr, PhysPageNum};
@@ -82,36 +83,58 @@ pub fn init_frame_allocator(start: PhysPageNum, end: PhysPageNum) {
 
 /// Allocate a frame
 pub fn alloc_frame_tracker() -> FrameTracker {
-    FRAME_ALLOCATOR
+    let ret = FRAME_ALLOCATOR
         .allocator
         .lock()
         .alloc()
-        .map(|u| FrameTracker::new(FRAME_ALLOCATOR.range_ppn().start + u))
-        .expect("frame space not enough")
+        .map(|u| FrameTracker::new(FRAME_ALLOCATOR.range_ppn().start + u));
+    if let Some(ret) = ret {
+        ret
+    } else {
+        call_interface!(FrameReleaseIf::release_frames());
+        FRAME_ALLOCATOR
+            .allocator
+            .lock()
+            .alloc()
+            .map(|u| FrameTracker::new(FRAME_ALLOCATOR.range_ppn().start + u))
+            .expect("frame space not enough")
+    }
 }
 
 /// Allocate contiguous frames
 pub fn alloc_frame_trackers(size: usize) -> Vec<FrameTracker> {
-    let first_frame = FRAME_ALLOCATOR
-        .allocator
-        .lock()
-        .alloc_contiguous(size, 0)
-        .unwrap();
-
-    (first_frame..first_frame + size)
-        .map(|u| FrameTracker::new(FRAME_ALLOCATOR.range_ppn().start + u))
-        .collect()
-}
-
-/// Allocate contiguous frames
-pub fn alloc_frames(size: usize) -> PhysAddr {
-    let ppn = FRAME_ALLOCATOR.range_ppn().start
-        + FRAME_ALLOCATOR
+    if let Some(first_frame) = FRAME_ALLOCATOR.allocator.lock().alloc_contiguous(size, 0) {
+        (first_frame..first_frame + size)
+            .map(|u| FrameTracker::new(FRAME_ALLOCATOR.range_ppn().start + u))
+            .collect()
+    } else {
+        call_interface!(FrameReleaseIf::release_frames());
+        let first_frame = FRAME_ALLOCATOR
             .allocator
             .lock()
             .alloc_contiguous(size, 0)
             .unwrap();
-    ppn.to_paddr()
+        (first_frame..first_frame + size)
+            .map(|u| FrameTracker::new(FRAME_ALLOCATOR.range_ppn().start + u))
+            .collect()
+    }
+}
+
+/// Allocate contiguous frames
+pub fn alloc_frames(size: usize) -> PhysAddr {
+    if let Some(first_frame) = FRAME_ALLOCATOR.allocator.lock().alloc_contiguous(size, 0) {
+        let ppn = FRAME_ALLOCATOR.range_ppn().start + first_frame;
+        ppn.to_paddr()
+    } else {
+        call_interface!(FrameReleaseIf::release_frames());
+        let ppn = FRAME_ALLOCATOR.range_ppn().start
+            + FRAME_ALLOCATOR
+                .allocator
+                .lock()
+                .alloc_contiguous(size, 0)
+                .unwrap();
+        ppn.to_paddr()
+    }
 }
 
 /// Deallocate a frame
@@ -120,4 +143,9 @@ pub fn dealloc_frame(ppn: PhysPageNum) {
         .allocator
         .lock()
         .dealloc(ppn - FRAME_ALLOCATOR.range_ppn().start);
+}
+
+#[crate_interface::def_interface]
+pub trait FrameReleaseIf {
+    fn release_frames();
 }

@@ -18,7 +18,7 @@ use alloc::sync::Arc;
 pub use consts::SyscallNo;
 pub use mm::MmapFlags;
 pub use process::CloneFlags;
-use systype::SyscallResult;
+use systype::{SysError, SysResult, SyscallResult};
 
 use crate::task::Task;
 
@@ -65,7 +65,7 @@ impl<'a> Syscall<'a> {
         use SyscallNo::*;
         let Some(syscall_no) = SyscallNo::from_repr(syscall_no) else {
             log::error!("Syscall number not included: {syscall_no}");
-            unimplemented!()
+            return -(SysError::ENOSYS as isize) as usize;
         };
         // Use STRACE=1 instead
         // log::debug!("[syscall] handle {syscall_no}");

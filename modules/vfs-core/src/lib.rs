@@ -15,6 +15,7 @@ extern crate alloc;
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
+use memory::FrameReleaseIf;
 use sync::mutex::SpinNoIrqLock;
 
 type Mutex<T> = SpinNoIrqLock<T>;
@@ -28,6 +29,9 @@ fn alloc_ino() -> usize {
 pub fn arc_zero() -> Arc<core::mem::MaybeUninit<usize>> {
     Arc::<usize>::new_zeroed()
 }
+
+
+
 
 pub use dentry::*;
 pub use file::*;

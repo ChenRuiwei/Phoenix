@@ -16,11 +16,12 @@ extern crate alloc;
 use alloc::{collections::BTreeMap, string::String, sync::Arc};
 
 use driver::BLOCK_DEVICE;
+use memory::FrameReleaseIf;
 use procfs::init_procfs;
 use sockfs::SockFsType;
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
-use vfs_core::{Dentry, FileSystemType, InodeMode, MountFlags};
+use vfs_core::{Dentry, DentryState, FileSystemType, InodeMode, MountFlags, Path};
 
 use crate::{
     devfs::{init_devfs, DevFsType},
@@ -118,4 +119,22 @@ pub fn init() {
 
 pub fn sys_root_dentry() -> Arc<dyn Dentry> {
     SYS_ROOT_DENTRY.get().unwrap().clone()
+}
+
+struct FrameReleaseIfImpl;
+
+#[crate_interface::impl_interface]
+impl FrameReleaseIf for FrameReleaseIfImpl {
+    fn release_frames() {
+        let ltp_dentry = Path::new(sys_root_dentry(), sys_root_dentry(), "/ltp/testcases/bin/")
+            .walk()
+            .unwrap();
+        for (_, child) in ltp_dentry.children() {
+            if !child.is_negetive() {
+                let inode = child.inode().unwrap();
+                inode.page_cache().unwrap().clear();
+                inode.set_state(vfs_core::InodeState::UnInit)
+            }
+        }
+    }
 }
