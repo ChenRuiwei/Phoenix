@@ -9,7 +9,7 @@ export PATH := /opt/riscv64-linux-musl-cross/bin:$(PATH)
 
 export TARGET = riscv64gc-unknown-none-elf
 export MODE = release
-export LOG = error
+export LOG = off
 
 export Phoenix_IP=$(IP)
 export Phoenix_GW=$(GW)

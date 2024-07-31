@@ -19,7 +19,13 @@ pub fn init() {
         Some("trace") => LevelFilter::Trace,
         _ => LevelFilter::Off,
     });
-    unsafe { LOG_INITIALIZED.store(true, Ordering::SeqCst) };
+
+    match option_env!("LOG") {
+        Some("error") | Some("warn") | Some("info") | Some("debug") | Some("trace") => {
+            unsafe { LOG_INITIALIZED.store(true, Ordering::SeqCst) };
+        }
+        _ => {}
+    }
 }
 
 /// Add escape sequence to print with color in linux console
