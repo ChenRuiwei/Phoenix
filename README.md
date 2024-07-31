@@ -10,7 +10,7 @@ Phoenix 是使用 Rust 编写、基于 RISCV-64 硬件平台、支持多核、�
 
 ### 决赛第一阶段
 
-VisionFive 2 赛道，通过了除部分ltp测试外的所有测试点，排名第一：
+VisionFive 2 赛道，通过了除部分 ltp 测试外的所有测试点，排名第一：
 
 ![决赛第一阶段排行榜](./docs/assets/leaderboard-final.png)
 
@@ -34,7 +34,7 @@ VisionFive 2 赛道，初赛功能测试满分：
 
 ### 文档
 
-- [Phoenix-决赛第一阶段文档](./Phoenix-初赛文档.pdf)
+- [Phoenix-决赛第一阶段文档](./Phoenix-决赛第一阶段文档.pdf)
 - [Phoenix-初赛文档](./Phoenix-初赛文档.pdf)
 
 ### 项目结构
