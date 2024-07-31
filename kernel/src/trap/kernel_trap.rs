@@ -30,8 +30,8 @@ fn panic_on_unknown_trap() {
 pub fn kernel_trap_handler() {
     let stval = stval::read();
     let scause = scause::read();
-    let _sepc = sepc::read();
-    let _cause = scause.cause();
+    let sepc = sepc::read();
+    let cause = scause.cause();
     match scause.cause() {
         Trap::Interrupt(i) => match i {
             Interrupt::SupervisorExternal => {
@@ -58,6 +58,40 @@ pub fn kernel_trap_handler() {
             _ => panic_on_unknown_trap(),
         },
         Trap::Exception(e) => match e {
+            Exception::StorePageFault
+            | Exception::InstructionPageFault
+            | Exception::LoadPageFault => {
+                log::info!(
+                        "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
+                );
+                let access_type = match e {
+                    Exception::InstructionPageFault => PageFaultAccessType::RX,
+                    Exception::LoadPageFault => PageFaultAccessType::RO,
+                    Exception::StorePageFault => PageFaultAccessType::RW,
+                    _ => unreachable!(),
+                };
+
+                let result = current_task_ref().with_mut_memory_space(|m| {
+                    m.handle_page_fault(VirtAddr::from(stval), access_type)
+                });
+                if let Err(_e) = result {
+                    log::warn!(
+                        "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
+                    );
+                    // backtrace::backtrace();
+                    log::warn!("{:x?}", current_task_ref().trap_context_mut());
+                    // task.with_memory_space(|m| m.print_all());
+                    log::warn!("bad memory access, send SIGSEGV to task");
+                    current_task_ref().receive_siginfo(
+                        SigInfo {
+                            sig: Sig::SIGSEGV,
+                            code: SigInfo::KERNEL,
+                            details: SigDetails::None,
+                        },
+                        false,
+                    );
+                }
+            }
             _ => panic_on_unknown_trap(),
         },
     }

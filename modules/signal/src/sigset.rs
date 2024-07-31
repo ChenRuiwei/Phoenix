@@ -121,7 +121,35 @@ bitflags! {
         // TODO: rt signal
         const SIGRT1    = 1 << (33 - 1);   // real time signal min
         const SIGRT2    = 1 << (34 - 1);
-        const SIGRT3    = 1 << (34 - 1);
+        const SIGRT3    = 1 << (35 - 1);
+        const SIGRT4    = 1 << (36 - 1);
+        const SIGRT5    = 1 << (37 - 1);
+        const SIGRT6    = 1 << (38 - 1);
+        const SIGRT7    = 1 << (39 - 1);
+        const SIGRT8    = 1 << (40 - 1);
+        const SIGRT9    = 1 << (41 - 1);
+        const SIGRT10    = 1 << (42 - 1);
+        const SIGRT11    = 1 << (43 - 1);
+        const SIGRT12   = 1 << (44 - 1);
+        const SIGRT13   = 1 << (45 - 1);
+        const SIGRT14   = 1 << (46 - 1);
+        const SIGRT15   = 1 << (47 - 1);
+        const SIGRT16   = 1 << (48 - 1);
+        const SIGRT17   = 1 << (49 - 1);
+        const SIGRT18   = 1 << (50 - 1);
+        const SIGRT19   = 1 << (51 - 1);
+        const SIGRT20   = 1 << (52 - 1);
+        const SIGRT21   = 1 << (53 - 1);
+        const SIGRT22   = 1 << (54 - 1);
+        const SIGRT23   = 1 << (55 - 1);
+        const SIGRT24   = 1 << (56 - 1);
+        const SIGRT25   = 1 << (57 - 1);
+        const SIGRT26   = 1 << (58 - 1);
+        const SIGRT27   = 1 << (59 - 1);
+        const SIGRT28   = 1 << (60 - 1);
+        const SIGRT29   = 1 << (61 - 1);
+        const SIGRT30   = 1 << (62 - 1);
+        const SIGRT31   = 1 << (63 - 1);
         const SIGMAX   = 1 << 63;
         // 下面信号通常是由程序中的错误或异常操作触发的，如非法内存访问（导致
         // SIGSEGV）、硬件异常（可能导致

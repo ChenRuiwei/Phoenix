@@ -18,7 +18,7 @@ use alloc::sync::Arc;
 pub use consts::SyscallNo;
 pub use mm::MmapFlags;
 pub use process::CloneFlags;
-use systype::SyscallResult;
+use systype::{SysError, SysResult, SyscallResult};
 
 use crate::task::Task;
 
@@ -65,7 +65,7 @@ impl<'a> Syscall<'a> {
         use SyscallNo::*;
         let Some(syscall_no) = SyscallNo::from_repr(syscall_no) else {
             log::error!("Syscall number not included: {syscall_no}");
-            unimplemented!()
+            return -(SysError::ENOSYS as isize) as usize;
         };
         // Use STRACE=1 instead
         // log::debug!("[syscall] handle {syscall_no}");
@@ -146,7 +146,7 @@ impl<'a> Syscall<'a> {
                     .await
             }
             CLOSE => self.sys_close(args[0]),
-            MKDIR => self.sys_mkdirat(args[0].into(), args[1].into(), args[2] as _),
+            MKDIRAT => self.sys_mkdirat(args[0].into(), args[1].into(), args[2] as _),
             GETCWD => self.sys_getcwd(args[0].into(), args[1]),
             CHDIR => self.sys_chdir(args[0].into()),
             DUP => self.sys_dup(args[0]),
@@ -200,6 +200,7 @@ impl<'a> Syscall<'a> {
             FTRUNCATE => self.sys_ftruncate(args[0], args[1] as _).await,
             FCHMODAT => self.sys_fchmodat(),
             FCHOWNAT => self.sys_do_nothing("fchownat"),
+            FALLOCATE => self.sys_do_nothing("fallocate"),
             // IO
             PPOLL => {
                 self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3].into())
@@ -292,6 +293,7 @@ impl<'a> Syscall<'a> {
             UNAME => self.sys_uname(args[0].into()),
             SYSLOG => self.sys_syslog(args[0], args[1].into(), args[2]),
             SYSINFO => self.sys_sysinfo(args[0].into()),
+            PERSONALITY => self.sys_do_nothing("personality"),
             _ => {
                 log::error!("Unsupported syscall: {}", syscall_no);
                 Ok(0)
@@ -310,7 +312,7 @@ impl<'a> Syscall<'a> {
     }
 
     fn sys_do_nothing(&self, name: &str) -> SyscallResult {
-        log::warn!(
+        log::error!(
             "Not implemented syscall that specified to do nothing ({})",
             name
         );

@@ -37,7 +37,7 @@ pub const MMAP_PRE_ALLOC_PAGES: usize = 8;
 /// Dynamic linked interpreter address range in user space
 pub const DL_INTERP_OFFSET: usize = 0x20_0000_0000;
 
-pub const MAX_BUFFER_HEADS: usize = 0x30000;
+pub const MAX_BUFFER_HEADS: usize = 0x18000;
 pub const MAX_BUFFER_CACHE: usize = 0x1000;
 pub const MAX_BUFFER_PAGES: usize = MAX_BUFFER_CACHE / MAX_BUFFERS_PER_PAGE;
 pub const MAX_BUFFERS_PER_PAGE: usize = PAGE_SIZE / BLOCK_SIZE;

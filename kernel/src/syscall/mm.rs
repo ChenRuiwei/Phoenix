@@ -134,10 +134,11 @@ impl Syscall<'_> {
             MmapFlags::MAP_SHARED => {
                 if flags.contains(MmapFlags::MAP_ANONYMOUS) {
                     // TODO: MAP_SHARED page fault should keep track of all vm areas
+                    log::error!("shared anonymous mapping");
                     todo!()
-                    // let start_va = task
-                    //     .with_mut_memory_space(|m|
-                    // m.alloc_mmap_anonymous(perm, flags, length))?;
+                    // let start_va = task.with_mut_memory_space(|m| {
+                    //     m.alloc_mmap_anonymous(addr, length, perm, flags)
+                    // })?;
                     // Ok(start_va.bits())
                 } else {
                     let file = task.with_fd_table(|table| table.get_file(fd))?;
