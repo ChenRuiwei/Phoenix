@@ -9,7 +9,7 @@ use user_lib::{execve, fork, wait, waitpid};
 #[macro_use]
 extern crate user_lib;
 
-const TESTCASES: [&str; 249] = [
+const TESTCASES: [&str; 248] = [
     "time-test",
     "./test-ltp.sh ltp/testcases/bin/abs01",
     "./test-ltp.sh ltp/testcases/bin/accept01",
