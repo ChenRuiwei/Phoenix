@@ -80,14 +80,14 @@ pub struct Task {
     /// Map of start address of shared memory areas to their keys in the shared
     /// memory manager.
     shm_ids: Shared<BTreeMap<VirtAddr, usize>>,
-    /// Parent process
+    /// Parent process.
     parent: Shared<Option<Weak<Task>>>,
-    /// Children processes
+    /// Children processes.
     // NOTE: Arc<Task> can only be hold by `Hart`, `UserTaskFuture` and parent `Task`. Unused task
     // will be automatically dropped by previous two structs. However, it should be treated with
     // great care to drop task in `children`.
     children: Shared<BTreeMap<Tid, Arc<Task>>>,
-    /// Exit code of the current process
+    /// Exit code of the current process.
     exit_code: AtomicI32,
     /// Trap context for the task.
     trap_context: SyncUnsafeCell<TrapContext>,
@@ -101,9 +101,9 @@ pub struct Task {
     cwd: Shared<Arc<dyn Dentry>>,
     /// Pending signals for the task.
     sig_pending: SpinNoIrqLock<SigPending>,
-    /// Signal handlers
+    /// Signal handlers.
     sig_handlers: Shared<SigHandlers>,
-    /// Optional signal stack for the task, settable via `sys_signalstack`.
+    /// Signal mask for the task.
     sig_mask: SyncUnsafeCell<SigSet>,
     /// Optional signal stack for the task, settable via `sys_signalstack`.
     sig_stack: SyncUnsafeCell<Option<SignalStack>>,
@@ -115,13 +115,15 @@ pub struct Task {
     itimers: Shared<[ITimer; 3]>,
     /// Futexes used by the task.
     robust: Shared<RobustListHead>,
-    ///
+    /// Address of the task's thread ID.
     tid_address: SyncUnsafeCell<TidAddress>,
+    /// Mask of CPUs allowed for the task.
     cpus_allowed: SyncUnsafeCell<CpuMask>,
+    /// Process group ID of the task.
     pgid: Shared<PGid>,
-    /// Elf file it executes on.
+    /// ELF file the task executes.
     elf: SyncUnsafeCell<Arc<dyn File>>,
-    ///
+    /// Command-line arguments for the task.
     args: SyncUnsafeCell<Vec<String>>,
 }
 
