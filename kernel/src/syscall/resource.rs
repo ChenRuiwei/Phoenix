@@ -62,6 +62,7 @@ impl Syscall<'_> {
         // etc.) to exceed this limit yield the error EMFILE.
         const RLIMIT_NOFILE: i32 = 7;
         const RLIMIT_CORE: i32 = 4;
+        const RLIMIT_SIGPENDING: i32 = 11;
 
         let task = if pid == 0 {
             self.task.clone()
@@ -81,7 +82,7 @@ impl Syscall<'_> {
                     rlim_max: USER_STACK_SIZE,
                 },
                 RLIMIT_NOFILE => task.with_fd_table(|table| table.rlimit()),
-                RLIMIT_CORE => RLimit {
+                RLIMIT_CORE | RLIMIT_SIGPENDING => RLimit {
                     rlim_cur: 0,
                     rlim_max: 0,
                 },
@@ -96,7 +97,7 @@ impl Syscall<'_> {
                 RLIMIT_NOFILE => {
                     task.with_mut_fd_table(|table| table.set_rlimit(limit));
                 }
-                RLIMIT_STACK => {}
+                RLIMIT_STACK | RLIMIT_SIGPENDING => {}
                 r => panic!("[sys_prlimit64] set new_limit : unimplemented {r}"),
             }
         }
