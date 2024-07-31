@@ -1,5 +1,5 @@
 use alloc::{ffi::CString, vec, vec::Vec};
-use core::cmp;
+use core::{cmp, default};
 
 use arch::time::get_time_duration;
 use async_utils::{Select2Futures, SelectOutput};
@@ -29,7 +29,7 @@ pub struct IoVec {
 }
 
 // Defined in <bits/fcntl-linux.h>
-#[derive(FromRepr, Debug, Eq, PartialEq, Clone, Copy)]
+#[derive(FromRepr, Debug, Eq, PartialEq, Clone, Copy, Default)]
 #[allow(non_camel_case_types)]
 #[repr(isize)]
 pub enum FcntlOp {
@@ -39,6 +39,8 @@ pub enum FcntlOp {
     F_SETFD = 2,
     F_GETFL = 3,
     F_SETFL = 4,
+    #[default]
+    F_UNIMPL,
 }
 
 // Defined in <bits/struct_stat.h>
@@ -575,10 +577,7 @@ impl Syscall<'_> {
     // TODO:
     pub fn sys_fcntl(&self, fd: usize, op: isize, arg: usize) -> SyscallResult {
         let task = self.task;
-        let op = FcntlOp::from_repr(op).ok_or_else(|| {
-            log::warn!("[sys_fcntl]: op {op} not implemented");
-            todo!()
-        })?;
+        let op = FcntlOp::from_repr(op).unwrap_or_default();
         log::info!("[sys_fcntl] fd: {fd}, op: {op:?}, arg: {arg}");
         match op {
             FcntlOp::F_DUPFD => {

@@ -33,10 +33,18 @@ impl Syscall<'_> {
                 usage.write(&task, ret)?;
             }
             RUSAGE_CHILDREN => {
-                unimplemented!()
+                log::error!("rusage children not implemented");
+                let (total_utime, total_stime) = task.get_process_ustime();
+                ret.utime = total_utime.into();
+                ret.stime = total_stime.into();
+                usage.write(&task, ret)?;
             }
             RUSAGE_THREAD => {
-                unimplemented!()
+                log::error!("rusage thread not implemented");
+                let (total_utime, total_stime) = task.get_process_ustime();
+                ret.utime = total_utime.into();
+                ret.stime = total_stime.into();
+                usage.write(&task, ret)?;
             }
             _ => return Err(SysError::EINVAL),
         }
@@ -86,7 +94,13 @@ impl Syscall<'_> {
                     rlim_cur: 0,
                     rlim_max: 0,
                 },
-                r => panic!("[sys_prlimit64] get old_limit : unimplemented {r}"),
+                r => {
+                    log::error!("[sys_prlimit64] get old_limit : unimplemented {r}");
+                    RLimit {
+                        rlim_cur: 0,
+                        rlim_max: 0,
+                    }
+                }
             };
             old_limit.write(&task, limit)?;
         }
@@ -97,8 +111,9 @@ impl Syscall<'_> {
                 RLIMIT_NOFILE => {
                     task.with_mut_fd_table(|table| table.set_rlimit(limit));
                 }
-                RLIMIT_STACK | RLIMIT_SIGPENDING => {}
-                r => panic!("[sys_prlimit64] set new_limit : unimplemented {r}"),
+                r => {
+                    log::error!("[sys_prlimit64] set new_limit : unimplemented {r}");
+                }
             }
         }
 
