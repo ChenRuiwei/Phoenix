@@ -30,7 +30,7 @@ VisionFive 2 赛道，初赛功能测试满分：
 - 设备驱动：实现设备树解析，实现PLIC，支持异步外设中断，实现异步串口驱动。
 - 网络模块：支持Udp和Tcp套接字，Ipv4与Ipv6协议，实现异步轮询唤醒机制。
 
-![Phoenix内核架构](./docs/assets/phoenix-design.png)
+<img src="./docs/assets/phoenix-design.png" alt="Phoenix内核架构" width="450"/>
 
 ### 文档
 
