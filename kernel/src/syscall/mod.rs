@@ -312,7 +312,7 @@ impl<'a> Syscall<'a> {
     }
 
     fn sys_do_nothing(&self, name: &str) -> SyscallResult {
-        log::error!(
+        log::warn!(
             "Not implemented syscall that specified to do nothing ({})",
             name
         );
