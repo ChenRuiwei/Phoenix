@@ -295,7 +295,7 @@ impl<'a> Syscall<'a> {
             SYSINFO => self.sys_sysinfo(args[0].into()),
             PERSONALITY => self.sys_do_nothing("personality"),
             _ => {
-                log::error!("Unsupported syscall: {}", syscall_no);
+                log::warn!("Unsupported syscall: {}", syscall_no);
                 Ok(0)
             }
         };

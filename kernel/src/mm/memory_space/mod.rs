@@ -752,7 +752,7 @@ impl MemorySpace {
     ) -> SysResult<()> {
         log::trace!("[MemorySpace::handle_page_fault] {va:?}");
         let vm_area = self.areas_mut().get_mut(va).ok_or_else(|| {
-            log::error!("[handle_page_fault] no area containing {va:?}");
+            log::warn!("[handle_page_fault] no area containing {va:?}");
             SysError::EFAULT
         })?;
         vm_area.handle_page_fault(self.page_table_mut(), va.floor(), access_type)?;
