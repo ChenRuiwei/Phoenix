@@ -26,15 +26,11 @@ pub fn get_time_duration() -> Duration {
 }
 
 pub unsafe fn set_next_timer_irq() {
-    let next_trigger: u64 = (time::read() + CLOCK_FREQ / INTERRUPTS_PER_SECOND)
-        .try_into()
-        .unwrap();
+    let next_trigger: u64 = (time::read() + CLOCK_FREQ / INTERRUPTS_PER_SECOND) as u64;
     sbi_rt::set_timer(next_trigger);
 }
 
 pub unsafe fn set_timer_irq(times: usize) {
-    let next_trigger: u64 = (time::read() + times * CLOCK_FREQ / INTERRUPTS_PER_SECOND)
-        .try_into()
-        .unwrap();
+    let next_trigger: u64 = (time::read() + times * CLOCK_FREQ / INTERRUPTS_PER_SECOND) as u64;
     sbi_rt::set_timer(next_trigger);
 }

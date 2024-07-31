@@ -10,26 +10,28 @@ use sync::mutex::SpinNoIrqLock;
 
 pub mod timelimited_task;
 
-/// Timer data trait to generalize data storage
+/// A trait that defines the event to be triggered when a timer expires.
+/// The TimerEvent trait requires a callback method to be implemented,
+/// which will be called when the timer expires.
 pub trait TimerEvent: Send + Sync {
-    /// This function allows the timer to perform specific operations upon
-    /// expiration, such as handling timeout events, etc.
+    /// The callback method to be called when the timer expires.
+    /// This method consumes the event data and optionally returns a new timer.
+    ///
+    /// # Returns
+    /// An optional Timer object that can be used to schedule another timer.
     fn callback(self: Box<Self>) -> Option<Timer>;
 }
 
-/// 定时器
+/// Represents a timer with an expiration time and associated event data.
+/// The Timer structure contains the expiration time and the data required
+/// to handle the event when the timer expires.
 pub struct Timer {
     /// The expiration time of the timer.
-    ///
-    /// The kernel periodically checks the system's tick count and compares the
-    /// expires of each timer in the linked list. If the current time exceeds or
-    /// equals the expires value, the timer is considered expired and triggers
-    /// the corresponding processing function
+    /// This indicates when the timer is set to trigger.
     pub expire: Duration,
-    /// The parameters passed to the callback function. It can be any data that
-    /// needs to be used in callback functions, such as structure pointers, flag
-    /// values, etc. This member enables callback functions to access specific
-    /// contextual data when called, thereby performing more complex operations.
+
+    /// A boxed dynamic trait object that implements the TimerEvent trait.
+    /// This allows different types of events to be associated with the timer.
     pub data: Box<dyn TimerEvent>,
 }
 
@@ -80,7 +82,15 @@ impl PartialEq for Timer {
     }
 }
 
+/// `TimerManager` is responsible for managing all the timers in the system.
+/// It uses a thread-safe lock to protect a priority queue (binary heap) that
+/// stores the timers. The timers are stored in a `BinaryHeap` with their
+/// expiration times wrapped in `Reverse` to create a min-heap, ensuring that
+/// the timer with the earliest expiration time is at the top.
 pub struct TimerManager {
+    /// A priority queue to store the timers. The queue is protected by a spin
+    /// lock to ensure thread-safe access. The timers are wrapped in
+    /// `Reverse` to maintain a min-heap.
     timers: SpinNoIrqLock<BinaryHeap<Reverse<Timer>>>,
 }
 

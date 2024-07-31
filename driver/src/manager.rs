@@ -11,17 +11,34 @@ use log::{info, warn};
 
 use crate::{cpu::CPU, plic::PLIC, println};
 
+/// The DeviceManager struct is responsible for managing the devices within the
+/// system. It handles the initialization, probing, and interrupt management for
+/// various devices.
 pub struct DeviceManager {
+    /// Optional PLIC (Platform-Level Interrupt Controller) to manage external
+    /// interrupts.
     pub plic: Option<PLIC>,
+
+    /// Vector containing CPU instances. The capacity is set to accommodate up
+    /// to 8 CPUs.
     pub cpus: Vec<CPU>,
-    /// net device is excluded from `device`. It is owned by `InterfaceWrapper`
-    /// in `net` module
+
+    /// A BTreeMap that maps device IDs (DevId) to device instances (Arc<dyn
+    /// Device>). This map stores all the devices except for network devices
+    /// which are managed separately by the `InterfaceWrapper` in the `net`
+    /// module.
     pub devices: BTreeMap<DevId, Arc<dyn Device>>,
-    /// irq_no -> device.
+
+    /// A BTreeMap that maps interrupt numbers (irq_no) to device instances
+    /// (Arc<dyn Device>). This map is used to quickly locate the device
+    /// responsible for handling a specific interrupt.
     pub irq_map: BTreeMap<usize, Arc<dyn Device>>,
 }
 
 impl DeviceManager {
+    /// Creates a new DeviceManager instance with default values.
+    /// Initializes the PLIC to None, reserves space for 8 CPUs, and creates
+    /// empty BTreeMaps for devices and irq_map.
     pub fn new() -> Self {
         Self {
             plic: None,
@@ -58,12 +75,16 @@ impl DeviceManager {
         }
     }
 
+    /// Initializes all devices that have been discovered and added to the
+    /// device manager.
     pub fn init_devices(&mut self) {
         for dev in self.devices.values() {
             dev.init();
         }
     }
 
+    /// Retrieves a reference to the PLIC instance. Panics if PLIC is not
+    /// initialized.
     fn plic(&self) -> &PLIC {
         self.plic.as_ref().unwrap()
     }
