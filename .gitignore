@@ -18,3 +18,4 @@ target/
 third-party/vendor/
 crates/virtio-drivers/
 crates/lwext4_rust/
+testcase/24/final/
