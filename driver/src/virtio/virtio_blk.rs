@@ -56,11 +56,22 @@ impl BlockDevice for VirtIoBlkDev {
     }
 
     fn read_block(&self, block_id: usize, buf: &mut [u8]) {
-        self.cache.lock().read_block(block_id, buf)
+        let res = self.device.lock().read_blocks(block_id, buf);
+        if res.is_err() {
+            panic!(
+                "Error when reading VirtIOBlk, block_id {} ,err {:?} ",
+                block_id, res
+            );
+        }
+        // self.cache.lock().read_block(block_id, buf)
     }
 
     fn write_block(&self, block_id: usize, buf: &[u8]) {
-        self.cache.lock().write_block(block_id, buf)
+        self.device
+            .lock()
+            .write_blocks(block_id, buf)
+            .expect("Error when writing VirtIOBlk");
+        // self.cache.lock().write_block(block_id, buf)
     }
 }
 

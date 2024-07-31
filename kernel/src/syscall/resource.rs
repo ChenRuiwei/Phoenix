@@ -95,7 +95,7 @@ impl Syscall<'_> {
                     rlim_max: 0,
                 },
                 r => {
-                    log::error!("[sys_prlimit64] get old_limit : unimplemented {r}");
+                    log::warn!("[sys_prlimit64] get old_limit : unimplemented {r}");
                     RLimit {
                         rlim_cur: 0,
                         rlim_max: 0,
@@ -112,7 +112,7 @@ impl Syscall<'_> {
                     task.with_mut_fd_table(|table| table.set_rlimit(limit));
                 }
                 r => {
-                    log::error!("[sys_prlimit64] set new_limit : unimplemented {r}");
+                    log::warn!("[sys_prlimit64] set new_limit : unimplemented {r}");
                 }
             }
         }
