@@ -187,11 +187,6 @@ impl dyn Dentry {
     }
 
     pub fn lookup(self: &Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
-        // let hash_key = HashKey::new(self, name)?;
-        // if let Some(child) = dcache().get(hash_key) {
-        //     log::warn!("[Dentry::lookup] find child in hash");
-        //     return Ok(child);
-        // }
         if !self.inode()?.itype().is_dir() {
             return Err(SysError::ENOTDIR);
         }
@@ -252,7 +247,6 @@ impl dyn Dentry {
     /// Create a negetive child dentry with `name`.
     pub fn new_child(self: &Arc<Self>, name: &str) -> Arc<dyn Dentry> {
         let child = self.clone().base_new_child(name);
-        // dcache().insert(child.clone());
         child
     }
 

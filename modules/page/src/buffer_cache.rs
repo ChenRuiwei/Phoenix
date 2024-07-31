@@ -48,21 +48,21 @@ impl BufferCache {
     }
 
     pub fn read_block(&mut self, block_id: usize, buf: &mut [u8]) {
-        // let buffer_head = self.get_buffer_head_from_disk(block_id);
-        // if buffer_head.has_cached() {
-        //     buffer_head.read_block(buf)
-        // } else {
-        self.device().base_read_block(block_id, buf)
-        // }
+        let buffer_head = self.get_buffer_head_from_disk(block_id);
+        if buffer_head.has_cached() {
+            buffer_head.read_block(buf)
+        } else {
+            self.device().base_read_block(block_id, buf)
+        }
     }
 
     pub fn write_block(&mut self, block_id: usize, buf: &[u8]) {
-        // let buffer_head = self.get_buffer_head_from_disk(block_id);
-        // if buffer_head.has_cached() {
-        //     buffer_head.write_block(buf)
-        // } else {
-        self.device().base_write_block(block_id, buf)
-        // }
+        let buffer_head = self.get_buffer_head_from_disk(block_id);
+        if buffer_head.has_cached() {
+            buffer_head.write_block(buf)
+        } else {
+            self.device().base_write_block(block_id, buf)
+        }
     }
 
     pub fn get_buffer_head_from_disk(&mut self, block_id: usize) -> Arc<BufferHead> {
