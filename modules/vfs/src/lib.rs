@@ -132,7 +132,9 @@ impl FrameReleaseIf for FrameReleaseIfImpl {
         for (_, child) in ltp_dentry.children() {
             if !child.is_negetive() {
                 let inode = child.inode().unwrap();
-                inode.page_cache().unwrap().clear();
+                if let Some(page_cache) = inode.page_cache() {
+                    page_cache.clear();
+                }
                 inode.set_state(vfs_core::InodeState::UnInit)
             }
         }
