@@ -10,9 +10,9 @@ Phoenix 是使用 Rust 编写、基于 RISCV-64 硬件平台、支持多核、�
 
 ### 决赛第一阶段
 
-VisionFive 2 赛道，通过了除部分ltp测试外的所有测试点，排名：
+VisionFive 2 赛道，通过了除部分 ltp 测试外的所有测试点，排名第一：
 
-![初赛排行榜](./docs/assets/leaderboard-pre.png)
+![决赛第一阶段排行榜](./docs/assets/leaderboard-final.png)
 
 ### 初赛
 
@@ -30,9 +30,12 @@ VisionFive 2 赛道，初赛功能测试满分：
 - 设备驱动：实现设备树解析，实现PLIC，支持异步外设中断，实现异步串口驱动。
 - 网络模块：支持Udp和Tcp套接字，Ipv4与Ipv6协议，实现异步轮询唤醒机制。
 
+<img src="./docs/assets/phoenix-design.png" alt="Phoenix内核架构" width="450"/>
+
 ### 文档
 
-[Phoenix-初赛文档](./Phoenix-初赛文档.pdf)
+- [Phoenix-决赛第一阶段文档](./Phoenix-决赛第一阶段文档.pdf)
+- [Phoenix-初赛文档](./Phoenix-初赛文档.pdf)
 
 ### 项目结构
 
@@ -128,9 +131,9 @@ make all
 
 哈尔滨工业大学（深圳）:
 
-- 陈睿玮 (<1982833213@qq.com>)
-- 石全 (<749990226@qq.com>)
-- 王华杰 (<1070001239@qq.com>)
+- 陈睿玮 (<1982833213@qq.com>)：进程管理、内存管理、文件系统设计。
+- 石全 (<749990226@qq.com>)：信号机制、网络模块。
+- 王华杰 (<1070001239@qq.com>)：挂载机制、上板流程。
 - 指导老师：夏文，仇洁婷
 
 ## 参考
