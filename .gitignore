@@ -13,6 +13,7 @@ kernel-qemu
 sdcard.img
 kernel/src/link_app.asm
 
+mnt/
 ltp/
 target/
 third-party/vendor/

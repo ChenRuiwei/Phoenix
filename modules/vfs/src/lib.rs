@@ -94,23 +94,27 @@ pub fn init() {
     let devfs_dentry = devfs
         .mount("dev", Some(diskfs_root.clone()), MountFlags::empty(), None)
         .unwrap();
+    devfs_dentry.set_state(DentryState::Sync);
     init_devfs(devfs_dentry).unwrap();
 
     let procfs = FS_MANAGER.lock().get("procfs").unwrap().clone();
     let procfs_dentry = procfs
         .mount("proc", Some(diskfs_root.clone()), MountFlags::empty(), None)
         .unwrap();
+    procfs_dentry.set_state(DentryState::Sync);
     init_procfs(procfs_dentry).unwrap();
 
     let tmpfs = FS_MANAGER.lock().get("tmpfs").unwrap().clone();
-    let _tmpfs_dentry = tmpfs
+    let tmpfs_dentry = tmpfs
         .mount("tmp", Some(diskfs_root.clone()), MountFlags::empty(), None)
         .unwrap();
+    tmpfs_dentry.set_state(DentryState::Sync);
 
     let sockfs = FS_MANAGER.lock().get("sockfs").unwrap().clone();
-    let _sockfs_dentry = sockfs
+    let sockfs_dentry = sockfs
         .mount("sock", Some(diskfs_root.clone()), MountFlags::empty(), None)
         .unwrap();
+    sockfs_dentry.set_state(DentryState::Sync);
 
     SYS_ROOT_DENTRY.call_once(|| diskfs_root);
 

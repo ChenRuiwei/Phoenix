@@ -16,70 +16,9 @@ use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{DirEntry, File, FileMeta, Inode, InodeType, OpenFlags};
 
 use crate::{
-    dentry::Ext4Dentry, inode::Ext4FileInode, map_ext4_type, Ext4DirInode, Ext4SymLinkInode,
+    dentry::Ext4Dentry, inode::Ext4FileInode, map_ext4_type, Ext4DirInode, Ext4LinkInode,
     LwExt4Dir, LwExt4File, Shared,
 };
-
-pub struct Ext4FileFile {
-    meta: FileMeta,
-    file: Shared<LwExt4File>,
-}
-
-unsafe impl Send for Ext4FileFile {}
-unsafe impl Sync for Ext4FileFile {}
-
-impl Ext4FileFile {
-    pub fn new(dentry: Arc<Ext4Dentry>, inode: Arc<Ext4FileInode>) -> Arc<Self> {
-        Arc::new(Self {
-            meta: FileMeta::new(dentry.clone(), inode.clone()),
-            file: inode.file.clone(),
-        })
-    }
-}
-
-#[async_trait]
-impl File for Ext4FileFile {
-    fn meta(&self) -> &FileMeta {
-        &self.meta
-    }
-
-    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
-        match self.itype() {
-            InodeType::File => {
-                let mut file = self.file.lock();
-                file.seek(offset as i64, SEEK_SET)
-                    .map_err(SysError::from_i32)?;
-                file.read(buf).map_err(SysError::from_i32)
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
-        match self.itype() {
-            InodeType::File => {
-                let mut file = self.file.lock();
-                file.seek(offset as i64, SEEK_SET)
-                    .map_err(SysError::from_i32)?;
-                file.write(buf).map_err(SysError::from_i32)
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    fn flush(&self) -> SysResult<usize> {
-        todo!()
-    }
-
-    fn base_read_dir(&self) -> SysResult<Option<DirEntry>> {
-        Err(SysError::ENOTDIR)
-    }
-
-    /// Load all dentry and inodes in a directory. Will not advance dir offset.
-    fn base_load_dir(&self) -> SysResult<()> {
-        Err(SysError::ENOTDIR)
-    }
-}
 
 pub struct Ext4DirFile {
     meta: FileMeta,
@@ -144,7 +83,7 @@ impl File for Ext4DirFile {
                 let ext4_dir = LwExt4Dir::open(&(sub_dentry.path())).map_err(SysError::from_i32)?;
                 Ext4DirInode::new(self.super_block(), ext4_dir).clone()
             } else {
-                Ext4SymLinkInode::new(self.super_block()).clone()
+                Ext4LinkInode::new(self.super_block()).clone()
             };
             sub_dentry.set_inode(new_inode);
         }
@@ -172,48 +111,5 @@ impl File for Ext4DirFile {
         //     sub_dentry.set_inode(new_inode);
         // }
         Ok(())
-    }
-}
-
-pub struct Ext4SymLinkFile {
-    meta: FileMeta,
-}
-
-unsafe impl Send for Ext4SymLinkFile {}
-unsafe impl Sync for Ext4SymLinkFile {}
-
-impl Ext4SymLinkFile {
-    pub fn new(dentry: Arc<Ext4Dentry>, inode: Arc<Ext4SymLinkInode>) -> Arc<Self> {
-        Arc::new(Self {
-            meta: FileMeta::new(dentry.clone(), inode.clone()),
-        })
-    }
-}
-
-#[async_trait]
-impl File for Ext4SymLinkFile {
-    fn meta(&self) -> &FileMeta {
-        &self.meta
-    }
-
-    async fn base_read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
-        Err(SysError::EINVAL)
-    }
-
-    async fn base_write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
-        Err(SysError::EINVAL)
-    }
-
-    fn flush(&self) -> SysResult<usize> {
-        todo!()
-    }
-
-    fn base_read_dir(&self) -> SysResult<Option<DirEntry>> {
-        Err(SysError::ENOTDIR)
-    }
-
-    /// Load all dentry and inodes in a directory. Will not advance dir offset.
-    fn base_load_dir(&self) -> SysResult<()> {
-        Err(SysError::ENOTDIR)
     }
 }

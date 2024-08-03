@@ -3,6 +3,7 @@ use alloc::{
     sync::Arc,
     vec::{self, Vec},
 };
+use core::fmt::Error;
 
 use lwext4_rust::{
     bindings::EEXIST, lwext4_check_inode_exist, lwext4_mvdir, lwext4_mvfile, lwext4_rmdir,
@@ -15,8 +16,8 @@ use vfs_core::{
 };
 
 use crate::{
-    file::Ext4FileFile, inode::Ext4FileInode, Ext4DirFile, Ext4DirInode, Ext4SymLinkInode,
-    LwExt4Dir, LwExt4File,
+    file::Ext4FileFile, inode::Ext4FileInode, Ext4DirFile, Ext4DirInode, Ext4LinkFile,
+    Ext4LinkInode, LwExt4Dir, LwExt4File,
 };
 
 pub struct Ext4Dentry {
@@ -62,7 +63,13 @@ impl Dentry for Ext4Dentry {
                     .unwrap_or_else(|_| unreachable!());
                 Ok(Ext4FileFile::new(self, inode))
             }
-            InodeType::SymLink => todo!(),
+            InodeType::SymLink => {
+                let inode = self
+                    .inode()?
+                    .downcast_arc::<Ext4LinkInode>()
+                    .unwrap_or_else(|_| unreachable!());
+                Ok(Ext4LinkFile::new(self, inode))
+            }
             _ => todo!(),
         }
     }
@@ -71,19 +78,16 @@ impl Dentry for Ext4Dentry {
         log::debug!("[Ext4Dentry::base_lookup] name: {name}");
         let sb = self.super_block();
         let sub_dentry = self.into_dyn().get_child(name).unwrap();
-        let fpath = sub_dentry.path();
-        if lwext4_check_inode_exist(&fpath, InodeTypes::EXT4_DE_DIR) {
-            let new_file = LwExt4Dir::open(&fpath).map_err(SysError::from_i32)?;
-            let new_inode = Ext4DirInode::new(sb, new_file);
-            sub_dentry.set_inode(new_inode);
-        } else if lwext4_check_inode_exist(&fpath, InodeTypes::EXT4_DE_REG_FILE) {
+        let path = sub_dentry.path();
+        if lwext4_check_inode_exist(&path, InodeTypes::EXT4_DE_DIR) {
+            let new_file = LwExt4Dir::open(&path).map_err(SysError::from_i32)?;
+            sub_dentry.set_inode(Ext4DirInode::new(sb, new_file))
+        } else if lwext4_check_inode_exist(&path, InodeTypes::EXT4_DE_REG_FILE) {
             let new_file =
-                LwExt4File::open(&fpath, OpenFlags::empty().bits()).map_err(SysError::from_i32)?;
-            let new_inode = Ext4FileInode::new(sb, new_file);
-            sub_dentry.set_inode(new_inode);
-        } else if lwext4_check_inode_exist(&fpath, InodeTypes::EXT4_DE_SYMLINK) {
-            let new_inode = Ext4SymLinkInode::new(sb);
-            sub_dentry.set_inode(new_inode);
+                LwExt4File::open(&path, OpenFlags::empty().bits()).map_err(SysError::from_i32)?;
+            sub_dentry.set_inode(Ext4FileInode::new(sb, new_file))
+        } else if lwext4_check_inode_exist(&path, InodeTypes::EXT4_DE_SYMLINK) {
+            sub_dentry.set_inode(Ext4LinkInode::new(sb))
         }
         Ok(sub_dentry)
     }
@@ -92,7 +96,6 @@ impl Dentry for Ext4Dentry {
         let types = match mode.to_type() {
             InodeType::Dir => InodeTypes::EXT4_DE_DIR,
             InodeType::File => InodeTypes::EXT4_DE_REG_FILE,
-            InodeType::SymLink => InodeTypes::EXT4_DE_SYMLINK,
             _ => unimplemented!(),
         };
 
@@ -103,7 +106,7 @@ impl Dentry for Ext4Dentry {
             .unwrap_or_else(|_| unreachable!());
         let sub_dentry = self.into_dyn().get_child_or_create(name);
         let path = sub_dentry.path();
-        log::debug!("[Ext4Dentry::base_create] fpath:{path}, mode:{mode:?}");
+        log::debug!("[Ext4Dentry::base_create] path:{path}, mode:{mode:?}");
         let mut dir = inode.dir.lock();
         let new_inode: Arc<dyn Inode> = if types == InodeTypes::EXT4_DE_DIR {
             let new_dir = LwExt4Dir::create(&path).map_err(SysError::from_i32)?;

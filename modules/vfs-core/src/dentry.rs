@@ -143,7 +143,7 @@ pub trait Dentry: Send + Sync {
             .insert(child.name_string(), child)
     }
 
-    fn change_state(&self, state: DentryState) {
+    fn set_state(&self, state: DentryState) {
         *self.meta().state.lock() = state;
     }
 
@@ -186,7 +186,7 @@ impl dyn Dentry {
                 self.path()
             );
             self.clone().base_lookup(name)?;
-            child.change_state(DentryState::Sync);
+            child.set_state(DentryState::Sync);
             return Ok(child);
         }
         Ok(child)
