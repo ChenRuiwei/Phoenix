@@ -3,10 +3,10 @@
 
 use alloc::sync::Arc;
 
-pub(crate) use lwext4_rust::{Ext4File as LwExt4File, InodeTypes};
+pub(crate) use lwext4_rust::{Ext4Dir as LwExt4Dir, Ext4File as LwExt4File, InodeTypes};
 use sync::mutex::SpinNoIrqLock;
 use systype::SysError;
-use vfs_core::InodeType;
+use vfs_core::{Inode, InodeType};
 
 extern crate alloc;
 

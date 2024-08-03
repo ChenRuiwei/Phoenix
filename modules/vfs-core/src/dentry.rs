@@ -34,24 +34,13 @@ impl DentryMeta {
         log::debug!("[Dentry::new] new dentry with name {name}");
         let super_block = Arc::downgrade(&super_block);
         let inode = Mutex::new(None);
-        if let Some(parent) = parent {
-            Self {
-                name: name.to_string(),
-                super_block,
-                inode,
-                parent: Some(Arc::downgrade(&parent)),
-                children: Mutex::new(BTreeMap::new()),
-                state: Mutex::new(DentryState::UnInit),
-            }
-        } else {
-            Self {
-                name: name.to_string(),
-                super_block,
-                inode,
-                parent: None,
-                children: Mutex::new(BTreeMap::new()),
-                state: Mutex::new(DentryState::UnInit),
-            }
+        Self {
+            name: name.to_string(),
+            super_block,
+            inode,
+            parent: parent.map(|p| Arc::downgrade(&p)),
+            children: Mutex::new(BTreeMap::new()),
+            state: Mutex::new(DentryState::UnInit),
         }
     }
 }
@@ -232,7 +221,7 @@ impl dyn Dentry {
         {
             return Err(SysError::EINVAL);
         }
-        if new.has_ancestor(self) {
+        if new.is_descendant_of(self) {
             return Err(SysError::EINVAL);
         }
 
@@ -258,7 +247,7 @@ impl dyn Dentry {
         })
     }
 
-    pub fn has_ancestor(self: &Arc<Self>, dir: &Arc<Self>) -> bool {
+    pub fn is_descendant_of(self: &Arc<Self>, dir: &Arc<Self>) -> bool {
         let mut parent_opt = self.parent();
         while let Some(parent) = parent_opt {
             if Arc::ptr_eq(self, dir) {

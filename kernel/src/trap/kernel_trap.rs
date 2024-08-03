@@ -2,7 +2,7 @@
 
 use arch::{
     interrupts::set_trap_handler_vector,
-    time::{get_time_duration, set_next_timer_irq},
+    time::{get_time_duration, set_next_timer_irq, set_timer_irq},
 };
 use memory::VirtAddr;
 use riscv::register::{
@@ -12,7 +12,11 @@ use riscv::register::{
 use signal::{Sig, SigDetails, SigInfo};
 use timer::TIMER_MANAGER;
 
-use crate::{mm::PageFaultAccessType, processor::hart::current_task_ref, when_debug};
+use crate::{
+    mm::PageFaultAccessType,
+    processor::hart::{current_task_ref, local_hart},
+    when_debug,
+};
 
 fn panic_on_unknown_trap() {
     panic!(
@@ -44,10 +48,14 @@ pub fn kernel_trap_handler() {
                 unsafe { set_next_timer_irq() };
                 #[cfg(feature = "preempt")]
                 {
+                    use arch::time::set_timer_irq;
+
+                    use crate::processor::hart::local_hart;
+
                     if !executor::has_task() {
                         return;
                     }
-                    unsafe { set_timer_irq(5) };
+                    unsafe { set_timer_irq(1) };
                     let mut old_hart = local_hart().enter_preempt_switch();
                     log::warn!("kernel preempt");
                     executor::run_one();
@@ -78,9 +86,7 @@ pub fn kernel_trap_handler() {
                     log::warn!(
                         "[trap_handler] encounter page fault, addr {stval:#x}, instruction {sepc:#x} scause {cause:?}",
                     );
-                    // backtrace::backtrace();
                     log::warn!("{:x?}", current_task_ref().trap_context_mut());
-                    // task.with_memory_space(|m| m.print_all());
                     log::warn!("bad memory access, send SIGSEGV to task");
                     current_task_ref().receive_siginfo(
                         SigInfo {

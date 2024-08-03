@@ -9,8 +9,8 @@ use crate_interface::call_interface;
 
 use super::{impl_arithmetic_with_usize, impl_fmt, impl_step};
 use crate::{
-    address::{__KernelMappingIf_vaddr_to_paddr, VA_WIDTH_SV39, VPN_WIDTH_SV39},
-    PhysAddr, PhysPageNum,
+    address::{VA_WIDTH_SV39, VPN_WIDTH_SV39},
+    PhysAddr, PhysPageNum, __KernelMappingIf_mod,
 };
 
 /// Virtual address

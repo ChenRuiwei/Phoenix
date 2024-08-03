@@ -136,9 +136,6 @@ impl dyn Inode {
             "[Inode::truncate] len:{len:#x}, origin size:{:#x}",
             self.size()
         );
-        // if self.size() < len {
-        //     self.address_space()
-        // }
         self.base_truncate(len).map(|_| 0)
     }
 

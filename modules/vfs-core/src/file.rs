@@ -274,7 +274,6 @@ pub trait File: Send + Sync + DowncastSync {
 
     /// Given interested events, keep track of these events and return events
     /// that is ready.
-    // TODO:
     async fn base_poll(&self, events: PollEvents) -> PollEvents {
         let mut res = PollEvents::empty();
         if events.contains(PollEvents::IN) {

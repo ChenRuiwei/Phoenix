@@ -10,8 +10,8 @@ use crate_interface::call_interface;
 
 use super::{impl_arithmetic_with_usize, impl_fmt, impl_step};
 use crate::{
-    address::{__KernelMappingIf_paddr_to_vaddr, PA_WIDTH_SV39, PPN_WIDTH_SV39},
-    PageTableEntry, VirtAddr,
+    address::{PA_WIDTH_SV39, PPN_WIDTH_SV39},
+    PageTableEntry, VirtAddr, __KernelMappingIf_mod,
 };
 
 /// Physical address
