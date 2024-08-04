@@ -64,12 +64,11 @@ impl File for Ext4DirFile {
         let mut dir = self.dir.lock();
         let iters = dir.lwext4_dir_entries(&self.dentry().path()).unwrap();
 
-        dir.next();
+        // skip "." and ".."
         dir.next();
         dir.next();
 
         while let Some(dirent) = dir.next() {
-            // skip "." and ".."
             let name = CString::new(dirent.name).map_err(|_| SysError::EINVAL)?;
             let name = name.to_str().unwrap();
             let sub_dentry = self.dentry().get_child_or_create(name);
@@ -88,28 +87,6 @@ impl File for Ext4DirFile {
             sub_dentry.set_inode(new_inode);
         }
 
-        // let path = self.dentry().path();
-        // for (name, file_type) in zip(iters.0, iters.1).skip(2) {
-        //     // skip "." and ".."
-        //     let name = CString::from_vec_with_nul(name).map_err(|_|
-        // SysError::EINVAL)?;     let name = name.to_str().unwrap();
-        //     let sub_dentry = self.dentry().get_child_or_create(name);
-        //     let new_inode: Arc<dyn Inode> = if file_type ==
-        // InodeTypes::EXT4_DE_REG_FILE {         let ext4_file =
-        // LwExt4File::open(&(sub_dentry.path()), OpenFlags::O_RDWR.bits())
-        //             .map_err(SysError::from_i32)?;
-        //         Ext4FileInode::new(self.super_block(), ext4_file).clone()
-        //     } else if file_type == InodeTypes::EXT4_DE_REG_FILE {
-        //         let ext4_dir =
-        // LwExt4Dir::open(&(sub_dentry.path())).map_err(SysError::from_i32)?;
-        //         Ext4DirInode::new(self.super_block(), ext4_dir).clone()
-        //     } else {
-        //         let ext4_file = LwExt4File::open(&(sub_dentry.path()),
-        // OpenFlags::O_RDWR.bits())             .map_err(SysError::from_i32)?;
-        //         Ext4FileInode::new(self.super_block(), ext4_file).clone()
-        //     };
-        //     sub_dentry.set_inode(new_inode);
-        // }
         Ok(())
     }
 }

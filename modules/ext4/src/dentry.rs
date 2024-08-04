@@ -126,10 +126,10 @@ impl Dentry for Ext4Dentry {
     fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()> {
         let sub_dentry = self.get_child(name).unwrap();
         let path = sub_dentry.path();
-        if lwext4_check_inode_exist(&path, InodeTypes::EXT4_DE_DIR) {
-            lwext4_rmdir(&path).map_err(SysError::from_i32)
-        } else {
-            lwext4_rmfile(&path).map_err(SysError::from_i32)
+        match sub_dentry.inode()?.itype() {
+            InodeType::Dir => lwext4_rmdir(&path).map_err(SysError::from_i32),
+            InodeType::File => lwext4_rmfile(&path).map_err(SysError::from_i32),
+            _ => todo!(),
         }
     }
 

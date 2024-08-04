@@ -38,7 +38,7 @@ impl BlockDevice for VirtIoBlkDev {
         self.cache.lock().pages.pop(&block_id);
     }
 
-    fn base_read_block(&self, block_id: usize, buf: &mut [u8]) {
+    fn base_read_blocks(&self, block_id: usize, buf: &mut [u8]) {
         let res = self.device.lock().read_blocks(block_id, buf);
         if res.is_err() {
             panic!(
@@ -48,7 +48,7 @@ impl BlockDevice for VirtIoBlkDev {
         }
     }
 
-    fn base_write_block(&self, block_id: usize, buf: &[u8]) {
+    fn base_write_blocks(&self, block_id: usize, buf: &[u8]) {
         self.device
             .lock()
             .write_blocks(block_id, buf)

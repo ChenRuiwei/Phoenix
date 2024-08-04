@@ -104,10 +104,10 @@ pub trait BlockDevice: Device {
     fn remove_buffer_page(&self, block_id: usize);
 
     /// Read data form block to buffer
-    fn base_read_block(&self, block_id: usize, buf: &mut [u8]);
+    fn base_read_blocks(&self, block_id: usize, buf: &mut [u8]);
 
     /// Write data from buffer to block
-    fn base_write_block(&self, block_id: usize, buf: &[u8]);
+    fn base_write_blocks(&self, block_id: usize, buf: &[u8]);
 
     /// Read data form block to buffer
     fn read_block(&self, block_id: usize, buf: &mut [u8]);

@@ -208,10 +208,10 @@ impl dyn Dentry {
             return Err(SysError::ENOTDIR);
         }
         let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
-        // TODO: inode ref count
         sub_dentry.inode()?.set_state(InodeState::Removed);
+        self.clone().base_unlink(name)?;
         sub_dentry.clear_inode();
-        self.clone().base_unlink(name)
+        Ok(())
     }
 
     pub fn rename_to(self: &Arc<Self>, new: &Arc<Self>, flags: RenameFlags) -> SysResult<()> {

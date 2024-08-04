@@ -62,6 +62,7 @@ impl Drop for Page {
         match &self.kind {
             PageKind::Normal => {}
             PageKind::FileCache(inner) => {
+                // NOTE: file cache is flushed when inode gets dropped
                 let mut inner = inner.lock();
                 while let Some(buffer_head) = inner.buffer_heads.pop_front() {
                     buffer_head.reset();
@@ -74,10 +75,7 @@ impl Drop for Page {
                 while let Some(buffer_head) = inner.buffer_heads.pop_front() {
                     if buffer_head.bstate() == BufferState::Dirty {
                         let block_id = buffer_head.block_id();
-                        device.base_write_block(
-                            buffer_head.block_id(),
-                            &self.block_bytes_array(block_id),
-                        );
+                        device.base_write_blocks(block_id, &self.block_bytes_array(block_id));
                     }
                     buffer_head.reset();
                 }
@@ -148,7 +146,7 @@ impl Page {
     }
 
     pub fn block_bytes_array(&self, block_id: usize) -> &'static mut [u8] {
-        debug_assert!(self.kind.is_file_cache() || self.kind.is_block_cache());
+        debug_assert!(self.kind.is_block_cache());
         let offset_block_aligned = block_page_offset(block_id);
         self.bytes_array_range(offset_block_aligned..offset_block_aligned + BLOCK_SIZE)
     }
@@ -163,8 +161,8 @@ impl Page {
             log::error!("duplicate insert, block id:{}", buffer_head.block_id());
             return;
         }
-        let count = inner.buffer_heads.iter().count();
-        buffer_head.init(self, count * BLOCK_SIZE);
+        assert!(inner.buffer_head_cnts < 8);
+        buffer_head.init(self, inner.buffer_head_cnts * BLOCK_SIZE);
         inner.buffer_heads.push_back(buffer_head);
         inner.buffer_head_cnts += 1;
     }
@@ -189,7 +187,7 @@ impl Page {
         for buffer_head in inner.buffer_heads.iter() {
             if buffer_head.bstate() == BufferState::Dirty {
                 let block_id = buffer_head.block_id();
-                device.base_write_block(buffer_head.block_id(), &self.block_bytes_array(block_id));
+                device.base_write_blocks(buffer_head.block_id(), &buffer_head.bytes_array());
             }
         }
     }
