@@ -8,7 +8,7 @@ use driver::BLOCK_DEVICE;
 use strum::FromRepr;
 use systype::{SysError, SyscallResult};
 use time::timespec::TimeSpec;
-use vfs::{fd_table::FdFlags, pipefs::new_pipe, sys_root_dentry, FS_MANAGER};
+use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, InodeType, MountFlags,
     OpenFlags, Path, RenameFlags, SeekFrom, Stat, StatFs, AT_REMOVEDIR,
@@ -230,25 +230,30 @@ impl Syscall<'_> {
         if flags.contains(OpenFlags::O_DIRECTORY) && !inode.itype().is_dir() {
             return Err(SysError::ENOTDIR);
         }
-        let file = match inode.itype() {
-            InodeType::SymLink => {
-                let mut path_buf: Vec<u8> = vec![0; 512];
-                let len = dentry.open()?.read(&mut path_buf).await?;
-                path_buf.truncate(len + 1);
-                let path = CString::from_vec_with_nul(path_buf)
-                    .unwrap()
-                    .into_string()
-                    .unwrap();
-                let path = if is_absolute_path(&path) {
-                    Path::new(sys_root_dentry(), sys_root_dentry(), &path)
-                } else {
-                    Path::new(sys_root_dentry(), dentry.parent().unwrap(), &path)
-                };
-                let new_dentry = path.walk()?;
-                new_dentry.open()?
+
+        let mut dentry_it = dentry;
+        let file = loop {
+            match dentry_it.inode()?.itype() {
+                InodeType::SymLink => {
+                    let mut path_buf: Vec<u8> = vec![0; 512];
+                    let len = dentry_it.open()?.readlink(&mut path_buf).await?;
+                    path_buf.truncate(len + 1);
+                    let path = CString::from_vec_with_nul(path_buf)
+                        .unwrap()
+                        .into_string()
+                        .unwrap();
+                    let path = if is_absolute_path(&path) {
+                        Path::new(sys_root_dentry(), sys_root_dentry(), &path)
+                    } else {
+                        Path::new(sys_root_dentry(), dentry_it.parent().unwrap(), &path)
+                    };
+                    let new_dentry = path.walk()?;
+                    dentry_it = new_dentry;
+                }
+                _ => break dentry_it.open()?,
             }
-            _ => dentry.open()?,
         };
+
         file.set_flags(flags);
         task.with_mut_fd_table(|table| table.alloc(file, flags))
     }

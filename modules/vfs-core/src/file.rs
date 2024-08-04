@@ -272,6 +272,10 @@ pub trait File: Send + Sync + DowncastSync {
         Err(SysError::ENOTTY)
     }
 
+    async fn readlink(&self, buf: &mut [u8]) -> SyscallResult {
+        todo!()
+    }
+
     /// Given interested events, keep track of these events and return events
     /// that is ready.
     async fn base_poll(&self, events: PollEvents) -> PollEvents {

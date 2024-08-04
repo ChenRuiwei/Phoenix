@@ -49,10 +49,6 @@ impl File for Ext4LinkFile {
         Err(SysError::EINVAL)
     }
 
-    fn flush(&self) -> SysResult<usize> {
-        todo!()
-    }
-
     fn base_read_dir(&self) -> SysResult<Option<DirEntry>> {
         Err(SysError::ENOTDIR)
     }
@@ -60,5 +56,13 @@ impl File for Ext4LinkFile {
     /// Load all dentry and inodes in a directory. Will not advance dir offset.
     fn base_load_dir(&self) -> SysResult<()> {
         Err(SysError::ENOTDIR)
+    }
+
+    fn flush(&self) -> SysResult<usize> {
+        todo!()
+    }
+
+    async fn readlink(&self, buf: &mut [u8]) -> SysResult<usize> {
+        lwext4_readlink(&self.dentry().path(), buf).map_err(SysError::from_i32)
     }
 }
