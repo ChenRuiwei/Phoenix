@@ -936,7 +936,7 @@ impl Syscall<'_> {
         if file.inode().itype() != InodeType::SymLink {
             return Err(SysError::EINVAL);
         }
-        file.read_at(0, &mut buf).await
+        file.readlink(&mut buf).await
     }
 
     pub async fn sys_ftruncate(&self, fd: usize, length: u64) -> SyscallResult {

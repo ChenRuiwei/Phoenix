@@ -4,7 +4,11 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::{cell::SyncUnsafeCell, cmp, ops::Range};
+use core::{
+    cell::SyncUnsafeCell,
+    cmp,
+    ops::{Range, RangeBounds},
+};
 
 use arch::memory::sfence_vma_vaddr;
 use async_utils::block_on;
@@ -494,6 +498,29 @@ impl MemorySpace {
         self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
     }
 
+    pub fn alloc_mmap_shared_anonymous(
+        &mut self,
+        addr: VirtAddr,
+        length: usize,
+        perm: MapPerm,
+        flags: MmapFlags,
+    ) -> SysResult<VirtAddr> {
+        const SHARED_RANGE: Range<VirtAddr> =
+            VirtAddr::from_usize_range(U_SEG_SHARE_BEG..U_SEG_SHARE_END);
+        let range = if flags.contains(MmapFlags::MAP_FIXED) {
+            addr..addr + length
+        } else {
+            self.areas_mut()
+                .find_free_range(SHARED_RANGE, length)
+                .expect("shared range is full")
+        };
+        let start = range.start;
+        let vma = VmArea::new(range, perm, VmAreaType::Shm);
+        self.push_vma(vma);
+        // self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
+        Ok(start)
+    }
+
     pub fn alloc_mmap_anonymous(
         &mut self,
         addr: VirtAddr,
@@ -644,6 +671,7 @@ impl MemorySpace {
     }
 
     pub fn mprotect(&mut self, range: Range<VirtAddr>, perm: MapPerm) -> SysResult<()> {
+        debug_assert!(range.start.is_aligned() && range.end.is_aligned());
         let (old_range, area) = self
             .areas_mut()
             .get_key_value_mut(range.start)

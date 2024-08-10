@@ -28,12 +28,6 @@ pub enum VmAreaType {
     Mmap,
     /// Shared memory
     Shm,
-
-    // For kernel.
-    /// Physical frames (mapping with an offset)
-    Physical,
-    /// MMIO
-    Mmio,
 }
 
 bitflags! {

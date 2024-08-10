@@ -215,26 +215,22 @@ impl Syscall<'_> {
             _ => {
                 // pid < -1
                 // sig is sent to every process in the process group whose ID is -pid.
-                let pgid = self.task.pgid();
+                let pgid = -pid as usize;
                 for task in PROCESS_GROUP_MANAGER
                     .get_group(pgid)
-                    .unwrap()
+                    .ok_or_else(|| SysError::ESRCH)?
                     .into_iter()
-                    .map(|t| t.upgrade().unwrap())
+                    .filter_map(|t| t.upgrade())
                 {
-                    if task.pid() == -pid as usize {
-                        task.receive_siginfo(
-                            SigInfo {
-                                sig,
-                                code: SigInfo::USER,
-                                details: SigDetails::Kill { pid: pgid },
-                            },
-                            false,
-                        );
-                        return Ok(0);
-                    }
+                    task.receive_siginfo(
+                        SigInfo {
+                            sig,
+                            code: SigInfo::USER,
+                            details: SigDetails::Kill { pid: pgid },
+                        },
+                        false,
+                    );
                 }
-                return Err(SysError::ESRCH);
             }
         }
         Ok(0)

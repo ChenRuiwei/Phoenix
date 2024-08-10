@@ -102,6 +102,6 @@ impl ProcessGroupManager {
             .lock()
             .get_mut(&process.pgid())
             .unwrap()
-            .retain(|task| task.upgrade().map_or(false, |t| Arc::ptr_eq(process, &t)))
+            .retain(|task| task.upgrade().map_or(false, |t| !Arc::ptr_eq(process, &t)))
     }
 }

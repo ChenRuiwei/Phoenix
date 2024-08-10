@@ -2,6 +2,7 @@ use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
 use config::board::BLOCK_SIZE;
+use page::Page;
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{
     Dentry, DentryMeta, DirEntry, File, FileMeta, Inode, InodeMeta, InodeMode, Stat, SuperBlock,
@@ -115,5 +116,11 @@ impl File for ZeroFile {
 
     fn flush(&self) -> SysResult<usize> {
         todo!()
+    }
+
+    async fn get_page_at(&self, offset_aligned: usize) -> SysResult<Option<Arc<Page>>> {
+        let page = Page::new();
+        page.fill_zero();
+        Ok(Some(page))
     }
 }
