@@ -86,6 +86,10 @@ pub trait Dentry: Send + Sync {
         Err(SysError::EINVAL)
     }
 
+    fn base_link(self: Arc<Self>, new: &Arc<dyn Dentry>) -> SysResult<()> {
+        Err(SysError::EINVAL)
+    }
+
     /// Create a negetive child dentry with `name`.
     fn base_new_child(self: Arc<Self>, _name: &str) -> Arc<dyn Dentry> {
         todo!()
@@ -246,6 +250,18 @@ impl dyn Dentry {
             self.clone().base_symlink(name, target)
         } else {
             Err(SysError::EEXIST)
+        }
+    }
+
+    pub fn link(self: &Arc<Self>, new: &Arc<dyn Dentry>) -> SysResult<()> {
+        if self.is_negetive() {
+            Err(SysError::ENOENT)
+        } else if !new.is_negetive() {
+            Err(SysError::EEXIST)
+        } else {
+            let ret = self.clone().base_link(new);
+            self.inode()?.meta().inner.lock().nlink += 1;
+            ret
         }
     }
 

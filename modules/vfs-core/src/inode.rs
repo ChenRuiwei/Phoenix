@@ -24,6 +24,8 @@ pub struct InodeMeta {
 pub struct InodeMetaInner {
     /// Size of a file in bytes.
     pub size: usize,
+    /// Link count.
+    pub nlink: usize,
     /// Last access time.
     pub atime: TimeSpec,
     /// Last modification time.
@@ -72,6 +74,7 @@ impl InodeMeta {
                 mtime: TimeSpec::default(),
                 ctime: TimeSpec::default(),
                 state: InodeState::UnInit,
+                nlink: 1,
             }),
         }
     }

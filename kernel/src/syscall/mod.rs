@@ -202,6 +202,13 @@ impl<'a> Syscall<'a> {
             FCHOWNAT => self.sys_do_nothing("fchownat"),
             FALLOCATE => self.sys_do_nothing("fallocate"),
             SYMLINKAT => self.sys_symlinkat(args[0].into(), args[1].into(), args[2].into()),
+            LINKAT => self.sys_linkat(
+                args[0].into(),
+                args[1].into(),
+                args[2].into(),
+                args[3].into(),
+                args[4] as _,
+            ),
             // IO
             PPOLL => {
                 self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3].into())

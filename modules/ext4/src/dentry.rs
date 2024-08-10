@@ -2,8 +2,8 @@ use alloc::{ffi::CString, sync::Arc, vec, vec::Vec};
 use core::fmt::Error;
 
 use lwext4_rust::{
-    bindings::EEXIST, lwext4_check_inode_exist, lwext4_mvdir, lwext4_mvfile, lwext4_readlink,
-    lwext4_rmdir, lwext4_rmfile, lwext4_symlink, InodeTypes,
+    bindings::EEXIST, lwext4_check_inode_exist, lwext4_link, lwext4_mvdir, lwext4_mvfile,
+    lwext4_readlink, lwext4_rmdir, lwext4_rmfile, lwext4_symlink, InodeTypes,
 };
 use systype::{SysError, SysResult};
 use vfs_core::{
@@ -178,6 +178,16 @@ impl Dentry for Ext4Dentry {
         lwext4_symlink(target, &path).map_err(SysError::from_i32)?;
         let new_inode: Arc<dyn Inode> = Ext4LinkInode::new(target, sb);
         sub_dentry.set_inode(new_inode);
+        Ok(())
+    }
+
+    fn base_link(self: Arc<Self>, new: &Arc<dyn Dentry>) -> SysResult<()> {
+        let sb = self.super_block();
+        let oldpath = self.path();
+        let newpath = new.path();
+        log::debug!("[Ext4Dentry::link] oldpath:{oldpath}, newpath:{newpath}");
+        lwext4_link(&oldpath, &newpath).map_err(SysError::from_i32)?;
+        new.set_inode(self.inode()?);
         Ok(())
     }
 }

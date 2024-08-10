@@ -88,7 +88,9 @@ impl File for Ext4DirFile {
                 let target = CString::from_vec_with_nul(path_buf).map_err(|_| SysError::EINVAL)?;
                 Ext4LinkInode::new(target.to_str().unwrap(), self.super_block()).clone()
             };
-            sub_dentry.set_inode(new_inode);
+            if sub_dentry.is_negetive() {
+                sub_dentry.set_inode(new_inode);
+            }
         }
 
         Ok(())

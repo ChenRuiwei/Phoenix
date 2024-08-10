@@ -970,4 +970,23 @@ impl Syscall<'_> {
         dentry.parent().unwrap().symlink(dentry.name(), &target)?;
         Ok(0)
     }
+
+    /// link() creates a new link (also known as a hard link) to an existing
+    /// file.
+    pub fn sys_linkat(
+        &self,
+        olddirfd: AtFd,
+        oldpath: UserReadPtr<u8>,
+        newdirfd: AtFd,
+        newpath: UserReadPtr<u8>,
+        flags: i32,
+    ) -> SyscallResult {
+        let task = self.task;
+        let oldpath = oldpath.read_cstr(task)?;
+        let newpath = newpath.read_cstr(task)?;
+        let old_dentry = task.at_helper(olddirfd, &oldpath, InodeMode::empty())?;
+        let new_dentry = task.at_helper(newdirfd, &newpath, InodeMode::empty())?;
+        old_dentry.link(&new_dentry)?;
+        Ok(0)
+    }
 }
