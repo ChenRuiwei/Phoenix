@@ -1,11 +1,12 @@
 #![no_std]
 #![no_main]
 
-use alloc::sync::Arc;
+use alloc::{ffi::CString, string::String, sync::Arc, vec};
 
+use lwext4_rust::lwext4_readlink;
 pub(crate) use lwext4_rust::{Ext4Dir as LwExt4Dir, Ext4File as LwExt4File, InodeTypes};
 use sync::mutex::SpinNoIrqLock;
-use systype::SysError;
+use systype::{SysError, SysResult};
 use vfs_core::{Inode, InodeType};
 
 extern crate alloc;
@@ -42,4 +43,11 @@ pub fn map_ext4_type(value: InodeTypes) -> InodeType {
         InodeTypes::EXT4_DE_SYMLINK => InodeType::SymLink,
         other => unimplemented!("{:?}", other),
     }
+}
+
+pub(crate) fn readlink(path: &str) -> SysResult<CString> {
+    let mut path_buf = vec![0; 512];
+    let len = lwext4_readlink(path, &mut path_buf).map_err(SysError::from_i32)?;
+    path_buf.truncate(len + 1);
+    CString::from_vec_with_nul(path_buf).map_err(|_| SysError::EINVAL)
 }

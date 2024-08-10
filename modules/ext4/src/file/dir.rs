@@ -17,7 +17,7 @@ use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{DirEntry, File, FileMeta, Inode, InodeType, OpenFlags};
 
 use crate::{
-    dentry::Ext4Dentry, inode::Ext4FileInode, map_ext4_type, Ext4DirInode, Ext4LinkInode,
+    dentry::Ext4Dentry, inode::Ext4FileInode, map_ext4_type, readlink, Ext4DirInode, Ext4LinkInode,
     LwExt4Dir, LwExt4File, Shared,
 };
 
@@ -83,9 +83,7 @@ impl File for Ext4DirFile {
                 let ext4_dir = LwExt4Dir::open(&(sub_dentry.path())).map_err(SysError::from_i32)?;
                 Ext4DirInode::new(self.super_block(), ext4_dir).clone()
             } else {
-                let mut path_buf = vec![0; 512];
-                lwext4_readlink(&sub_dentry.path(), &mut path_buf).map_err(SysError::from_i32)?;
-                let target = CString::from_vec_with_nul(path_buf).map_err(|_| SysError::EINVAL)?;
+                let target = readlink(&sub_dentry.path())?;
                 Ext4LinkInode::new(target.to_str().unwrap(), self.super_block()).clone()
             };
             if sub_dentry.is_negetive() {

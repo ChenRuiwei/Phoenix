@@ -12,7 +12,7 @@ use vfs_core::{
 };
 
 use crate::{
-    file::Ext4FileFile, inode::Ext4FileInode, Ext4DirFile, Ext4DirInode, Ext4LinkFile,
+    file::Ext4FileFile, inode::Ext4FileInode, readlink, Ext4DirFile, Ext4DirInode, Ext4LinkFile,
     Ext4LinkInode, LwExt4Dir, LwExt4File,
 };
 
@@ -83,9 +83,7 @@ impl Dentry for Ext4Dentry {
                 LwExt4File::open(&path, OpenFlags::empty().bits()).map_err(SysError::from_i32)?;
             sub_dentry.set_inode(Ext4FileInode::new(sb, new_file))
         } else if lwext4_check_inode_exist(&path, InodeTypes::EXT4_DE_SYMLINK) {
-            let mut path_buf = vec![0; 512];
-            lwext4_readlink(&sub_dentry.path(), &mut path_buf).map_err(SysError::from_i32)?;
-            let target = CString::from_vec_with_nul(path_buf).map_err(|_| SysError::EINVAL)?;
+            let target = readlink(&sub_dentry.path())?;
             let sub_inode = Ext4LinkInode::new(target.to_str().unwrap(), sb);
             sub_dentry.set_inode(sub_inode)
         }

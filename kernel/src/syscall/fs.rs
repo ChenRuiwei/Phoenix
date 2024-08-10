@@ -242,6 +242,7 @@ impl Syscall<'_> {
                         .unwrap()
                         .into_string()
                         .unwrap();
+                    log::debug!("[sys_openat] read link returns {path}");
                     let path = if is_absolute_path(&path) {
                         Path::new(sys_root_dentry(), sys_root_dentry(), &path)
                     } else {

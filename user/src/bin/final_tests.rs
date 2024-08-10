@@ -351,19 +351,14 @@ fn run_cmd(cmd: &str) {
     }
 }
 
-const BUSYBOX_CMDS: [&str; 2] = ["ls", "echo"];
-
 #[no_mangle]
 fn main() -> i32 {
     run_cmd("busybox touch sort.src");
     run_cmd("busybox ln -s /lib/dlopen_dso.so dlopen_dso.so");
-    for cmd in BUSYBOX_CMDS {
-        run_cmd(&format!("busybox ln -s {} /bin/{}", cmd, cmd));
-    }
-    // run_cmd("busybox ln -s ");
+
     if fork() == 0 {
         for test in TESTCASES {
-            run_cmd(&test);
+            run_cmd(test);
         }
     } else {
         loop {
