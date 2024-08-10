@@ -3,6 +3,7 @@ use alloc::{
     ffi::CString,
     string::String,
     sync::{self, Arc},
+    vec,
     vec::Vec,
 };
 use core::{cmp, iter::zip};
@@ -82,7 +83,10 @@ impl File for Ext4DirFile {
                 let ext4_dir = LwExt4Dir::open(&(sub_dentry.path())).map_err(SysError::from_i32)?;
                 Ext4DirInode::new(self.super_block(), ext4_dir).clone()
             } else {
-                Ext4LinkInode::new(self.super_block()).clone()
+                let mut path_buf = vec![0; 512];
+                lwext4_readlink(&sub_dentry.path(), &mut path_buf).map_err(SysError::from_i32)?;
+                let target = CString::from_vec_with_nul(path_buf).map_err(|_| SysError::EINVAL)?;
+                Ext4LinkInode::new(target.to_str().unwrap(), self.super_block()).clone()
             };
             sub_dentry.set_inode(new_inode);
         }

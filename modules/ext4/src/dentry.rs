@@ -1,13 +1,9 @@
-use alloc::{
-    ffi::CString,
-    sync::Arc,
-    vec::{self, Vec},
-};
+use alloc::{ffi::CString, sync::Arc, vec, vec::Vec};
 use core::fmt::Error;
 
 use lwext4_rust::{
-    bindings::EEXIST, lwext4_check_inode_exist, lwext4_mvdir, lwext4_mvfile, lwext4_rmdir,
-    lwext4_rmfile, InodeTypes,
+    bindings::EEXIST, lwext4_check_inode_exist, lwext4_mvdir, lwext4_mvfile, lwext4_readlink,
+    lwext4_rmdir, lwext4_rmfile, lwext4_symlink, InodeTypes,
 };
 use systype::{SysError, SysResult};
 use vfs_core::{
@@ -87,18 +83,16 @@ impl Dentry for Ext4Dentry {
                 LwExt4File::open(&path, OpenFlags::empty().bits()).map_err(SysError::from_i32)?;
             sub_dentry.set_inode(Ext4FileInode::new(sb, new_file))
         } else if lwext4_check_inode_exist(&path, InodeTypes::EXT4_DE_SYMLINK) {
-            sub_dentry.set_inode(Ext4LinkInode::new(sb))
+            let mut path_buf = vec![0; 512];
+            lwext4_readlink(&sub_dentry.path(), &mut path_buf).map_err(SysError::from_i32)?;
+            let target = CString::from_vec_with_nul(path_buf).map_err(|_| SysError::EINVAL)?;
+            let sub_inode = Ext4LinkInode::new(target.to_str().unwrap(), sb);
+            sub_dentry.set_inode(sub_inode)
         }
         Ok(sub_dentry)
     }
 
     fn base_create(self: Arc<Self>, name: &str, mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
-        let types = match mode.to_type() {
-            InodeType::Dir => InodeTypes::EXT4_DE_DIR,
-            InodeType::File => InodeTypes::EXT4_DE_REG_FILE,
-            _ => unimplemented!(),
-        };
-
         let sb = self.super_block();
         let inode = self
             .inode()?
@@ -108,16 +102,20 @@ impl Dentry for Ext4Dentry {
         let path = sub_dentry.path();
         log::debug!("[Ext4Dentry::base_create] path:{path}, mode:{mode:?}");
         let mut dir = inode.dir.lock();
-        let new_inode: Arc<dyn Inode> = if types == InodeTypes::EXT4_DE_DIR {
-            let new_dir = LwExt4Dir::create(&path).map_err(SysError::from_i32)?;
-            Ext4DirInode::new(sb, new_dir)
-        } else {
-            let new_file = LwExt4File::open(
-                &path,
-                (OpenFlags::O_RDWR | OpenFlags::O_CREAT | OpenFlags::O_TRUNC).bits(),
-            )
-            .map_err(SysError::from_i32)?;
-            Ext4FileInode::new(sb, new_file)
+        let new_inode: Arc<dyn Inode> = match mode.to_type() {
+            InodeType::Dir => {
+                let new_dir = LwExt4Dir::create(&path).map_err(SysError::from_i32)?;
+                Ext4DirInode::new(sb, new_dir)
+            }
+            InodeType::File => {
+                let new_file = LwExt4File::open(
+                    &path,
+                    (OpenFlags::O_RDWR | OpenFlags::O_CREAT | OpenFlags::O_TRUNC).bits(),
+                )
+                .map_err(SysError::from_i32)?;
+                Ext4FileInode::new(sb, new_file)
+            }
+            _ => todo!(),
         };
         sub_dentry.set_inode(new_inode);
         Ok(sub_dentry)
@@ -128,7 +126,9 @@ impl Dentry for Ext4Dentry {
         let path = sub_dentry.path();
         match sub_dentry.inode()?.itype() {
             InodeType::Dir => lwext4_rmdir(&path).map_err(SysError::from_i32),
-            InodeType::File => lwext4_rmfile(&path).map_err(SysError::from_i32),
+            InodeType::File | InodeType::SymLink => {
+                lwext4_rmfile(&path).map_err(SysError::from_i32)
+            }
             _ => todo!(),
         }
     }
@@ -167,6 +167,17 @@ impl Dentry for Ext4Dentry {
         } else {
             self.clear_inode();
         }
+        Ok(())
+    }
+
+    fn base_symlink(self: Arc<Self>, name: &str, target: &str) -> SysResult<()> {
+        let sb = self.super_block();
+        let sub_dentry = self.into_dyn().get_child_or_create(name);
+        let path = sub_dentry.path();
+        log::debug!("[Ext4Dentry::base_symlink] path:{path}, target:{target}");
+        lwext4_symlink(target, &path).map_err(SysError::from_i32)?;
+        let new_inode: Arc<dyn Inode> = Ext4LinkInode::new(target, sb);
+        sub_dentry.set_inode(new_inode);
         Ok(())
     }
 }

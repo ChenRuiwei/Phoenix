@@ -1,5 +1,6 @@
 use alloc::sync::Arc;
 
+use config::board::BLOCK_MASK;
 use lwext4_rust::{
     bindings::{ext4_flink, O_RDONLY, SEEK_CUR, SEEK_SET},
     InodeTypes,
@@ -17,12 +18,12 @@ unsafe impl Send for Ext4LinkInode {}
 unsafe impl Sync for Ext4LinkInode {}
 
 impl Ext4LinkInode {
-    pub fn new(super_block: Arc<dyn SuperBlock>) -> Arc<Self> {
+    pub fn new(target: &str, super_block: Arc<dyn SuperBlock>) -> Arc<Self> {
         let inode = Arc::new(Self {
             meta: InodeMeta::new(
                 InodeMode::from_type(InodeType::SymLink),
                 super_block.clone(),
-                0,
+                target.len(),
             ),
         });
         inode
@@ -50,7 +51,7 @@ impl Inode for Ext4LinkInode {
             st_size: len as u64,
             st_blksize: 512,
             __pad2: 0,
-            st_blocks: (len / 512) as u64,
+            st_blocks: ((len + BLOCK_MASK) / 512) as u64,
             st_atime: inner.atime,
             st_mtime: inner.mtime,
             st_ctime: inner.ctime,

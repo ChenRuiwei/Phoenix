@@ -123,7 +123,6 @@ impl Task {
             .flags
             .contains(SigActionFlag::SA_NOCLDSTOP)
         {
-            log::error!("send sigchld to parent called wait4 will cause bug now");
             parent.receive_siginfo(
                 SigInfo {
                     sig: Sig::SIGCHLD,

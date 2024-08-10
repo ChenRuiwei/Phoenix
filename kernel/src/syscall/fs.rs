@@ -954,4 +954,20 @@ impl Syscall<'_> {
     pub fn sys_fchmodat(&self) -> SyscallResult {
         Ok(0)
     }
+
+    /// symlink() creates a symbolic link named linkpath which contains the
+    /// string target.
+    pub fn sys_symlinkat(
+        &self,
+        target: UserReadPtr<u8>,
+        newdirfd: AtFd,
+        linkpath: UserReadPtr<u8>,
+    ) -> SyscallResult {
+        let task = self.task;
+        let linkpath = linkpath.read_cstr(task)?;
+        let target = target.read_cstr(task)?;
+        let dentry = task.at_helper(newdirfd, &linkpath, InodeMode::empty())?;
+        dentry.parent().unwrap().symlink(dentry.name(), &target)?;
+        Ok(0)
+    }
 }

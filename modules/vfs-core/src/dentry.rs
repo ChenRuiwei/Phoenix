@@ -3,7 +3,7 @@ use alloc::{
     string::{String, ToString},
     sync::{Arc, Weak},
 };
-use core::{default, mem::MaybeUninit, str::FromStr};
+use core::{default, fmt::Error, mem::MaybeUninit, str::FromStr};
 
 use sync::mutex::spin_mutex::SpinMutex;
 use systype::{SysError, SysResult, SyscallResult};
@@ -79,6 +79,10 @@ pub trait Dentry: Send + Sync {
     fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()>;
 
     fn base_rename_to(self: Arc<Self>, new: Arc<dyn Dentry>, flags: RenameFlags) -> SysResult<()> {
+        Err(SysError::EINVAL)
+    }
+
+    fn base_symlink(self: Arc<Self>, name: &str, target: &str) -> SysResult<()> {
         Err(SysError::EINVAL)
     }
 
@@ -231,6 +235,18 @@ impl dyn Dentry {
             return Err(SysError::EEXIST);
         }
         self.clone().base_rename_to(new.clone(), flags)
+    }
+
+    pub fn symlink(self: &Arc<Self>, name: &str, target: &str) -> SysResult<()> {
+        if !self.inode()?.itype().is_dir() {
+            return Err(SysError::ENOTDIR);
+        }
+        let child = self.get_child_or_create(name);
+        if child.is_negetive() {
+            self.clone().base_symlink(name, target)
+        } else {
+            Err(SysError::EEXIST)
+        }
     }
 
     /// Create a negetive child dentry with `name`.

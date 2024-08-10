@@ -220,7 +220,7 @@ impl InodeMode {
     }
 
     pub fn from_type(itype: InodeType) -> Self {
-        let perm_mode = InodeMode::OWNER_READ | InodeMode::OWNER_WRITE | InodeMode::OTHER_EXEC;
+        let perm_mode = InodeMode::OWNER_MASK | InodeMode::GROUP_MASK | InodeMode::OTHER_MASK;
         let file_mode = match itype {
             InodeType::Dir => InodeMode::DIR,
             InodeType::File => InodeMode::FILE,
