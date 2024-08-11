@@ -142,7 +142,7 @@ fs-img:
 	@mkdir -p mnt
 ifeq ($(FS), fat32)
 	@dd if=/dev/zero of=$(FS_IMG) count=1363148 bs=1K
-	@mkfs.vfat -F 32 $(FS_IMG)
+	@mkfs.vfat -F 32 -s 8 $(FS_IMG)
 	@echo "making fatfs image by using $(TEST_DIR)"
 	@mount -t vfat -o user,umask=000,utf8=1 --source $(FS_IMG) --target mnt
 else

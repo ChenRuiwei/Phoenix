@@ -30,6 +30,8 @@ fdt = "0.1"
 plic = "0.0.2"
 crate_interface = "0.1"
 paste = "1.0"
+bitfield-struct = "0.8"
+byte-slice-cast = { version = "1.2.2", default-features = false }
 
 [features]
 loopback = [] # 配置使用本地回环设备简化 or Virtio-net设备

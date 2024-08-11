@@ -57,18 +57,17 @@ impl PLIC {
 }
 
 /// Guaranteed to have a PLIC
-impl DeviceManager {
-    pub fn probe_plic(&mut self, root: &Fdt) {
-        if let Some(plic_node) = root.find_compatible(&["riscv,plic0", "sifive,plic-1.0.0"]) {
-            let plic_reg = plic_node.reg().unwrap().next().unwrap();
-            let mmio_base = plic_reg.starting_address as usize;
-            let mmio_size = plic_reg.size.unwrap();
-            log::info!("plic base_address:{mmio_base:#x}, size:{mmio_size:#x}");
-            kernel_page_table_mut().ioremap(mmio_base, mmio_size, PTEFlags::R | PTEFlags::W);
-            self.plic = Some(PLIC::new(mmio_base, mmio_size));
-        } else {
-            log::error!("[PLIC probe] faild to find plic");
-        }
+pub fn probe_plic(root: &Fdt) -> Option<PLIC> {
+    if let Some(plic_node) = root.find_compatible(&["riscv,plic0", "sifive,plic-1.0.0"]) {
+        let plic_reg = plic_node.reg().unwrap().next().unwrap();
+        let mmio_base = plic_reg.starting_address as usize;
+        let mmio_size = plic_reg.size.unwrap();
+        log::info!("plic base_address:{mmio_base:#x}, size:{mmio_size:#x}");
+        kernel_page_table_mut().ioremap(mmio_base, mmio_size, PTEFlags::R | PTEFlags::W);
+        Some(PLIC::new(mmio_base, mmio_size))
+    } else {
+        log::error!("[PLIC probe] faild to find plic");
+        None
     }
 }
 

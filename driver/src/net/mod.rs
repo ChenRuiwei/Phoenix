@@ -1,9 +1,13 @@
+pub mod loopback;
+pub mod virtio;
+
 use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
 use core::ptr::NonNull;
 
 use device_core::error::{DevError, DevResult};
 
-use crate::{virtio::virtio_net::NetBufPtr, Mutex};
+use self::virtio::NetBufPtr;
+use crate::Mutex;
 
 /// TODO：或许这个应该写在device-core中比较好？
 

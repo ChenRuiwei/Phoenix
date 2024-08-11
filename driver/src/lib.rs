@@ -14,17 +14,23 @@ extern crate macro_utils;
 use alloc::sync::Arc;
 use core::fmt::{self, Write};
 
+use ::net::init_network;
 use async_utils::block_on;
 use crate_interface::call_interface;
-use device_core::{BlockDevice, CharDevice, DeviceMajor};
+use device_core::{BlockDevice, CharDevice, DeviceMajor, DeviceType};
 use manager::DeviceManager;
 use memory::PageTable;
 use sbi_print::SbiStdout;
 use spin::Once;
 use sync::mutex::{SpinLock, SpinNoIrqLock};
+use virtio_drivers::transport;
 
-use crate::serial::{Serial, UART0};
+use crate::{
+    net::loopback::LoopbackDev,
+    serial::{Serial, UART0},
+};
 
+mod blk;
 mod cpu;
 mod manager;
 pub mod net;
@@ -44,26 +50,29 @@ pub fn init() {
     manager.enable_device_interrupts();
     log::info!("External interrupts enabled");
     let serial = manager
-        .devices()
-        .iter()
-        .filter(|(dev_id, _)| dev_id.major == DeviceMajor::Serial)
-        .map(|(_, device)| {
-            device
-                .clone()
-                .downcast_arc::<Serial>()
-                .unwrap_or_else(|_| unreachable!())
-        })
+        .find_devices_by_major(DeviceMajor::Serial)
+        .into_iter()
+        .map(|device| device.as_char().unwrap())
         .next()
         .unwrap();
-    unsafe { UART0 = Some(serial) };
-    // CHAR_DEVICE.call_once(|| manager.char_device[0].clone());
+    UART0.call_once(|| serial.clone());
+
+    let blk = manager
+        .find_devices_by_major(DeviceMajor::Block)
+        .into_iter()
+        .map(|device| device.as_blk().unwrap())
+        .next()
+        .unwrap();
+    BLOCK_DEVICE.call_once(|| blk.clone());
+
+    log::info!(
+        "[init_net] can't find qemu virtio-net. use
+    LoopbackDev to test"
+    );
+    init_network(LoopbackDev::new(), true);
 }
 
 pub static BLOCK_DEVICE: Once<Arc<dyn BlockDevice>> = Once::new();
-
-// fn init_block_device() {
-//     BLOCK_DEVICE.call_once(|| VirtIOBlkDev::new());
-// }
 
 static mut DEVICE_MANAGER: Option<DeviceManager> = None;
 
@@ -94,7 +103,7 @@ struct Stdout;
 
 impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        if let Some(serial) = unsafe { UART0.as_mut() } {
+        if let Some(serial) = unsafe { UART0.get() } {
             block_on(async { serial.write(s.as_bytes()).await });
             Ok(())
         } else {
@@ -121,3 +130,14 @@ macro_rules! println {
     () => ($crate::print!("\n"));
     ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
 }
+
+macro_rules! wait_for {
+    ($cond:expr) => {{
+        let mut timeout = 10000000;
+        while !$cond && timeout > 0 {
+            core::hint::spin_loop();
+            timeout -= 1;
+        }
+    }};
+}
+pub(crate) use wait_for;

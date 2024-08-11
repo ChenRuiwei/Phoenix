@@ -14,7 +14,6 @@ use config::{
     },
 };
 use downcast_rs::{impl_downcast, DowncastSync};
-use driver::virtio::virtio_blk::VirtIoBlkDev;
 use memory::address;
 use page::Page;
 use spin::Mutex;

@@ -1,13 +1,15 @@
 use alloc::{string::ToString, sync::Arc};
+use core::ptr::NonNull;
 
 use config::board::BLOCK_SIZE;
 use device_core::{BlockDevice, DevId, Device, DeviceMajor, DeviceMeta, DeviceType};
 use log::error;
+use memory::{alloc_frames, dealloc_frame, PhysAddr, PhysPageNum, VirtAddr};
 use page::BufferCache;
 use sync::mutex::SpinNoIrqLock;
-use virtio_drivers::{device::blk::VirtIOBlk, transport::mmio::MmioTransport};
+use virtio_drivers::{device::blk::VirtIOBlk, transport::mmio::MmioTransport, BufferDirection};
 
-use super::VirtioHalImpl;
+use crate::virtio::VirtioHalImpl;
 
 pub type BlockDeviceImpl = VirtIoBlkDev;
 
@@ -68,10 +70,9 @@ impl VirtIoBlkDev {
     pub fn try_new(
         mmio_base: usize,
         mmio_size: usize,
-        _irq_no: usize,
+        _irq_no: Option<usize>,
         transport: MmioTransport,
     ) -> Option<Arc<Self>> {
-        // const VIRTIO0: usize = 0x10001000 + VIRT_RAM_OFFSET;
         match VirtIOBlk::<VirtioHalImpl, MmioTransport>::new(transport) {
             Ok(virtio_blk) => {
                 let device = SpinNoIrqLock::new(virtio_blk);
@@ -118,5 +119,9 @@ impl Device for VirtIoBlkDev {
 
     fn handle_irq(&self) {
         // todo!()
+    }
+
+    fn as_blk(self: Arc<Self>) -> Option<Arc<dyn BlockDevice>> {
+        Some(self)
     }
 }

@@ -1,19 +1,22 @@
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::ToString, sync::Arc, vec::Vec};
 use core::{any::Any, ptr::NonNull};
 
 use device_core::{
     error::{DevError, DevResult},
-    DeviceCapabilities, EthernetAddress, Medium, NetBufPtrOps, NetDevice,
+    DevId, Device, DeviceCapabilities, DeviceMajor, DeviceMeta, DeviceType, EthernetAddress,
+    Medium, NetBufPtrOps, NetDevice,
 };
 use virtio_drivers::{
     device::net::VirtIONetRaw,
     transport::{mmio::MmioTransport, Transport},
 };
 
-use super::{as_dev_err, VirtioHalImpl};
-use crate::net::{NetBuf, NetBufBox, NetBufPool, NET_BUF_LEN};
+use crate::{
+    net::{NetBuf, NetBufBox, NetBufPool, NET_BUF_LEN},
+    virtio::{as_dev_err, VirtioHalImpl},
+};
 
-pub type NetDeviceImpl = VirtIoNetDev<MmioTransport, 32>;
+pub type VirtIoNetDevImpl = VirtIoNetDev<MmioTransport, 32>;
 
 /// The VirtIO network device driver.
 ///

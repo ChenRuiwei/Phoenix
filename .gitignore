@@ -6,11 +6,11 @@
 *.gdb
 *.dtb
 *.dts
+*.img
 traces.*
 
 lmbench_all_debug
 kernel-qemu
-sdcard.img
 kernel/src/link_app.asm
 
 mnt/
