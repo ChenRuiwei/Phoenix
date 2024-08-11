@@ -4,10 +4,7 @@ pub mod uart8250;
 
 use alloc::{boxed::Box, collections::VecDeque, string::ToString, sync::Arc};
 use core::{
-    cell::UnsafeCell,
-    cmp,
-    fmt::{self, Debug, Write},
-    task::Waker,
+    cell::UnsafeCell, cmp, fmt::{self, Debug, Write}, panic, task::Waker
 };
 
 use async_trait::async_trait;

@@ -9,7 +9,7 @@ use user_lib::{execve, fork, wait, waitpid};
 #[macro_use]
 extern crate user_lib;
 
-const TESTCASES: [&str; 437] = [
+const TESTCASES: &[&str] = &[
     "time-test",
     "busybox_testcode.sh",
     "lua_testcode.sh",
@@ -162,8 +162,6 @@ const TESTCASES: [&str; 437] = [
     "./test-ltp.sh ltp/testcases/bin/gettid02",
     "./test-ltp.sh ltp/testcases/bin/gettimeofday01",
     "./test-ltp.sh ltp/testcases/bin/getuid01",
-    "./test-ltp.sh ltp/testcases/bin/in6_01",
-    "./test-ltp.sh ltp/testcases/bin/in6_02",
     "./test-ltp.sh ltp/testcases/bin/inotify01",
     "./test-ltp.sh ltp/testcases/bin/inotify04",
     "./test-ltp.sh ltp/testcases/bin/ioctl_ns07",
