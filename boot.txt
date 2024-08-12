@@ -1,0 +1,5 @@
+setenv ipaddr 10.42.0.10
+setenv serverip 10.42.0.1
+setenv gateway 10.42.0.1
+setenv bootcmd "fdt move ${fdtaddr} 0x46000000; tftpboot 0x40200000 zImage; while test $? -ne 0; do tftpboot 0x40200000 zImage; done; bootm 0x40200000 - 0x46000000"
+tftpboot 0x80400000 zImage

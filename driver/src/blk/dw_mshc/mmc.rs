@@ -2,10 +2,11 @@
 //!
 //! driver for Synopsys DesignWare Mobile Storage Host Controller
 
-use alloc::{boxed::Box, string::ToString, vec::Vec};
+use alloc::{boxed::Box, string::ToString, sync::Arc, vec::Vec};
 use core::{cell::UnsafeCell, mem::size_of};
 
 use byte_slice_cast::*;
+use config::board::BLOCK_SIZE;
 use device_core::{BlockDevice, DevId, Device, DeviceMajor, DeviceMeta, DeviceType};
 use log::{debug, info, warn};
 use memory::{alloc_frame_tracker, alloc_frame_trackers, FrameTracker, PhysAddr, VirtAddr};
@@ -74,7 +75,7 @@ impl MMC {
         self.reset_clock();
         self.reset_fifo();
         self.set_controller_bus_width(card_idx, CtypeCardWidth::Width1);
-        self.set_dma(false); // Disable DMA
+        self.set_dma(true); // Disable DMA
         info!("Control register: {:?}", self.control_reg());
 
         let cmd = CMD::reset_cmd0(0);
@@ -371,6 +372,7 @@ impl MMC {
             warn!("CMD{} error: {:?}", cmd.cmd_index(), rinsts.status());
             warn!("Dumping response");
             warn!("Response: {:x?}", resp);
+            warn!("dma: {:?}", self.dma_enabled());
             None
         }
     }
@@ -551,15 +553,19 @@ impl Device for MMC {
     fn handle_irq(&self) {
         todo!()
     }
+
+    fn as_blk(self: Arc<Self>) -> Option<Arc<dyn BlockDevice>> {
+        Some(self)
+    }
 }
 
 impl BlockDevice for MMC {
     fn size(&self) -> u64 {
-        self.size()
+        16 * 1024 * 1024 * 1024
     }
 
     fn block_size(&self) -> usize {
-        todo!()
+        BLOCK_SIZE
     }
 
     fn buffer_head_cnts(&self) -> usize {
@@ -571,6 +577,7 @@ impl BlockDevice for MMC {
     }
 
     fn base_read_blocks(&self, block_id: usize, buf: &mut [u8]) {
+        assert!(buf.len() == BLOCK_SIZE);
         let buf = unsafe { core::mem::transmute(buf) };
         debug!("reading block {}", block_id);
         // Read one block
@@ -582,6 +589,7 @@ impl BlockDevice for MMC {
     }
 
     fn base_write_blocks(&self, block_id: usize, buf: &[u8]) {
+        assert!(buf.len() == BLOCK_SIZE);
         #[allow(mutable_transmutes)]
         let buf = unsafe { core::mem::transmute(buf) };
         debug!("writing block {}", block_id);

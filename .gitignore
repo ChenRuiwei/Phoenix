@@ -9,7 +9,7 @@
 *.img
 traces.*
 
-lmbench_all_debug
+zImage
 kernel-qemu
 kernel/src/link_app.asm
 

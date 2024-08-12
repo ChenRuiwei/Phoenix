@@ -37,6 +37,7 @@ FS_IMG := $(FS_IMG_DIR)/sdcard.img
 TEST := 24/final
 # FS := fat32
 FS := ext4
+SDCARD := n
 TEST_DIR := ./testcase/$(TEST)
 # TEST_DIR := ./testcase/24/preliminary/
 
@@ -137,18 +138,24 @@ user:
 PHONY += fs-img
 fs-img:
 	@echo "building fs-img..."
+ifeq ($(SDCARD), n)
 	@rm -f $(FS_IMG)
+endif
 	@mkdir -p $(FS_IMG_DIR)
 	@mkdir -p mnt
 ifeq ($(FS), fat32)
-	@dd if=/dev/zero of=$(FS_IMG) count=1363148 bs=1K
+ifeq ($(SDCARD), n)
+	dd if=/dev/zero of=$(FS_IMG) count=1363148 bs=1K
+endif
 	@mkfs.vfat -F 32 -s 8 $(FS_IMG)
 	@echo "making fatfs image by using $(TEST_DIR)"
 	@mount -t vfat -o user,umask=000,utf8=1 --source $(FS_IMG) --target mnt
 else
-	@dd if=/dev/zero of=$(FS_IMG) count=2048 bs=1M
+ifeq ($(SDCARD), n)
+	dd if=/dev/zero of=$(FS_IMG) count=2048 bs=1M
+endif
 	# @mkfs.ext4 $(FS_IMG)
-	@mkfs.ext4  -F -O ^metadata_csum_seed $(FS_IMG)
+	@mkfs.ext4 -F -O ^metadata_csum_seed $(FS_IMG)
 	@echo "making ext4 image by using $(TEST_DIR)"
 	@mount $(FS_IMG) mnt
 endif
@@ -204,6 +211,17 @@ PHONY += gdb
 gdb:
 	$(RISCV_GDB) -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'
 
+PHONY += zImage
+zImage: kernel
+	gzip -f $(KERNEL_BIN)
+	mkimage -A riscv -O linux -C gzip -T kernel -a 0x80200000 -e 0x80200000 -n Phoenix -d $(KERNEL_BIN).gz zImage
+	sudo cp zImage /srv/tftp/
+
+PHONY += fuck
+fuck: kernel
+	gzip -f $(KERNEL_BIN)
+	mkimage -A riscv -O linux -C gzip -T kernel -a 0x80200000 -e 0x80200000 -n Phoenix -d $(KERNEL_BIN).gz boot.scr.uimg
+	sudo cp boot.scr.uimg /srv/tftp/
 
 .PHONY: $(PHONY)
 

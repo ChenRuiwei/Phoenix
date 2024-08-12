@@ -244,6 +244,7 @@ dependencies = [
  "config",
  "crate_interface",
  "device-core",
+ "embedded-sdmmc",
  "fdt",
  "log",
  "macro-utils",
@@ -259,6 +260,7 @@ dependencies = [
  "sync",
  "systype",
  "virtio-drivers",
+ "visionfive2-sd",
 ]
 
 [[package]]
@@ -272,6 +274,18 @@ name = "embedded-hal"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
+
+[[package]]
+name = "embedded-sdmmc"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "150f320125310e179b9e73b081173b349e63c5c7d4ca44db4e5b9121b10387ec"
+dependencies = [
+ "byteorder",
+ "embedded-hal",
+ "heapless 0.8.0",
+ "log",
+]
 
 [[package]]
 name = "enum-as-inner"
@@ -361,6 +375,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hash32"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47d60b12902ba28e2730cd37e95b8c9223af2808df9e902d4df49588d1470606"
+dependencies = [
+ "byteorder",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -377,9 +400,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdc6457c0eb62c71aac4bc17216026d8410337c4126773b9c5daba343f17964f"
 dependencies = [
  "atomic-polyfill",
- "hash32",
+ "hash32 0.2.1",
  "rustc_version",
  "spin",
+ "stable_deref_trait",
+]
+
+[[package]]
+name = "heapless"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad"
+dependencies = [
+ "hash32 0.3.1",
  "stable_deref_trait",
 ]
 
@@ -611,6 +644,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ad606bf31d67b0e10a161b7df7d6a97dda7be22ce4bebcff889476e867c9b7a"
 
 [[package]]
+name = "preprint"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "067d7939a17011d73ee0f868eb26b569680437d379583e5f97c18ca570b4a32f"
+
+[[package]]
 name = "printf-compat"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -755,7 +794,7 @@ dependencies = [
  "byteorder",
  "cfg-if",
  "defmt",
- "heapless",
+ "heapless 0.7.17",
  "log",
  "managed",
 ]
@@ -963,6 +1002,16 @@ dependencies = [
  "enumn",
  "log",
  "zerocopy",
+]
+
+[[package]]
+name = "visionfive2-sd"
+version = "0.1.0"
+source = "git+https://github.com/os-module/visionfive2-sd.git#dae131edabbb33aaa4b7068d4a8da152df683648"
+dependencies = [
+ "bitfield-struct",
+ "log",
+ "preprint",
 ]
 
 [[package]]
