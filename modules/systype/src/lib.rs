@@ -100,6 +100,8 @@ pub enum SysError {
     ENOSYS = 38,
     /// Directory not empty
     ENOTEMPTY = 39,
+    /// Too many symbolic links encountered
+    ELOOP = 40,
     /// Socket operation on non-socket
     ENOTSOCK = 88,
     /// Unsupported
@@ -165,6 +167,7 @@ impl SysError {
             ENOLCK => "No record locks available",
             ENOSYS => "Invalid system call number",
             ENOTEMPTY => "Directory not empty",
+            ELOOP => "Too many symbolic links encountered",
             ENOTSOCK => "Socket operation on non-socket",
             ENOTCONN => "Transport endpoint is not connected",
             EOPNOTSUPP => "Unsupported Error",

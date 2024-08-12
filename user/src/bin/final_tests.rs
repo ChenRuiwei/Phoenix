@@ -355,6 +355,9 @@ fn run_cmd(cmd: &str) {
 fn main() -> i32 {
     run_cmd("busybox touch sort.src");
     run_cmd("busybox ln -s /lib/dlopen_dso.so dlopen_dso.so");
+    run_cmd(
+        "busybox ln -s /lib/glibc/ld-linux-riscv64-lp64d.so.1 /lib/ld-linux-riscv64-lp64d.so.1 ",
+    );
 
     if fork() == 0 {
         for test in TESTCASES {

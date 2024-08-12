@@ -177,7 +177,7 @@ impl<'a> Syscall<'a> {
                 self.sys_sendfile(args[0], args[1], args[2].into(), args[3])
                     .await
             }
-            FACCESSAT => self.sys_faccessat(args[0].into(), args[1].into(), args[2], args[3]),
+            FACCESSAT => self.sys_faccessat(args[0].into(), args[1].into(), args[2], args[3] as _),
             LSEEK => self.sys_lseek(args[0], args[1] as _, args[2]),
             UMASK => self.sys_umask(args[0] as _),
             UTIMENSAT => {

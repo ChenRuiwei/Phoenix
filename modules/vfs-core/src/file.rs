@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
+use alloc::{boxed::Box, ffi::CString, string::String, sync::Arc, vec, vec::Vec};
 use core::{
     cmp,
     sync::atomic::{AtomicUsize, Ordering},
@@ -461,6 +461,18 @@ impl dyn File {
         let mut buf = vec![0; self.size()];
         self.read_at(0, &mut buf).await?;
         Ok(buf)
+    }
+
+    pub async fn readlink_string(&self) -> SysResult<String> {
+        let mut path_buf: Vec<u8> = vec![0; 512];
+        let len = self.readlink(&mut path_buf).await?;
+        path_buf.truncate(len + 1);
+        let path = CString::from_vec_with_nul(path_buf)
+            .unwrap()
+            .into_string()
+            .unwrap();
+        log::debug!("[File::readlink_string] read link returns {path}");
+        Ok(path)
     }
 }
 

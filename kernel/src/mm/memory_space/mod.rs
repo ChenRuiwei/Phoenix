@@ -249,13 +249,6 @@ impl MemorySpace {
 
             log::info!("interp {}", interp);
 
-            if interp.eq("/lib/ld-musl-riscv64-sf.so.1") || interp.eq("/lib/ld-musl-riscv64.so.1") {
-                interps.clear();
-                interps.push("/lib/musl/libc.so".to_string());
-            } else if interp.eq("/lib/ld-linux-riscv64-lp64d.so.1") {
-                interps.clear();
-                interps.push("/lib/glibc/ld-2.31.so".to_string());
-            }
             let mut interp_dentry: SysResult<Arc<dyn Dentry>> = Err(SysError::ENOENT);
             for interp in interps.into_iter() {
                 if let Ok(dentry) = current_task_ref().resolve_path(&interp) {
