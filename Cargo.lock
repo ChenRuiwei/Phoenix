@@ -238,12 +238,14 @@ dependencies = [
  "arch",
  "async-trait",
  "async-utils",
+ "backtrace",
  "bitfield-struct",
  "bitflags 2.6.0",
  "byte-slice-cast",
  "config",
  "crate_interface",
  "device-core",
+ "embedded-hal",
  "embedded-sdmmc",
  "fdt",
  "log",
@@ -534,7 +536,7 @@ dependencies = [
 [[package]]
 name = "lwext4_rust"
 version = "0.2.0"
-source = "git+https://github.com/ChenRuiwei/lwext4_rust.git?rev=b98a#b98ad4572c169209ae46aa1bae1c417476302025"
+source = "git+https://github.com/ChenRuiwei/lwext4_rust.git?rev=293f#293f67aa0fd9bae7b9c8ff9a9ee9b7ff745aa410"
 dependencies = [
  "log",
  "printf-compat",

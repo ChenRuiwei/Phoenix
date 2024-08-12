@@ -48,6 +48,8 @@ impl BlockDevice for VirtIoBlkDev {
                 block_id, res
             );
         }
+        // log::warn!("read buf {buf:?}");
+        // log::error!("read hash value {}", exam_hash(buf));
     }
 
     fn base_write_blocks(&self, block_id: usize, buf: &[u8]) {
@@ -55,6 +57,9 @@ impl BlockDevice for VirtIoBlkDev {
             .lock()
             .write_blocks(block_id, buf)
             .expect("Error when writing VirtIOBlk");
+
+        // log::warn!("write buf {buf:?}");
+        // log::error!("write hash value {}", exam_hash(buf));
     }
 
     fn read_block(&self, block_id: usize, buf: &mut [u8]) {

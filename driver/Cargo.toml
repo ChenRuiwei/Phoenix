@@ -18,6 +18,7 @@ sbi-print = { path = "../crates/sbi-print/" }
 ring-buffer = { path = "../crates/ring-buffer/" }
 async-utils = { path = "../crates/async-utils/" }
 macro-utils = { path = "../crates/macro-utils/" }
+backtrace = { path = "../crates/backtrace/" }
 
 bitflags = "2.5"
 rustversion = "1.0"
@@ -33,7 +34,9 @@ paste = "1.0"
 bitfield-struct = "0.8"
 byte-slice-cast = { version = "1.2.2", default-features = false }
 embedded-sdmmc = "0.8"
+embedded-hal = "1.0"
 
+# visionfive2-sd = { path = "../crates/visionfive2-sd/" }
 visionfive2-sd = { git = "https://github.com/os-module/visionfive2-sd.git" }
 
 [features]

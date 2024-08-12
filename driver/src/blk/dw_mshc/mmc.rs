@@ -2,8 +2,11 @@
 //!
 //! driver for Synopsys DesignWare Mobile Storage Host Controller
 
-use alloc::{boxed::Box, string::ToString, sync::Arc, vec::Vec};
-use core::{cell::UnsafeCell, mem::size_of};
+use alloc::{boxed::Box, string::ToString, sync::Arc, vec, vec::Vec};
+use core::{
+    cell::UnsafeCell,
+    mem::{self, size_of},
+};
 
 use byte_slice_cast::*;
 use config::board::BLOCK_SIZE;
@@ -75,7 +78,7 @@ impl MMC {
         self.reset_clock();
         self.reset_fifo();
         self.set_controller_bus_width(card_idx, CtypeCardWidth::Width1);
-        self.set_dma(true); // Disable DMA
+        self.set_dma(false); // Disable DMA
         info!("Control register: {:?}", self.control_reg());
 
         let cmd = CMD::reset_cmd0(0);
@@ -251,6 +254,53 @@ impl MMC {
             base.byte_add(RINSTS::offset())
                 .write_volatile(rinsts.into());
         }
+
+        // read write block test
+        // log::info!("read test");
+        // let block_id = 16_000_000;
+        // let mut origin_buf: Vec<usize> = vec![0x0; 64];
+        // debug!("reading block {}", block_id);
+        // // Read one block
+        // self.set_size(512, 512);
+        // let cmd = CMD::data_cmd(0, 17); // TODO: card number hard coded to 0
+        // let cmdarg = CMDARG::from(block_id as u32);
+        // self.send_cmd(cmd, cmdarg, Some(&mut origin_buf), true)
+        //     .expect("Error sending command");
+        //
+        // log::info!("write test");
+        // let mut buf: Vec<usize> = vec![0xff; 64];
+        // buf[4] = 0x88;
+        // buf[30] = 0x99;
+        // buf[60] = 0x99;
+        // debug!("writing block {}", block_id);
+        // self.set_size(512, 512);
+        // // CMD24 single block write
+        // let cmd = CMD::write_data_cmd(0, 24); // TODO: card number hard coded to 0
+        // let cmdarg = CMDARG::from(block_id as u32);
+        // self.send_cmd(cmd, cmdarg, Some(&mut buf), false)
+        //     .expect("Error sending command");
+        //
+        // log::info!("read test");
+        // let mut read_buf: Vec<usize> = vec![0x0; 64];
+        // debug!("reading block {}", block_id);
+        // // Read one block
+        // self.set_size(512, 512);
+        // let cmd = CMD::data_cmd(0, 17); // TODO: card number hard coded to 0
+        // let cmdarg = CMDARG::from(block_id as u32);
+        // self.send_cmd(cmd, cmdarg, Some(&mut read_buf), true)
+        //     .expect("Error sending command");
+        //
+        // log::info!("write test");
+        // debug!("writing block {}", block_id);
+        // self.set_size(512, 512);
+        // // CMD24 single block write
+        // let cmd = CMD::write_data_cmd(0, 24); // TODO: card number hard coded to 0
+        // let cmdarg = CMDARG::from(block_id as u32);
+        // self.send_cmd(cmd, cmdarg, Some(&mut origin_buf), false)
+        //     .expect("Error sending command");
+        //
+        // debug_assert_eq!(buf, read_buf);
+
         info!("INT Status register: {:?}", rinsts);
         info!("======================= SDIO Init END ========================");
     }
@@ -318,6 +368,9 @@ impl MMC {
                         unsafe { base.byte_add(RINSTS::offset()).read_volatile() }.into();
                     if rinsts.receive_data_request() && !self.dma_enabled() {
                         while self.fifo_filled_cnt() >= 2 {
+                            if buffer_offset >= 64 {
+                                break;
+                            }
                             buffer[buffer_offset] = self.read_fifo::<usize>();
                             buffer_offset += 1;
                         }
@@ -331,7 +384,10 @@ impl MMC {
                     if rinsts.transmit_data_request() && !self.dma_enabled() {
                         // Hard coded FIFO depth
                         while self.fifo_filled_cnt() < 120 {
-                            buffer[buffer_offset] = self.read_fifo::<usize>();
+                            if buffer_offset >= 64 {
+                                break;
+                            }
+                            self.write_fifo::<usize>(buffer[buffer_offset]);
                             buffer_offset += 1;
                         }
                     }
@@ -561,7 +617,7 @@ impl Device for MMC {
 
 impl BlockDevice for MMC {
     fn size(&self) -> u64 {
-        16 * 1024 * 1024 * 1024
+        16 * 1000 * 1000 * 1000
     }
 
     fn block_size(&self) -> usize {
@@ -578,25 +634,30 @@ impl BlockDevice for MMC {
 
     fn base_read_blocks(&self, block_id: usize, buf: &mut [u8]) {
         assert!(buf.len() == BLOCK_SIZE);
-        let buf = unsafe { core::mem::transmute(buf) };
+
+        let buf_trans: &mut [usize] = unsafe {
+            let len = buf.len() / mem::size_of::<usize>();
+            core::slice::from_raw_parts_mut(buf.as_ptr() as *mut usize, len)
+        };
         debug!("reading block {}", block_id);
         // Read one block
         self.set_size(512, 512);
         let cmd = CMD::data_cmd(0, 17); // TODO: card number hard coded to 0
         let cmdarg = CMDARG::from(block_id as u32);
-        self.send_cmd(cmd, cmdarg, Some(buf), true)
+        self.send_cmd(cmd, cmdarg, Some(buf_trans), true)
             .expect("Error sending command");
     }
 
     fn base_write_blocks(&self, block_id: usize, buf: &[u8]) {
         assert!(buf.len() == BLOCK_SIZE);
+
         #[allow(mutable_transmutes)]
         let buf = unsafe { core::mem::transmute(buf) };
         debug!("writing block {}", block_id);
-        // Read one block
         self.set_size(512, 512);
         // CMD24 single block write
-        let cmd = CMD::data_cmd(0, 24); // TODO: card number hard coded to 0
+        let cmd = CMD::data_cmd(0, 24).with_read_write(true); // TODO: card number hard coded to 0
+
         let cmdarg = CMDARG::from(block_id as u32);
         self.send_cmd(cmd, cmdarg, Some(buf), false)
             .expect("Error sending command");

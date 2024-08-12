@@ -9,14 +9,14 @@ use visionfive2_sd::{SDIo, SleepOps, Vf2SdDriver};
 
 pub fn sleep_ms(ms: usize) {
     let start = get_time();
-    while get_time() - start < ms * clock_freq() / 1000 {
+    while get_time() - start < ms * (clock_freq() / 1000) {
         core::hint::spin_loop();
     }
 }
 
 pub fn sleep_ms_until(ms: usize, mut f: impl FnMut() -> bool) {
     let start = get_time();
-    while get_time() - start < ms * clock_freq() / 1000 {
+    while get_time() - start < ms * (clock_freq() / 1000) {
         if f() {
             return;
         }
@@ -119,16 +119,15 @@ impl BlockDevice for Vf2SDImpl {
     }
 
     fn base_write_blocks(&self, block_id: usize, buf: &[u8]) {
-        log::error!("base write block {block_id}");
-        self.driver.lock().write_block(block_id, buf)
+        // log::error!("base write block {block_id}");
+        // self.driver.lock().write_block(block_id, buf)
     }
 
     fn read_block(&self, block_id: usize, buf: &mut [u8]) {
-        self.driver.lock().read_block(block_id, buf)
+        self.base_read_blocks(block_id, buf)
     }
 
     fn write_block(&self, block_id: usize, buf: &[u8]) {
-        log::error!("write block {block_id}");
-        self.driver.lock().write_block(block_id, buf)
+        self.base_write_blocks(block_id, buf)
     }
 }

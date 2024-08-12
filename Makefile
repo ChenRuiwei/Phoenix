@@ -217,11 +217,5 @@ zImage: kernel
 	mkimage -A riscv -O linux -C gzip -T kernel -a 0x80200000 -e 0x80200000 -n Phoenix -d $(KERNEL_BIN).gz zImage
 	sudo cp zImage /srv/tftp/
 
-PHONY += fuck
-fuck: kernel
-	gzip -f $(KERNEL_BIN)
-	mkimage -A riscv -O linux -C gzip -T kernel -a 0x80200000 -e 0x80200000 -n Phoenix -d $(KERNEL_BIN).gz boot.scr.uimg
-	sudo cp boot.scr.uimg /srv/tftp/
-
 .PHONY: $(PHONY)
 

@@ -1,7 +1,6 @@
 mod dw_mshc;
 mod vf2;
 mod virtio;
-mod sdmmc;
 
 use alloc::sync::Arc;
 
