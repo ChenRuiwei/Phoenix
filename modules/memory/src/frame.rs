@@ -48,7 +48,7 @@ impl Drop for FrameTracker {
 
 struct FrameAllocator {
     range_ppn: SyncUnsafeCell<Range<PhysPageNum>>,
-    allocator: SpinNoIrqLock<bitmap_allocator::BitAlloc16M>,
+    allocator: SpinNoIrqLock<bitmap_allocator::BitAlloc256M>,
 }
 
 impl FrameAllocator {
@@ -63,7 +63,7 @@ impl FrameAllocator {
 
 static FRAME_ALLOCATOR: FrameAllocator = FrameAllocator {
     range_ppn: SyncUnsafeCell::new(PhysPageNum::ZERO..PhysPageNum::ZERO),
-    allocator: SpinNoIrqLock::new(bitmap_allocator::BitAlloc16M::DEFAULT),
+    allocator: SpinNoIrqLock::new(bitmap_allocator::BitAlloc256M::DEFAULT),
 };
 
 /// Initiate the frame allocator, using `VPNRange`
