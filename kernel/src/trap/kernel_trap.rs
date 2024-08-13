@@ -52,13 +52,12 @@ pub fn kernel_trap_handler() {
 
                     use crate::processor::hart::local_hart;
 
-                    if !executor::has_task() {
+                    if !executor::has_prior_task() {
                         return;
                     }
-                    unsafe { set_timer_irq(1) };
                     let mut old_hart = local_hart().enter_preempt_switch();
                     log::warn!("kernel preempt");
-                    executor::run_one();
+                    executor::run_prior_until_idle();
                     log::warn!("kernel preempt fininshed");
                     local_hart().leave_preempt_switch(&mut old_hart);
                 }

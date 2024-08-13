@@ -70,12 +70,12 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
         driver::init();
         vfs::init();
 
-        #[cfg(feature = "debug")]
-        utils::spawn_timer_tasks(utils::print_proc_tree, 10);
-
         task::spawn_kernel_task(async move {
             task::spawn_init_proc();
         });
+
+        #[cfg(feature = "debug")]
+        utils::spawn_timer_tasks(utils::print_proc_tree, 10);
 
         #[cfg(feature = "smp")]
         boot::start_other_harts(hart_id);

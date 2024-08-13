@@ -33,7 +33,7 @@ fn run_cmd(cmd: &str) {
 #[no_mangle]
 fn main() -> i32 {
     for cmd in BUSYBOX_CMDS {
-        run_cmd(&format!("busybox ln /busybox /bin/{}", cmd));
+        run_cmd(&format!("busybox ln -s /busybox /bin/{cmd}"));
     }
     run_cmd("ln -s /lib/glibc/ld-linux-riscv64-lp64d.so.1 /lib/ld-linux-riscv64-lp64d.so.1 ");
 
