@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, sync::Arc};
 
 use async_trait::async_trait;
-use config::mm::{align_offset_to_page, PAGE_SIZE};
+use config::mm::{align_offset_to_page, round_down_to_page, round_up_to_page, PAGE_SIZE};
 use page::Page;
 use systype::{SysError, SysResult, SyscallResult};
 use vfs_core::{Dentry, DirEntry, File, FileMeta, Inode};
@@ -129,8 +129,16 @@ impl File for SimpleFileFile {
         let inode = self.inode();
 
         let page_cache = inode.page_cache().unwrap();
+
         if offset > self.size() {
-            todo!("offset greater than size, will create hole");
+            let offset_aligned = round_down_to_page(offset);
+            let size_aligned = round_up_to_page(self.size());
+            for offset_it in size_aligned..offset_aligned {
+                log::info!("[File::write_at] create new page");
+                let page = Page::new();
+                page.fill_zero();
+                page_cache.insert_page(offset_aligned, page);
+            }
         }
 
         let mut buf_it = buf;

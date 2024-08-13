@@ -196,7 +196,15 @@ pub trait File: Send + Sync + DowncastSync {
         };
 
         if offset > self.size() {
-            todo!("offset greater than size, will create hole");
+            log::warn!("[File::write_at] offset bigger than page");
+            let offset_aligned = round_down_to_page(offset);
+            let size_aligned = round_up_to_page(self.size());
+            for offset_it in size_aligned..offset_aligned {
+                log::info!("[File::write_at] create new page");
+                let page = Page::new();
+                page.fill_zero();
+                page_cache.insert_page(offset_aligned, page);
+            }
         }
 
         let device = self.super_block().device();
