@@ -11,6 +11,7 @@ use log::*;
 use smoltcp::{
     iface::SocketHandle,
     socket::tcp::{self, ConnectError, State},
+    time::Duration as SmolDuration,
     wire::{IpAddress, IpEndpoint, IpListenEndpoint},
 };
 use systype::*;
@@ -75,7 +76,7 @@ impl TcpSocket {
     /// Creates a new TCP socket.
     ///
     /// 此时并没有加到SocketSet中（还没有handle），在connect/listen中才会添加
-    pub const fn new_v4() -> Self {
+    pub const fn new() -> Self {
         Self {
             state: AtomicU8::new(STATE_CLOSED),
             shutdown: UnsafeCell::new(0),
@@ -140,7 +141,26 @@ impl TcpSocket {
     /// [`Err(WouldBlock)`](AxError::WouldBlock) is returned.
     #[inline]
     pub fn set_nonblocking(&self, nonblocking: bool) {
+        warn!("set_nonblocking");
         self.nonblock.store(nonblocking, Ordering::Release);
+    }
+
+    pub fn set_nagle_enabled(&self, enabled: bool) -> SysResult<()> {
+        let handle = unsafe { self.handle.get().read() }.ok_or(SysError::EBADF)?;
+        SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
+            socket.set_nagle_enabled(enabled)
+        });
+        Ok(())
+    }
+
+    pub fn set_keep_alive(&self, enable: bool) -> SysResult<()> {
+        if enable {
+            let handle = unsafe { self.handle.get().read() }.ok_or(SysError::EBADF)?;
+            SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
+                socket.set_keep_alive(Some(SmolDuration::from_secs(1)))
+            });
+        }
+        Ok(())
     }
 
     /// Connects to the given address and port.
@@ -460,72 +480,6 @@ impl TcpSocket {
                 hangup: false,
             },
         }
-    }
-}
-
-pub struct TcpRecvFuture<'a> {
-    socket: &'a TcpSocket,
-    buf: &'a [u8],
-}
-
-impl<'a> Future for TcpRecvFuture<'a> {
-    type Output = SyscallResult;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        use tcp::State::*;
-
-        let shutdown = unsafe { *self.socket.shutdown.get() };
-        if shutdown & RCV_SHUTDOWN != 0 {
-            log::warn!("[TcpSocket::recv] shutdown closed read, recv return 0");
-            return Poll::Ready(Ok(0));
-        }
-        if self.socket.is_connecting() {
-            // TODO: 这里是否要加上 waker
-            log::warn!("[TcpRecvFuture] may loss waker");
-            return Poll::Pending;
-        } else if !self.socket.is_connected() && shutdown == 0 {
-            warn!("socket recv() failed");
-            return Poll::Ready(Err(SysError::ENOTCONN));
-        }
-
-        // SAFETY: `self.handle` should be initialized in a connected socket.
-        let handle = unsafe { self.socket.handle.get().read().unwrap() };
-        let ret =SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket|{
-            log::info!(
-                "[TcpSocket::recv] handle{handle} state {} is trying to recv",
-                socket.state()
-            );
-            if !socket.is_active() {
-                // not open
-                warn!("[TcpSocket::recv] socket recv() failed because handle{handle} is not active");
-                Poll::Ready(Err(SysError::ECONNREFUSED))
-            } else if !socket.may_recv() {
-                // connection closed
-                Poll::Ready(Ok(0))
-            } else if socket.recv_queue() > 0 {
-                // data available
-                // TODO: use socket.recv(|buf| {...})
-                // let mut this = self.get_mut();
-                // let len = socket.recv_slice(&mut this.buf).map_err(|_| {
-                //     warn!("socket recv() failed, badstate");
-                //     SysError::EBADF
-                // })?;
-                // Poll::Ready(Ok(len))
-                Poll::Ready(Ok(0))
-            } else {
-                // no more data
-                log::info!(
-                    "[TcpSocket::recv] handle{handle} has no data to recv, register waker and suspend"
-                );
-                if self.socket.is_nonblocking() {
-                    return Poll::Ready(Err(SysError::EAGAIN));
-                }
-                socket.register_recv_waker(cx.waker());
-                Poll::Pending
-            }
-        });
-        SOCKET_SET.poll_interfaces();
-        ret
     }
 }
 

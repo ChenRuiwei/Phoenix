@@ -248,7 +248,7 @@ impl File for TtyFile {
             log::error!("[TtyFile::ioctl] cmd {cmd} not included");
             unimplemented!()
         };
-        log::info!("[TtyFile::ioctl] cmd {:?}, value {:#x}", cmd, arg);
+        log::debug!("[TtyFile::ioctl] cmd {:?}, value {:#x}", cmd, arg);
         match cmd {
             TCGETS | TCGETA => {
                 unsafe {
@@ -264,7 +264,7 @@ impl File for TtyFile {
             }
             TIOCGPGRP => {
                 let fg_pgid = self.inner.lock().fg_pgid;
-                log::info!("[TtyFile::ioctl] get fg pgid {fg_pgid}");
+                log::debug!("[TtyFile::ioctl] get fg pgid {fg_pgid}");
                 unsafe {
                     *(arg as *mut Pid) = fg_pgid;
                 }
@@ -275,12 +275,12 @@ impl File for TtyFile {
                     self.inner.lock().fg_pgid = *(arg as *const Pid);
                 }
                 let fg_pgid = self.inner.lock().fg_pgid;
-                log::info!("[TtyFile::ioctl] set fg pgid {fg_pgid}");
+                log::debug!("[TtyFile::ioctl] set fg pgid {fg_pgid}");
                 Ok(0)
             }
             TIOCGWINSZ => {
                 let win_size = self.inner.lock().win_size;
-                log::info!("[TtyFile::ioctl] get window size {win_size:?}",);
+                log::debug!("[TtyFile::ioctl] get window size {win_size:?}",);
                 unsafe {
                     *(arg as *mut WinSize) = win_size;
                 }

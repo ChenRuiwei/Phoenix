@@ -14,7 +14,7 @@ use device_core::{error::DevError, NetBufPtrOps, NetDevice};
 use listen_table::*;
 use log::*;
 pub use smoltcp::wire::{IpAddress, IpEndpoint, IpListenEndpoint, Ipv4Address, Ipv6Address};
-use smoltcp::{
+pub(crate) use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
     phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken},
     socket::{self, AnySocket},
@@ -438,7 +438,7 @@ impl<'a> RxToken for NetRxToken<'a> {
         F: FnOnce(&mut [u8]) -> R,
     {
         let mut rx_buf = self.1;
-        warn!(
+        debug!(
             "[RxToken::consume] RECV {} bytes",
             rx_buf.packet_len(),
             // rx_buf.packet()
@@ -461,7 +461,7 @@ impl<'a> TxToken for NetTxToken<'a> {
         let mut dev = self.0.borrow_mut();
         let mut tx_buf = dev.alloc_tx_buffer(len).unwrap();
         let ret = f(tx_buf.packet_mut());
-        warn!(
+        debug!(
             "[TxToken::consume] SEND {} bytes",
             len,
             // tx_buf.packet()

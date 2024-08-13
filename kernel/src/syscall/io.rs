@@ -316,7 +316,7 @@ impl Syscall<'_> {
                 SelectOutput::Output1(time_output) => match time_output {
                     TimeLimitedTaskOutput::Ok(ret_vec) => ret_vec,
                     TimeLimitedTaskOutput::TimeOut => {
-                        log::debug!("[sys_pselect6]: timeout");
+                        log::info!("[sys_pselect6]: timeout");
                         readfds.as_mut().map(|fds| fds.clear());
                         writefds.as_mut().map(|fds| fds.clear());
                         exceptfds.as_mut().map(|fds| fds.clear());

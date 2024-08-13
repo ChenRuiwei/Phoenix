@@ -226,14 +226,50 @@ impl Syscall<'_> {
         optval: usize,
         optlen: usize,
     ) -> SyscallResult {
-        // let task = self.task;
+        let task = self.task;
         // let socket = task.sockfd_lookup(sockfd)?;
-        log::info!(
-            "[sys_setsockopt] fd{sockfd} {:?} {:?} optval:{} optlen:{optlen}",
-            SocketLevel::try_from(level)?,
-            SocketOpt::try_from(optname)?,
-            UserReadPtr::<usize>::from(optval).read(self.task)?
-        );
+        match SocketLevel::try_from(level)? {
+            SocketLevel::SOL_SOCKET => {
+                match SocketOpt::try_from(optname)? {
+                    SocketOpt::KEEPALIVE => {
+                        let enabled = UserReadPtr::<u32>::from(optval).read(&task)?;
+                        let socket = task.sockfd_lookup(sockfd)?;
+                        match enabled {
+                            1 => socket.sk.keep_alive(true)?,
+                            _ => socket.sk.keep_alive(false)?,
+                        };
+                    }
+                    opt => {
+                        log::warn!(
+                            "[sys_setsockopt] fd{sockfd} unsupported SOL_SOCKET opt {opt:?} optlen:{optlen}"
+                        )
+                    }
+                };
+            }
+            SocketLevel::IPPROTO_IP | SocketLevel::IPPROTO_TCP => {
+                const MAX_SEGMENT_SIZE: usize = 1460;
+                match TcpSocketOpt::try_from(optname)? {
+                    TcpSocketOpt::NODELAY => {
+                        let should_delay = UserReadPtr::<u32>::from(optval).read(&task)?;
+                        let socket = task.sockfd_lookup(sockfd)?;
+                        if should_delay == 0 {
+                            socket.sk.nagle(true)?;
+                        } else {
+                            socket.sk.nagle(false)?;
+                        }
+                    }
+                    opt => {
+                        log::error!(
+                            "[sys_setsockopt] unsupported IPPROTO_TCP opt {opt:?} optlen:{optlen}"
+                        )
+                    }
+                };
+            }
+            SocketLevel::IPPROTO_IPV6 => {
+                log::error!("[sys_setsockopt] unsupported IPPROTO_IPV6")
+            }
+        }
+        // let socket =
         Ok(0)
     }
 
@@ -295,7 +331,9 @@ impl Syscall<'_> {
                     }
                 };
             }
-            SocketLevel::IPPROTO_IPV6 => todo!(),
+            SocketLevel::IPPROTO_IPV6 => {
+                log::error!("[sys_getsockopt] unsupported IPPROTO_IPV6")
+            }
         }
         Ok(0)
     }

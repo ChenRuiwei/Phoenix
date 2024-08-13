@@ -11,7 +11,7 @@ use core::{
 };
 
 use async_trait::async_trait;
-use async_utils::{block_on, get_waker};
+use async_utils::{block_on, get_waker, suspend_now};
 use config::{board::UART_BUF_LEN, mm::VIRT_RAM_OFFSET};
 use device_core::{DevId, Device, DeviceMajor, DeviceMeta, DeviceType};
 use fdt::Fdt;
@@ -128,6 +128,9 @@ impl Device for Serial {
 #[async_trait]
 impl CharDevice for Serial {
     async fn read(&self, buf: &mut [u8]) -> usize {
+        while !self.poll_in().await {
+            suspend_now().await;
+        }
         let mut len = 0;
         self.with_mut_inner(|inner| {
             len = inner.read_buf.read(buf);

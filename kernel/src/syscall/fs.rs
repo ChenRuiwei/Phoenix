@@ -17,6 +17,7 @@ use vfs_core::{
 use super::Syscall;
 use crate::{
     mm::{UserRdWrPtr, UserReadPtr, UserWritePtr},
+    net::socket::Socket,
     processor::env::within_sum,
     task::signal::IntrBySignalFuture,
 };
@@ -613,6 +614,12 @@ impl Syscall<'_> {
                 let flags = OpenFlags::from_bits_truncate(arg as _);
                 let file = task.with_fd_table(|table| table.get_file(fd))?;
                 file.set_flags(flags.status());
+                if file.downcast_ref::<Socket>().is_some() {
+                    file.downcast_arc::<Socket>()
+                        .unwrap_or_else(|_| unreachable!())
+                        .sk
+                        .set_nonblocking(flags.contains(OpenFlags::O_NONBLOCK))
+                }
                 Ok(0)
             }
             _ => {

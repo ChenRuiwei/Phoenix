@@ -37,8 +37,11 @@ FS_IMG := $(FS_IMG_DIR)/sdcard.img
 TEST := 24/final
 # FS := fat32
 FS := ext4
-TEST_DIR := ./testcase/$(TEST)
-# TEST_DIR := ./testcase/24/preliminary/
+ifeq ($(TEST), app)
+	TEST_DIR := ./rootfs
+else 
+	TEST_DIR := ./testcase/$(TEST)
+endif
 
 # Crate features
 export STRACE := 
@@ -146,6 +149,9 @@ ifeq ($(FS), fat32)
 	@echo "making fatfs image by using $(TEST_DIR)"
 	@mount -t vfat -o user,umask=000,utf8=1 --source $(FS_IMG) --target mnt
 else
+ifeq ($(TEST), app)
+	@echo "\033[31mmake root filesystem which has some apps\033[0m"
+endif
 	@dd if=/dev/zero of=$(FS_IMG) count=2048 bs=1M
 	# @mkfs.ext4 $(FS_IMG)
 	@mkfs.ext4  -F -O ^metadata_csum_seed $(FS_IMG)

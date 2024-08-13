@@ -20,8 +20,9 @@ fn run_cmd(cmd: &str) {
             "busybox",
             &["busybox", "sh", "-c", cmd],
             &[
-                "PATH=/:/bin",
-                "LD_LIBRARY_PATH=/:/lib:/lib/glibc/:/lib/musl",
+                "PATH=/:/bin:/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin",
+                "LD_LIBRARY_PATH=/:/lib:/lib/glibc/:/lib/musl:/lib64/lp64d:/usr/lib:/usr/local/lib",
+                "TERM=screen",
             ],
         );
     } else {
@@ -41,8 +42,8 @@ fn main() -> i32 {
             "busybox",
             &["busybox", "sh"],
             &[
-                "PATH=/:/bin",
-                "LD_LIBRARY_PATH=/:/lib:/lib/glibc/:/lib/musl",
+                "PATH=/:/bin:/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin",
+                "LD_LIBRARY_PATH=/:/lib:/lib/glibc/:/lib/musl:/lib64/lp64d:/usr/lib:/usr/local/lib",
                 "TERM=screen",
             ],
         );

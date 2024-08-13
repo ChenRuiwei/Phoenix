@@ -24,10 +24,10 @@ pub enum Sock {
 }
 
 impl Sock {
-    pub fn set_nonblocking(&self) {
+    pub fn set_nonblocking(&self, nonblocking: bool) {
         match self {
-            Sock::Tcp(tcp) => tcp.set_nonblocking(true),
-            Sock::Udp(udp) => udp.set_nonblocking(true),
+            Sock::Tcp(tcp) => tcp.set_nonblocking(nonblocking),
+            Sock::Udp(udp) => udp.set_nonblocking(nonblocking),
             Sock::Unix(_) => unimplemented!(),
         }
     }
@@ -132,6 +132,24 @@ impl Sock {
             Sock::Unix(_) => unimplemented!(),
         }
     }
+
+    /// whether to use nagle Algorithm
+    /// Disabling it is equivalent to Linux's TCP_NODELAY flag.
+    pub fn nagle(&self, enable: bool) -> SysResult<()> {
+        match self {
+            Sock::Tcp(tcp) => tcp.set_nagle_enabled(enable),
+            Sock::Udp(udp) => Err(SysError::EOPNOTSUPP),
+            Sock::Unix(_) => unimplemented!(),
+        }
+    }
+
+    pub fn keep_alive(&self, enable: bool) -> SysResult<()> {
+        match self {
+            Sock::Tcp(tcp) => tcp.set_keep_alive(enable),
+            Sock::Udp(udp) => Err(SysError::EOPNOTSUPP),
+            Sock::Unix(_) => unimplemented!(),
+        }
+    }
 }
 
 /// linux中，socket面向用户空间，sock面向内核空间
@@ -152,13 +170,13 @@ impl Socket {
         let sk = match domain {
             SaFamily::AF_UNIX => Sock::Unix(UnixSocket {}),
             SaFamily::AF_INET | SaFamily::AF_INET6 => match types {
-                SocketType::STREAM => Sock::Tcp(TcpSocket::new_v4()),
+                SocketType::STREAM => Sock::Tcp(TcpSocket::new()),
                 SocketType::DGRAM => Sock::Udp(UdpSocket::new()),
                 _ => unimplemented!(),
             },
         };
         let flags = if nonblock {
-            sk.set_nonblocking();
+            sk.set_nonblocking(true);
             OpenFlags::O_RDWR | OpenFlags::O_NONBLOCK
         } else {
             OpenFlags::O_RDWR
