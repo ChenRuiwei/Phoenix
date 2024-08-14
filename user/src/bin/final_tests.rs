@@ -104,6 +104,12 @@ const TESTCASES: &[&str] = &[
     "./test-ltp.sh ltp/testcases/bin/getrusage02",
     "./test-ltp.sh ltp/testcases/bin/gettid02",
     "./test-ltp.sh ltp/testcases/bin/getuid01",
+
+    "./test-ltp.sh ltp/testcases/bin/in6_01",
+    "./test-ltp.sh ltp/testcases/bin/in6_02",
+    "./test-ltp.sh ltp/testcases/bin/inotify01",
+    "./test-ltp.sh ltp/testcases/bin/inotify04",
+
     "./test-ltp.sh ltp/testcases/bin/ioctl_ns07",
     "./test-ltp.sh ltp/testcases/bin/ioprio_get01",
     "./test-ltp.sh ltp/testcases/bin/ioprio_set02",

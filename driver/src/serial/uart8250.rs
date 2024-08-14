@@ -4,7 +4,7 @@
 //!
 //! Adapted from https://docs.rs/uart_16550/latest/src/uart_16550/mmio.rs.html
 
-use core::fmt::Write;
+use core::{fmt::Write, intrinsics::unlikely};
 
 use bitflags::{bitflags, Flags};
 use log::info;
@@ -258,7 +258,10 @@ impl UartDriver for Uart {
     }
 
     fn putc(&mut self, byte: u8) {
-        self.send(byte)
+        self.send(byte);
+        if unlikely(byte > 127) {
+            panic!("Byte may not be ASCII")
+        }
     }
 
     fn getc(&mut self) -> u8 {
