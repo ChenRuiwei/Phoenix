@@ -3,7 +3,7 @@ use alloc::{
     string::{String, ToString},
     sync::{Arc, Weak},
 };
-use core::{default, mem::MaybeUninit, str::FromStr};
+use core::{default, fmt::Error, mem::MaybeUninit, str::FromStr};
 
 use sync::mutex::spin_mutex::SpinMutex;
 use systype::{SysError, SysResult, SyscallResult};
@@ -34,24 +34,13 @@ impl DentryMeta {
         log::debug!("[Dentry::new] new dentry with name {name}");
         let super_block = Arc::downgrade(&super_block);
         let inode = Mutex::new(None);
-        if let Some(parent) = parent {
-            Self {
-                name: name.to_string(),
-                super_block,
-                inode,
-                parent: Some(Arc::downgrade(&parent)),
-                children: Mutex::new(BTreeMap::new()),
-                state: Mutex::new(DentryState::UnInit),
-            }
-        } else {
-            Self {
-                name: name.to_string(),
-                super_block,
-                inode,
-                parent: None,
-                children: Mutex::new(BTreeMap::new()),
-                state: Mutex::new(DentryState::UnInit),
-            }
+        Self {
+            name: name.to_string(),
+            super_block,
+            inode,
+            parent: parent.map(|p| Arc::downgrade(&p)),
+            children: Mutex::new(BTreeMap::new()),
+            state: Mutex::new(DentryState::UnInit),
         }
     }
 }
@@ -90,6 +79,14 @@ pub trait Dentry: Send + Sync {
     fn base_unlink(self: Arc<Self>, name: &str) -> SysResult<()>;
 
     fn base_rename_to(self: Arc<Self>, new: Arc<dyn Dentry>, flags: RenameFlags) -> SysResult<()> {
+        Err(SysError::EINVAL)
+    }
+
+    fn base_symlink(self: Arc<Self>, name: &str, target: &str) -> SysResult<()> {
+        Err(SysError::EINVAL)
+    }
+
+    fn base_link(self: Arc<Self>, new: &Arc<dyn Dentry>) -> SysResult<()> {
         Err(SysError::EINVAL)
     }
 
@@ -154,7 +151,7 @@ pub trait Dentry: Send + Sync {
             .insert(child.name_string(), child)
     }
 
-    fn change_state(&self, state: DentryState) {
+    fn set_state(&self, state: DentryState) {
         *self.meta().state.lock() = state;
     }
 
@@ -187,11 +184,6 @@ impl dyn Dentry {
     }
 
     pub fn lookup(self: &Arc<Self>, name: &str) -> SysResult<Arc<dyn Dentry>> {
-        // let hash_key = HashKey::new(self, name)?;
-        // if let Some(child) = dcache().get(hash_key) {
-        //     log::warn!("[Dentry::lookup] find child in hash");
-        //     return Ok(child);
-        // }
         if !self.inode()?.itype().is_dir() {
             return Err(SysError::ENOTDIR);
         }
@@ -202,7 +194,7 @@ impl dyn Dentry {
                 self.path()
             );
             self.clone().base_lookup(name)?;
-            child.change_state(DentryState::Sync);
+            child.set_state(DentryState::Sync);
             return Ok(child);
         }
         Ok(child)
@@ -224,10 +216,10 @@ impl dyn Dentry {
             return Err(SysError::ENOTDIR);
         }
         let sub_dentry = self.get_child(name).ok_or(SysError::ENOENT)?;
-        // TODO: inode ref count
         sub_dentry.inode()?.set_state(InodeState::Removed);
+        self.clone().base_unlink(name)?;
         sub_dentry.clear_inode();
-        self.clone().base_unlink(name)
+        Ok(())
     }
 
     pub fn rename_to(self: &Arc<Self>, new: &Arc<Self>, flags: RenameFlags) -> SysResult<()> {
@@ -237,7 +229,7 @@ impl dyn Dentry {
         {
             return Err(SysError::EINVAL);
         }
-        if new.has_ancestor(self) {
+        if new.is_descendant_of(self) {
             return Err(SysError::EINVAL);
         }
 
@@ -249,10 +241,33 @@ impl dyn Dentry {
         self.clone().base_rename_to(new.clone(), flags)
     }
 
+    pub fn symlink(self: &Arc<Self>, name: &str, target: &str) -> SysResult<()> {
+        if !self.inode()?.itype().is_dir() {
+            return Err(SysError::ENOTDIR);
+        }
+        let child = self.get_child_or_create(name);
+        if child.is_negetive() {
+            self.clone().base_symlink(name, target)
+        } else {
+            Err(SysError::EEXIST)
+        }
+    }
+
+    pub fn link(self: &Arc<Self>, new: &Arc<dyn Dentry>) -> SysResult<()> {
+        if self.is_negetive() {
+            Err(SysError::ENOENT)
+        } else if !new.is_negetive() {
+            Err(SysError::EEXIST)
+        } else {
+            let ret = self.clone().base_link(new);
+            self.inode()?.meta().inner.lock().nlink += 1;
+            ret
+        }
+    }
+
     /// Create a negetive child dentry with `name`.
     pub fn new_child(self: &Arc<Self>, name: &str) -> Arc<dyn Dentry> {
         let child = self.clone().base_new_child(name);
-        // dcache().insert(child.clone());
         child
     }
 
@@ -264,7 +279,7 @@ impl dyn Dentry {
         })
     }
 
-    pub fn has_ancestor(self: &Arc<Self>, dir: &Arc<Self>) -> bool {
+    pub fn is_descendant_of(self: &Arc<Self>, dir: &Arc<Self>) -> bool {
         let mut parent_opt = self.parent();
         while let Some(parent) = parent_opt {
             if Arc::ptr_eq(self, dir) {

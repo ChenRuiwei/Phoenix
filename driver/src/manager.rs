@@ -3,13 +3,22 @@
 //! Adapted from MankorOS
 
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
+use core::char;
 
 use arch::interrupts::{disable_interrupt, enable_external_interrupt};
 use config::{board, mm::K_SEG_DTB_BEG};
-use device_core::{DevId, Device};
+use device_core::{DevId, Device, DeviceMajor, DeviceType};
 use log::{info, warn};
+use memory::pte::PTEFlags;
 
-use crate::{cpu::CPU, plic::PLIC, println};
+use crate::{
+    blk::{probe_sdio_blk, probe_vf2_sd, probe_virtio_blk},
+    cpu::{probe_cpu, CPU},
+    kernel_page_table_mut,
+    plic::{probe_plic, PLIC},
+    println,
+    serial::probe_char_device,
+};
 
 /// The DeviceManager struct is responsible for managing the devices within the
 /// system. It handles the initialization, probing, and interrupt management for
@@ -57,15 +66,28 @@ impl DeviceManager {
         }
         println!("Device: {}", device_tree.root().model());
 
-        // Probe PLIC
-        self.probe_plic(&device_tree);
+        if let Some(plic) = probe_plic(&device_tree) {
+            self.plic = Some(plic)
+        }
 
-        // Probe serial console
-        self.probe_char_device(&device_tree);
+        if let Some(cpus) = probe_cpu(&device_tree) {
+            self.cpus = cpus;
+            config::board::set_harts(self.cpus.len());
+        }
 
-        self.probe_cpu(&device_tree);
+        if let Some(serial) = probe_char_device(&device_tree) {
+            self.devices.insert(serial.dev_id(), serial);
+        }
 
-        self.probe_virtio_device(&device_tree);
+        if let Some(dev) = probe_virtio_blk(&device_tree) {
+            self.devices.insert(dev.dev_id(), dev);
+        }
+        if let Some(dev) = probe_sdio_blk(&device_tree) {
+            self.devices.insert(dev.dev_id(), dev);
+        }
+        // if let Some(dev) = probe_vf2_sd(&device_tree) {
+        //     self.devices.insert(dev.dev_id(), dev);
+        // }
 
         // Add to interrupt map if have interrupts
         for dev in self.devices.values() {
@@ -83,6 +105,18 @@ impl DeviceManager {
         }
     }
 
+    pub fn map_devices(&self) {
+        // Map probed devices
+        for (id, dev) in self.devices() {
+            log::debug!("mapping device {}", dev.name());
+            kernel_page_table_mut().ioremap(
+                dev.mmio_base(),
+                dev.mmio_size(),
+                PTEFlags::R | PTEFlags::W,
+            );
+        }
+    }
+
     /// Retrieves a reference to the PLIC instance. Panics if PLIC is not
     /// initialized.
     fn plic(&self) -> &PLIC {
@@ -95,6 +129,15 @@ impl DeviceManager {
 
     pub fn devices(&self) -> &BTreeMap<DevId, Arc<dyn Device>> {
         &self.devices
+    }
+
+    pub fn find_devices_by_major(&self, dmajor: DeviceMajor) -> Vec<Arc<dyn Device>> {
+        self.devices()
+            .iter()
+            .filter(|(dev_id, _)| dev_id.major == dmajor)
+            .map(|(_, dev)| dev)
+            .cloned()
+            .collect()
     }
 
     pub fn enable_device_interrupts(&mut self) {

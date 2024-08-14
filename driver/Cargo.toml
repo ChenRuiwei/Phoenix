@@ -18,6 +18,7 @@ sbi-print = { path = "../crates/sbi-print/" }
 ring-buffer = { path = "../crates/ring-buffer/" }
 async-utils = { path = "../crates/async-utils/" }
 macro-utils = { path = "../crates/macro-utils/" }
+backtrace = { path = "../crates/backtrace/" }
 
 bitflags = "2.5"
 rustversion = "1.0"
@@ -30,6 +31,11 @@ fdt = "0.1"
 plic = "0.0.2"
 crate_interface = "0.1"
 paste = "1.0"
+bitfield-struct = "0.8"
+byte-slice-cast = { version = "1.2.2", default-features = false }
+
+# visionfive2-sd = { path = "../crates/visionfive2-sd/" }
+visionfive2-sd = { git = "https://github.com/os-module/visionfive2-sd.git" }
 
 [features]
 loopback = [] # 配置使用本地回环设备简化 or Virtio-net设备

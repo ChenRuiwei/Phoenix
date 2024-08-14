@@ -3,10 +3,40 @@
 
 extern crate user_lib;
 
-use user_lib::{execve, fork, println, wait};
+extern crate alloc;
+
+use alloc::format;
+
+use user_lib::{execve, fork, println, wait, waitpid};
+
+const BUSYBOX_CMDS: &[&str] = &[
+    "ls", "cp", "mv", "rm", "mkdir", "rmdir", "ln", "cat", "echo", "grep", "find", "tar", "awk",
+    "sed", "kill", "df", "du", "uname", "ping", "ip",
+];
+
+fn run_cmd(cmd: &str) {
+    if fork() == 0 {
+        execve(
+            "busybox",
+            &["busybox", "sh", "-c", cmd],
+            &[
+                "PATH=/:/bin",
+                "LD_LIBRARY_PATH=/:/lib:/lib/glibc/:/lib/musl",
+            ],
+        );
+    } else {
+        let mut result: i32 = 0;
+        waitpid((-1isize) as usize, &mut result);
+    }
+}
 
 #[no_mangle]
 fn main() -> i32 {
+    for cmd in BUSYBOX_CMDS {
+        run_cmd(&format!("busybox ln -s /busybox /bin/{cmd}"));
+    }
+    run_cmd("ln -s /lib/glibc/ld-linux-riscv64-lp64d.so.1 /lib/ld-linux-riscv64-lp64d.so.1 ");
+
     if fork() == 0 {
         execve(
             "busybox",

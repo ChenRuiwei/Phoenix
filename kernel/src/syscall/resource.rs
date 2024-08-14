@@ -1,11 +1,58 @@
 use config::{board::MAX_HARTS, process::USER_STACK_SIZE};
+use strum::FromRepr;
 use systype::{RLimit, Rusage, SysError, SyscallResult};
 
 use super::Syscall;
 use crate::{
     mm::{UserReadPtr, UserWritePtr},
+    syscall::resource,
     task::TASK_MANAGER,
 };
+
+#[derive(FromRepr, Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(i32)]
+pub enum Resource {
+    // Per-process CPU limit, in seconds.
+    CPU = 0,
+    // Largest file that can be created, in bytes.
+    FSIZE = 1,
+    // Maximum size of data segment, in bytes.
+    DATA = 2,
+    // Maximum size of stack segment, in bytes.
+    STACK = 3,
+    // Largest core file that can be created, in bytes.
+    CORE = 4,
+    // Largest resident set size, in bytes.
+    // This affects swapping; processes that are exceeding their
+    // resident set size will be more likely to have physical memory
+    // taken from them.
+    RSS = 5,
+    // Number of processes.
+    NPROC = 6,
+    // Number of open files.
+    NOFILE = 7,
+    // Locked-in-memory address space.
+    MEMLOCK = 8,
+    // Address space limit.
+    AS = 9,
+    // Maximum number of file locks.
+    LOCKS = 10,
+    // Maximum number of pending signals.
+    SIGPENDING = 11,
+    // Maximum bytes in POSIX message queues.
+    MSGQUEUE = 12,
+    // Maximum nice priority allowed to raise to.
+    // Nice levels 19 .. -20 correspond to 0 .. 39
+    // values of this resource limit.
+    NICE = 13,
+    // Maximum realtime priority allowed for non-priviledged
+    // processes.
+    RTPRIO = 14,
+    // Maximum CPU time in microseconds that a process scheduled under a real-time
+    // scheduling policy may consume without making a blocking system
+    // call before being forcibly descheduled.
+    RTTIME = 15,
+}
 
 impl Syscall<'_> {
     /// getrusage() returns resource usage measures for who, which can be one of
@@ -58,19 +105,7 @@ impl Syscall<'_> {
         new_limit: UserReadPtr<RLimit>,
         old_limit: UserWritePtr<RLimit>,
     ) -> SyscallResult {
-        // This is a limit, in seconds, on the amount of CPU time that the process can
-        // consume.
-        const RLIMIT_CPU: i32 = 0;
-        // This is the maximum size of the process stack, in bytes. Upon reaching this
-        // limit, a SIGSEGV signal is generated. To handle this signal, a process must
-        // employ an alternate signal stack (sigaltstack(2)).
-        const RLIMIT_STACK: i32 = 3;
-        // This specifies a value one greater than the maximum file descriptor number
-        // that can be opened by this process.Attempts (open(2), pipe(2), dup(2),
-        // etc.) to exceed this limit yield the error EMFILE.
-        const RLIMIT_NOFILE: i32 = 7;
-        const RLIMIT_CORE: i32 = 4;
-        const RLIMIT_SIGPENDING: i32 = 11;
+        use Resource::*;
 
         let task = if pid == 0 {
             self.task.clone()
@@ -79,23 +114,17 @@ impl Syscall<'_> {
         } else {
             return Err(SysError::ESRCH);
         };
+
+        let resource = Resource::from_repr(resource).ok_or(SysError::EINVAL)?;
         if old_limit.not_null() {
             let limit = match resource {
-                RLIMIT_CPU => RLimit {
-                    rlim_cur: MAX_HARTS,
-                    rlim_max: MAX_HARTS,
-                },
-                RLIMIT_STACK => RLimit {
+                STACK => RLimit {
                     rlim_cur: USER_STACK_SIZE,
                     rlim_max: USER_STACK_SIZE,
                 },
-                RLIMIT_NOFILE => task.with_fd_table(|table| table.rlimit()),
-                RLIMIT_CORE | RLIMIT_SIGPENDING => RLimit {
-                    rlim_cur: 0,
-                    rlim_max: 0,
-                },
+                NOFILE => task.with_fd_table(|table| table.rlimit()),
                 r => {
-                    log::warn!("[sys_prlimit64] get old_limit : unimplemented {r}");
+                    log::warn!("[sys_prlimit64] get old_limit : unimplemented {r:?}");
                     RLimit {
                         rlim_cur: 0,
                         rlim_max: 0,
@@ -108,15 +137,14 @@ impl Syscall<'_> {
             let limit = new_limit.read(&task)?;
             log::info!("[sys_prlimit64] new_limit: {limit:?}");
             match resource {
-                RLIMIT_NOFILE => {
+                NOFILE => {
                     task.with_mut_fd_table(|table| table.set_rlimit(limit));
                 }
                 r => {
-                    log::warn!("[sys_prlimit64] set new_limit : unimplemented {r}");
+                    log::warn!("[sys_prlimit64] set new_limit : unimplemented {r:?}");
                 }
             }
         }
-
         Ok(0)
     }
 }

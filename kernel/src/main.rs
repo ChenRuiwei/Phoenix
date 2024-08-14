@@ -77,6 +77,9 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
             task::spawn_init_proc();
         });
 
+        #[cfg(feature = "debug")]
+        utils::spawn_timer_tasks(utils::print_proc_tree, 10);
+
         #[cfg(feature = "smp")]
         boot::start_other_harts(hart_id);
     } else {

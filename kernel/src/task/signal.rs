@@ -123,7 +123,6 @@ impl Task {
             .flags
             .contains(SigActionFlag::SA_NOCLDSTOP)
         {
-            log::error!("send sigchld to parent called wait4 will cause bug now");
             parent.receive_siginfo(
                 SigInfo {
                     sig: Sig::SIGCHLD,
@@ -317,7 +316,7 @@ pub struct RealITimer {
 
 impl TimerEvent for RealITimer {
     fn callback(self: Box<Self>) -> Option<Timer> {
-        self.task.upgrade().map(|task| {
+        self.task.upgrade().and_then(|task| {
             task.with_mut_itimers(|itimers| {
                 let real = &mut itimers[0];
 
@@ -345,7 +344,7 @@ impl TimerEvent for RealITimer {
                     data: self,
                 })
             })
-        })?
+        })
     }
 }
 

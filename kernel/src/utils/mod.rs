@@ -1,5 +1,6 @@
 use alloc::{format, sync::Arc};
 
+use config::process::INIT_PROC_PID;
 use timer::timelimited_task::ksleep_s;
 
 use crate::task::{self, Task, TASK_MANAGER};

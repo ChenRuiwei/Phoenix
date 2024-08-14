@@ -2,12 +2,13 @@ use alloc::sync::Arc;
 
 use device_core::BlockDevice;
 use lwext4_rust::{Ext4BlockWrapper, InodeTypes};
-use systype::SysResult;
+use systype::{SysError, SysResult};
 use vfs_core::{
-    Dentry, FileSystemType, FileSystemTypeMeta, MountFlags, StatFs, SuperBlock, SuperBlockMeta,
+    Dentry, FileSystemType, FileSystemTypeMeta, InodeType, MountFlags, OpenFlags, StatFs,
+    SuperBlock, SuperBlockMeta,
 };
 
-use crate::{disk::Disk, Ext4Dentry, Ext4Inode, LwExt4File};
+use crate::{disk::Disk, Ext4Dentry, Ext4DirInode, Ext4FileInode, LwExt4Dir, LwExt4File};
 
 pub struct Ext4FsType {
     meta: FileSystemTypeMeta,
@@ -35,8 +36,8 @@ impl FileSystemType for Ext4FsType {
     ) -> SysResult<Arc<dyn Dentry>> {
         debug_assert!(dev.is_some());
         let sb = Ext4SuperBlock::new(SuperBlockMeta::new(dev, self.clone()));
-        let mut root_ext4_file = LwExt4File::new("/", InodeTypes::EXT4_DE_DIR);
-        let root_inode = Ext4Inode::new(sb.clone(), root_ext4_file);
+        let mut root_ext4_dir = LwExt4Dir::open("/").map_err(SysError::from_i32)?;
+        let root_inode = Ext4DirInode::new(sb.clone(), root_ext4_dir);
         let root_dentry = Ext4Dentry::new(name, sb.clone(), parent.clone()).into_dyn();
         root_dentry.set_inode(root_inode);
         if let Some(parent) = parent {

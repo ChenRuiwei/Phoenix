@@ -1,3 +1,5 @@
+use core::sync::atomic::{AtomicBool, Ordering};
+
 use arch::memory::sfence_vma_all;
 use riscv::register::{satp, sepc};
 
@@ -26,6 +28,7 @@ pub fn within_sum<T>(f: impl FnOnce() -> T) -> T {
 }
 
 /// Store some permission flags
+#[derive(Debug)]
 pub struct EnvContext {
     // For preempt and non preempt
     /// Permit supervisor user memory access

@@ -27,6 +27,8 @@ pub struct InodeMeta {
 pub struct InodeMetaInner {
     /// Size of a file in bytes.
     pub size: usize,
+    /// Link count.
+    pub nlink: usize,
     /// Last access time.
     pub atime: TimeSpec,
     /// Last modification time.
@@ -75,6 +77,7 @@ impl InodeMeta {
                 mtime: TimeSpec::default(),
                 ctime: TimeSpec::default(),
                 state: InodeState::UnInit,
+                nlink: 1,
             }),
         }
     }
@@ -139,9 +142,6 @@ impl dyn Inode {
             "[Inode::truncate] len:{len:#x}, origin size:{:#x}",
             self.size()
         );
-        // if self.size() < len {
-        //     self.address_space()
-        // }
         self.base_truncate(len).map(|_| 0)
     }
 
@@ -226,7 +226,7 @@ impl InodeMode {
     }
 
     pub fn from_type(itype: InodeType) -> Self {
-        let perm_mode = InodeMode::OWNER_READ | InodeMode::OWNER_WRITE | InodeMode::OTHER_EXEC;
+        let perm_mode = InodeMode::OWNER_MASK | InodeMode::GROUP_MASK | InodeMode::OTHER_MASK;
         let file_mode = match itype {
             InodeType::Dir => InodeMode::DIR,
             InodeType::File => InodeMode::FILE,

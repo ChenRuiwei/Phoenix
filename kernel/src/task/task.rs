@@ -1,7 +1,9 @@
 use alloc::{
     collections::BTreeMap,
+    ffi::CString,
     string::String,
     sync::{Arc, Weak},
+    vec,
     vec::Vec,
 };
 use core::{
@@ -12,6 +14,7 @@ use core::{
 };
 
 use arch::memory::sfence_vma_all;
+use async_utils::block_on;
 use config::{
     mm::DL_INTERP_OFFSET,
     process::{INIT_PROC_PID, USER_STACK_SIZE},
@@ -24,10 +27,10 @@ use signal::{
     sigset::{Sig, SigSet},
 };
 use sync::mutex::SpinNoIrqLock;
-use systype::SysResult;
+use systype::{SysError, SysResult};
 use time::stat::TaskTimeStat;
 use vfs::{fd_table::FdTable, sys_root_dentry};
-use vfs_core::{is_absolute_path, AtFd, Dentry, File, InodeMode, Path};
+use vfs_core::{is_absolute_path, AtFd, Dentry, File, InodeMode, InodeType, OpenFlags, Path};
 
 use super::{
     resource::CpuMask,
@@ -80,14 +83,14 @@ pub struct Task {
     /// Map of start address of shared memory areas to their keys in the shared
     /// memory manager.
     shm_ids: Shared<BTreeMap<VirtAddr, usize>>,
-    /// Parent process
+    /// Parent process.
     parent: Shared<Option<Weak<Task>>>,
-    /// Children processes
+    /// Children processes.
     // NOTE: Arc<Task> can only be hold by `Hart`, `UserTaskFuture` and parent `Task`. Unused task
     // will be automatically dropped by previous two structs. However, it should be treated with
     // great care to drop task in `children`.
     children: Shared<BTreeMap<Tid, Arc<Task>>>,
-    /// Exit code of the current process
+    /// Exit code of the current process.
     exit_code: AtomicI32,
     /// Trap context for the task.
     trap_context: SyncUnsafeCell<TrapContext>,
@@ -101,9 +104,9 @@ pub struct Task {
     cwd: Shared<Arc<dyn Dentry>>,
     /// Pending signals for the task.
     sig_pending: SpinNoIrqLock<SigPending>,
-    /// Signal handlers
+    /// Signal handlers.
     sig_handlers: Shared<SigHandlers>,
-    /// Optional signal stack for the task, settable via `sys_signalstack`.
+    /// Signal mask for the task.
     sig_mask: SyncUnsafeCell<SigSet>,
     /// Optional signal stack for the task, settable via `sys_signalstack`.
     sig_stack: SyncUnsafeCell<Option<SignalStack>>,
@@ -115,9 +118,11 @@ pub struct Task {
     itimers: Shared<[ITimer; 3]>,
     /// Futexes used by the task.
     robust: Shared<RobustListHead>,
-    ///
+    /// Address of the task's thread ID.
     tid_address: SyncUnsafeCell<TidAddress>,
+    /// Mask of CPUs allowed for the task.
     cpus_allowed: SyncUnsafeCell<CpuMask>,
+    /// Process group ID of the task.
     pgid: Shared<PGid>,
 }
 
@@ -634,7 +639,7 @@ impl Task {
     ///   process, as is done by open() for a relative pathname).  In this case,
     ///   dirfd must be a directory that was opened for reading (O_RDONLY) or
     ///   using the O_PATH flag.
-    pub fn at_helper(&self, fd: AtFd, path: &str, _mode: InodeMode) -> SysResult<Arc<dyn Dentry>> {
+    pub fn at_helper(&self, fd: AtFd, path: &str, flags: OpenFlags) -> SysResult<Arc<dyn Dentry>> {
         log::info!("[at_helper] fd: {fd}, path: {path}");
         let path = if is_absolute_path(path) {
             Path::new(sys_root_dentry(), sys_root_dentry(), path)
@@ -650,12 +655,47 @@ impl Task {
                 }
             }
         };
-        path.walk()
+        let dentry = path.walk()?;
+        if flags.contains(OpenFlags::O_NOFOLLOW) {
+            Ok(dentry)
+        } else {
+            self.resolve_dentry(dentry)
+        }
+    }
+
+    fn resolve_dentry(&self, dentry: Arc<dyn Dentry>) -> SysResult<Arc<dyn Dentry>> {
+        const MAX_RESOLVE_LINK_DEPTH: usize = 40;
+        let mut dentry_it = dentry;
+        for _ in 0..MAX_RESOLVE_LINK_DEPTH {
+            if dentry_it.is_negetive() {
+                return Ok(dentry_it);
+            }
+            match dentry_it.inode()?.itype() {
+                InodeType::SymLink => {
+                    let path = block_on(async { dentry_it.open()?.readlink_string().await })?;
+                    let path = if is_absolute_path(&path) {
+                        Path::new(sys_root_dentry(), sys_root_dentry(), &path)
+                    } else {
+                        Path::new(sys_root_dentry(), dentry_it.parent().unwrap(), &path)
+                    };
+                    let new_dentry = path.walk()?;
+                    dentry_it = new_dentry;
+                }
+                _ => return Ok(dentry_it),
+            }
+        }
+        Err(SysError::ELOOP)
     }
 
     /// Given a path, absolute or relative, will find.
     pub fn resolve_path(&self, path: &str) -> SysResult<Arc<dyn Dentry>> {
-        self.at_helper(AtFd::FdCwd, path, InodeMode::empty())
+        let dentry = self.at_helper(AtFd::FdCwd, path, OpenFlags::empty())?;
+        self.resolve_dentry(dentry)
+    }
+
+    /// Given a path, absolute or relative, will find.
+    pub fn resolve_path_nofollow(&self, path: &str) -> SysResult<Arc<dyn Dentry>> {
+        self.at_helper(AtFd::FdCwd, path, OpenFlags::O_NOFOLLOW)
     }
 }
 

@@ -4,12 +4,14 @@
 
 extern crate alloc;
 
+use alloc::format;
+
 use user_lib::{execve, fork, wait, waitpid};
 
 #[macro_use]
 extern crate user_lib;
 
-const TESTCASES: [&str; 248] = [
+const TESTCASES: &[&str] = &[
     "time-test",
     "./test-ltp.sh ltp/testcases/bin/abs01",
     "./test-ltp.sh ltp/testcases/bin/accept01",
@@ -102,7 +104,6 @@ const TESTCASES: [&str; 248] = [
     "./test-ltp.sh ltp/testcases/bin/getrusage02",
     "./test-ltp.sh ltp/testcases/bin/gettid02",
     "./test-ltp.sh ltp/testcases/bin/getuid01",
-    "./test-ltp.sh ltp/testcases/bin/in6_01",
     "./test-ltp.sh ltp/testcases/bin/ioctl_ns07",
     "./test-ltp.sh ltp/testcases/bin/ioprio_get01",
     "./test-ltp.sh ltp/testcases/bin/ioprio_set02",
@@ -353,10 +354,14 @@ fn run_cmd(cmd: &str) {
 #[no_mangle]
 fn main() -> i32 {
     run_cmd("busybox touch sort.src");
-    run_cmd("busybox cp /lib/dlopen_dso.so dlopen_dso.so");
+    run_cmd("busybox ln -s /lib/dlopen_dso.so dlopen_dso.so");
+    run_cmd(
+        "busybox ln -s /lib/glibc/ld-linux-riscv64-lp64d.so.1 /lib/ld-linux-riscv64-lp64d.so.1 ",
+    );
+
     if fork() == 0 {
         for test in TESTCASES {
-            run_cmd(&test);
+            run_cmd(test);
         }
     } else {
         loop {

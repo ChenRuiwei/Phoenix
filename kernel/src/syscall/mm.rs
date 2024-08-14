@@ -135,11 +135,10 @@ impl Syscall<'_> {
                 if flags.contains(MmapFlags::MAP_ANONYMOUS) {
                     // TODO: MAP_SHARED page fault should keep track of all vm areas
                     log::error!("shared anonymous mapping");
-                    todo!()
-                    // let start_va = task.with_mut_memory_space(|m| {
-                    //     m.alloc_mmap_anonymous(addr, length, perm, flags)
-                    // })?;
-                    // Ok(start_va.bits())
+                    let start_va = task.with_mut_memory_space(|m| {
+                        m.alloc_mmap_shared_anonymous(addr, length, perm, flags)
+                    })?;
+                    Ok(start_va.bits())
                 } else {
                     let file = task.with_fd_table(|table| table.get_file(fd))?;
                     if offset + length > file.size() {
@@ -393,7 +392,7 @@ impl Syscall<'_> {
         }
         let prot = MmapProt::from_bits(prot).ok_or(SysError::EINVAL)?;
         log::info!("[sys_mprotect] addr:{addr:?}, len:{len:#x}, prot:{prot:?}");
-        let new_range = addr..addr + len;
+        let new_range = addr..(addr + len).round_up();
         let perm: MapPerm = prot.into();
         task.with_mut_memory_space(|m| m.mprotect(new_range, perm))
             .map(|_| 0)

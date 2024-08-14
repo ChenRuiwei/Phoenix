@@ -6,15 +6,15 @@
 *.gdb
 *.dtb
 *.dts
+*.img
 traces.*
 
-third-party/vendor/
 
-
-lmbench_all_debug
+zImage
 kernel-qemu
-sdcard.img
 
+mnt/
+my-test/
 ltp/
 target/
 crates/virtio-drivers/

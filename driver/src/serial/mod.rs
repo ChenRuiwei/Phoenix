@@ -11,19 +11,25 @@ use core::{
 };
 
 use async_trait::async_trait;
-use async_utils::{block_on, get_waker};
+use async_utils::{block_on, get_waker, suspend_now};
 use config::{board::UART_BUF_LEN, mm::VIRT_RAM_OFFSET};
 use device_core::{DevId, Device, DeviceMajor, DeviceMeta, DeviceType};
 use fdt::Fdt;
 use macro_utils::with_methods;
 use memory::pte::PTEFlags;
 use ring_buffer::RingBuffer;
+use spin::Once;
 use sync::mutex::SpinNoIrqLock;
 
 use super::CharDevice;
-use crate::{kernel_page_table_mut, manager::DeviceManager, println, serial::uart8250::Uart};
+use crate::{
+    kernel_page_table_mut,
+    manager::DeviceManager,
+    println,
+    serial::{self, uart8250::Uart},
+};
 
-pub static mut UART0: Option<Arc<Serial>> = None;
+pub static UART0: Once<Arc<dyn CharDevice>> = Once::new();
 
 trait UartDriver: Send + Sync {
     fn init(&mut self);
@@ -113,11 +119,18 @@ impl Device for Serial {
             }
         });
     }
+
+    fn as_char(self: Arc<Self>) -> Option<Arc<dyn CharDevice>> {
+        Some(self)
+    }
 }
 
 #[async_trait]
 impl CharDevice for Serial {
     async fn read(&self, buf: &mut [u8]) -> usize {
+        while !self.poll_in().await {
+            suspend_now().await
+        }
         let mut len = 0;
         self.with_mut_inner(|inner| {
             len = inner.read_buf.read(buf);
@@ -157,52 +170,46 @@ impl CharDevice for Serial {
     }
 }
 
-impl DeviceManager {
-    pub fn probe_char_device(&mut self, root: &Fdt) {
-        let chosen = root.chosen();
-        // Serial
-        let mut stdout = chosen.stdout();
-        if stdout.is_none() {
-            println!("Non-standard stdout device, trying to workaround");
-            let chosen = root.find_node("/chosen").expect("No chosen node");
-            let stdout_path = chosen
-                .properties()
-                .find(|n| n.name == "stdout-path")
-                .and_then(|n| {
-                    let bytes = unsafe {
-                        core::slice::from_raw_parts_mut(
-                            (n.value.as_ptr()) as *mut u8,
-                            n.value.len(),
-                        )
-                    };
-                    let mut len = 0;
-                    for byte in bytes.iter() {
-                        if *byte == b':' {
-                            return core::str::from_utf8(&n.value[..len]).ok();
-                        }
-                        len += 1;
+pub fn probe_char_device(root: &Fdt) -> Option<Arc<Serial>> {
+    let chosen = root.chosen();
+    // Serial
+    let mut stdout = chosen.stdout();
+    if stdout.is_none() {
+        println!("Non-standard stdout device, trying to workaround");
+        let chosen = root.find_node("/chosen").expect("No chosen node");
+        let stdout_path = chosen
+            .properties()
+            .find(|n| n.name == "stdout-path")
+            .and_then(|n| {
+                let bytes = unsafe {
+                    core::slice::from_raw_parts_mut((n.value.as_ptr()) as *mut u8, n.value.len())
+                };
+                let mut len = 0;
+                for byte in bytes.iter() {
+                    if *byte == b':' {
+                        return core::str::from_utf8(&n.value[..len]).ok();
                     }
-                    core::str::from_utf8(&n.value[..n.value.len() - 1]).ok()
-                })
-                .unwrap();
-            println!("Searching stdout: {}", stdout_path);
-            stdout = root.find_node(stdout_path);
-        }
-        if stdout.is_none() {
-            println!("Unable to parse /chosen, choosing first serial device");
-            stdout = root.find_compatible(&[
-                "ns16550a",
-                "snps,dw-apb-uart", // C910, VF2
-                "sifive,uart0",     // sifive_u QEMU (FU540)
-            ])
-        }
-        let stdout = stdout.expect("Still unable to get stdout device");
-        println!("Stdout: {}", stdout.name);
-
-        let serial = probe_serial_console(&stdout);
-
-        self.devices.insert(serial.dev_id(), Arc::new(serial));
+                    len += 1;
+                }
+                core::str::from_utf8(&n.value[..n.value.len() - 1]).ok()
+            })
+            .unwrap();
+        println!("Searching stdout: {}", stdout_path);
+        stdout = root.find_node(stdout_path);
     }
+    if stdout.is_none() {
+        println!("Unable to parse /chosen, choosing first serial device");
+        stdout = root.find_compatible(&[
+            "ns16550a",
+            "snps,dw-apb-uart", // C910, VF2
+            "sifive,uart0",     // sifive_u QEMU (FU540)
+        ])
+    }
+    let stdout = stdout.expect("Still unable to get stdout device");
+    println!("Stdout: {}", stdout.name);
+
+    let serial = probe_serial_console(&stdout);
+    Some(Arc::new(serial))
 }
 
 /// This guarantees to return a Serial device
@@ -214,7 +221,6 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
     let base_vaddr = base_paddr + VIRT_RAM_OFFSET;
     let irq_number = stdout.property("interrupts").unwrap().as_usize().unwrap();
     log::info!("IRQ number: {}", irq_number);
-    kernel_page_table_mut().ioremap(base_paddr, size, PTEFlags::R | PTEFlags::W);
     let first_compatible = stdout.compatible().unwrap().first();
     match first_compatible {
         "ns16550a" | "snps,dw-apb-uart" => {

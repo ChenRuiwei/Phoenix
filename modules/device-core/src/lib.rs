@@ -1,10 +1,11 @@
 #![no_std]
 #![no_main]
+#![feature(trait_upcasting)]
 
 extern crate alloc;
 pub mod error;
 
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, string::String, sync::Arc};
 use core::any::Any;
 
 use async_trait::async_trait;
@@ -26,6 +27,7 @@ pub enum DeviceType {
 pub enum DeviceMajor {
     Serial = 4,
     Block = 8,
+    Net = 9,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -37,6 +39,7 @@ pub struct DevId {
     pub minor: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceMeta {
     /// Device id.
     pub dev_id: DevId,
@@ -82,6 +85,18 @@ pub trait Device: Sync + Send + DowncastSync {
     fn dtype(&self) -> DeviceType {
         self.meta().dtype
     }
+
+    fn as_blk(self: Arc<Self>) -> Option<Arc<dyn BlockDevice>> {
+        None
+    }
+
+    fn as_char(self: Arc<Self>) -> Option<Arc<dyn CharDevice>> {
+        None
+    }
+
+    fn as_net(self: Arc<Self>) -> Option<Arc<dyn NetDevice>> {
+        None
+    }
 }
 
 impl_downcast!(sync Device);
@@ -104,10 +119,10 @@ pub trait BlockDevice: Device {
     fn remove_buffer_page(&self, block_id: usize);
 
     /// Read data form block to buffer
-    fn base_read_block(&self, block_id: usize, buf: &mut [u8]);
+    fn base_read_blocks(&self, block_id: usize, buf: &mut [u8]);
 
     /// Write data from buffer to block
-    fn base_write_block(&self, block_id: usize, buf: &[u8]);
+    fn base_write_blocks(&self, block_id: usize, buf: &[u8]);
 
     /// Read data form block to buffer
     fn read_block(&self, block_id: usize, buf: &mut [u8]);

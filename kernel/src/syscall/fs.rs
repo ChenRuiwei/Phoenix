@@ -8,7 +8,7 @@ use driver::BLOCK_DEVICE;
 use strum::FromRepr;
 use systype::{SysError, SyscallResult};
 use time::timespec::TimeSpec;
-use vfs::{fd_table::FdFlags, pipefs::new_pipe, sys_root_dentry, FS_MANAGER};
+use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, InodeType, MountFlags,
     OpenFlags, Path, RenameFlags, SeekFrom, Stat, StatFs, AT_REMOVEDIR,
@@ -216,7 +216,7 @@ impl Syscall<'_> {
         log::info!(
             "[sys_openat] dirfd: {dirfd}, pathname: {pathname}, flags: {flags:?}, mode: {mode:?}"
         );
-        let dentry = task.at_helper(dirfd, &pathname, mode)?;
+        let dentry = task.at_helper(dirfd, &pathname, flags)?;
         if flags.contains(OpenFlags::O_CREAT) {
             // If pathname does not exist, create it as a regular file.
             if flags.contains(OpenFlags::O_EXCL) && !dentry.is_negetive() {
@@ -230,25 +230,8 @@ impl Syscall<'_> {
         if flags.contains(OpenFlags::O_DIRECTORY) && !inode.itype().is_dir() {
             return Err(SysError::ENOTDIR);
         }
-        let file = match inode.itype() {
-            InodeType::SymLink => {
-                let mut path_buf: Vec<u8> = vec![0; 512];
-                let len = dentry.open()?.read(&mut path_buf).await?;
-                path_buf.truncate(len + 1);
-                let path = CString::from_vec_with_nul(path_buf)
-                    .unwrap()
-                    .into_string()
-                    .unwrap();
-                let path = if is_absolute_path(&path) {
-                    Path::new(sys_root_dentry(), sys_root_dentry(), &path)
-                } else {
-                    Path::new(sys_root_dentry(), dentry.parent().unwrap(), &path)
-                };
-                let new_dentry = path.walk()?;
-                new_dentry.open()?
-            }
-            _ => dentry.open()?,
-        };
+
+        let file = dentry.open()?;
         file.set_flags(flags);
         task.with_mut_fd_table(|table| table.alloc(file, flags))
     }
@@ -279,7 +262,7 @@ impl Syscall<'_> {
         let mode = InodeMode::from_bits_truncate(mode);
         let pathname = pathname.read_cstr(&task)?;
         log::debug!("[sys_mkdirat] {mode:?}");
-        let dentry = task.at_helper(dirfd, &pathname, mode)?;
+        let dentry = task.at_helper(dirfd, &pathname, OpenFlags::empty())?;
         if !dentry.is_negetive() {
             return Err(SysError::EEXIST);
         }
@@ -419,11 +402,12 @@ impl Syscall<'_> {
         dirfd: AtFd,
         pathname: UserReadPtr<u8>,
         stat_buf: UserWritePtr<Kstat>,
-        _flags: i32,
+        flags: i32,
     ) -> SyscallResult {
         let task = self.task;
+        let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
         let path = pathname.read_cstr(&task)?;
-        let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
+        let dentry = task.at_helper(dirfd, &path, flags)?;
         let kstat = Kstat::from_stat(dentry.inode()?.get_attr()?);
         stat_buf.write(&task, kstat)?;
         Ok(0)
@@ -557,7 +541,7 @@ impl Syscall<'_> {
     ) -> SyscallResult {
         let task = self.task;
         let path = pathname.read_cstr(&task)?;
-        let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
+        let dentry = task.at_helper(dirfd, &path, OpenFlags::O_NOFOLLOW)?;
         let parent = dentry.parent().expect("can not remove root directory");
         let is_dir = dentry.inode()?.itype().is_dir();
         if flags == AT_REMOVEDIR && !is_dir {
@@ -741,11 +725,12 @@ impl Syscall<'_> {
         dirfd: AtFd,
         pathname: UserReadPtr<u8>,
         _mode: usize,
-        _flags: usize,
+        flags: i32,
     ) -> SyscallResult {
         let task = self.task;
         let pathname = pathname.read_cstr(&task)?;
-        let dentry = task.at_helper(dirfd, &pathname, InodeMode::empty())?;
+        let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+        let dentry = task.at_helper(dirfd, &pathname, flags)?;
         dentry.open()?;
         Ok(0)
     }
@@ -813,7 +798,7 @@ impl Syscall<'_> {
         dirfd: AtFd,
         pathname: UserReadPtr<u8>,
         times: UserReadPtr<TimeSpec>,
-        _flags: u32,
+        flags: i32,
     ) -> SyscallResult {
         const UTIME_NOW: usize = 0x3fffffff;
         const UTIME_OMIT: usize = 0x3ffffffe;
@@ -822,7 +807,8 @@ impl Syscall<'_> {
         let inode = if pathname.not_null() {
             let path = pathname.read_cstr(task)?;
             log::info!("[sys_utimensat] dirfd: {dirfd}, path: {path}");
-            let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
+            let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+            let dentry = task.at_helper(dirfd, &path, flags)?;
             dentry.inode()?
         } else {
             // NOTE: if `pathname` is NULL, acts as futimens
@@ -876,8 +862,8 @@ impl Syscall<'_> {
         let newpath = newpath.read_cstr(&task)?;
         log::info!("[sys_renameat2] olddirfd:{olddirfd:?}, oldpath:{oldpath}, newdirfd:{newdirfd:?}, newpath:{newpath}, flags:{flags:?}");
 
-        let old_dentry = task.at_helper(olddirfd, &oldpath, InodeMode::empty())?;
-        let new_dentry = task.at_helper(newdirfd, &newpath, InodeMode::empty())?;
+        let old_dentry = task.at_helper(olddirfd, &oldpath, OpenFlags::O_NOFOLLOW)?;
+        let new_dentry = task.at_helper(newdirfd, &newpath, OpenFlags::O_NOFOLLOW)?;
 
         // TODO: currently don't care about `RENAME_WHITEOUT`
         old_dentry.rename_to(&new_dentry, flags).map(|_| 0)
@@ -926,12 +912,12 @@ impl Syscall<'_> {
             buf[..len].copy_from_slice(&target.to_bytes_with_nul()[..len]);
             return Ok(len);
         }
-        let dentry = task.at_helper(dirfd, &path, InodeMode::empty())?;
+        let dentry = task.at_helper(dirfd, &path, OpenFlags::O_NOFOLLOW)?;
         let file = dentry.open()?;
         if file.inode().itype() != InodeType::SymLink {
             return Err(SysError::EINVAL);
         }
-        file.read_at(0, &mut buf).await
+        file.readlink(&mut buf).await
     }
 
     pub async fn sys_ftruncate(&self, fd: usize, length: u64) -> SyscallResult {
@@ -947,6 +933,42 @@ impl Syscall<'_> {
     /// Modify the permissions of a file or directory relative to a certain
     /// directory or location
     pub fn sys_fchmodat(&self) -> SyscallResult {
+        Ok(0)
+    }
+
+    /// symlink() creates a symbolic link named linkpath which contains the
+    /// string target.
+    pub fn sys_symlinkat(
+        &self,
+        target: UserReadPtr<u8>,
+        newdirfd: AtFd,
+        linkpath: UserReadPtr<u8>,
+    ) -> SyscallResult {
+        let task = self.task;
+        let linkpath = linkpath.read_cstr(task)?;
+        let target = target.read_cstr(task)?;
+        let dentry = task.at_helper(newdirfd, &linkpath, OpenFlags::O_NOFOLLOW)?;
+        dentry.parent().unwrap().symlink(dentry.name(), &target)?;
+        Ok(0)
+    }
+
+    /// link() creates a new link (also known as a hard link) to an existing
+    /// file.
+    pub fn sys_linkat(
+        &self,
+        olddirfd: AtFd,
+        oldpath: UserReadPtr<u8>,
+        newdirfd: AtFd,
+        newpath: UserReadPtr<u8>,
+        flags: i32,
+    ) -> SyscallResult {
+        let task = self.task;
+        let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
+        let oldpath = oldpath.read_cstr(task)?;
+        let newpath = newpath.read_cstr(task)?;
+        let old_dentry = task.at_helper(olddirfd, &oldpath, flags)?;
+        let new_dentry = task.at_helper(newdirfd, &newpath, flags)?;
+        old_dentry.link(&new_dentry)?;
         Ok(0)
     }
 }

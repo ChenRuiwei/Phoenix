@@ -4,7 +4,11 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::{cell::SyncUnsafeCell, cmp, ops::Range};
+use core::{
+    cell::SyncUnsafeCell,
+    cmp,
+    ops::{Range, RangeBounds},
+};
 
 use arch::memory::sfence_vma_vaddr;
 use async_utils::block_on;
@@ -329,13 +333,6 @@ impl MemorySpace {
 
             log::info!("interp {}", interp);
 
-            if interp.eq("/lib/ld-musl-riscv64-sf.so.1") || interp.eq("/lib/ld-musl-riscv64.so.1") {
-                interps.clear();
-                interps.push("/lib/musl/libc.so".to_string());
-            } else if interp.eq("/lib/ld-linux-riscv64-lp64d.so.1") {
-                interps.clear();
-                interps.push("/lib/glibc/ld-2.31.so".to_string());
-            }
             let mut interp_dentry: SysResult<Arc<dyn Dentry>> = Err(SysError::ENOENT);
             for interp in interps.into_iter() {
                 if let Ok(dentry) = current_task_ref().resolve_path(&interp) {
@@ -508,7 +505,7 @@ impl MemorySpace {
                 debug_assert!(right.is_some());
                 let mut right_vma = right.unwrap();
                 right_vma.unmap(self.page_table_mut());
-                self.areas_mut().force_remove_one(right_vma.range_va());
+                self.push_vma_lazily(middle.unwrap());
             }
             ret
         } else {
@@ -576,6 +573,29 @@ impl MemorySpace {
         vma.fill_zero();
         vma.copy_data_with_offset(self.page_table_mut(), offset, data);
         self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
+    }
+
+    pub fn alloc_mmap_shared_anonymous(
+        &mut self,
+        addr: VirtAddr,
+        length: usize,
+        perm: MapPerm,
+        flags: MmapFlags,
+    ) -> SysResult<VirtAddr> {
+        const SHARED_RANGE: Range<VirtAddr> =
+            VirtAddr::from_usize_range(U_SEG_SHARE_BEG..U_SEG_SHARE_END);
+        let range = if flags.contains(MmapFlags::MAP_FIXED) {
+            addr..addr + length
+        } else {
+            self.areas_mut()
+                .find_free_range(SHARED_RANGE, length)
+                .expect("shared range is full")
+        };
+        let start = range.start;
+        let vma = VmArea::new(range, perm, VmAreaType::Shm);
+        self.push_vma(vma);
+        // self.areas_mut().try_insert(vma.range_va(), vma).unwrap();
+        Ok(start)
     }
 
     pub fn alloc_mmap_anonymous(
@@ -728,6 +748,7 @@ impl MemorySpace {
     }
 
     pub fn mprotect(&mut self, range: Range<VirtAddr>, perm: MapPerm) -> SysResult<()> {
+        debug_assert!(range.start.is_aligned() && range.end.is_aligned());
         let (old_range, area) = self
             .areas_mut()
             .get_key_value_mut(range.start)
@@ -751,7 +772,7 @@ impl MemorySpace {
         access_type: PageFaultAccessType,
     ) -> SysResult<()> {
         log::trace!("[MemorySpace::handle_page_fault] {va:?}");
-        let vm_area = self.areas_mut().get_mut(va).ok_or_else(|| {
+        let vm_area = self.areas_mut().get_mut(va.round_down()).ok_or_else(|| {
             log::warn!("[handle_page_fault] no area containing {va:?}");
             SysError::EFAULT
         })?;

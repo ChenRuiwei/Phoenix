@@ -28,12 +28,6 @@ pub enum VmAreaType {
     Mmap,
     /// Shared memory
     Shm,
-
-    // For kernel.
-    /// Physical frames (mapping with an offset)
-    Physical,
-    /// MMIO
-    Mmio,
 }
 
 bitflags! {
@@ -199,11 +193,11 @@ impl VmArea {
     }
 
     pub fn start_vpn(&self) -> VirtPageNum {
-        self.start_va().into()
+        self.start_va().floor()
     }
 
     pub fn end_vpn(&self) -> VirtPageNum {
-        self.end_va().into()
+        self.end_va().ceil()
     }
 
     pub fn range_va(&self) -> Range<VirtAddr> {

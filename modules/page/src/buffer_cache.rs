@@ -4,8 +4,8 @@ use core::num::NonZeroUsize;
 use config::{
     board::BLOCK_SIZE,
     mm::{
-        block_page_id, is_aligned_to_block, BUFFER_NEED_CACHE_CNT, MAX_BUFFER_HEADS,
-        MAX_BUFFER_PAGES, PAGE_SIZE,
+        block_page_id, is_aligned_to_block, BUFFER_NEED_CACHE_CNT, MAX_BUFFERS_PER_PAGE,
+        MAX_BUFFER_HEADS, MAX_BUFFER_PAGES, PAGE_SIZE,
     },
 };
 use device_core::BlockDevice;
@@ -27,6 +27,8 @@ pub struct BufferCache {
     // to pages above, while others with file related will be attached to pages
     // stored in address space.
     // PERF: perf issue will happen when lru cache is full
+    // FIXME: dropped buffer head because of lru may cause trouble if it is attathed to a page, in
+    // this situation, duplicate buffer head will be created
     pub buffer_heads: LruCache<usize, Arc<BufferHead>>,
 }
 
@@ -48,48 +50,53 @@ impl BufferCache {
     }
 
     pub fn read_block(&mut self, block_id: usize, buf: &mut [u8]) {
-        // let buffer_head = self.get_buffer_head_from_disk(block_id);
-        // if buffer_head.has_cached() {
-        //     buffer_head.read_block(buf)
-        // } else {
-        self.device().base_read_block(block_id, buf)
-        // }
+        let buffer_head = self.get_buffer_head_from_disk(block_id);
+        if buffer_head.has_cached() {
+            buffer_head.read_block(buf)
+        } else {
+            self.device().base_read_blocks(block_id, buf)
+        }
     }
 
     pub fn write_block(&mut self, block_id: usize, buf: &[u8]) {
-        // let buffer_head = self.get_buffer_head_from_disk(block_id);
-        // if buffer_head.has_cached() {
-        //     buffer_head.write_block(buf)
-        // } else {
-        self.device().base_write_block(block_id, buf)
-        // }
+        let buffer_head = self.get_buffer_head_from_disk(block_id);
+        if buffer_head.has_cached() {
+            buffer_head.write_block(buf)
+        } else {
+            self.device().base_write_blocks(block_id, buf)
+        }
     }
 
     pub fn get_buffer_head_from_disk(&mut self, block_id: usize) -> Arc<BufferHead> {
-        // log::error!("block id {block_id}");
         let device = self.device();
-        if let Some(buffer_head) = self.buffer_heads.get_mut(&block_id) {
+        if let Some(buffer_head) = self.buffer_heads.get_mut(&block_id).cloned() {
             buffer_head.inc_acc_cnt();
-            // log::error!("acc cnt {}", buffer_head.acc_cnt());
-            if buffer_head.need_cache() && !buffer_head.has_cached() {
-                // log::error!("block id {block_id} need cache");
-                if let Some(page) = self.pages.get_mut(&block_page_id(block_id)) {
-                    // log::error!("has page");
-                    device.base_read_block(block_id, page.block_bytes_array(block_id));
-                    page.insert_buffer_head(buffer_head.clone());
-                } else {
-                    log::info!("buffer page init");
+            if buffer_head.need_cache() {
+                let page = if let Some(page) = self.pages.get_mut(&block_page_id(block_id)).cloned()
+                {
+                    assert_eq!(page.buffer_head_cnts(), 8);
+                    self.pages.pop(&block_page_id(block_id));
+                    // old page will be dropped here
+                    // NOTE: why we need to drop old page here, because buffer head in the old page
+                    // is already dropped from `self.buffer_heads` since lru policy
                     let page = Page::new_block(&device);
-                    device.base_read_block(block_id, page.block_bytes_array(block_id));
-                    page.insert_buffer_head(buffer_head.clone());
-                    self.pages.push(block_page_id(block_id), page);
+                    self.pages.push(block_page_id(block_id), page.clone());
+                    page
+                } else {
+                    let page = Page::new_block(&device);
+                    self.pages.push(block_page_id(block_id), page.clone());
+                    page
                 };
+
+                let block_id_start = block_id / MAX_BUFFERS_PER_PAGE * MAX_BUFFERS_PER_PAGE;
+                device.base_read_blocks(block_id_start, page.bytes_array());
+                for block_id_it in block_id_start..block_id_start + MAX_BUFFERS_PER_PAGE {
+                    let buffer_head_it = self.get_buffer_head_or_create(block_id_it);
+                    page.insert_buffer_head(buffer_head_it.clone());
+                }
             }
             buffer_head.clone()
         } else {
-            // log::trace!(
-            //     "[BufferCache::get_buffer_head_from_disk] init buffer_head for blk idx
-            // {block_id}" );
             let buffer_head = BufferHead::new_arc(block_id);
             buffer_head.inc_acc_cnt();
             self.buffer_heads.push(block_id, buffer_head.clone());
@@ -98,7 +105,6 @@ impl BufferCache {
     }
 
     pub fn get_buffer_head_or_create(&mut self, block_id: usize) -> Arc<BufferHead> {
-        // self.buffer_heads.get(&block_id).cloned().unwrap()
         if let Some(buffer_head) = self.buffer_heads.get_mut(&block_id) {
             buffer_head.clone()
         } else {
@@ -195,7 +201,7 @@ impl BufferHead {
     }
 
     pub fn need_cache(&self) -> bool {
-        self.acc_cnt() >= BUFFER_NEED_CACHE_CNT
+        self.acc_cnt() >= BUFFER_NEED_CACHE_CNT && !self.has_cached()
     }
 
     pub fn bstate(&self) -> BufferState {
