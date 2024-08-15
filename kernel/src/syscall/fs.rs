@@ -11,7 +11,8 @@ use time::timespec::TimeSpec;
 use vfs::{fd_table::FdFlags, pipefs::new_pipe, simplefs::dentry, sys_root_dentry, FS_MANAGER};
 use vfs_core::{
     is_absolute_path, split_parent_and_name, AtFd, Dentry, Inode, InodeMode, InodeType, MountFlags,
-    OpenFlags, Path, RenameFlags, SeekFrom, Stat, StatFs, AT_REMOVEDIR,
+    OpenFlags, Path, RenameFlags, SeekFrom, Stat, StatFs, AT_REMOVEDIR, AT_SYMLINK_FOLLOW,
+    AT_SYMLINK_NOFOLLOW,
 };
 
 use super::Syscall;
@@ -404,10 +405,14 @@ impl Syscall<'_> {
         stat_buf: UserWritePtr<Kstat>,
         flags: i32,
     ) -> SyscallResult {
+        const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
         let task = self.task;
-        let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
         let path = pathname.read_cstr(&task)?;
-        let dentry = task.at_helper(dirfd, &path, flags)?;
+        let dentry = if flags == AT_SYMLINK_NOFOLLOW {
+            task.at_helper(dirfd, &path, OpenFlags::O_NOFOLLOW)?
+        } else {
+            task.at_helper(dirfd, &path, OpenFlags::empty())?
+        };
         let kstat = Kstat::from_stat(dentry.inode()?.get_attr()?);
         stat_buf.write(&task, kstat)?;
         Ok(0)

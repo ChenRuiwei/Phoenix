@@ -11,7 +11,7 @@ use user_lib::{execve, fork, println, wait, waitpid};
 
 const BUSYBOX_CMDS: &[&str] = &[
     "ls", "cp", "mv", "rm", "mkdir", "rmdir", "ln", "cat", "echo", "grep", "find", "tar", "awk",
-    "sed", "kill", "df", "du", "uname", "ping", "ip",
+    "sed", "kill", "df", "du", "uname", "ping", "ip", "touch",
 ];
 
 fn run_cmd(cmd: &str) {
