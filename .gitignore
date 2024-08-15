@@ -9,6 +9,8 @@
 *.img
 traces.*
 
+third-party/vendor/**
+!third-party/vendor/vendor.tar.gz
 
 zImage
 kernel-qemu

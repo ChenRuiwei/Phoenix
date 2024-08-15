@@ -5,6 +5,7 @@
 #![feature(const_mut_refs)]
 #![feature(const_slice_from_raw_parts_mut)]
 #![feature(associated_type_defaults)]
+#![feature(core_intrinsics)]
 
 extern crate alloc;
 
