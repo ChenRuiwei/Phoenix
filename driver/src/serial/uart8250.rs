@@ -8,16 +8,8 @@ use core::fmt::Write;
 
 use bitflags::{bitflags, Flags};
 use log::info;
-macro_rules! wait_for {
-    ($cond:expr) => {{
-        let mut timeout = 10000000;
-        while !$cond && timeout > 0 {
-            core::hint::spin_loop();
-            timeout -= 1;
-        }
-    }};
-}
-pub(crate) use wait_for;
+
+use crate::wait_for;
 
 use super::UartDriver;
 

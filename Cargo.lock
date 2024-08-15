@@ -47,7 +47,7 @@ checksum = "6e0c28dcc82d7c8ead5cb13beb15405b57b8546e93215673ff8ca0349a028107"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.72",
+ "syn 2.0.74",
 ]
 
 [[package]]
@@ -94,7 +94,7 @@ checksum = "de05f8756f1c68937349406d4632ae96ae35901019b5e59c508d9c38c64715fb"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.72",
+ "syn 2.0.74",
 ]
 
 [[package]]
@@ -159,7 +159,7 @@ checksum = "6af24c4862260a825484470f5526a91ad1031e04ab899be62478241231f62b46"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.72",
+ "syn 2.0.74",
 ]
 
 [[package]]
@@ -204,7 +204,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "syn 2.0.72",
+ "syn 2.0.74",
 ]
 
 [[package]]
@@ -238,6 +238,7 @@ dependencies = [
  "arch",
  "async-trait",
  "async-utils",
+ "backtrace",
  "bitfield-struct",
  "bitflags 2.6.0",
  "byte-slice-cast",
@@ -259,6 +260,7 @@ dependencies = [
  "sync",
  "systype",
  "virtio-drivers",
+ "visionfive2-sd",
 ]
 
 [[package]]
@@ -282,7 +284,7 @@ dependencies = [
  "heck 0.4.1",
  "proc-macro2",
  "quote",
- "syn 2.0.72",
+ "syn 2.0.74",
 ]
 
 [[package]]
@@ -293,7 +295,7 @@ checksum = "2f9ed6b3789237c8a0c1c505af1c7eb2c560df6186f01b098c3a1064ea532f38"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.72",
+ "syn 2.0.74",
 ]
 
 [[package]]
@@ -501,7 +503,7 @@ dependencies = [
 [[package]]
 name = "lwext4_rust"
 version = "0.2.0"
-source = "git+https://github.com/ChenRuiwei/lwext4_rust.git?rev=b98a#b98ad4572c169209ae46aa1bae1c417476302025"
+source = "git+https://github.com/ChenRuiwei/lwext4_rust.git?rev=293f#293f67aa0fd9bae7b9c8ff9a9ee9b7ff745aa410"
 dependencies = [
  "log",
  "printf-compat",
@@ -609,6 +611,12 @@ name = "plic"
 version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ad606bf31d67b0e10a161b7df7d6a97dda7be22ce4bebcff889476e867c9b7a"
+
+[[package]]
+name = "preprint"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "067d7939a17011d73ee0f868eb26b569680437d379583e5f97c18ca570b4a32f"
 
 [[package]]
 name = "printf-compat"
@@ -803,7 +811,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
- "syn 2.0.72",
+ "syn 2.0.74",
 ]
 
 [[package]]
@@ -818,9 +826,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.72"
+version = "2.0.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc4b9b9bf2add8093d3f2c0204471e951b2285580335de42f9d2534f3ae7a8af"
+checksum = "1fceb41e3d546d0bd83421d3409b1460cc7444cd389341a4c880fe7a042cb3d7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -862,7 +870,7 @@ checksum = "a4558b58466b9ad7ca0f102865eccc95938dca1a74a856f2b57b6629050da261"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.72",
+ "syn 2.0.74",
 ]
 
 [[package]]
@@ -966,6 +974,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "visionfive2-sd"
+version = "0.1.0"
+source = "git+https://github.com/os-module/visionfive2-sd.git#dae131edabbb33aaa4b7068d4a8da152df683648"
+dependencies = [
+ "bitfield-struct",
+ "log",
+ "preprint",
+]
+
+[[package]]
 name = "xmas-elf"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -998,5 +1016,5 @@ checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.72",
+ "syn 2.0.74",
 ]

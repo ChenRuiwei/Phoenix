@@ -221,7 +221,6 @@ fn probe_serial_console(stdout: &fdt::node::FdtNode) -> Serial {
     let base_vaddr = base_paddr + VIRT_RAM_OFFSET;
     let irq_number = stdout.property("interrupts").unwrap().as_usize().unwrap();
     log::info!("IRQ number: {}", irq_number);
-    kernel_page_table_mut().ioremap(base_paddr, size, PTEFlags::R | PTEFlags::W);
     let first_compatible = stdout.compatible().unwrap().first();
     match first_compatible {
         "ns16550a" | "snps,dw-apb-uart" => {

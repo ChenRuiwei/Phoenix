@@ -1,5 +1,5 @@
 use alloc::sync::Arc;
-use core::arch::asm;
+use core::{arch::asm, sync::atomic::AtomicBool};
 
 use arch::interrupts::{disable_interrupt, enable_interrupt};
 use config::board::MAX_HARTS;
@@ -10,6 +10,9 @@ use crate::{mm, task::Task};
 
 const HART_EACH: Hart = Hart::new();
 pub static mut HARTS: [Hart; MAX_HARTS] = [HART_EACH; MAX_HARTS];
+
+const HART_PREEMPTABLE_EACH: AtomicBool = AtomicBool::new(true);
+pub static mut HART_PREEMPTABLE: [AtomicBool; MAX_HARTS] = [HART_PREEMPTABLE_EACH; MAX_HARTS];
 
 /// Each cpu owns one `Hart`.
 pub struct Hart {
@@ -140,6 +143,22 @@ pub fn local_hart() -> &'static mut Hart {
         let tp: usize;
         asm!("mv {}, tp", out(reg) tp);
         &mut *(tp as *mut Hart)
+    }
+}
+
+pub fn local_hart_preemptable() -> bool {
+    unsafe { HART_PREEMPTABLE[local_hart().hart_id].load(core::sync::atomic::Ordering::SeqCst) }
+}
+
+pub fn local_hart_enable_preemptable() {
+    unsafe {
+        HART_PREEMPTABLE[local_hart().hart_id].store(true, core::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+pub fn local_hart_disable_preemptable() {
+    unsafe {
+        HART_PREEMPTABLE[local_hart().hart_id].store(false, core::sync::atomic::Ordering::SeqCst)
     }
 }
 

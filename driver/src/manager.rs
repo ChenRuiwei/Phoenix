@@ -9,10 +9,12 @@ use arch::interrupts::{disable_interrupt, enable_external_interrupt};
 use config::{board, mm::K_SEG_DTB_BEG};
 use device_core::{DevId, Device, DeviceMajor, DeviceType};
 use log::{info, warn};
+use memory::pte::PTEFlags;
 
 use crate::{
-    blk::{probe_sdio_blk, probe_virtio_blk},
+    blk::{probe_sdio_blk, probe_vf2_sd, probe_virtio_blk},
     cpu::{probe_cpu, CPU},
+    kernel_page_table_mut,
     plic::{probe_plic, PLIC},
     println,
     serial::probe_char_device,
@@ -83,6 +85,9 @@ impl DeviceManager {
         if let Some(dev) = probe_sdio_blk(&device_tree) {
             self.devices.insert(dev.dev_id(), dev);
         }
+        // if let Some(dev) = probe_vf2_sd(&device_tree) {
+        //     self.devices.insert(dev.dev_id(), dev);
+        // }
 
         // Add to interrupt map if have interrupts
         for dev in self.devices.values() {
@@ -97,6 +102,18 @@ impl DeviceManager {
     pub fn init_devices(&mut self) {
         for dev in self.devices.values() {
             dev.init();
+        }
+    }
+
+    pub fn map_devices(&self) {
+        // Map probed devices
+        for (id, dev) in self.devices() {
+            log::debug!("mapping device {}", dev.name());
+            kernel_page_table_mut().ioremap(
+                dev.mmio_base(),
+                dev.mmio_size(),
+                PTEFlags::R | PTEFlags::W,
+            );
         }
     }
 

@@ -1,5 +1,6 @@
 use alloc::{format, sync::Arc};
 
+use config::process::INIT_PROC_PID;
 use timer::timelimited_task::ksleep_s;
 
 use crate::task::{self, Task, TASK_MANAGER};
@@ -47,6 +48,7 @@ pub fn print_proc_tree() {
         }
     }
 
-    let init = TASK_MANAGER.init_proc();
-    dfs_print(init, 0, "P1 -- ");
+    if let Some(init) = TASK_MANAGER.get(INIT_PROC_PID) {
+        dfs_print(init, 0, "P1 -- ");
+    }
 }

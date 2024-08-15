@@ -9,9 +9,9 @@ use alloc::format;
 
 use user_lib::{execve, fork, println, wait, waitpid};
 
-const BUSYBOX_CMDS: [&str; 20] = [
+const BUSYBOX_CMDS: &[&str] = &[
     "ls", "cp", "mv", "rm", "mkdir", "rmdir", "ln", "cat", "echo", "grep", "find", "tar", "awk",
-    "sed", "kill", "df", "du", "uname", "ping", "ip",
+    "sed", "kill", "df", "du", "uname", "ping", "ip", "touch",
 ];
 
 fn run_cmd(cmd: &str) {
@@ -34,8 +34,9 @@ fn run_cmd(cmd: &str) {
 #[no_mangle]
 fn main() -> i32 {
     for cmd in BUSYBOX_CMDS {
-        run_cmd(&format!("busybox ln /busybox /bin/{}", cmd));
+        run_cmd(&format!("busybox ln -s /busybox /bin/{cmd}"));
     }
+    run_cmd("ln -s /lib/glibc/ld-linux-riscv64-lp64d.so.1 /lib/ld-linux-riscv64-lp64d.so.1 ");
 
     if fork() == 0 {
         execve(

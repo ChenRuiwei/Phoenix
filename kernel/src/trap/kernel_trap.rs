@@ -14,7 +14,10 @@ use timer::TIMER_MANAGER;
 
 use crate::{
     mm::PageFaultAccessType,
-    processor::hart::{current_task_ref, local_hart},
+    processor::hart::{
+        current_task_ref, local_hart, local_hart_disable_preemptable,
+        local_hart_enable_preemptable, local_hart_preemptable,
+    },
     when_debug,
 };
 
@@ -48,19 +51,21 @@ pub fn kernel_trap_handler() {
                 unsafe { set_next_timer_irq() };
                 #[cfg(feature = "preempt")]
                 {
-                    use arch::time::set_timer_irq;
-
                     use crate::processor::hart::local_hart;
 
-                    if !executor::has_task() {
+                    if !executor::has_prior_task() {
+                        return;
+                    } else if !local_hart_preemptable() {
                         return;
                     }
-                    unsafe { set_timer_irq(1) };
+                    local_hart_disable_preemptable();
+                    // log::error!("env {:?}", local_hart().env());
                     let mut old_hart = local_hart().enter_preempt_switch();
-                    log::warn!("kernel preempt");
-                    executor::run_one();
-                    log::warn!("kernel preempt fininshed");
+                    // log::error!("kernel preempt");
+                    executor::run_prior_until_idle();
+                    // log::error!("kernel preempt fininshed");
                     local_hart().leave_preempt_switch(&mut old_hart);
+                    local_hart_enable_preemptable();
                 }
             }
             _ => panic_on_unknown_trap(),

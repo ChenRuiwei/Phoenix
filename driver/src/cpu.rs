@@ -47,10 +47,7 @@ pub fn probe_cpu(root: &Fdt) -> Option<Vec<CPU>> {
 
         // Mask CPU without MMU
         // Get RISC-V ISA string
-        let isa = dtb_cpu.property("riscv,isa").expect(
-            "RISC-V ISA not
-        found",
-        );
+        let isa = dtb_cpu.property("riscv,isa").expect("RISC-V ISA not found");
         if isa.as_str().unwrap().contains('u') {
             // Privleged mode is in ISA string
             if !isa.as_str().unwrap().contains('s') {

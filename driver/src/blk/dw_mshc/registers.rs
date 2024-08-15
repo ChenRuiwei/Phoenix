@@ -15,7 +15,7 @@ pub struct CMD {
     pub response_length: bool, // false for short (4B), true for long (16B)
     check_response_crc: bool,
     pub data_expected: bool,
-    read_write: bool,
+    pub read_write: bool,
     pub transfer_mode: bool,
     send_auto_stop: bool,
     wait_prvdata_complete: bool,
