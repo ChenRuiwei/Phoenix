@@ -171,7 +171,7 @@ pub static TTY: Once<Arc<TtyFile>> = Once::new();
 
 pub struct TtyFile {
     meta: FileMeta,
-    inner: SpinNoIrqLock<TtyInner>,
+    pub(crate) inner: SpinNoIrqLock<TtyInner>,
 }
 
 struct TtyInner {
@@ -207,6 +207,17 @@ impl File for TtyFile {
             .unwrap_or_else(|_| unreachable!())
             .char_dev;
         let len = char_dev.read(buf).await;
+        let termios = self.inner.lock().termios;
+        if termios.is_icrnl() {
+            for i in 0..len {
+                if buf[i] == '\r' as u8 {
+                    buf[i] = '\n' as u8;
+                }
+            }
+        }
+        if termios.is_echo() {
+            self.base_write_at(0, buf).await;
+        }
         Ok(len)
     }
 
@@ -259,6 +270,7 @@ impl File for TtyFile {
             TCSETS | TCSETSW | TCSETSF => {
                 unsafe {
                     self.inner.lock().termios = *(arg as *const Termios);
+                    log::info!("termios {:#x?}", self.inner.lock().termios);
                 }
                 Ok(0)
             }
@@ -307,7 +319,7 @@ impl File for TtyFile {
 }
 
 /// Defined in <asm-generic/termbits.h>
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 struct Termios {
     /// Input mode flags.
@@ -357,5 +369,15 @@ impl Termios {
                 0, 0,
             ],
         }
+    }
+
+    fn is_icrnl(&self) -> bool {
+        const ICRNL: u32 = 0o0000400;
+        self.iflag & ICRNL != 0
+    }
+
+    fn is_echo(&self) -> bool {
+        const ECHO: u32 = 0o0000010;
+        self.lflag & ECHO != 0
     }
 }

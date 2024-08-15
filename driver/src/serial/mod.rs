@@ -106,7 +106,7 @@ impl Device for Serial {
             while uart.poll_in() {
                 let byte = uart.getc();
                 log::info!(
-                    "Serial interrupt handler got byte: {}",
+                    "Serial interrupt handler got byte: {}, ascii: {byte}",
                     core::str::from_utf8(&[byte]).unwrap()
                 );
                 if inner.read_buf.enqueue(byte).is_none() {
