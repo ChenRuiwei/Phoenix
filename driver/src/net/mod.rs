@@ -1,13 +1,64 @@
 pub mod loopback;
 pub mod virtio;
 
-use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
+use alloc::{boxed::Box, string::ToString, sync::Arc, vec, vec::Vec};
 use core::ptr::NonNull;
 
-use device_core::error::{DevError, DevResult};
+use device_core::{
+    error::{DevError, DevResult},
+    DevId, DeviceMajor, DeviceMeta, DeviceType,
+};
+use fdt::Fdt;
+use memory::{pte::PTEFlags, PhysAddr};
 
 use self::virtio::NetBufPtr;
-use crate::Mutex;
+use crate::{kernel_page_table_mut, virtio::probe_mmio_device, Mutex};
+
+pub fn probe_virtio_net(root: &Fdt) -> Option<DeviceMeta> {
+    let device_tree = root;
+    let mut net_meta = None;
+    for node in device_tree.find_all_nodes("/soc/virtio_mmio") {
+        for reg in node.reg()? {
+            let mmio_base_paddr = PhysAddr::from(reg.starting_address as usize);
+            let mmio_size = reg.size?;
+            kernel_page_table_mut().ioremap(
+                mmio_base_paddr.bits(),
+                mmio_size,
+                PTEFlags::R | PTEFlags::W,
+            );
+            if probe_mmio_device(
+                mmio_base_paddr.to_vaddr().as_mut_ptr(),
+                mmio_size,
+                Some(device_core::DeviceType::Net),
+            )
+            .is_some()
+            {
+                log::warn!("[probe_virtio_net] find a net device");
+                net_meta = {
+                    Some(DeviceMeta {
+                        mmio_base: mmio_base_paddr.bits(),
+                        mmio_size,
+                        name: "virtio-blk".to_string(),
+                        dtype: DeviceType::Net,
+                        dev_id: DevId {
+                            major: DeviceMajor::Net,
+                            minor: 0,
+                        },
+                        irq_no: None,
+                    })
+                }
+            }
+            kernel_page_table_mut().iounmap(mmio_base_paddr.to_vaddr().bits(), mmio_size);
+            if net_meta.is_some() {
+                break;
+            }
+        }
+    }
+    if net_meta.is_none() {
+        log::warn!("No virtio net device found");
+    }
+    net_meta
+}
 
 /// TODO：或许这个应该写在device-core中比较好？
 
