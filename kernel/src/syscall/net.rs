@@ -23,6 +23,7 @@ impl Syscall<'_> {
         let mut types = types;
         let mut flags = OpenFlags::empty();
         let mut nonblock = false;
+        // fixme：file flags should be placed in file meta
         if types & NONBLOCK != 0 {
             nonblock = true;
             types &= !NONBLOCK;
