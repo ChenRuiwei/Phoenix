@@ -1,7 +1,7 @@
 use alloc::{format, sync::Arc};
 
 use config::process::INIT_PROC_PID;
-use timer::timelimited_task::ksleep_s;
+use timer::timelimited_task::{ksleep_ms, ksleep_s};
 
 use crate::task::{self, Task, TASK_MANAGER};
 
@@ -35,6 +35,19 @@ where
         loop {
             f();
             ksleep_s(interval_secs).await;
+        }
+    });
+}
+
+pub fn spawn_timer_tasks_ms<F>(f: F, interval_millisecs: usize)
+where
+    F: FnOnce() + Send + Copy + 'static,
+{
+    task::spawn_kernel_task(async move {
+        let f = f;
+        loop {
+            f();
+            ksleep_ms(interval_millisecs).await;
         }
     });
 }
