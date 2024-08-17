@@ -732,10 +732,16 @@ impl Syscall<'_> {
         _mode: usize,
         flags: i32,
     ) -> SyscallResult {
+        const AT_SYMLINK_NOFOLLOW: usize = 0x100;
+        const AT_EACCESS: usize = 0x200;
+        const AT_EMPTY_PATH: usize = 0x1000;
         let task = self.task;
         let pathname = pathname.read_cstr(&task)?;
-        let flags = OpenFlags::from_bits(flags).ok_or(SysError::EINVAL)?;
-        let dentry = task.at_helper(dirfd, &pathname, flags)?;
+        let dentry = if flags == AT_SYMLINK_NOFOLLOW as i32 {
+            task.at_helper(dirfd, &pathname, OpenFlags::O_NOFOLLOW)?
+        } else {
+            task.at_helper(dirfd, &pathname, OpenFlags::empty())?
+        };
         dentry.open()?;
         Ok(0)
     }
