@@ -10,7 +10,7 @@ use vfs_core::{
 };
 
 /// Linear congruence generator (LCG)
-struct SimpleRng {
+pub struct SimpleRng {
     state: u64,
 }
 
@@ -71,7 +71,7 @@ pub struct UrandomDentry {
     meta: DentryMeta,
 }
 
-static mut RNG: SimpleRng = SimpleRng::new();
+pub static mut RNG: SimpleRng = SimpleRng::new();
 
 impl UrandomDentry {
     pub fn new(

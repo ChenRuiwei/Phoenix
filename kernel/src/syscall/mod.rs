@@ -8,6 +8,7 @@ mod misc;
 mod mm;
 mod net;
 mod process;
+mod random;
 mod resource;
 mod sched;
 mod signal;
@@ -302,6 +303,9 @@ impl<'a> Syscall<'a> {
             SYSLOG => self.sys_syslog(args[0], args[1].into(), args[2]),
             SYSINFO => self.sys_sysinfo(args[0].into()),
             PERSONALITY => self.sys_do_nothing("personality"),
+
+            // random
+            GETRANDOM => self.sys_getrandom(args[0].into(), args[1], args[2]),
             _ => {
                 log::error!("Unsupported syscall: {}", syscall_no);
                 Ok(0)
