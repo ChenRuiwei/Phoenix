@@ -148,6 +148,12 @@ impl Dentry for Ext4Dentry {
                     _ => unimplemented!(),
                 };
             }
+            match new_itype {
+                InodeType::Dir => lwext4_rmdir(&new.path()),
+                InodeType::File => lwext4_rmfile(&new.path()),
+                InodeType::SymLink => todo!(),
+                _ => todo!(),
+            };
         }
         match old_itype {
             InodeType::Dir => {

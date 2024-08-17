@@ -6,18 +6,24 @@ use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use core::char;
 
 use arch::interrupts::{disable_interrupt, enable_external_interrupt};
-use config::{board, mm::K_SEG_DTB_BEG};
-use device_core::{DevId, Device, DeviceMajor, DeviceType};
+use config::{
+    board,
+    mm::{K_SEG_DTB_BEG, VIRT_RAM_OFFSET},
+};
+use device_core::{DevId, Device, DeviceMajor, DeviceMeta, DeviceType};
 use log::{info, warn};
-use memory::pte::PTEFlags;
+use memory::{pte::PTEFlags, PhysAddr};
+use net::init_network;
 
 use crate::{
     blk::{probe_sdio_blk, probe_vf2_sd, probe_virtio_blk},
     cpu::{probe_cpu, CPU},
     kernel_page_table_mut,
+    net::{loopback::LoopbackDev, probe_virtio_net, virtio::VirtIoNetDevImpl},
     plic::{probe_plic, PLIC},
     println,
     serial::probe_char_device,
+    virtio::probe_mmio_device,
 };
 
 /// The DeviceManager struct is responsible for managing the devices within the
@@ -38,6 +44,8 @@ pub struct DeviceManager {
     /// module.
     pub devices: BTreeMap<DevId, Arc<dyn Device>>,
 
+    pub net: Option<DeviceMeta>,
+
     /// A BTreeMap that maps interrupt numbers (irq_no) to device instances
     /// (Arc<dyn Device>). This map is used to quickly locate the device
     /// responsible for handling a specific interrupt.
@@ -53,6 +61,7 @@ impl DeviceManager {
             plic: None,
             cpus: Vec::with_capacity(8),
             devices: BTreeMap::new(),
+            net: None,
             irq_map: BTreeMap::new(),
         }
     }
@@ -89,6 +98,8 @@ impl DeviceManager {
         //     self.devices.insert(dev.dev_id(), dev);
         // }
 
+        self.net = probe_virtio_net(&device_tree);
+
         // Add to interrupt map if have interrupts
         for dev in self.devices.values() {
             if let Some(irq) = dev.irq_no() {
@@ -105,6 +116,22 @@ impl DeviceManager {
         }
     }
 
+    pub fn init_net(&self) {
+        if let Some(net_meta) = &self.net {
+            let transport = probe_mmio_device(
+                PhysAddr::from(net_meta.mmio_base).to_vaddr().as_mut_ptr(),
+                net_meta.mmio_size,
+                Some(device_core::DeviceType::Net),
+            )
+            .unwrap();
+            let dev = VirtIoNetDevImpl::try_new(transport).unwrap();
+            init_network(dev, false);
+        } else {
+            log::info!("[init_net] can't find qemu virtio-net. use LoopbackDev to test");
+            init_network(LoopbackDev::new(), true);
+        }
+    }
+
     pub fn map_devices(&self) {
         // Map probed devices
         for (id, dev) in self.devices() {
@@ -112,6 +139,13 @@ impl DeviceManager {
             kernel_page_table_mut().ioremap(
                 dev.mmio_base(),
                 dev.mmio_size(),
+                PTEFlags::R | PTEFlags::W,
+            );
+        }
+        if let Some(net_meta) = &self.net {
+            kernel_page_table_mut().ioremap(
+                net_meta.mmio_base,
+                net_meta.mmio_size,
                 PTEFlags::R | PTEFlags::W,
             );
         }

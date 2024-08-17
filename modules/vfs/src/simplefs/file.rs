@@ -175,3 +175,58 @@ impl File for SimpleFileFile {
         }
     }
 }
+
+pub struct SimpleLinkFile {
+    meta: FileMeta,
+}
+
+impl SimpleLinkFile {
+    pub fn new(dentry: Arc<dyn Dentry>, inode: Arc<dyn Inode>) -> Arc<Self> {
+        Arc::new(Self {
+            meta: FileMeta::new(dentry, inode),
+        })
+    }
+}
+
+#[async_trait]
+impl File for SimpleLinkFile {
+    fn meta(&self) -> &FileMeta {
+        &self.meta
+    }
+
+    async fn base_read_at(&self, _offset: usize, _buf: &mut [u8]) -> SyscallResult {
+        unreachable!()
+    }
+
+    async fn base_write_at(&self, _offset: usize, _buf: &[u8]) -> SyscallResult {
+        unreachable!()
+    }
+
+    fn base_read_dir(&self) -> SysResult<Option<DirEntry>> {
+        Err(SysError::ENOTDIR)
+    }
+
+    fn base_load_dir(&self) -> SysResult<()> {
+        Err(SysError::ENOTDIR)
+    }
+
+    fn flush(&self) -> systype::SysResult<usize> {
+        todo!()
+    }
+
+    async fn read_at(&self, offset: usize, buf: &mut [u8]) -> SyscallResult {
+        todo!()
+    }
+
+    async fn write_at(&self, offset: usize, buf: &[u8]) -> SyscallResult {
+        todo!()
+    }
+
+    async fn get_page_at(&self, offset_aligned: usize) -> SysResult<Option<Arc<Page>>> {
+        todo!()
+    }
+
+    async fn readlink(&self, buf: &mut [u8]) -> SyscallResult {
+        todo!()
+    }
+}

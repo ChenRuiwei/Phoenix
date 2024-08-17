@@ -70,9 +70,7 @@ pub fn init() {
         .next()
         .unwrap();
     BLOCK_DEVICE.call_once(|| blk.clone());
-
-    log::info!("[init_net] can't find qemu virtio-net. use LoopbackDev to test");
-    init_network(LoopbackDev::new(), true);
+    manager.init_net();
 }
 
 pub static BLOCK_DEVICE: Once<Arc<dyn BlockDevice>> = Once::new();

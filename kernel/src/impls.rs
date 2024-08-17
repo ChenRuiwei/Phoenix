@@ -8,6 +8,7 @@ use log::Level;
 use logging::{ColorCode, LogIf};
 use memory::{KernelMappingIf, PageTable, PhysAddr, VirtAddr};
 use net::HasSignalIf;
+use vfs::procfs::KernelProcIf;
 
 use crate::{
     mm::kernel_page_table_mut,
@@ -97,5 +98,14 @@ impl KernelMappingIf for KernelMappingIfImpl {
         } else {
             current_task_ref().with_mut_memory_space(|m| m.page_table().vaddr_to_paddr(vaddr))
         }
+    }
+}
+
+struct KernelProcIfImpl;
+
+#[crate_interface::impl_interface]
+impl KernelProcIf for KernelProcIfImpl {
+    fn exe() -> alloc::string::String {
+        current_task_ref().elf().dentry().path()
     }
 }
