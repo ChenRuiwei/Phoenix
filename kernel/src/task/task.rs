@@ -638,6 +638,7 @@ impl Task {
 
         // TODO: drop most resources here instead of wait4 function parent
         // called
+        self.with_mut_fd_table(|table| table.clear());
 
         if self.is_leader() {
             self.set_zombie();

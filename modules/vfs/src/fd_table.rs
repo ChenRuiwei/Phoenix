@@ -97,6 +97,10 @@ impl FdTable {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.table.clear();
+    }
+
     fn get_free_slot(&mut self) -> Option<usize> {
         let inner_slot = self
             .table
