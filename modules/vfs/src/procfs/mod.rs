@@ -1,10 +1,12 @@
 mod meminfo;
 mod mounts;
+mod self_;
 
 use alloc::sync::Arc;
 
 use async_utils::block_on;
 use device_core::BlockDevice;
+pub use self_::KernelProcIf;
 use systype::SysResult;
 use vfs_core::{
     Dentry, FileSystemType, FileSystemTypeMeta, InodeMode, MountFlags, SuperBlock, SuperBlockMeta,
@@ -13,6 +15,7 @@ use vfs_core::{
 use self::{
     meminfo::{MemInfoDentry, MemInfoInode},
     mounts::{MountsDentry, MountsInode},
+    self_::{ExeDentry, ExeFile, ExeInode},
 };
 use crate::simplefs::{dentry::SimpleDentry, inode::SimpleDirInode};
 
@@ -45,6 +48,24 @@ pub fn init_procfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {
     let pid_max_dentry = kernel_dentry.create("pid_max", InodeMode::FILE)?;
     let pid_max_file = pid_max_dentry.open()?;
     block_on(async { pid_max_file.write("32768\0".as_bytes()).await });
+
+    let self_dentry: Arc<dyn Dentry> =
+        SimpleDentry::new("self", root_dentry.super_block(), Some(root_dentry.clone()));
+    let self_inode = SimpleDirInode::new(InodeMode::DIR, root_dentry.super_block(), 0);
+    self_dentry.set_inode(self_inode);
+    root_dentry.insert(self_dentry.clone());
+
+    let self_dentry: Arc<dyn Dentry> =
+        SimpleDentry::new("self", root_dentry.super_block(), Some(root_dentry.clone()));
+    let self_inode = SimpleDirInode::new(InodeMode::DIR, root_dentry.super_block(), 0);
+    self_dentry.set_inode(self_inode);
+    let exe_dentry: Arc<dyn Dentry> =
+        ExeDentry::new(root_dentry.super_block(), Some(root_dentry.clone()));
+    let exe_inode = ExeInode::new(root_dentry.super_block(), 0);
+    exe_dentry.set_inode(exe_inode);
+    self_dentry.insert(exe_dentry);
+
+    root_dentry.insert(self_dentry.clone());
 
     Ok(())
 }

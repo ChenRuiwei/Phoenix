@@ -910,13 +910,6 @@ impl Syscall<'_> {
             buf.as_usize()
         );
         let mut buf = buf.into_mut_slice(task, bufsiz)?;
-        // TODO:
-        if path == "/proc/self/exe" {
-            let target = CString::new("/lmbench_all").unwrap();
-            let len = cmp::min(buf.len(), target.to_bytes_with_nul().len());
-            buf[..len].copy_from_slice(&target.to_bytes_with_nul()[..len]);
-            return Ok(len);
-        }
         let dentry = task.at_helper(dirfd, &path, OpenFlags::O_NOFOLLOW)?;
         let file = dentry.open()?;
         if file.inode().itype() != InodeType::SymLink {
