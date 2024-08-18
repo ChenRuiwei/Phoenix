@@ -1,4 +1,5 @@
 use alloc::{sync::Arc, vec::Vec};
+use core::intrinsics::unlikely;
 
 use addr::SockAddr;
 use log::info;
@@ -8,9 +9,9 @@ use vfs::pipefs::new_pipe;
 use vfs_core::OpenFlags;
 use virtio_drivers::PAGE_SIZE;
 
-use super::Syscall;
+use super::{fs::IoVec, Syscall};
 use crate::{
-    mm::{UserReadPtr, UserWritePtr},
+    mm::{UserRdWrPtr, UserReadPtr, UserWritePtr},
     net::*,
     task::Task,
 };
@@ -338,6 +339,116 @@ impl Syscall<'_> {
             Ok([fd_read as u32, fd_write as u32])
         })?;
         sv.write(&task, pipe)?;
+        Ok(0)
+    }
+}
+
+/// ```c
+/// struct msghdr {
+///     void         *msg_name;       /* Optional address */
+///     socklen_t     msg_namelen;    /* Size of address */
+///     struct iovec *msg_iov;        /* Scatter/gather array */
+///     size_t        msg_iovlen;     /* # elements in msg_iov */
+///     void         *msg_control;    /* Ancillary data, see below */
+///     size_t        msg_controllen; /* Ancillary data buffer len */
+///     int           msg_flags;      /* Flags (unused) */
+///  };
+/// ```
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MsgHdr {
+    /// 指向消息的目标地址的指针
+    pub name: usize,
+    /// 地址的长度
+    pub namelen: u32,
+    /// 指向 iovec 结构体的指针，用于描述消息的数据部分
+    pub iov: usize,
+    /// iovec 结构体的数量
+    pub iovlen: usize,
+    /// 指向控制数据的指针（例如，附加的元数据）
+    pub control: usize,
+    /// 控制数据的长度
+    pub controllen: usize,
+    /// 消息标志
+    pub flags: i32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct CMsgHdr {
+    len: usize,
+    level: i32,
+    type_: i32,
+}
+
+impl Syscall<'_> {
+    pub async fn sys_sendmsg(
+        &self,
+        sockfd: usize,
+        msg: UserReadPtr<MsgHdr>,
+        flags: usize,
+    ) -> SyscallResult {
+        if flags != 0 {
+            log::error!("[sys_sendmsg] unsupported flags {flags}");
+        }
+        // TODO: support flags
+        let task = self.task;
+        let socket = task.sockfd_lookup(sockfd)?;
+        let message = msg.read(&task)?;
+        if message.controllen != 0 {
+            log::warn!("[sys_sendmsg] unsupport msg control");
+        }
+        let addr = task.read_sockaddr(message.name, message.namelen as _)?;
+        let iovs = UserReadPtr::<IoVec>::from(message.iov).read_array(&task, message.iovlen)?;
+        let mut total_len = 0;
+        for (i, iov) in iovs.iter().enumerate() {
+            if unlikely(iov.len == 0) {
+                continue;
+            }
+            let ptr = UserWritePtr::<u8>::from(iov.base);
+            log::info!("[sys_sendmsg] iov #{i}, ptr: {ptr}, len: {}", iov.len);
+            let buf = ptr.into_mut_slice(&task, iov.len)?;
+            let send_len = socket.sk.sendto(&buf, Some(addr)).await?;
+            total_len += send_len;
+        }
+        Ok(total_len)
+    }
+
+    /// 目前的实现是，如果Udp Socket收到多个不同Ip地址的数据报如ip1, ip1, ip2,
+    /// ip3, ip1，recvmsg
+    // pub async fn sys_recvmsg(
+    //     &self,
+    //     sockfd: usize,
+    //     msg: UserRdWrPtr<MsgHdr>,
+    //     flags: usize,
+    // ) -> SyscallResult {
+    //     if flags != 0 {
+    //         log::error!("[sys_sendmsg] unsupported flags {flags}");
+    //     }
+    //     // TODO: support flags
+    //     let task = self.task;
+    //     let socket = task.sockfd_lookup(sockfd)?;
+    //     let msg = msg.read(&task)?;
+    //     if msg.controllen != 0 {
+    //         log::warn!("[sys_sendmsg] unsupport msg control");
+    //     }
+    //     let addr = task.read_sockaddr(msg.name, msg.namelen as _)?;
+    //     let iovs = UserReadPtr::<IoVec>::from(msg.iov).read_array(&task,
+    // msg.iovlen)?;     let mut total_len = 0;
+    //     for (i, iov) in iovs.iter().enumerate() {
+    //         if unlikely(iov.len == 0) {
+    //             continue;
+    //         }
+    //         let ptr = UserWritePtr::<u8>::from(iov.base);
+    //         log::info!("[sys_recvmsg] iov #{i}, ptr: {ptr}, len: {}", iov.len);
+    //         let buf = ptr.into_mut_slice(&task, iov.len)?;
+    //         let send_len = socket.sk.sendto(&buf, Some(addr)).await?;
+    //         total_len += send_len;
+    //     }
+    //     Ok(total_len)
+    // }
+
+    pub fn sys_sendmmsg(&self, sockfd: usize) -> SyscallResult {
         Ok(0)
     }
 }

@@ -25,8 +25,8 @@ use crate::{
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct IoVec {
-    base: usize,
-    len: usize,
+    pub base: usize,
+    pub len: usize,
 }
 
 // Defined in <bits/fcntl-linux.h>

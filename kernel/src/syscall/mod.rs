@@ -298,6 +298,7 @@ impl<'a> Syscall<'a> {
             GETSOCKOPT => self.sys_getsockopt(args[0], args[1], args[2], args[3], args[4]),
             SHUTDOWN => self.sys_shutdown(args[0], args[1]),
             SOCKETPAIR => self.sys_socketpair(args[0], args[1], args[2], args[3].into()),
+            SENDMSG => self.sys_sendmsg(args[0], args[1].into(), args[2]).await,
             // Miscellaneous
             UNAME => self.sys_uname(args[0].into()),
             SYSLOG => self.sys_syslog(args[0], args[1].into(), args[2]),
