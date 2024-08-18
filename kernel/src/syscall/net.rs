@@ -1,5 +1,6 @@
 use alloc::{sync::Arc, vec::Vec};
 
+use addr::SockAddr;
 use log::info;
 use socket::*;
 use systype::{SysError, SysResult, SyscallResult};
@@ -50,8 +51,8 @@ impl Syscall<'_> {
     /// called “assigning a name to a socket”.
     pub fn sys_bind(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
         let task = self.task;
-        let local_addr = task.read_sockaddr_to_listen_endpoint(addr, addrlen)?;
-        let socket = task.sockfd_lookup(sockfd)?;
+        let local_addr = task.read_sockaddr(addr, addrlen)?;
+        let socket: Arc<Socket> = task.sockfd_lookup(sockfd)?;
         info!("[sys_bind] try to bind fd{sockfd} to {local_addr}");
         socket.sk.bind(sockfd, local_addr)?;
         // info!(
@@ -103,6 +104,7 @@ impl Syscall<'_> {
         task.set_running();
 
         let peer_addr = new_sk.peer_addr()?;
+        let peer_addr = SockAddr::from_endpoint(peer_addr);
         log::info!("[sys_accept] peer addr: {peer_addr}");
         task.write_sockaddr(addr, addrlen, peer_addr)?;
         let new_socket = Arc::new(Socket::from_another(&socket, Sock::Tcp(new_sk)));
@@ -118,7 +120,7 @@ impl Syscall<'_> {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
         let local_addr = socket.sk.local_addr()?;
-        log::info!("[sys_getsockname] local addr: {local_addr:?}");
+        log::info!("[sys_getsockname] local addr: {local_addr}");
         task.write_sockaddr(addr, addrlen, local_addr)?;
         Ok(0)
     }
@@ -128,7 +130,7 @@ impl Syscall<'_> {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
         let peer_addr = socket.sk.peer_addr()?;
-        log::info!("[sys_getpeername] peer addr: {peer_addr:?}");
+        log::info!("[sys_getpeername] peer addr: {peer_addr}");
         task.write_sockaddr(addr, addrlen, peer_addr)?;
         Ok(0)
     }
@@ -199,7 +201,7 @@ impl Syscall<'_> {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
         info!(
-            "[sys_recvfrom]: local_addr: {:?} is trying to recvfrom remote{:?}, ",
+            "[sys_recvfrom]: local_addr: {:?} is trying to recvfrom remote {:?}, ",
             socket.sk.local_addr(),
             socket.sk.peer_addr(),
         );
@@ -212,7 +214,6 @@ impl Syscall<'_> {
         let mut buf = buf.into_mut_slice(&task, bytes)?;
         buf[..bytes].copy_from_slice(&temp[..bytes]);
         task.write_sockaddr(src_addr, addrlen, remote_addr)?;
-
         Ok(bytes)
     }
 

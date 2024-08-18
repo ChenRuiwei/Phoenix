@@ -1,5 +1,6 @@
 use alloc::{boxed::Box, sync::Arc};
 
+use addr::SockAddr;
 use async_trait::async_trait;
 use log::warn;
 use net::{
@@ -32,10 +33,11 @@ impl Sock {
         }
     }
 
-    pub fn bind(&self, sockfd: usize, local_addr: IpListenEndpoint) -> SysResult<()> {
+    pub fn bind(&self, sockfd: usize, local_addr: SockAddr) -> SysResult<()> {
         match self {
             Sock::Tcp(tcp) => {
                 // HACK
+                let local_addr = local_addr.into_listen_endpoint();
                 let addr = if local_addr.addr.is_none() {
                     UNSPECIFIED_IPV4
                 } else {
@@ -44,6 +46,7 @@ impl Sock {
                 tcp.bind(IpEndpoint::new(addr, local_addr.port))
             }
             Sock::Udp(udp) => {
+                let local_addr = local_addr.into_listen_endpoint();
                 if let Some(prev_fd) = udp.check_bind(sockfd, local_addr) {
                     current_task()
                         .with_mut_fd_table(|table| table.dup3_with_flags(prev_fd, sockfd))?;
@@ -74,46 +77,67 @@ impl Sock {
         }
     }
 
-    pub async fn connect(&self, remote_addr: IpEndpoint) -> SysResult<()> {
+    pub async fn connect(&self, remote_addr: SockAddr) -> SysResult<()> {
         match self {
-            Sock::Tcp(tcp) => tcp.connect(remote_addr).await,
-            Sock::Udp(udp) => udp.connect(remote_addr),
+            Sock::Tcp(tcp) => {
+                let remote_addr = remote_addr.into_endpoint();
+                tcp.connect(remote_addr).await
+            }
+            Sock::Udp(udp) => {
+                let remote_addr = remote_addr.into_endpoint();
+                udp.connect(remote_addr)
+            }
             Sock::Unix(_) => unimplemented!(),
         }
     }
 
-    pub fn peer_addr(&self) -> SysResult<IpEndpoint> {
+    pub fn peer_addr(&self) -> SysResult<SockAddr> {
         match self {
-            Sock::Tcp(tcp) => tcp.peer_addr(),
-            Sock::Udp(udp) => udp.peer_addr(),
+            Sock::Tcp(tcp) => {
+                let peer_addr = SockAddr::from_endpoint(tcp.peer_addr()?);
+                Ok(peer_addr)
+            }
+            Sock::Udp(udp) => {
+                let peer_addr = SockAddr::from_endpoint(udp.peer_addr()?);
+                Ok(peer_addr)
+            }
             Sock::Unix(_) => unimplemented!(),
         }
     }
 
-    pub fn local_addr(&self) -> SysResult<IpEndpoint> {
+    pub fn local_addr(&self) -> SysResult<SockAddr> {
         match self {
-            Sock::Tcp(tcp) => tcp.local_addr(),
-            Sock::Udp(udp) => udp.local_addr(),
+            Sock::Tcp(tcp) => {
+                let local_addr = SockAddr::from_endpoint(tcp.local_addr()?);
+                Ok(local_addr)
+            }
+            Sock::Udp(udp) => {
+                let local_addr = SockAddr::from_endpoint(udp.local_addr()?);
+                Ok(local_addr)
+            }
             Sock::Unix(_) => unimplemented!(),
         }
     }
-    pub async fn sendto(&self, buf: &[u8], remote_addr: Option<IpEndpoint>) -> SysResult<usize> {
+    pub async fn sendto(&self, buf: &[u8], remote_addr: Option<SockAddr>) -> SysResult<usize> {
         match self {
             Sock::Tcp(tcp) => tcp.send(buf).await,
             Sock::Udp(udp) => match remote_addr {
-                Some(addr) => udp.send_to(buf, addr).await,
+                Some(addr) => udp.send_to(buf, addr.into_endpoint()).await,
                 None => udp.send(buf).await,
             },
             Sock::Unix(_) => unimplemented!(),
         }
     }
-    pub async fn recvfrom(&self, buf: &mut [u8]) -> SysResult<(usize, IpEndpoint)> {
+    pub async fn recvfrom(&self, buf: &mut [u8]) -> SysResult<(usize, SockAddr)> {
         match self {
             Sock::Tcp(tcp) => {
                 let bytes = tcp.recv(buf).await?;
-                Ok((bytes, tcp.peer_addr()?))
+                Ok((bytes, SockAddr::from_endpoint(tcp.peer_addr()?)))
             }
-            Sock::Udp(udp) => udp.recv_from(buf).await,
+            Sock::Udp(udp) => {
+                let (len, endpoint) = udp.recv_from(buf).await?;
+                Ok((len, SockAddr::from_endpoint(endpoint)))
+            }
             Sock::Unix(_) => unimplemented!(),
         }
     }

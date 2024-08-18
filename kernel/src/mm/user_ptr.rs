@@ -7,7 +7,7 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::{
     fmt::{self, Debug},
-    intrinsics::{atomic_load_acquire, size_of},
+    intrinsics::{atomic_load_acquire, size_of, unlikely},
     marker::PhantomData,
     mem,
     ops::{self, ControlFlow},
@@ -21,7 +21,7 @@ use systype::{SysError, SysResult};
 use super::memory_space::vm_area::MapPerm;
 use crate::{
     net::{
-        addr::{SockAddrIn, SockAddrIn6},
+        addr::{SockAddr, SockAddrIn, SockAddrIn6, SockAddrUn},
         SaFamily,
     },
     processor::{env::SumGuard, hart::current_task_ref},
@@ -621,61 +621,38 @@ impl Task {
     /// has read permissions. Then, based on the `sa_family` member of
     /// theSockAddr structure, it determines which variant of the `SockAddr`
     /// enum the user-provided parameter corresponds to.
-    pub fn read_sockaddr(&self, addr: usize, addrlen: usize) -> SysResult<IpEndpoint> {
+    pub fn read_sockaddr(&self, addr: usize, addrlen: usize) -> SysResult<SockAddr> {
         let _guard = SumGuard::new();
         self.just_ensure_user_area(addr.into(), addrlen, PageFaultAccessType::RO)?;
         let family = SaFamily::try_from(unsafe { *(addr as *const u16) })?;
         match family {
             SaFamily::AF_INET => {
-                if addrlen < mem::size_of::<SockAddrIn>() {
+                if unlikely(addrlen < mem::size_of::<SockAddrIn>()) {
                     log::error!("[audit_sockaddr] AF_INET addrlen error");
                     return Err(SysError::EINVAL);
                 }
-                let sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
-                // this will convert network byte order to host byte order
-                Ok(IpEndpoint::from(sock_addr_in))
+                Ok(SockAddr {
+                    ipv4: unsafe { *(addr as *const _) },
+                })
             }
             SaFamily::AF_INET6 => {
-                if addrlen < mem::size_of::<SockAddrIn6>() {
+                if unlikely(addrlen < mem::size_of::<SockAddrIn6>()) {
                     log::error!("[audit_sockaddr] AF_INET6 addrlen error");
                     return Err(SysError::EINVAL);
                 }
-                let sock_addr_in6: SockAddrIn6 = unsafe { *(addr as *const _) };
-                // this will convert network byte order to host byte order
-                Ok(IpEndpoint::from(sock_addr_in6))
+                Ok(SockAddr {
+                    ipv6: unsafe { *(addr as *const _) },
+                })
             }
-            SaFamily::AF_UNIX => unimplemented!(),
-        }
-    }
-
-    pub fn read_sockaddr_to_listen_endpoint(
-        &self,
-        addr: usize,
-        addrlen: usize,
-    ) -> SysResult<IpListenEndpoint> {
-        let _guard = SumGuard::new();
-        self.just_ensure_user_area(addr.into(), addrlen, PageFaultAccessType::RO)?;
-        let family = SaFamily::try_from(unsafe { *(addr as *const u16) })?;
-        match family {
-            SaFamily::AF_INET => {
-                if addrlen < mem::size_of::<SockAddrIn>() {
-                    log::error!("[read_sockaddr_to_listen_endpoint] AF_INET addrlen error");
+            SaFamily::AF_UNIX => {
+                if unlikely(addrlen < mem::size_of::<SockAddrUn>()) {
+                    log::error!("[audit_sockaddr] AF_UNIX addrlen error");
                     return Err(SysError::EINVAL);
                 }
-                let sock_addr_in = unsafe { *(addr as *const SockAddrIn) };
-                // this will convert network byte order to host byte order
-                Ok(IpListenEndpoint::from(sock_addr_in))
+                Ok(SockAddr {
+                    ipv6: unsafe { *(addr as *const _) },
+                })
             }
-            SaFamily::AF_INET6 => {
-                if addrlen < mem::size_of::<SockAddrIn6>() {
-                    log::error!("[read_sockaddr_to_listen_endpoint] AF_INET6 addrlen error");
-                    return Err(SysError::EINVAL);
-                }
-                let sock_addr_in6: SockAddrIn6 = unsafe { *(addr as *const _) };
-                // this will convert network byte order to host byte order
-                Ok(IpListenEndpoint::from(sock_addr_in6))
-            }
-            SaFamily::AF_UNIX => unimplemented!(),
         }
     }
 
@@ -683,21 +660,29 @@ impl Task {
         self: &Arc<Task>,
         addr: usize,
         addrlen: usize,
-        endpoint: IpEndpoint,
+        sockaddr: SockAddr,
     ) -> SysResult<()> {
-        if addr == 0 {
+        if unlikely(addr == 0) {
             return Ok(());
         }
-        match endpoint.addr {
-            IpAddress::Ipv4(_) => {
-                UserWritePtr::<SockAddrIn>::from(addr).write(self, SockAddrIn::from(endpoint))?;
-                UserWritePtr::<u32>::from(addrlen)
-                    .write(self, mem::size_of::<SockAddrIn>() as u32)?;
-            }
-            IpAddress::Ipv6(_) => {
-                UserWritePtr::<SockAddrIn6>::from(addr).write(self, endpoint.into())?;
-                UserWritePtr::<u32>::from(addrlen)
-                    .write(self, mem::size_of::<SockAddrIn6>() as u32)?;
+        // TODO: check the permissions
+        unsafe {
+            match SaFamily::try_from(sockaddr.family).unwrap() {
+                SaFamily::AF_INET => {
+                    UserWritePtr::<SockAddrIn>::from(addr).write(self, sockaddr.ipv4)?;
+                    UserWritePtr::<u32>::from(addrlen)
+                        .write(self, mem::size_of::<SockAddrIn>() as u32)?;
+                }
+                SaFamily::AF_INET6 => {
+                    UserWritePtr::<SockAddrIn6>::from(addr).write(self, sockaddr.ipv6)?;
+                    UserWritePtr::<u32>::from(addrlen)
+                        .write(self, mem::size_of::<SockAddrIn6>() as u32)?;
+                }
+                SaFamily::AF_UNIX => {
+                    UserWritePtr::<SockAddrUn>::from(addr).write(self, sockaddr.unix)?;
+                    UserWritePtr::<u32>::from(addrlen)
+                        .write(self, mem::size_of::<SockAddrUn>() as u32)?;
+                }
             }
         }
         Ok(())
