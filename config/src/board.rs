@@ -1,5 +1,5 @@
 use crate::{
-    mm::{RAM_SIZE, VIRT_RAM_OFFSET, VIRT_START},
+    mm::{RAM_SIZE, VIRT_START},
     utils::register_mut_const,
 };
 

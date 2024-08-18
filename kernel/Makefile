@@ -12,6 +12,9 @@ endif
 ifneq ($(DEBUG), )
 	FEATURES += debug
 endif
+ifneq ($(VF2), )
+	FEATURES += vf2
+endif
 
 CARGO_BUILD_ARGS :=
 ifeq ($(MODE), release)
