@@ -262,14 +262,14 @@ impl Syscall<'_> {
                         }
                     }
                     opt => {
-                        log::error!(
+                        log::warn!(
                             "[sys_setsockopt] unsupported IPPROTO_TCP opt {opt:?} optlen:{optlen}"
                         )
                     }
                 };
             }
             SocketLevel::IPPROTO_IPV6 => {
-                log::error!("[sys_setsockopt] unsupported IPPROTO_IPV6")
+                log::warn!("[sys_setsockopt] unsupported IPPROTO_IPV6")
             }
         }
         // let socket =

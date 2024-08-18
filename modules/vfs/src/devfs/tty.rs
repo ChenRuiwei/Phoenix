@@ -307,6 +307,7 @@ impl File for TtyFile {
                 Ok(0)
             }
             TCSBRK => Ok(0),
+            TIOCNOTTY => Ok(0),
             _ => todo!(),
         }
     }

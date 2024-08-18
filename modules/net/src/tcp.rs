@@ -22,8 +22,11 @@ use super::{
     SocketSetWrapper, ETH0, LISTEN_TABLE, SOCKET_SET,
 };
 use crate::{
-    addr::UNSPECIFIED_IPV4, has_signal, Mutex, NetPollState, RCV_SHUTDOWN, SEND_SHUTDOWN,
-    SHUTDOWN_MASK, SHUT_RD, SHUT_RDWR, SHUT_WR, TCP_RX_BUF_LEN, TCP_TX_BUF_LEN,
+    addr::{to_endpoint, UNSPECIFIED_IPV4},
+    has_signal,
+    portmap::PORT_MAP,
+    Mutex, NetPollState, RCV_SHUTDOWN, SEND_SHUTDOWN, SHUTDOWN_MASK, SHUT_RD, SHUT_RDWR, SHUT_WR,
+    TCP_RX_BUF_LEN, TCP_TX_BUF_LEN,
 };
 
 // State transitions:
@@ -61,7 +64,7 @@ pub struct TcpSocket {
     handle: UnsafeCell<Option<SocketHandle>>,
     /// Stores the local IP endpoint of the socket, using UnsafeCell for
     /// interior mutability.
-    local_addr: UnsafeCell<IpEndpoint>,
+    local_addr: UnsafeCell<Option<IpListenEndpoint>>,
     /// Stores the peer IP endpoint of the socket, using UnsafeCell for interior
     /// mutability.
     peer_addr: UnsafeCell<IpEndpoint>,
@@ -81,7 +84,7 @@ impl TcpSocket {
             state: AtomicU8::new(STATE_CLOSED),
             shutdown: UnsafeCell::new(0),
             handle: UnsafeCell::new(None),
-            local_addr: UnsafeCell::new(UNSPECIFIED_ENDPOINT_V4),
+            local_addr: UnsafeCell::new(None),
             peer_addr: UnsafeCell::new(UNSPECIFIED_ENDPOINT_V4),
             nonblock: AtomicBool::new(false),
         }
@@ -97,26 +100,35 @@ impl TcpSocket {
             state: AtomicU8::new(STATE_CONNECTED),
             shutdown: UnsafeCell::new(0),
             handle: UnsafeCell::new(Some(handle)),
-            local_addr: UnsafeCell::new(local_addr),
+            local_addr: UnsafeCell::new(Some(IpListenEndpoint {
+                addr: Some(local_addr.addr),
+                port: local_addr.port,
+            })),
             peer_addr: UnsafeCell::new(peer_addr),
             nonblock: AtomicBool::new(false),
         }
     }
 
     /// Returns the local address and port, or
-    /// [`Err(NotConnected)`](AxError::NotConnected) if not connected.
+    /// [`Err(NotConnected)`] if not connected.
     #[inline]
     pub fn local_addr(&self) -> SysResult<IpEndpoint> {
         match self.get_state() {
-            STATE_CONNECTED | STATE_LISTENING | STATE_CLOSED => {
-                Ok(unsafe { self.local_addr.get().read() })
-            }
+            STATE_CONNECTED | STATE_LISTENING | STATE_CLOSED => Ok({
+                if unsafe { self.local_addr.get().read() }.is_none() {
+                    self.bind(IpListenEndpoint {
+                        addr: None,
+                        port: 0,
+                    })?;
+                }
+                to_endpoint(unsafe { self.local_addr.get().read().unwrap() })
+            }),
             _ => Err(SysError::ENOTCONN),
         }
     }
 
     /// Returns the remote address and port, or
-    /// [`Err(NotConnected)`](AxError::NotConnected) if not connected.
+    /// [`Err(NotConnected)`] if not connected.
     #[inline]
     pub fn peer_addr(&self) -> SysResult<IpEndpoint> {
         match self.get_state() {
@@ -146,7 +158,7 @@ impl TcpSocket {
     }
 
     pub fn set_nagle_enabled(&self, enabled: bool) -> SysResult<()> {
-        let handle = unsafe { self.handle.get().read() }.ok_or(SysError::EBADF)?;
+        let handle: SocketHandle = unsafe { self.handle.get().read() }.ok_or(SysError::EBADF)?;
         SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
             socket.set_nagle_enabled(enabled)
         });
@@ -205,7 +217,7 @@ impl TcpSocket {
             unsafe {
                 // SAFETY: no other threads can read or write these fields as we
                 // have changed the state to `BUSY`.
-                self.local_addr.get().write(local_endpoint);
+                self.local_addr.get().write(Some(local_endpoint.into()));
                 self.peer_addr.get().write(remote_endpoint);
                 self.handle.get().write(Some(handle));
             }
@@ -242,37 +254,52 @@ impl TcpSocket {
     ///
     /// It's must be called before [`listen`](Self::listen) and
     /// [`accept`](Self::accept).
-    pub fn bind(&self, mut local_addr: IpEndpoint) -> SysResult<()> {
+    pub fn bind(&self, mut bound_addr: IpListenEndpoint) -> SysResult<()> {
         self.update_state(STATE_CLOSED, STATE_CLOSED, || {
             // TODO: check addr is available
-            if local_addr.port == 0 {
+            if bound_addr.port == 0 {
                 let port = get_ephemeral_port()?;
-                local_addr.port = port;
+                bound_addr.port = port;
                 info!("[TcpSocket::bind] local port is 0, use port {port}");
             }
             // SAFETY: no other threads can read or write `self.local_addr` as we
             // have changed the state to `BUSY`.
             unsafe {
-                let old = self.local_addr.get().read();
-                if old != UNSPECIFIED_ENDPOINT_V4 {
-                    warn!("socket bind() failed: {:?} already bound", local_addr);
+                if let Some(local_addr) = self.local_addr.get().read() {
                     return Err(SysError::EINVAL);
                 }
-                // FIXME
-                if let IpAddress::Ipv6(v6) = local_addr.addr {
-                    if v6.is_unspecified() {
-                        log::warn!("[TcpSocket::bind] Unstable: just use ipv4 instead of ipv6 when ipv6 is unspecified");
-                        local_addr.addr = UNSPECIFIED_IPV4;
-                    }
-                }
-                self.local_addr.get().write(local_addr);
+                self.local_addr.get().write(Some(bound_addr));
             }
             Ok(())
         })
         .unwrap_or_else(|_| {
-            warn!("socket bind() failed: {:?} already bound", local_addr);
+            warn!("socket bind() failed: {:?} already bound", bound_addr);
             Err(SysError::EINVAL)
         })
+    }
+
+    pub fn check_bind(&self, fd: usize, mut bound_addr: IpListenEndpoint) -> Option<usize> {
+        // 查看是否已经用过该端口和地址。可以将两个UDP套接字绑定到同一个端口，
+        // 但它们需要绑定到不同的地址
+        if let Some((fd, prev_bound_addr)) = PORT_MAP.get(bound_addr.port) {
+            if bound_addr == prev_bound_addr {
+                warn!("[UdpSocket::bind] The port is already used by another socket. Reuse the Arc of {fd}");
+                // SOCKET_SET.remove(self.handle);
+                // self.overridden.store(true, Ordering::SeqCst);
+                // 这个check_bind函数到这里执行之后，该Udp复用原来的Socket
+                // File，所以该UdpSocket待会儿会立即drop掉
+                return Some(fd);
+            }
+        }
+        if bound_addr.port == 0 {
+            bound_addr.port = get_ephemeral_port().unwrap();
+            info!(
+                "[UdpSocket::bind] No specified port, use port {}",
+                bound_addr.port
+            );
+        }
+        PORT_MAP.insert(bound_addr.port, fd, bound_addr);
+        None
     }
 
     /// Starts listening on the bound address and port.
@@ -282,9 +309,6 @@ impl TcpSocket {
     pub fn listen(&self, waker: &Waker) -> SysResult<()> {
         self.update_state(STATE_CLOSED, STATE_LISTENING, || {
             let bound_endpoint = self.bound_endpoint()?;
-            unsafe {
-                (*self.local_addr.get()).port = bound_endpoint.port;
-            }
             LISTEN_TABLE.listen(bound_endpoint, waker)?;
             info!("[TcpSocket::listen] listening on {bound_endpoint:?}");
             Ok(())
@@ -306,7 +330,7 @@ impl TcpSocket {
         }
 
         // SAFETY: `self.local_addr` should be initialized after `bind()`.
-        let local_port = unsafe { self.local_addr.get().read().port };
+        let local_port = unsafe { self.local_addr.get().read().unwrap().port };
         self.block_on(|| {
             let (handle, (local_addr, peer_addr)) = LISTEN_TABLE.accept(local_port)?;
             info!("TCP socket accepted a new connection {}", peer_addr);
@@ -356,8 +380,8 @@ impl TcpSocket {
         self.update_state(STATE_LISTENING, STATE_CLOSED, || {
             // SAFETY: `self.local_addr` should be initialized in a listening socket,
             // and no other threads can read or write it.
-            let local_port = unsafe { self.local_addr.get().read().port };
-            unsafe { self.local_addr.get().write(UNSPECIFIED_ENDPOINT_V4) }; // clear bound address
+            let local_port = unsafe { self.local_addr.get().read().unwrap().port };
+            unsafe { self.local_addr.get().write(None) }; // clear bound address
             LISTEN_TABLE.unlisten(local_port);
             let timestamp = SOCKET_SET.poll_interfaces();
             SOCKET_SET.check_poll(timestamp);
@@ -546,19 +570,18 @@ impl TcpSocket {
     /// 并确保返回一个有效的端点（IpListenEndpoint）。
     fn bound_endpoint(&self) -> SysResult<IpListenEndpoint> {
         // SAFETY: no other threads can read or write `self.local_addr`.
-        let local_addr = unsafe { self.local_addr.get().read() };
-        let port = if local_addr.port != 0 {
-            local_addr.port
-        } else {
-            get_ephemeral_port()?
-        };
-        assert_ne!(port, 0);
-        let addr = if !is_unspecified(local_addr.addr) {
-            Some(local_addr.addr)
-        } else {
-            None
-        };
-        Ok(IpListenEndpoint { addr, port })
+        let local_addr = unsafe { self.local_addr.get().read() }.clone();
+        match local_addr {
+            Some(addr) => Ok(addr),
+            None => {
+                let addr = IpListenEndpoint {
+                    addr: None,
+                    port: get_ephemeral_port()?,
+                };
+                unsafe { self.local_addr.get().write(Some(addr)) };
+                Ok(addr)
+            }
+        }
     }
 
     /// Poll the status of a TCP connection to determine if it has been
@@ -589,7 +612,7 @@ impl TcpSocket {
                 }
                 _ => {
                     unsafe {
-                        self.local_addr.get().write(UNSPECIFIED_ENDPOINT_V4);
+                        self.local_addr.get().write(None);
                         self.peer_addr.get().write(UNSPECIFIED_ENDPOINT_V4);
                     }
                     self.set_state(STATE_CLOSED); // connection failed
@@ -631,7 +654,7 @@ impl TcpSocket {
 
     fn poll_listener(&self) -> NetPollState {
         // SAFETY: `self.local_addr` should be initialized in a listening socket.
-        let local_addr = unsafe { self.local_addr.get().read() };
+        let local_addr = unsafe { self.local_addr.get().read().unwrap() };
         let readable = LISTEN_TABLE.can_accept(local_addr.port);
         NetPollState {
             readable,

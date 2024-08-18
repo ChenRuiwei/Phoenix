@@ -553,14 +553,14 @@ pub fn init_network(net_dev: Box<dyn NetDevice>, is_loopback: bool) {
     let gateway = GATEWAY.parse().unwrap();
     let ip;
     let ip_addrs = if is_loopback {
-        ip = "127.0.0.1".parse().unwrap();
-        vec![IpCidr::new(ip, 8)]
+        ip = IpAddress::Ipv4(Ipv4Address::new(127, 0, 0, 1));
+        vec![
+            IpCidr::new(IpAddress::Ipv4(Ipv4Address::new(127, 0, 0, 1)), 8),
+            IpCidr::new(IpAddress::Ipv6(Ipv6Address::LOOPBACK), 128),
+        ]
     } else {
         ip = IP.parse().expect("invalid IP address");
-        vec![
-            IpCidr::new(IP.parse().unwrap(), 8),
-            IpCidr::new(ip, IP_PREFIX),
-        ]
+        vec![IpCidr::new(IP.parse().unwrap(), IP_PREFIX)]
     };
     eth0.setup_ip_addr(ip_addrs);
     eth0.setup_gateway(gateway);

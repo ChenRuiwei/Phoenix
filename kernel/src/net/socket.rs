@@ -38,12 +38,7 @@ impl Sock {
             Sock::Tcp(tcp) => {
                 // HACK
                 let local_addr = local_addr.into_listen_endpoint();
-                let addr = if local_addr.addr.is_none() {
-                    UNSPECIFIED_IPV4
-                } else {
-                    local_addr.addr.unwrap()
-                };
-                tcp.bind(IpEndpoint::new(addr, local_addr.port))
+                tcp.bind(local_addr)
             }
             Sock::Udp(udp) => {
                 let local_addr = local_addr.into_listen_endpoint();

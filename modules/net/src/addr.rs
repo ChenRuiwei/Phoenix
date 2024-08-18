@@ -1,3 +1,5 @@
+use core::net::Ipv4Addr;
+
 use smoltcp::wire::{IpAddress, IpEndpoint, IpListenEndpoint, Ipv6Address};
 
 pub fn is_unspecified(ip: IpAddress) -> bool {
@@ -6,7 +8,16 @@ pub fn is_unspecified(ip: IpAddress) -> bool {
 
 pub fn to_endpoint(listen_endpoint: IpListenEndpoint) -> IpEndpoint {
     let ip = match listen_endpoint.addr {
-        Some(ip) => ip,
+        Some(ip) => {
+            if ip.is_unspecified() {
+                match ip {
+                    IpAddress::Ipv4(_) => UNSPECIFIED_IPV4,
+                    IpAddress::Ipv6(_) => UNSPECIFIED_IPV6,
+                }
+            } else {
+                ip
+            }
+        }
         // TODO:
         None => UNSPECIFIED_IPV4,
     };
