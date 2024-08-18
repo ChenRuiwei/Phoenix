@@ -941,9 +941,38 @@ impl Syscall<'_> {
         file.inode().truncate(length as usize)
     }
 
+    pub fn sys_fchmod(&self, fd: usize, mode: usize) -> SyscallResult {
+        let task = self.task;
+        let file = task.with_fd_table(|table| table.get_file(fd))?;
+        let permission = InodeMode::from_bits_truncate(mode as u32) & !InodeMode::TYPE_MASK;
+        log::warn!(
+            "[sys_fchmod] file path {}, mode:{permission:?}",
+            file.dentry().path()
+        );
+        file.inode().set_permission(permission);
+        Ok(0)
+    }
+
     /// Modify the permissions of a file or directory relative to a certain
     /// directory or location
-    pub fn sys_fchmodat(&self) -> SyscallResult {
+    pub fn sys_fchmodat(
+        &self,
+        dirfd: AtFd,
+        pathname: UserReadPtr<u8>,
+        mode: usize,
+        flags: usize,
+    ) -> SyscallResult {
+        const AT_SYMLINK_NOFOLLOW: usize = 0x100;
+        let task = self.task;
+        let path = pathname.read_cstr(task)?;
+        let flags = if flags == AT_SYMLINK_NOFOLLOW {
+            OpenFlags::O_NOFOLLOW
+        } else {
+            OpenFlags::empty()
+        };
+        let dentry = task.at_helper(dirfd, &path, flags)?;
+        let permission = InodeMode::from_bits_truncate(mode as u32) & !InodeMode::TYPE_MASK;
+        dentry.inode()?.set_permission(permission);
         Ok(0)
     }
 

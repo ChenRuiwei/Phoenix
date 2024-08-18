@@ -106,6 +106,8 @@ pub enum SysError {
     ENOTSOCK = 88,
     /// Unsupported
     EOPNOTSUPP = 95,
+    /// Address family not supported by protocol
+    EAFNOSUPPORT = 97,
     /// Socket address is already in use
     EADDRINUSE = 98,
     /// Address not available
@@ -171,6 +173,7 @@ impl SysError {
             ENOTSOCK => "Socket operation on non-socket",
             ENOTCONN => "Transport endpoint is not connected",
             EOPNOTSUPP => "Unsupported Error",
+            EAFNOSUPPORT => "Address family not supported by protocol",
             EADDRNOTAVAIL => "Address not available",
             EADDRINUSE => "Address already in use",
             EISCONN => "Transport endpoint is already connected",

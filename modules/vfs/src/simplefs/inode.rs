@@ -26,12 +26,11 @@ impl Inode for SimpleFileInode {
 
     fn get_attr(&self) -> SysResult<Stat> {
         let inner = self.meta.inner.lock();
-        let mode = self.meta.mode.bits();
         let len = inner.size;
         Ok(Stat {
             st_dev: 0,
             st_ino: self.meta.ino as u64,
-            st_mode: mode,
+            st_mode: inner.mode.bits(),
             st_nlink: 1,
             st_uid: 0,
             st_gid: 0,
@@ -87,12 +86,11 @@ impl Inode for SimpleDirInode {
 
     fn get_attr(&self) -> SysResult<Stat> {
         let inner = self.meta.inner.lock();
-        let mode = self.meta.mode.bits();
         let len = inner.size;
         Ok(Stat {
             st_dev: 0,
             st_ino: self.meta.ino as u64,
-            st_mode: mode,
+            st_mode: inner.mode.bits(),
             st_nlink: 1,
             st_uid: 0,
             st_gid: 0,
@@ -130,12 +128,11 @@ impl Inode for SimpleLinkInode {
 
     fn get_attr(&self) -> SysResult<Stat> {
         let inner = self.meta.inner.lock();
-        let mode = self.meta.mode.bits();
         let len = inner.size;
         Ok(Stat {
             st_dev: 0,
             st_ino: self.meta.ino as u64,
-            st_mode: mode,
+            st_mode: inner.mode.bits(),
             st_nlink: 1,
             st_uid: 0,
             st_gid: 0,

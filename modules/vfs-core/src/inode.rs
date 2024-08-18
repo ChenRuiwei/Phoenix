@@ -12,8 +12,6 @@ use crate::{alloc_ino, Mutex, Stat, SuperBlock};
 pub struct InodeMeta {
     /// Inode number.
     pub ino: usize,
-    /// Mode of inode.
-    pub mode: InodeMode,
     pub dev_id: Option<DevId>,
     pub super_block: Weak<dyn SuperBlock>,
 
@@ -22,6 +20,8 @@ pub struct InodeMeta {
 }
 
 pub struct InodeMetaInner {
+    /// Mode of inode. It can be changed by `sys_fchmod`
+    pub mode: InodeMode,
     /// Size of a file in bytes.
     pub size: usize,
     /// Link count.
@@ -64,11 +64,11 @@ impl InodeMeta {
         };
         Self {
             ino: alloc_ino(),
-            mode,
             super_block: Arc::downgrade(&super_block),
             dev_id: None,
             page_cache: address_space,
             inner: Mutex::new(InodeMetaInner {
+                mode,
                 size,
                 atime: TimeSpec::default(),
                 mtime: TimeSpec::default(),
@@ -114,7 +114,7 @@ impl dyn Inode {
     }
 
     pub fn itype(&self) -> InodeType {
-        self.meta().mode.to_type()
+        self.meta().inner.lock().mode.to_type()
     }
 
     pub fn state(&self) -> InodeState {
@@ -132,6 +132,14 @@ impl dyn Inode {
         } else {
             inner.state = state;
         }
+    }
+
+    /// Permission shouldn't include `InodeMode::TYPE_MASK`
+    pub fn set_permission(&self, permission: InodeMode) {
+        debug_assert!((permission & InodeMode::TYPE_MASK).is_empty());
+        let mut inode_mode: InodeMode = self.meta().inner.lock().mode;
+        inode_mode &= !InodeMode::TYPE_MASK;
+        inode_mode |= permission;
     }
 
     pub fn truncate(&self, len: usize) -> SyscallResult {

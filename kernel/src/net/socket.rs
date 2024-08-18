@@ -190,22 +190,22 @@ unsafe impl Sync for Socket {}
 unsafe impl Send for Socket {}
 
 impl Socket {
-    pub fn new(domain: SaFamily, types: SocketType, nonblock: bool) -> Self {
+    pub fn new(domain: SaFamily, types: SocketType, nonblock: bool) -> SysResult<Self> {
         let sk = match domain {
-            SaFamily::AF_UNIX => Sock::Unix(UnixSocket {}),
+            SaFamily::AF_UNIX => return Err(SysError::EAFNOSUPPORT),
             SaFamily::AF_INET | SaFamily::AF_INET6 => match types {
-                SocketType::STREAM => Sock::Tcp(TcpSocket::new()),
-                SocketType::DGRAM => Sock::Udp(UdpSocket::new()),
+                SocketType::STREAM => Ok(Sock::Tcp(TcpSocket::new())),
+                SocketType::DGRAM => Ok(Sock::Udp(UdpSocket::new())),
                 _ => unimplemented!(),
             },
-        };
+        }?;
         let flags = if nonblock {
             sk.set_nonblocking(true);
             OpenFlags::O_RDWR | OpenFlags::O_NONBLOCK
         } else {
             OpenFlags::O_RDWR
         };
-        Self {
+        Ok(Self {
             types,
             sk,
             meta: FileMeta {
@@ -214,7 +214,7 @@ impl Socket {
                 pos: 0.into(),
                 flags: Mutex::new(flags),
             },
-        }
+        })
     }
 
     pub fn from_another(another: &Self, sk: Sock) -> Self {

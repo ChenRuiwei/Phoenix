@@ -199,7 +199,7 @@ impl<'a> Syscall<'a> {
             SYNC => self.sys_do_nothing("sync"),
             FSYNC => self.sys_do_nothing("fsync"),
             FTRUNCATE => self.sys_ftruncate(args[0], args[1] as _).await,
-            FCHMODAT => self.sys_fchmodat(),
+            FCHMODAT => self.sys_fchmodat(args[0].into(), args[1].into(), args[2], args[3]),
             FCHOWNAT => self.sys_do_nothing("fchownat"),
             FALLOCATE => self.sys_do_nothing("fallocate"),
             SYMLINKAT => self.sys_symlinkat(args[0].into(), args[1].into(), args[2].into()),

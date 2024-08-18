@@ -36,7 +36,7 @@ impl Syscall<'_> {
             flags |= OpenFlags::O_CLOEXEC;
         }
         let types = SocketType::try_from(types)?;
-        let socket = Socket::new(domain, types, nonblock);
+        let socket = Socket::new(domain, types, nonblock)?;
         let fd = self
             .task
             .with_mut_fd_table(|table| table.alloc(Arc::new(socket), flags))?;
