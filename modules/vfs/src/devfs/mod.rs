@@ -18,7 +18,7 @@ mod cpu_dma_latency;
 mod null;
 mod rtc;
 pub mod tty;
-mod urandom;
+pub mod urandom;
 mod zero;
 
 pub fn init_devfs(root_dentry: Arc<dyn Dentry>) -> SysResult<()> {

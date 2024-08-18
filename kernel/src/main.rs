@@ -33,6 +33,8 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use ::net::poll_interfaces;
+
 use crate::processor::hart;
 
 extern crate alloc;
@@ -73,6 +75,13 @@ fn rust_main(hart_id: usize, dtb_addr: usize) {
         task::spawn_kernel_task(async move {
             task::spawn_init_proc();
         });
+
+        // utils::spawn_timer_tasks_ms(
+        //     || {
+        //         poll_interfaces();
+        //     },
+        //     10,
+        // );
 
         #[cfg(feature = "debug")]
         utils::spawn_timer_tasks(utils::print_proc_tree, 10);

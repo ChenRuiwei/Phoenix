@@ -17,6 +17,7 @@ mnt/
 my-test/
 ltp/
 target/
+rootfs/
 third-party/vendor/
 crates/virtio-drivers/
 crates/lwext4_rust/

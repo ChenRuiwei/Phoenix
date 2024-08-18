@@ -9,11 +9,6 @@ use alloc::format;
 
 use user_lib::{execve, fork, println, wait, waitpid};
 
-const BUSYBOX_CMDS: &[&str] = &[
-    "ls", "cp", "mv", "rm", "mkdir", "rmdir", "ln", "cat", "echo", "grep", "find", "tar", "awk",
-    "sed", "kill", "df", "du", "uname", "ping", "ip", "touch",
-];
-
 fn run_cmd(cmd: &str) {
     if fork() == 0 {
         execve(
@@ -21,6 +16,7 @@ fn run_cmd(cmd: &str) {
             &["busybox", "sh", "-c", cmd],
             &[
                 "PATH=/:/bin:/sbin:/usr/bin:/usr/local/bin:/usr/local/sbin",
+                "HOME=/home/crw",
                 "LD_LIBRARY_PATH=/:/lib:/lib/glibc/:/lib/musl:/lib64/lp64d:/usr/lib:/usr/local/lib",
                 "TERM=screen",
             ],
@@ -33,9 +29,7 @@ fn run_cmd(cmd: &str) {
 
 #[no_mangle]
 fn main() -> i32 {
-    for cmd in BUSYBOX_CMDS {
-        run_cmd(&format!("busybox ln -s /busybox /bin/{cmd}"));
-    }
+    run_cmd("busybox --install /bin");
     run_cmd("ln -s /lib/glibc/ld-linux-riscv64-lp64d.so.1 /lib/ld-linux-riscv64-lp64d.so.1 ");
 
     if fork() == 0 {

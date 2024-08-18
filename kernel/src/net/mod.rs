@@ -4,7 +4,7 @@ pub mod socket;
 mod unix;
 
 #[repr(u16)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 /// socket address family
 pub enum SaFamily {

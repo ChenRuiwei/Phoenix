@@ -549,7 +549,8 @@ pub fn init_network(net_dev: Box<dyn NetDevice>, is_loopback: bool) {
 
     // let ip = IP.parse().expect("invalid IP address");
 
-    let gateway = GATEWAY.parse().expect("invalid gateway IP address");
+    // let gateway = GATEWAY.parse().expect("invalid gateway IP address");
+    let gateway = GATEWAY.parse().unwrap();
     let ip;
     let ip_addrs = if is_loopback {
         ip = "127.0.0.1".parse().unwrap();
@@ -557,7 +558,7 @@ pub fn init_network(net_dev: Box<dyn NetDevice>, is_loopback: bool) {
     } else {
         ip = IP.parse().expect("invalid IP address");
         vec![
-            IpCidr::new("127.0.0.1".parse().unwrap(), 8),
+            IpCidr::new(IP.parse().unwrap(), 8),
             IpCidr::new(ip, IP_PREFIX),
         ]
     };

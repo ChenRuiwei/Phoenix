@@ -1,5 +1,7 @@
 use alloc::{sync::Arc, vec::Vec};
+use core::intrinsics::unlikely;
 
+use addr::SockAddr;
 use log::info;
 use socket::*;
 use systype::{SysError, SysResult, SyscallResult};
@@ -7,9 +9,9 @@ use vfs::pipefs::new_pipe;
 use vfs_core::OpenFlags;
 use virtio_drivers::PAGE_SIZE;
 
-use super::Syscall;
+use super::{fs::IoVec, Syscall};
 use crate::{
-    mm::{UserReadPtr, UserWritePtr},
+    mm::{UserRdWrPtr, UserReadPtr, UserWritePtr},
     net::*,
     task::Task,
 };
@@ -23,6 +25,7 @@ impl Syscall<'_> {
         let mut types = types;
         let mut flags = OpenFlags::empty();
         let mut nonblock = false;
+        // fixme：file flags should be placed in file meta
         if types & NONBLOCK != 0 {
             nonblock = true;
             types &= !NONBLOCK;
@@ -49,8 +52,8 @@ impl Syscall<'_> {
     /// called “assigning a name to a socket”.
     pub fn sys_bind(&self, sockfd: usize, addr: usize, addrlen: usize) -> SyscallResult {
         let task = self.task;
-        let local_addr = task.read_sockaddr_to_listen_endpoint(addr, addrlen)?;
-        let socket = task.sockfd_lookup(sockfd)?;
+        let local_addr = task.read_sockaddr(addr, addrlen)?;
+        let socket: Arc<Socket> = task.sockfd_lookup(sockfd)?;
         info!("[sys_bind] try to bind fd{sockfd} to {local_addr}");
         socket.sk.bind(sockfd, local_addr)?;
         // info!(
@@ -102,6 +105,7 @@ impl Syscall<'_> {
         task.set_running();
 
         let peer_addr = new_sk.peer_addr()?;
+        let peer_addr = SockAddr::from_endpoint(peer_addr);
         log::info!("[sys_accept] peer addr: {peer_addr}");
         task.write_sockaddr(addr, addrlen, peer_addr)?;
         let new_socket = Arc::new(Socket::from_another(&socket, Sock::Tcp(new_sk)));
@@ -117,7 +121,7 @@ impl Syscall<'_> {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
         let local_addr = socket.sk.local_addr()?;
-        log::info!("[sys_getsockname] local addr: {local_addr:?}");
+        log::info!("[sys_getsockname] local addr: {local_addr}");
         task.write_sockaddr(addr, addrlen, local_addr)?;
         Ok(0)
     }
@@ -127,7 +131,7 @@ impl Syscall<'_> {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
         let peer_addr = socket.sk.peer_addr()?;
-        log::info!("[sys_getpeername] peer addr: {peer_addr:?}");
+        log::info!("[sys_getpeername] peer addr: {peer_addr}");
         task.write_sockaddr(addr, addrlen, peer_addr)?;
         Ok(0)
     }
@@ -198,7 +202,7 @@ impl Syscall<'_> {
         let task = self.task;
         let socket = task.sockfd_lookup(sockfd)?;
         info!(
-            "[sys_recvfrom]: local_addr: {:?} is trying to recvfrom remote{:?}, ",
+            "[sys_recvfrom]: local_addr: {:?} is trying to recvfrom remote {:?}, ",
             socket.sk.local_addr(),
             socket.sk.peer_addr(),
         );
@@ -211,7 +215,6 @@ impl Syscall<'_> {
         let mut buf = buf.into_mut_slice(&task, bytes)?;
         buf[..bytes].copy_from_slice(&temp[..bytes]);
         task.write_sockaddr(src_addr, addrlen, remote_addr)?;
-
         Ok(bytes)
     }
 
@@ -374,6 +377,116 @@ impl Syscall<'_> {
             Ok([fd_read as u32, fd_write as u32])
         })?;
         sv.write(&task, pipe)?;
+        Ok(0)
+    }
+}
+
+/// ```c
+/// struct msghdr {
+///     void         *msg_name;       /* Optional address */
+///     socklen_t     msg_namelen;    /* Size of address */
+///     struct iovec *msg_iov;        /* Scatter/gather array */
+///     size_t        msg_iovlen;     /* # elements in msg_iov */
+///     void         *msg_control;    /* Ancillary data, see below */
+///     size_t        msg_controllen; /* Ancillary data buffer len */
+///     int           msg_flags;      /* Flags (unused) */
+///  };
+/// ```
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MsgHdr {
+    /// 指向消息的目标地址的指针
+    pub name: usize,
+    /// 地址的长度
+    pub namelen: u32,
+    /// 指向 iovec 结构体的指针，用于描述消息的数据部分
+    pub iov: usize,
+    /// iovec 结构体的数量
+    pub iovlen: usize,
+    /// 指向控制数据的指针（例如，附加的元数据）
+    pub control: usize,
+    /// 控制数据的长度
+    pub controllen: usize,
+    /// 消息标志
+    pub flags: i32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct CMsgHdr {
+    len: usize,
+    level: i32,
+    type_: i32,
+}
+
+impl Syscall<'_> {
+    pub async fn sys_sendmsg(
+        &self,
+        sockfd: usize,
+        msg: UserReadPtr<MsgHdr>,
+        flags: usize,
+    ) -> SyscallResult {
+        if flags != 0 {
+            log::error!("[sys_sendmsg] unsupported flags {flags}");
+        }
+        // TODO: support flags
+        let task = self.task;
+        let socket = task.sockfd_lookup(sockfd)?;
+        let message = msg.read(&task)?;
+        if message.controllen != 0 {
+            log::warn!("[sys_sendmsg] unsupport msg control");
+        }
+        let addr = task.read_sockaddr(message.name, message.namelen as _)?;
+        let iovs = UserReadPtr::<IoVec>::from(message.iov).read_array(&task, message.iovlen)?;
+        let mut total_len = 0;
+        for (i, iov) in iovs.iter().enumerate() {
+            if unlikely(iov.len == 0) {
+                continue;
+            }
+            let ptr = UserWritePtr::<u8>::from(iov.base);
+            log::info!("[sys_sendmsg] iov #{i}, ptr: {ptr}, len: {}", iov.len);
+            let buf = ptr.into_mut_slice(&task, iov.len)?;
+            let send_len = socket.sk.sendto(&buf, Some(addr)).await?;
+            total_len += send_len;
+        }
+        Ok(total_len)
+    }
+
+    /// 目前的实现是，如果Udp Socket收到多个不同Ip地址的数据报如ip1, ip1, ip2,
+    /// ip3, ip1，recvmsg
+    // pub async fn sys_recvmsg(
+    //     &self,
+    //     sockfd: usize,
+    //     msg: UserRdWrPtr<MsgHdr>,
+    //     flags: usize,
+    // ) -> SyscallResult {
+    //     if flags != 0 {
+    //         log::error!("[sys_sendmsg] unsupported flags {flags}");
+    //     }
+    //     // TODO: support flags
+    //     let task = self.task;
+    //     let socket = task.sockfd_lookup(sockfd)?;
+    //     let msg = msg.read(&task)?;
+    //     if msg.controllen != 0 {
+    //         log::warn!("[sys_sendmsg] unsupport msg control");
+    //     }
+    //     let addr = task.read_sockaddr(msg.name, msg.namelen as _)?;
+    //     let iovs = UserReadPtr::<IoVec>::from(msg.iov).read_array(&task,
+    // msg.iovlen)?;     let mut total_len = 0;
+    //     for (i, iov) in iovs.iter().enumerate() {
+    //         if unlikely(iov.len == 0) {
+    //             continue;
+    //         }
+    //         let ptr = UserWritePtr::<u8>::from(iov.base);
+    //         log::info!("[sys_recvmsg] iov #{i}, ptr: {ptr}, len: {}", iov.len);
+    //         let buf = ptr.into_mut_slice(&task, iov.len)?;
+    //         let send_len = socket.sk.sendto(&buf, Some(addr)).await?;
+    //         total_len += send_len;
+    //     }
+    //     Ok(total_len)
+    // }
+
+    pub fn sys_sendmmsg(&self, sockfd: usize) -> SyscallResult {
         Ok(0)
     }
 }

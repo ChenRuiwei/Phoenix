@@ -1,5 +1,5 @@
 use alloc::sync::Arc;
-use core::ptr::NonNull;
+use core::{mem, ptr::NonNull};
 
 use config::mm::VIRT_RAM_OFFSET;
 use device_core::{error::DevError, Device, DeviceType};
@@ -83,6 +83,7 @@ pub(crate) fn probe_mmio_device(
             );
             Some(transport)
         } else {
+            mem::forget(transport);
             None
         }
     } else {
