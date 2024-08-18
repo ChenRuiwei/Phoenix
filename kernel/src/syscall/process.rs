@@ -4,6 +4,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use core::sync::atomic::AtomicU32;
 
 use async_utils::{suspend_now, yield_now};
 use memory::VirtAddr;
@@ -77,6 +78,8 @@ bitflags! {
         const WCONTINUED = 0x00000008;
     }
 }
+
+static UID: AtomicU32 = AtomicU32::new(1001);
 
 impl Syscall<'_> {
     /// _exit() system call terminates only the calling thread, and actions such
@@ -420,16 +423,36 @@ impl Syscall<'_> {
 
     // TODO:
     pub fn sys_getuid(&self) -> SyscallResult {
+        Ok(UID.load(core::sync::atomic::Ordering::Acquire) as _)
+    }
+
+    pub fn sys_setuid(&self, uid: usize) -> SyscallResult {
+        UID.store(uid as u32, core::sync::atomic::Ordering::Release);
         Ok(0)
     }
 
     // TODO:
     pub fn sys_geteuid(&self) -> SyscallResult {
-        Ok(0)
+        self.sys_getuid()
     }
 
     pub fn sys_setsid(&self) -> SyscallResult {
         let task = self.task;
         Ok(task.pid())
+    }
+
+    /// refer UMI
+    ///
+    /// a very simple implementation
+    pub fn sys_getgroups(&self, size: usize, list: usize) -> SyscallResult {
+        if size >= 1 {
+            UserWritePtr::<u32>::from(list).write(self.task, 0)?;
+        }
+        Ok(1)
+    }
+
+    pub fn sys_setgroups(&self) -> SyscallResult {
+        log::info!("[sys_setgroups] do nothing");
+        Ok(0)
     }
 }

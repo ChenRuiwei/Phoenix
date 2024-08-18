@@ -259,7 +259,7 @@ impl InterfaceWrapper {
         let mut sockets = sockets.lock();
         let timestamp = Self::current_time();
         let result = iface.poll(timestamp, dev.deref_mut(), &mut sockets);
-        log::warn!("[net::InterfaceWrapper::poll] does something have been changed? {result:?}");
+        log::debug!("[net::InterfaceWrapper::poll] does something have been changed? {result:?}");
         timestamp
     }
 

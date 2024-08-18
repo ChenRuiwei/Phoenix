@@ -328,14 +328,14 @@ impl Syscall<'_> {
                         UserWritePtr::<u32>::from(optlen).write(&task, 4)?
                     }
                     opt => {
-                        log::error!(
+                        log::warn!(
                             "[sys_getsockopt] unsupported IPPROTO_TCP opt {opt:?} optlen:{optlen}"
                         )
                     }
                 };
             }
             SocketLevel::IPPROTO_IPV6 => {
-                log::error!("[sys_getsockopt] unsupported IPPROTO_IPV6")
+                log::warn!("[sys_getsockopt] unsupported IPPROTO_IPV6")
             }
         }
         Ok(0)

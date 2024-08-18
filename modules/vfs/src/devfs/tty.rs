@@ -145,6 +145,8 @@ enum TtyIoctlCmd {
     TIOCGWINSZ = 0x5413,
     /// Set window size.
     TIOCSWINSZ = 0x5414,
+    /// `sshd` might use?
+    TIOCNOTTY = 0x5422,
 }
 
 #[derive(Debug, Clone, Copy)]
