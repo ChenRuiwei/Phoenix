@@ -944,8 +944,10 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "async-trait",
+ "async-utils",
  "bitflags 2.6.0",
  "config",
+ "crate_interface",
  "device-core",
  "downcast-rs",
  "driver",

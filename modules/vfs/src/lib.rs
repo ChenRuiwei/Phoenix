@@ -21,7 +21,7 @@ use procfs::init_procfs;
 use sockfs::SockFsType;
 use spin::Once;
 use sync::mutex::SpinNoIrqLock;
-use vfs_core::{Dentry, DentryState, FileSystemType, InodeMode, MountFlags, Path};
+use vfs_core::{Dentry, DentryState, FileSystemType, InodeMode, MountFlags, OpenFlags, Path};
 
 use crate::{
     devfs::{init_devfs, DevFsType},
@@ -131,7 +131,7 @@ struct FrameReleaseIfImpl;
 impl FrameReleaseIf for FrameReleaseIfImpl {
     fn release_frames() {
         let ltp_dentry = Path::new(sys_root_dentry(), sys_root_dentry(), "/ltp/testcases/bin/")
-            .walk()
+            .walk(OpenFlags::empty())
             .unwrap();
         for (_, child) in ltp_dentry.children() {
             if let Ok(inode) = child.inode() {

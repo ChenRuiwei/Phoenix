@@ -1,6 +1,6 @@
 //! Impls of traits defined in other crates.
 
-use alloc::{fmt, string::ToString};
+use alloc::{fmt, string::ToString, sync::Arc};
 
 use config::mm::VIRT_RAM_OFFSET;
 use driver::KernelPageTableIf;
@@ -8,7 +8,8 @@ use log::Level;
 use logging::{ColorCode, LogIf};
 use memory::{KernelMappingIf, PageTable, PhysAddr, VirtAddr};
 use net::HasSignalIf;
-use vfs::procfs::KernelProcIf;
+use vfs::{procfs::KernelProcIf, sys_root_dentry};
+use vfs_core::{Dentry, SysRootDentryIf};
 
 use crate::{
     mm::kernel_page_table_mut,
@@ -107,5 +108,14 @@ struct KernelProcIfImpl;
 impl KernelProcIf for KernelProcIfImpl {
     fn exe() -> alloc::string::String {
         current_task_ref().elf().dentry().path()
+    }
+}
+
+struct SysRootDentryIfImpl;
+
+#[crate_interface::impl_interface]
+impl SysRootDentryIf for SysRootDentryIfImpl {
+    fn sys_root_dentry() -> Arc<dyn Dentry> {
+        sys_root_dentry()
     }
 }

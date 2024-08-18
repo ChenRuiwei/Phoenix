@@ -29,6 +29,7 @@ fn run_cmd(cmd: &str) {
 #[no_mangle]
 fn main() -> i32 {
     run_cmd("busybox --install /bin");
+    run_cmd("rm /bin/sh");
     run_cmd("ln -s /lib/glibc/ld-linux-riscv64-lp64d.so.1 /lib/ld-linux-riscv64-lp64d.so.1 ");
 
     if fork() == 0 {
