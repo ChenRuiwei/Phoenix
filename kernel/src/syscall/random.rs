@@ -20,8 +20,7 @@ impl Syscall<'_> {
     ) -> SyscallResult {
         let task = self.task;
         let mut buf = buf.into_mut_slice(&task, buflen)?;
-
         unsafe { RNG.fill_buf(&mut buf) };
-        Ok(0)
+        Ok(buf.len())
     }
 }
