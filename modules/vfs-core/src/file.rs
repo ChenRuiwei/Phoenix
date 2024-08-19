@@ -227,8 +227,8 @@ pub trait File: Send + Sync + DowncastSync {
                 "[File::write_at] write beyond file, offset_it:{offset_it}, size:{}",
                 self.size()
             );
-            // self.base_write_at(self.size(), &buf[self.size() - offset..])
-            //     .await?;
+            self.base_write_at(self.size(), &buf[self.size() - offset..])
+                .await?;
             let old_size = self.size();
             let new_size = offset_it;
             // let virtio_blk = device

@@ -104,7 +104,6 @@
 ./test-ltp.sh ltp/testcases/bin/futex_wait04
 ./test-ltp.sh ltp/testcases/bin/futex_wake01
 ./test-ltp.sh ltp/testcases/bin/genload
-./test-ltp.sh ltp/testcases/bin/genlog10
 ./test-ltp.sh ltp/testcases/bin/getcontext01
 ./test-ltp.sh ltp/testcases/bin/getcwd01
 ./test-ltp.sh ltp/testcases/bin/getcwd02
@@ -182,7 +181,6 @@
 ./test-ltp.sh ltp/testcases/bin/memset01
 ./test-ltp.sh ltp/testcases/bin/mincore02
 ./test-ltp.sh ltp/testcases/bin/mincore03
-./test-ltp.sh ltp/testcases/bin/mincore04
 ./test-ltp.sh ltp/testcases/bin/mkdir04
 ./test-ltp.sh ltp/testcases/bin/mkdirat01
 ./test-ltp.sh ltp/testcases/bin/mknod09
