@@ -619,15 +619,18 @@ impl Task {
 
         // NOTE: leader will be removed by parent calling `sys_wait4`
         if let Some(parent) = self.parent() {
-            let parent = parent.upgrade().unwrap();
-            parent.receive_siginfo(
-                SigInfo {
-                    sig: Sig::SIGCHLD,
-                    code: SigInfo::CLD_EXITED,
-                    details: SigDetails::None,
-                },
-                false,
-            );
+            if let Some(parent) = parent.upgrade() {
+                parent.receive_siginfo(
+                    SigInfo {
+                        sig: Sig::SIGCHLD,
+                        code: SigInfo::CLD_EXITED,
+                        details: SigDetails::None,
+                    },
+                    false,
+                )
+            } else {
+                log::error!("no arc parent");
+            }
         }
 
         // Upon _exit(2), all attached shared memory segments are detached from the
