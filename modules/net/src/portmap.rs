@@ -14,7 +14,8 @@ type Pid = usize;
 /// 但是这里采用了复用 FdTable 中的 fdinfo 的方法
 pub struct PortMap(Mutex<BTreeMap<Port, (Fd, IpListenEndpoint)>>);
 
-pub(crate) static PORT_MAP: Lazy<PortMap> = Lazy::new(PortMap::new);
+pub(crate) static UDP_PORT_MAP: Lazy<PortMap> = Lazy::new(PortMap::new);
+pub(crate) static TCP_PORT_MAP: Lazy<PortMap> = Lazy::new(PortMap::new);
 
 impl PortMap {
     const fn new() -> Self {

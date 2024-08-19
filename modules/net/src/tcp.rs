@@ -24,7 +24,7 @@ use super::{
 use crate::{
     addr::{to_endpoint, UNSPECIFIED_IPV4},
     has_signal,
-    portmap::PORT_MAP,
+    portmap::TCP_PORT_MAP,
     Mutex, NetPollState, RCV_SHUTDOWN, SEND_SHUTDOWN, SHUTDOWN_MASK, SHUT_RD, SHUT_RDWR, SHUT_WR,
     TCP_RX_BUF_LEN, TCP_TX_BUF_LEN,
 };
@@ -279,11 +279,11 @@ impl TcpSocket {
     }
 
     pub fn check_bind(&self, fd: usize, mut bound_addr: IpListenEndpoint) -> Option<usize> {
-        // 查看是否已经用过该端口和地址。可以将两个UDP套接字绑定到同一个端口，
+        // 查看是否已经用过该端口和地址。可以将两个 TCP 套接字绑定到同一个端口，
         // 但它们需要绑定到不同的地址
-        if let Some((fd, prev_bound_addr)) = PORT_MAP.get(bound_addr.port) {
+        if let Some((fd, prev_bound_addr)) = TCP_PORT_MAP.get(bound_addr.port) {
             if bound_addr == prev_bound_addr {
-                warn!("[UdpSocket::bind] The port is already used by another socket. Reuse the Arc of {fd}");
+                warn!("[TcpSocket::check_bind] The port is already used by another socket. Reuse the Arc of {fd}");
                 // SOCKET_SET.remove(self.handle);
                 // self.overridden.store(true, Ordering::SeqCst);
                 // 这个check_bind函数到这里执行之后，该Udp复用原来的Socket
@@ -294,11 +294,11 @@ impl TcpSocket {
         if bound_addr.port == 0 {
             bound_addr.port = get_ephemeral_port().unwrap();
             info!(
-                "[UdpSocket::bind] No specified port, use port {}",
+                "[TcpSocket::check_bind] No specified port, use port {}",
                 bound_addr.port
             );
         }
-        PORT_MAP.insert(bound_addr.port, fd, bound_addr);
+        TCP_PORT_MAP.insert(bound_addr.port, fd, bound_addr);
         None
     }
 
@@ -756,7 +756,7 @@ impl Drop for TcpSocket {
             SOCKET_SET.remove(handle);
         }
         if let Ok(addr) = self.local_addr() {
-            PORT_MAP.remove(addr.port);
+            TCP_PORT_MAP.remove(addr.port);
         }
     }
 }

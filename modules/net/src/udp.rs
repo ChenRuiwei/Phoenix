@@ -23,7 +23,7 @@ use crate::{
         to_endpoint, LOCAL_ENDPOINT_V4, LOCAL_IPV4, UNSPECIFIED_IPV4, UNSPECIFIED_LISTEN_ENDPOINT,
     },
     has_signal,
-    portmap::PORT_MAP,
+    portmap::UDP_PORT_MAP,
     Mutex, NetPollState,
 };
 
@@ -92,7 +92,7 @@ impl UdpSocket {
     pub fn check_bind(&self, fd: usize, mut bound_addr: IpListenEndpoint) -> Option<usize> {
         // 查看是否已经用过该端口和地址。可以将两个UDP套接字绑定到同一个端口，
         // 但它们需要绑定到不同的地址
-        if let Some((fd, prev_bound_addr)) = PORT_MAP.get(bound_addr.port) {
+        if let Some((fd, prev_bound_addr)) = UDP_PORT_MAP.get(bound_addr.port) {
             if bound_addr == prev_bound_addr {
                 warn!("[UdpSocket::bind] The port is already used by another socket. Reuse the Arc of {fd}");
                 // SOCKET_SET.remove(self.handle);
@@ -109,7 +109,7 @@ impl UdpSocket {
                 bound_addr.port
             );
         }
-        PORT_MAP.insert(bound_addr.port, fd, bound_addr);
+        UDP_PORT_MAP.insert(bound_addr.port, fd, bound_addr);
         None
     }
 
@@ -413,7 +413,7 @@ impl Drop for UdpSocket {
         self.shutdown().ok();
         SOCKET_SET.remove(self.handle);
         if let Ok(addr) = self.local_addr() {
-            PORT_MAP.remove(addr.port);
+            UDP_PORT_MAP.remove(addr.port);
         }
     }
 }

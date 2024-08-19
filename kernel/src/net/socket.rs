@@ -36,17 +36,16 @@ impl Sock {
     pub fn bind(&self, sockfd: usize, local_addr: SockAddr) -> SysResult<()> {
         match self {
             Sock::Tcp(tcp) => {
-                // HACK
-                let local_addr = local_addr.into_listen_endpoint();
+                let mut local_addr = local_addr.into_listen_endpoint();
                 if let Some(prev_fd) = tcp.check_bind(sockfd, local_addr) {
                     current_task()
-                        .with_mut_fd_table(|table| table.dup3_with_flags(prev_fd, sockfd));
+                        .with_mut_fd_table(|table| table.dup3_with_flags(prev_fd, sockfd))?;
                     return Ok(());
                 }
                 tcp.bind(local_addr)
             }
             Sock::Udp(udp) => {
-                let local_addr = local_addr.into_listen_endpoint();
+                let mut local_addr = local_addr.into_listen_endpoint();
                 if let Some(prev_fd) = udp.check_bind(sockfd, local_addr) {
                     current_task()
                         .with_mut_fd_table(|table| table.dup3_with_flags(prev_fd, sockfd))?;
