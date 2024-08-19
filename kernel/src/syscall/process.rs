@@ -183,8 +183,21 @@ impl Syscall<'_> {
                         return Err(SysError::ECHILD);
                     }
                 }
-                WaitFor::PGid(_) => unimplemented!(),
-                WaitFor::AnyChildInGroup => unimplemented!(),
+                WaitFor::PGid(_) => {
+                    log::error!("[sys_wait4] PGid unimplemented!(), simple implements instead");
+                    children
+                        .values()
+                        .find(|c| c.is_zombie() && c.with_thread_group(|tg| tg.len() == 1))
+                }
+                WaitFor::AnyChildInGroup => {
+                    log::error!(
+                        "[sys_wait4] AnyChildInGroup unimplemented!(), simple implements instead"
+                    );
+                    log::error!("[sys_wait4] PGid unimplemented!(), simple implements instead");
+                    children
+                        .values()
+                        .find(|c| c.is_zombie() && c.with_thread_group(|tg| tg.len() == 1))
+                }
             }
             .cloned()
         };
@@ -230,8 +243,22 @@ impl Syscall<'_> {
                                 None
                             }
                         }
-                        WaitFor::PGid(_) => unimplemented!(),
-                        WaitFor::AnyChildInGroup => unimplemented!(),
+                        WaitFor::PGid(_) => {
+                            log::error!(
+                            "[sys_wait4] AnyChildInGroup unimplemented!(), simple implements instead"
+                        );
+                            children
+                                .values()
+                                .find(|c| c.is_zombie() && c.with_thread_group(|tg| tg.len() == 1))
+                        }
+                        WaitFor::AnyChildInGroup => {
+                            log::error!(
+                            "[sys_wait4] AnyChildInGroup unimplemented!(), simple implements instead"
+                        );
+                            children
+                                .values()
+                                .find(|c| c.is_zombie() && c.with_thread_group(|tg| tg.len() == 1))
+                        }
                     };
                     if let Some(child) = child {
                         break (
@@ -423,11 +450,12 @@ impl Syscall<'_> {
 
     // TODO:
     pub fn sys_getuid(&self) -> SyscallResult {
-        Ok(UID.load(core::sync::atomic::Ordering::Acquire) as _)
+        // Ok(UID.load(core::sync::atomic::Ordering::Acquire) as _)
+        Ok(0)
     }
 
     pub fn sys_setuid(&self, uid: usize) -> SyscallResult {
-        UID.store(uid as u32, core::sync::atomic::Ordering::Release);
+        // UID.store(uid as u32, core::sync::atomic::Ordering::Release);
         Ok(0)
     }
 

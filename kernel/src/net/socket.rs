@@ -195,7 +195,7 @@ impl Socket {
             SaFamily::AF_INET | SaFamily::AF_INET6 => match types {
                 SocketType::STREAM => Ok(Sock::Tcp(TcpSocket::new())),
                 SocketType::DGRAM => Ok(Sock::Udp(UdpSocket::new())),
-                _ => unimplemented!(),
+                _ => return Err(SysError::EAFNOSUPPORT),
             },
         }?;
         let flags = if nonblock {

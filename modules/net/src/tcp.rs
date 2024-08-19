@@ -158,10 +158,11 @@ impl TcpSocket {
     }
 
     pub fn set_nagle_enabled(&self, enabled: bool) -> SysResult<()> {
-        let handle: SocketHandle = unsafe { self.handle.get().read() }.ok_or(SysError::EBADF)?;
-        SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
-            socket.set_nagle_enabled(enabled)
-        });
+        if let Some(handle) = unsafe { self.handle.get().read() } {
+            SOCKET_SET.with_socket_mut::<tcp::Socket, _, _>(handle, |socket| {
+                socket.set_nagle_enabled(enabled)
+            });
+        }
         Ok(())
     }
 
