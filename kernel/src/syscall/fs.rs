@@ -1,5 +1,8 @@
-use alloc::{ffi::CString, vec, vec::Vec};
-use core::{cmp, default};
+use alloc::{ffi::CString, sync::Arc, vec, vec::Vec};
+use core::{
+    cmp, default,
+    ops::{Deref, DerefMut},
+};
 
 use arch::time::get_time_duration;
 use async_utils::{Select2Futures, SelectOutput};
@@ -974,5 +977,102 @@ impl Syscall<'_> {
         let new_dentry = task.at_helper(newdirfd, &newpath, flags)?;
         old_dentry.link(&new_dentry)?;
         Ok(0)
+    }
+
+    pub async fn sys_splice(
+        &self,
+        fd_in: usize,
+        off_in: UserRdWrPtr<i64>,
+        fd_out: usize,
+        off_out: UserRdWrPtr<i64>,
+        len: usize,
+        flags: usize,
+    ) -> SyscallResult {
+        let task = self.task;
+        let file_in = task.with_fd_table(|table| table.get_file(fd_in))?;
+        let file_out = task.with_fd_table(|table| table.get_file(fd_out))?;
+        let file_in_type = file_in.inode().itype();
+        let file_out_type = file_out.inode().itype();
+
+        if file_in_type.is_fifo() && off_in.not_null() {
+            return Err(SysError::ESPIPE);
+        }
+        if file_out_type.is_fifo() && off_out.not_null() {
+            return Err(SysError::ESPIPE);
+        }
+        if !file_in_type.is_fifo() && !file_out_type.is_fifo() {
+            return Err(SysError::EINVAL);
+        }
+        if Arc::ptr_eq(&file_in.inode(), &file_out.inode()) {
+            return Err(SysError::EINVAL);
+        }
+
+        let mut off_in = if off_in.not_null() {
+            let off_in = off_in.into_mut(task)?;
+            if *off_in.deref() < 0 {
+                return Err(SysError::EINVAL);
+            }
+            Some(off_in)
+        } else {
+            None
+        };
+        let mut off_out = if off_out.not_null() {
+            let off_out = off_out.into_mut(task)?;
+            if *off_out.deref() < 0 {
+                return Err(SysError::EINVAL);
+            }
+            Some(off_out)
+        } else {
+            None
+        };
+
+        let mut buf = vec![0; len];
+        let in_len = if file_in_type.is_fifo() {
+            let mut in_cnt = 0;
+            loop {
+                let in_one_len = file_in.read_at(0, &mut buf[in_cnt..]).await?;
+                in_cnt += in_one_len;
+                if in_one_len == 0 {
+                    break in_cnt;
+                }
+            }
+        } else {
+            file_in
+                .read_at(
+                    off_in.as_deref().map(|i| *i as usize).unwrap_or(0),
+                    &mut buf,
+                )
+                .await?
+        };
+
+        if in_len == 0 {
+            return Ok(0);
+        }
+
+        buf.truncate(in_len);
+
+        let out_len = if file_out_type.is_fifo() {
+            let mut out_cnt = 0;
+            loop {
+                let out_one_len = file_out.write_at(0, &buf[out_cnt..]).await?;
+                out_cnt += out_one_len;
+                if out_one_len == 0 {
+                    break out_cnt;
+                }
+            }
+        } else {
+            file_out
+                .write_at(off_out.as_deref().map(|i| *i as usize).unwrap_or(0), &buf)
+                .await?
+        };
+
+        off_in.map(|mut off_in| {
+            *off_in.deref_mut() += in_len as i64;
+        });
+        off_out.map(|mut off_out| {
+            *off_out.deref_mut() += out_len as i64;
+        });
+
+        Ok(out_len)
     }
 }
