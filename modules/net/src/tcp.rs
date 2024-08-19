@@ -755,6 +755,9 @@ impl Drop for TcpSocket {
         if let Some(handle) = unsafe { self.handle.get().read() } {
             SOCKET_SET.remove(handle);
         }
+        if let Ok(addr) = self.local_addr() {
+            PORT_MAP.remove(addr.port);
+        }
     }
 }
 

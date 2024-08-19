@@ -38,6 +38,11 @@ impl Sock {
             Sock::Tcp(tcp) => {
                 // HACK
                 let local_addr = local_addr.into_listen_endpoint();
+                if let Some(prev_fd) = tcp.check_bind(sockfd, local_addr) {
+                    current_task()
+                        .with_mut_fd_table(|table| table.dup3_with_flags(prev_fd, sockfd));
+                    return Ok(());
+                }
                 tcp.bind(local_addr)
             }
             Sock::Udp(udp) => {
