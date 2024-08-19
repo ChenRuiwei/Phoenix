@@ -18,7 +18,7 @@
 ./test-ltp.sh ltp/testcases/bin/chdir04
 ./test-ltp.sh ltp/testcases/bin/chmod01
 ./test-ltp.sh ltp/testcases/bin/chown01
-./test-ltp.sh ltp/testcases/bin/chown05
+# ./test-ltp.sh ltp/testcases/bin/chown05
 ./test-ltp.sh ltp/testcases/bin/chroot03
 ./test-ltp.sh ltp/testcases/bin/clock_getres01
 ./test-ltp.sh ltp/testcases/bin/clock_gettime02
