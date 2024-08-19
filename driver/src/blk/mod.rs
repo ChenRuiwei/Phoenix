@@ -21,11 +21,7 @@ pub fn probe_sdio_blk(root: &Fdt) -> Option<Arc<MMC>> {
         let size = sdhci.reg().unwrap().next().unwrap().size.unwrap();
         let irq_number = 33; // Hard-coded from JH7110
         let sdcard = MMC::new(base_address, size, irq_number);
-        log::info!(
-            "SD Card Host
-Controller found at 0x{:x}",
-            base_address
-        );
+        log::info!("SD Card Host Controller found at 0x{:x}", base_address);
         return Some(Arc::new(sdcard));
     }
     log::warn!("SD Card Host Controller not found");
