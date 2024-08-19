@@ -1,0 +1,5 @@
+Host *
+    Protocol 2
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR

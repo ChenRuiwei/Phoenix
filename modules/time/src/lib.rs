@@ -18,5 +18,8 @@ pub const CLOCK_MONOTONIC: usize = 1;
 pub const CLOCK_PROCESS_CPUTIME_ID: usize = 2;
 /// 用于测量调用线程消耗的CPU时间
 pub const CLOCK_THREAD_CPUTIME_ID: usize = 3;
+/// 表示从系统启动以来经过的时间，包括系统休眠的时间。为了简化，
+/// 与CLOCK_MONOTONIC相同
+pub const CLOCK_BOOTTIME: usize = 7;
 
 pub static mut CLOCK_DEVIATION: [Duration; SUPPORT_CLOCK] = [Duration::ZERO; SUPPORT_CLOCK];

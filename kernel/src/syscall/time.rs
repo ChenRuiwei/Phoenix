@@ -7,7 +7,7 @@ use time::{
     timespec::TimeSpec,
     timeval::{ITimerVal, TimeVal},
     tms::TMS,
-    CLOCK_DEVIATION, CLOCK_MONOTONIC, CLOCK_PROCESS_CPUTIME_ID, CLOCK_REALTIME,
+    CLOCK_BOOTTIME, CLOCK_DEVIATION, CLOCK_MONOTONIC, CLOCK_PROCESS_CPUTIME_ID, CLOCK_REALTIME,
     CLOCK_THREAD_CPUTIME_ID,
 };
 use timer::{Timer, TIMER_MANAGER};
@@ -102,6 +102,13 @@ impl Syscall<'_> {
             CLOCK_THREAD_CPUTIME_ID => {
                 tp.write(&task, task.time_stat().cpu_time().into())?;
             }
+            CLOCK_BOOTTIME => {
+                let current = get_time_duration();
+                tp.write(
+                    &task,
+                    (unsafe { CLOCK_DEVIATION }[CLOCK_MONOTONIC] + current).into(),
+                )?;
+            }
             5 => {
                 log::warn!("[sys_clock_gettime] unsupported clockid{}", clockid);
                 return Err(SysError::EINTR);
@@ -138,7 +145,7 @@ impl Syscall<'_> {
                 }
             }
             _ => {
-                log::error!("[sys_clock_gettime] unsupported clockid{}", clockid);
+                log::error!("[sys_clock_settime] unsupported clockid{}", clockid);
                 return Err(SysError::EINVAL);
             }
         }
