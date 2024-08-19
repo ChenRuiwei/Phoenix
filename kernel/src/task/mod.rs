@@ -15,7 +15,7 @@ pub use schedule::{spawn_kernel_task, spawn_user_task};
 pub use task::Task;
 pub use tid::{PGid, Pid, Tid, TID_ALLOCATOR};
 use vfs::sys_root_dentry;
-use vfs_core::Path;
+use vfs_core::{OpenFlags, Path};
 
 use crate::{
     mm::memory_space::{init_stack, MemorySpace},
@@ -24,12 +24,15 @@ use crate::{
 };
 
 pub fn spawn_init_proc() {
+    #[cfg(not(feature = "final2"))]
     let init_proc_path = "/init_proc";
+    #[cfg(feature = "final2")]
+    let init_proc_path = "/final_tests";
     let args = vec![init_proc_path.to_string()];
     let envp = Vec::new();
 
     let file = Path::new(sys_root_dentry(), sys_root_dentry(), init_proc_path)
-        .walk()
+        .walk(OpenFlags::empty())
         .unwrap()
         .open()
         .unwrap();

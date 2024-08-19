@@ -30,7 +30,9 @@ use sync::mutex::SpinNoIrqLock;
 use systype::{SysError, SysResult};
 use time::stat::TaskTimeStat;
 use vfs::{fd_table::FdTable, sys_root_dentry};
-use vfs_core::{is_absolute_path, AtFd, Dentry, File, InodeMode, InodeType, OpenFlags, Path};
+use vfs_core::{
+    is_absolute_path, split_path, AtFd, Dentry, File, InodeMode, InodeType, OpenFlags, Path,
+};
 
 use super::{
     resource::CpuMask,
@@ -677,11 +679,12 @@ impl Task {
                 }
             }
         };
-        let dentry = path.walk()?;
+
+        let dentry = path.walk(OpenFlags::empty())?;
         if flags.contains(OpenFlags::O_NOFOLLOW) {
             Ok(dentry)
         } else {
-            self.resolve_dentry(dentry)
+            Path::resolve_dentry(dentry)
         }
     }
 
@@ -700,7 +703,7 @@ impl Task {
                     } else {
                         Path::new(sys_root_dentry(), dentry_it.parent().unwrap(), &path)
                     };
-                    let new_dentry = path.walk()?;
+                    let new_dentry = path.walk(OpenFlags::empty())?;
                     dentry_it = new_dentry;
                 }
                 _ => return Ok(dentry_it),
@@ -712,7 +715,7 @@ impl Task {
     /// Given a path, absolute or relative, will find.
     pub fn resolve_path(&self, path: &str) -> SysResult<Arc<dyn Dentry>> {
         let dentry = self.at_helper(AtFd::FdCwd, path, OpenFlags::empty())?;
-        self.resolve_dentry(dentry)
+        Path::resolve_dentry(dentry)
     }
 
     /// Given a path, absolute or relative, will find.

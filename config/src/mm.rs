@@ -3,9 +3,18 @@ use crate::{
     utils::register_mut_const,
 };
 
+#[cfg(not(feature = "vf2"))]
 pub const RAM_START: usize = 0x8000_0000;
-pub const VIRT_START: usize = 0xffff_ffc0_8000_0000;
+#[cfg(feature = "vf2")]
+pub const RAM_START: usize = 0x8000_0000;
+
+pub const HIGH_HALF: usize = 0xffff_ffc0_0000_0000;
+pub const VIRT_START: usize = HIGH_HALF + RAM_START;
+
+#[cfg(not(feature = "vf2"))]
 pub const RAM_SIZE: usize = 512 * 1024 * 1024;
+#[cfg(feature = "vf2")]
+pub const RAM_SIZE: usize = 0x100000000 + RAM_START - 0x4000_0000;
 
 pub const VIRT_RAM_OFFSET: usize = KERNEL_START - KERNEL_START_PHYS;
 
@@ -14,9 +23,13 @@ pub const KERNEL_START_PHYS: usize = RAM_START + KERNEL_OFFSET;
 pub const KERNEL_START: usize = VIRT_START + KERNEL_OFFSET;
 
 pub const KERNEL_STACK_SIZE: usize = 64 * 1024;
+
+#[cfg(not(feature = "vf2"))]
+pub const KERNEL_HEAP_SIZE: usize = 256 * 1024 * 1024;
+#[cfg(feature = "vf2")]
 pub const KERNEL_HEAP_SIZE: usize = 256 * 1024 * 1024;
 
-pub const HART_START_ADDR: usize = 0x80200000;
+pub const HART_START_ADDR: usize = RAM_START + KERNEL_START;
 
 register_mut_const!(pub DTB_ADDR, usize, 0);
 

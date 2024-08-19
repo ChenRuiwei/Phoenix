@@ -14,7 +14,9 @@ device-core = { path = "../device-core/" }
 page = { path = "../page/" }
 driver = { path = "../../driver/" }
 time = { path = "../time" }
+async-utils = { path = "../../crates/async-utils/" }
 
+crate_interface = "0.1"
 bitflags = "2.5"
 log = "0.4"
 async-trait = "0.1"

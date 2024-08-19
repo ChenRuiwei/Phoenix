@@ -503,7 +503,7 @@ dependencies = [
 [[package]]
 name = "lwext4_rust"
 version = "0.2.0"
-source = "git+https://github.com/ChenRuiwei/lwext4_rust.git?rev=293f#293f67aa0fd9bae7b9c8ff9a9ee9b7ff745aa410"
+source = "git+https://github.com/ChenRuiwei/lwext4_rust.git?rev=fb4e#fb4ee4bebcfc68348534be1315c5fc7a71b35250"
 dependencies = [
  "log",
  "printf-compat",
@@ -944,8 +944,10 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "async-trait",
+ "async-utils",
  "bitflags 2.6.0",
  "config",
+ "crate_interface",
  "device-core",
  "downcast-rs",
  "driver",

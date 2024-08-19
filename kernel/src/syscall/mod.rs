@@ -215,6 +215,17 @@ impl<'a> Syscall<'a> {
                 args[3].into(),
                 args[4] as _,
             ),
+            SPLICE => {
+                self.sys_splice(
+                    args[0],
+                    args[1].into(),
+                    args[2],
+                    args[3].into(),
+                    args[4],
+                    args[5],
+                )
+                .await
+            }
             // IO
             PPOLL => {
                 self.sys_ppoll(args[0].into(), args[1], args[2].into(), args[3].into())

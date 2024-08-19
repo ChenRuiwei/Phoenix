@@ -4,18 +4,20 @@ use alloc::{
     vec::Vec,
 };
 
+use async_utils::block_on;
+use crate_interface::call_interface;
 use systype::{SysError, SysResult};
 
-use crate::{Dentry, InodeMode};
+use crate::{dentry, Dentry, InodeMode, InodeType, OpenFlags};
 
 #[derive(Clone)]
 pub struct Path {
     /// The root of the file system
-    root: Arc<dyn Dentry>,
+    pub root: Arc<dyn Dentry>,
     /// The directory to start searching from
-    start: Arc<dyn Dentry>,
+    pub start: Arc<dyn Dentry>,
     /// The path to search for
-    path: String,
+    pub path: String,
 }
 
 impl Eq for Path {}
@@ -36,7 +38,7 @@ impl Path {
     }
 
     /// Walk until path has been resolved.
-    pub fn walk(&self) -> SysResult<Arc<dyn Dentry>> {
+    pub fn walk(&self, flags: OpenFlags) -> SysResult<Arc<dyn Dentry>> {
         let path = self.path.as_str();
         let mut dentry = if is_absolute_path(path) {
             self.root.clone()
@@ -50,19 +52,60 @@ impl Path {
                     dentry = dentry.parent().ok_or(SysError::ENOENT)?;
                 }
                 // NOTE: lookup will only create negative dentry in non-negetive dir dentry
-                name => match dentry.lookup(name) {
-                    Ok(sub_dentry) => {
-                        log::debug!("[Path::walk] sub dentry {}", sub_dentry.name());
-                        dentry = sub_dentry
+                name => {
+                    dentry = if !flags.contains(OpenFlags::O_NOFOLLOW)
+                        && dentry.inode()?.itype().is_symlink()
+                    {
+                        Path::resolve_dentry(dentry)?
+                    } else {
+                        dentry
+                    };
+                    match dentry.lookup(name) {
+                        Ok(sub_dentry) => {
+                            log::debug!("[Path::walk] sub dentry {}", sub_dentry.name());
+                            dentry = sub_dentry
+                        }
+                        Err(e) => {
+                            log::warn!("[Path::walk] {e:?} when walking in path {path}");
+                            return Err(e);
+                        }
                     }
-                    Err(e) => {
-                        log::warn!("[Path::walk] {e:?} when walking in path {path}");
-                        return Err(e);
-                    }
-                },
+                }
             }
         }
         Ok(dentry)
+    }
+
+    pub fn resolve_dentry(dentry: Arc<dyn Dentry>) -> SysResult<Arc<dyn Dentry>> {
+        const MAX_RESOLVE_LINK_DEPTH: usize = 40;
+        let mut dentry_it = dentry;
+        for _ in 0..MAX_RESOLVE_LINK_DEPTH {
+            if dentry_it.is_negetive() {
+                return Ok(dentry_it);
+            }
+            match dentry_it.inode()?.itype() {
+                InodeType::SymLink => {
+                    let path = block_on(async { dentry_it.open()?.readlink_string().await })?;
+                    let path = if is_absolute_path(&path) {
+                        Path::new(
+                            call_interface!(SysRootDentryIf::sys_root_dentry()),
+                            call_interface!(SysRootDentryIf::sys_root_dentry()),
+                            &path,
+                        )
+                    } else {
+                        Path::new(
+                            call_interface!(SysRootDentryIf::sys_root_dentry()),
+                            dentry_it.parent().unwrap(),
+                            &path,
+                        )
+                    };
+                    let new_dentry = path.walk(OpenFlags::empty())?;
+                    dentry_it = new_dentry;
+                }
+                _ => return Ok(dentry_it),
+            }
+        }
+        Err(SysError::ELOOP)
     }
 }
 
@@ -94,4 +137,9 @@ pub fn split_parent_and_name(path: &str) -> (&str, Option<&str>) {
 /// "/dir/file" -> "file"
 pub fn get_name(path: &str) -> &str {
     path.split('/').last().unwrap_or("/")
+}
+
+#[crate_interface::def_interface]
+pub trait SysRootDentryIf {
+    fn sys_root_dentry() -> Arc<dyn Dentry>;
 }
