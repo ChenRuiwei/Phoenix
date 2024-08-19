@@ -16,6 +16,7 @@ kernel/src/link_app.asm
 mnt/
 my-test/
 ltp/
+testcase/24/final_no_ltp
 target/
 rootfs/
 third-party/vendor/

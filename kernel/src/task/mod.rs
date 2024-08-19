@@ -24,7 +24,10 @@ use crate::{
 };
 
 pub fn spawn_init_proc() {
+    #[cfg(not(feature = "final2"))]
     let init_proc_path = "/init_proc";
+    #[cfg(feature = "final2")]
+    let init_proc_path = "/final_tests";
     let args = vec![init_proc_path.to_string()];
     let envp = Vec::new();
 

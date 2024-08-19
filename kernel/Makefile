@@ -15,6 +15,9 @@ endif
 ifneq ($(VF2), )
 	FEATURES += vf2
 endif
+ifneq ($(FINAL2), )
+	FEATURES += final2
+endif
 
 CARGO_BUILD_ARGS :=
 ifeq ($(MODE), release)

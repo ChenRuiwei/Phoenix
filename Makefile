@@ -46,6 +46,7 @@ export STRACE :=
 export SMP :=
 export PREEMPT :=
 export DEBUG :=
+export FINAL2 :=
 
 # Args
 DISASM_ARGS = -d
