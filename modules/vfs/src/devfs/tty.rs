@@ -218,7 +218,7 @@ impl File for TtyFile {
             }
         }
         if termios.is_echo() {
-            self.base_write_at(0, buf).await;
+            self.base_write_at(0, &buf[..len]).await;
         }
         Ok(len)
     }

@@ -18,7 +18,6 @@ my-test/
 ltp/
 testcase/24/final_no_ltp
 target/
-rootfs/
 old_rootfs/
 third-party/vendor/
 crates/virtio-drivers/
