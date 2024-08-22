@@ -126,6 +126,6 @@ impl File for ExeFile {
         }
         buf[0..exe.len()].copy_from_slice(exe.as_bytes());
         buf[exe.len()] = '\0' as u8;
-        Ok(exe.len() + 1)
+        Ok(exe.len())
     }
 }

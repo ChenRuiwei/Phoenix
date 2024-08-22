@@ -691,30 +691,6 @@ impl Task {
         }
     }
 
-    fn resolve_dentry(&self, dentry: Arc<dyn Dentry>) -> SysResult<Arc<dyn Dentry>> {
-        const MAX_RESOLVE_LINK_DEPTH: usize = 40;
-        let mut dentry_it = dentry;
-        for _ in 0..MAX_RESOLVE_LINK_DEPTH {
-            if dentry_it.is_negetive() {
-                return Ok(dentry_it);
-            }
-            match dentry_it.inode()?.itype() {
-                InodeType::SymLink => {
-                    let path = block_on(async { dentry_it.open()?.readlink_string().await })?;
-                    let path = if is_absolute_path(&path) {
-                        Path::new(sys_root_dentry(), sys_root_dentry(), &path)
-                    } else {
-                        Path::new(sys_root_dentry(), dentry_it.parent().unwrap(), &path)
-                    };
-                    let new_dentry = path.walk(OpenFlags::empty())?;
-                    dentry_it = new_dentry;
-                }
-                _ => return Ok(dentry_it),
-            }
-        }
-        Err(SysError::ELOOP)
-    }
-
     /// Given a path, absolute or relative, will find.
     pub fn resolve_path(&self, path: &str) -> SysResult<Arc<dyn Dentry>> {
         let dentry = self.at_helper(AtFd::FdCwd, path, OpenFlags::empty())?;
