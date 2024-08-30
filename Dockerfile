@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 ARG QEMU_VERSION=7.0.0
 ARG HOME=/root
@@ -11,7 +11,8 @@ RUN apt-get update && \
     curl \
     git \
     python3 \
-    wget
+    wget \
+    xz-utils
 
 # 1. Set up QEMU RISC-V
 # - https://learningos.github.io/rust-based-os-comp2022/0setup-devel-env.html#qemu
@@ -32,7 +33,7 @@ RUN apt-get update && \
     gawk build-essential bison flex texinfo gperf libtool patchutils bc \
     zlib1g-dev libexpat-dev git \
     ninja-build pkg-config libglib2.0-dev libpixman-1-dev libsdl2-dev \
-    dosfstools
+    dosfstools cmake
 
 # 1.3. Build and install from source
 WORKDIR ${HOME}/qemu-${QEMU_VERSION}
@@ -48,6 +49,12 @@ RUN rm -rf qemu-${QEMU_VERSION} qemu-${QEMU_VERSION}.tar.xz
 RUN qemu-system-riscv64 --version && \
     qemu-riscv64 --version
 
+# 1.6. Add musl cc
+RUN wget --progress=dot:giga https://musl.cc/riscv64-linux-musl-cross.tgz && \
+    tar xvf riscv64-linux-musl-cross.tgz
+RUN rm -rf riscv64-linux-musl-cross.tgz
+ENV PATH=${HOME}/riscv64-linux-musl-cross/bin:$PATH
+
 # 2. Set up Rust
 # - https://learningos.github.io/rust-based-os-comp2022/0setup-devel-env.html#qemu
 # - https://www.rust-lang.org/tools/install
@@ -57,7 +64,7 @@ RUN qemu-system-riscv64 --version && \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=nightly-2024-02-01 \
+    RUST_VERSION=nightly-2024-02-03 \
     PROFILE=minimal
 RUN set -eux; \
     wget --progress=dot:giga https://sh.rustup.rs -O rustup-init; \
